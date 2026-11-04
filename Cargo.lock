@@ -263,6 +263,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "taa-ayar"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "taa-donustur"
 version = "1.6.0"
 dependencies = [
@@ -276,6 +283,35 @@ dependencies = [
 [[package]]
 name = "taa-dosya"
 version = "0.1.0"
+
+[[package]]
+name = "taa-katalog"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "taa-ayar",
+ "taa-dosya",
+ "taa-nebim",
+]
+
+[[package]]
+name = "taa-nebim"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "taa-ayar",
+]
+
+[[package]]
+name = "taa-yedek"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+ "taa-ayar",
+]
 
 [[package]]
 name = "typed-path"

@@ -1,0 +1,14 @@
+# taa-ayar: ortak özellik anahtarı (her özellik kapatılabilir). Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-04].
+[package]
+name = "taa-ayar"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "TAA ortak özellik anahtarları (aç/kapat)"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+serde_json = "1"
