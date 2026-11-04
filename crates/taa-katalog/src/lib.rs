@@ -37,7 +37,10 @@ impl Katalog {
         for u in urunler {
             m.insert(anahtar(&u), u);
         }
-        Katalog { kaynak: kaynak.into(), urunler: m }
+        Katalog {
+            kaynak: kaynak.into(),
+            urunler: m,
+        }
     }
 
     pub fn barkod_ara(&self, barkod: &str) -> Option<&Urun> {
@@ -51,7 +54,10 @@ impl Katalog {
     /// Ad içinde geçen metni arar (Türkçe büyük/küçük harf duyarsız, basit).
     pub fn ad_ara(&self, metin: &str) -> Vec<&Urun> {
         let m = metin.to_lowercase();
-        self.urunler.values().filter(|u| u.ad.to_lowercase().contains(&m)).collect()
+        self.urunler
+            .values()
+            .filter(|u| u.ad.to_lowercase().contains(&m))
+            .collect()
     }
 
     /// Geçerli fiyat: indirimli varsa o, yoksa liste fiyatı.
@@ -67,7 +73,12 @@ impl Katalog {
             let yeni = Self::gecerli_fiyat(u);
             let e = eski.urunler.get(k).map(Self::gecerli_fiyat).unwrap_or(0);
             if e != yeni {
-                c.push(Degisim { kod: u.kod.clone(), barkod: u.barkod.clone(), eski: e, yeni });
+                c.push(Degisim {
+                    kod: u.kod.clone(),
+                    barkod: u.barkod.clone(),
+                    eski: e,
+                    yeni,
+                });
             }
         }
         c
@@ -86,7 +97,10 @@ impl Katalog {
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_secs())
                 .unwrap_or(0);
-            let ad = yol.file_name().map(|a| a.to_string_lossy().to_string()).unwrap_or_default();
+            let ad = yol
+                .file_name()
+                .map(|a| a.to_string_lossy().to_string())
+                .unwrap_or_default();
             taa_dosya::atomik_yaz(
                 &eski.join(format!("{z}-{ad}")),
                 &fs::read(yol).map_err(|e| e.to_string())?,
@@ -95,7 +109,9 @@ impl Katalog {
             fs::remove_file(yol).map_err(|e| e.to_string())?;
         }
         let json = serde_json::to_vec_pretty(self).map_err(|e| e.to_string())?;
-        taa_dosya::atomik_yaz(yol, &json).map(|_| ()).map_err(|e| e.to_string())
+        taa_dosya::atomik_yaz(yol, &json)
+            .map(|_| ())
+            .map_err(|e| e.to_string())
     }
 
     pub fn yukle(yol: &Path) -> Result<Katalog, String> {
@@ -107,7 +123,10 @@ impl Katalog {
 /// Nebim dışa aktarım klasöründen katalog kurar (salt okunur).
 pub fn nebimden_kur(klasor: &Path) -> Result<Katalog, String> {
     let (yol, urunler) = taa_nebim::klasorden_oku(klasor).map_err(|e| e.0)?;
-    let ad = yol.file_name().map(|a| a.to_string_lossy().to_string()).unwrap_or_default();
+    let ad = yol
+        .file_name()
+        .map(|a| a.to_string_lossy().to_string())
+        .unwrap_or_default();
     Ok(Katalog::yeni(&ad, urunler))
 }
 
@@ -116,12 +135,27 @@ mod testler {
     use super::*;
 
     fn u(kod: &str, bk: &str, f: i64, i: Option<i64>) -> Urun {
-        Urun { kod: kod.into(), barkod: bk.into(), ad: format!("Ürün {kod}"), renk: "".into(), beden: "".into(), fiyat: f, indirimli: i }
+        Urun {
+            kod: kod.into(),
+            barkod: bk.into(),
+            ad: format!("Ürün {kod}"),
+            renk: "".into(),
+            beden: "".into(),
+            fiyat: f,
+            indirimli: i,
+        }
     }
 
     #[test]
     fn arama() {
-        let k = Katalog::yeni("t", vec![u("A", "1", 100, None), u("A", "2", 100, None), u("B", "3", 200, None)]);
+        let k = Katalog::yeni(
+            "t",
+            vec![
+                u("A", "1", 100, None),
+                u("A", "2", 100, None),
+                u("B", "3", 200, None),
+            ],
+        );
         assert_eq!(k.kod_ara("A").len(), 2);
         assert_eq!(k.barkod_ara("3").unwrap().kod, "B");
         assert_eq!(k.ad_ara("ürün b").len(), 1);
@@ -130,7 +164,14 @@ mod testler {
     #[test]
     fn fark() {
         let eski = Katalog::yeni("e", vec![u("A", "1", 100, None), u("B", "2", 200, None)]);
-        let yeni = Katalog::yeni("y", vec![u("A", "1", 100, Some(80)), u("B", "2", 200, None), u("C", "3", 50, None)]);
+        let yeni = Katalog::yeni(
+            "y",
+            vec![
+                u("A", "1", 100, Some(80)),
+                u("B", "2", 200, None),
+                u("C", "3", 50, None),
+            ],
+        );
         let f = yeni.fiyat_farki(&eski);
         assert_eq!(f.len(), 2);
         assert_eq!((f[0].eski, f[0].yeni), (100, 80));
@@ -142,8 +183,12 @@ mod testler {
         let d = std::env::temp_dir().join(format!("taa-katalog-test-{}", std::process::id()));
         fs::create_dir_all(&d).unwrap();
         let yol = d.join("katalog.json");
-        Katalog::yeni("1", vec![u("A", "1", 100, None)]).kaydet(&yol).unwrap();
-        Katalog::yeni("2", vec![u("B", "2", 100, None)]).kaydet(&yol).unwrap();
+        Katalog::yeni("1", vec![u("A", "1", 100, None)])
+            .kaydet(&yol)
+            .unwrap();
+        Katalog::yeni("2", vec![u("B", "2", 100, None)])
+            .kaydet(&yol)
+            .unwrap();
         assert_eq!(Katalog::yukle(&yol).unwrap().kaynak, "2");
         assert_eq!(fs::read_dir(d.join("eski")).unwrap().count(), 1);
         let _ = fs::remove_dir_all(&d);

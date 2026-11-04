@@ -15,7 +15,13 @@ fn deger_coz(s: &str) -> Option<bool> {
 fn ortam_adi(ad: &str) -> String {
     let b: String = ad
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_uppercase() } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_uppercase()
+            } else {
+                '_'
+            }
+        })
         .collect();
     format!("TAA_OZELLIK_{b}")
 }

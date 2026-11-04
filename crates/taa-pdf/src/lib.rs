@@ -35,7 +35,11 @@ fn miras_yaz(doc: &mut Document) {
     let sayfalar: Vec<ObjectId> = doc.get_pages().into_values().collect();
     for id in sayfalar {
         let mut ek: Vec<(Vec<u8>, Object)> = Vec::new();
-        let mut gecerli = doc.get_dictionary(id).ok().and_then(|d| d.get(b"Parent").ok()).and_then(|p| p.as_reference().ok());
+        let mut gecerli = doc
+            .get_dictionary(id)
+            .ok()
+            .and_then(|d| d.get(b"Parent").ok())
+            .and_then(|p| p.as_reference().ok());
         let mut kendi: Vec<Vec<u8>> = doc
             .get_dictionary(id)
             .map(|d| d.iter().map(|(k, _)| k.clone()).collect())
@@ -46,7 +50,9 @@ fn miras_yaz(doc: &mut Document) {
             if sayac > 64 {
                 break;
             }
-            let Ok(pd) = doc.get_dictionary(pid) else { break };
+            let Ok(pd) = doc.get_dictionary(pid) else {
+                break;
+            };
             for k in MIRAS {
                 if !kendi.iter().any(|x| x == k) {
                     if let Ok(v) = pd.get(k) {
@@ -86,7 +92,10 @@ pub fn sec(doc: &mut Document, sayfalar: &[u32]) -> Result<(), String> {
         if !gorulen.insert(*s) {
             return Err(format!("sayfa {s} birden fazla kez seçildi"));
         }
-        idler.push(*tum.get(s).ok_or_else(|| format!("sayfa {s} yok (toplam {})", tum.len()))?);
+        idler.push(
+            *tum.get(s)
+                .ok_or_else(|| format!("sayfa {s} yok (toplam {})", tum.len()))?,
+        );
     }
     miras_yaz(doc);
     let kok = kok_sayfalar_id(doc)?;
@@ -96,7 +105,10 @@ pub fn sec(doc: &mut Document, sayfalar: &[u32]) -> Result<(), String> {
         }
     }
     if let Ok(Object::Dictionary(d)) = doc.get_object_mut(kok) {
-        d.set("Kids", Object::Array(idler.iter().map(|i| Object::Reference(*i)).collect()));
+        d.set(
+            "Kids",
+            Object::Array(idler.iter().map(|i| Object::Reference(*i)).collect()),
+        );
         d.set("Count", Object::Integer(idler.len() as i64));
     }
     doc.prune_objects();
@@ -118,9 +130,17 @@ pub fn birlestir(belgeler: Vec<Document>) -> Result<Document, String> {
         max_id = d.max_id + 1;
         sayfa_idleri.extend(d.get_pages().into_values());
         for (id, o) in d.objects {
-            let tip = o.as_dict().ok().and_then(|x| x.get(b"Type").ok()).and_then(|t| t.as_name().ok()).map(|n| n.to_vec());
+            let tip = o
+                .as_dict()
+                .ok()
+                .and_then(|x| x.get(b"Type").ok())
+                .and_then(|t| t.as_name().ok())
+                .map(|n| n.to_vec());
             // Katalog, sayfa ağacı düğümleri ve ana hatlar yeniden kurulur.
-            if matches!(tip.as_deref(), Some(b"Catalog") | Some(b"Pages") | Some(b"Outlines") | Some(b"Outline")) {
+            if matches!(
+                tip.as_deref(),
+                Some(b"Catalog") | Some(b"Pages") | Some(b"Outlines") | Some(b"Outline")
+            ) {
                 continue;
             }
             nesneler.insert(id, o);
@@ -140,7 +160,10 @@ pub fn birlestir(belgeler: Vec<Document>) -> Result<Document, String> {
     let mut p = Dictionary::new();
     p.set("Type", "Pages");
     p.set("Count", Object::Integer(sayfa_idleri.len() as i64));
-    p.set("Kids", Object::Array(sayfa_idleri.iter().map(|i| Object::Reference(*i)).collect()));
+    p.set(
+        "Kids",
+        Object::Array(sayfa_idleri.iter().map(|i| Object::Reference(*i)).collect()),
+    );
     yeni.objects.insert(kok, Object::Dictionary(p));
     let mut k = Dictionary::new();
     k.set("Type", "Catalog");
@@ -174,7 +197,13 @@ pub fn kaydet(doc: &mut Document, yol: &Path) -> Result<PathBuf, String> {
 pub fn sayfa_listesi(metin: &str) -> Result<Vec<u32>, String> {
     let mut c = Vec::new();
     for parca in metin.split(',').map(str::trim).filter(|p| !p.is_empty()) {
-        let sayi = |s: &str| s.trim().parse::<u32>().ok().filter(|n| *n >= 1).ok_or_else(|| format!("geçersiz sayfa: '{s}'"));
+        let sayi = |s: &str| {
+            s.trim()
+                .parse::<u32>()
+                .ok()
+                .filter(|n| *n >= 1)
+                .ok_or_else(|| format!("geçersiz sayfa: '{s}'"))
+        };
         match parca.split_once('-') {
             Some((a, b)) => {
                 let (a, b) = (sayi(a)?, sayi(b)?);
@@ -201,7 +230,10 @@ mod testler {
         let kok = d.new_object_id();
         let mut kids = Vec::new();
         for i in 1..=n {
-            let icerik = d.add_object(lopdf::Stream::new(dictionary! {}, format!("BT /F1 12 Tf 10 10 Td ({onek}{i}) Tj ET").into_bytes()));
+            let icerik = d.add_object(lopdf::Stream::new(
+                dictionary! {},
+                format!("BT /F1 12 Tf 10 10 Td ({onek}{i}) Tj ET").into_bytes(),
+            ));
             let s = d.add_object(dictionary! {
                 "Type" => "Page", "Parent" => kok, "Contents" => icerik,
                 "Etiket" => Object::string_literal(format!("{onek}{i}")),
@@ -223,7 +255,17 @@ mod testler {
     fn etiketler(d: &Document) -> Vec<String> {
         d.get_pages()
             .values()
-            .map(|id| String::from_utf8_lossy(d.get_dictionary(*id).unwrap().get(b"Etiket").unwrap().as_str().unwrap()).to_string())
+            .map(|id| {
+                String::from_utf8_lossy(
+                    d.get_dictionary(*id)
+                        .unwrap()
+                        .get(b"Etiket")
+                        .unwrap()
+                        .as_str()
+                        .unwrap(),
+                )
+                .to_string()
+            })
             .collect()
     }
 

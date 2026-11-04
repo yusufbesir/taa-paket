@@ -52,7 +52,7 @@ pub fn sha256_dosya(yol: &Path) -> std::io::Result<String> {
     Ok(h.finalize().iter().map(|b| format!("{b:02x}")).collect())
 }
 
-fn gez(kok: &Path, dizin: &Path, cikti: &mut Vec<PathBuf>) -> std::io::Result<()> {
+fn gez(dizin: &Path, cikti: &mut Vec<PathBuf>) -> std::io::Result<()> {
     let mut ogeler: Vec<_> = fs::read_dir(dizin)?.flatten().collect();
     ogeler.sort_by_key(|o| o.file_name());
     for o in ogeler {
@@ -61,7 +61,7 @@ fn gez(kok: &Path, dizin: &Path, cikti: &mut Vec<PathBuf>) -> std::io::Result<()
             continue; // bağlantılar izlenmez (döngü ve dışarı çıkma riski)
         }
         if t.is_dir() {
-            gez(kok, &o.path(), cikti)?;
+            gez(&o.path(), cikti)?;
         } else if t.is_file() {
             cikti.push(o.path());
         }
@@ -87,13 +87,20 @@ pub fn yedekle(kaynaklar: &[PathBuf], hedef: &Path, damga: &str) -> Result<PathB
                 return Err("yedek hedefi kaynağın içinde olamaz".into());
             }
         }
-        let ad = kaynak.file_name().map(|a| a.to_string_lossy().to_string()).unwrap_or_default();
+        let ad = kaynak
+            .file_name()
+            .map(|a| a.to_string_lossy().to_string())
+            .unwrap_or_default();
         let ust = format!("k{i}_{ad}");
         let mut dosyalar = Vec::new();
-        gez(kaynak, kaynak, &mut dosyalar).map_err(|e| e.to_string())?;
+        gez(kaynak, &mut dosyalar).map_err(|e| e.to_string())?;
         for d in dosyalar {
             let goreli = d.strip_prefix(kaynak).map_err(|e| e.to_string())?;
-            let ham = goreli.components().map(|c| c.as_os_str().to_string_lossy().to_string()).collect::<Vec<_>>().join("/");
+            let ham = goreli
+                .components()
+                .map(|c| c.as_os_str().to_string_lossy().to_string())
+                .collect::<Vec<_>>()
+                .join("/");
             let hedef_yol = yedek.join(&ust).join(goreli);
             fs::create_dir_all(hedef_yol.parent().unwrap()).map_err(|e| e.to_string())?;
             fs::copy(&d, &hedef_yol).map_err(|e| format!("{}: {e}", d.display()))?;
@@ -111,7 +118,8 @@ pub fn yedekle(kaynaklar: &[PathBuf], hedef: &Path, damga: &str) -> Result<PathB
 }
 
 fn manifest_oku(yedek: &Path) -> Result<Manifest, String> {
-    let b = fs::read(yedek.join("manifest.json")).map_err(|e| format!("manifest okunamadı: {e}"))?;
+    let b =
+        fs::read(yedek.join("manifest.json")).map_err(|e| format!("manifest okunamadı: {e}"))?;
     serde_json::from_slice(&b).map_err(|e| e.to_string())
 }
 
@@ -137,7 +145,10 @@ pub fn geri_yukle(yedek: &Path, hedef: &Path) -> Result<Vec<String>, String> {
     kapali()?;
     let sorunlar = dogrula(yedek)?;
     if !sorunlar.is_empty() {
-        return Err(format!("yedek doğrulanamadı ({} sorun); geri yükleme yapılmadı", sorunlar.len()));
+        return Err(format!(
+            "yedek doğrulanamadı ({} sorun); geri yükleme yapılmadı",
+            sorunlar.len()
+        ));
     }
     let m = manifest_oku(yedek)?;
     let mut atlanan = Vec::new();
@@ -179,7 +190,10 @@ mod testler {
         // geri yükle: ilk seferde yazılır, ikincide atlanır
         let hedef = t.join("geri");
         assert!(geri_yukle(&yedek, &hedef).unwrap().is_empty());
-        assert_eq!(fs::read_to_string(hedef.join("k0_veri/alt/b.txt")).unwrap(), "dünya");
+        assert_eq!(
+            fs::read_to_string(hedef.join("k0_veri/alt/b.txt")).unwrap(),
+            "dünya"
+        );
         assert_eq!(geri_yukle(&yedek, &hedef).unwrap().len(), 2);
         let _ = fs::remove_dir_all(&t);
     }
@@ -192,7 +206,10 @@ mod testler {
         fs::write(kaynak.join("a.txt"), "x").unwrap();
         let yedek = yedekle(&[kaynak], &t.join("y"), "d1").unwrap();
         fs::write(yedek.join("k0_v/a.txt"), "değişti").unwrap();
-        assert_eq!(dogrula(&yedek).unwrap(), vec![Sorun::Bozuk("k0_v/a.txt".into())]);
+        assert_eq!(
+            dogrula(&yedek).unwrap(),
+            vec![Sorun::Bozuk("k0_v/a.txt".into())]
+        );
         assert!(geri_yukle(&yedek, &t.join("g")).is_err());
         let _ = fs::remove_dir_all(&t);
     }
@@ -202,7 +219,7 @@ mod testler {
         let t = gecici("ic");
         let kaynak = t.join("v");
         fs::create_dir_all(&kaynak).unwrap();
-        assert!(yedekle(&[kaynak.clone()], &kaynak.join("y"), "d").is_err());
+        assert!(yedekle(std::slice::from_ref(&kaynak), &kaynak.join("y"), "d").is_err());
         let _ = fs::remove_dir_all(&t);
     }
 
@@ -211,7 +228,7 @@ mod testler {
         let t = gecici("damga");
         let kaynak = t.join("v");
         fs::create_dir_all(&kaynak).unwrap();
-        yedekle(&[kaynak.clone()], &t.join("y"), "d").unwrap();
+        yedekle(std::slice::from_ref(&kaynak), &t.join("y"), "d").unwrap();
         assert!(yedekle(&[kaynak], &t.join("y"), "d").is_err());
         let _ = fs::remove_dir_all(&t);
     }

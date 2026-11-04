@@ -1,0 +1,7 @@
+# taa-pano modül tanımı. Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-04].
+ad = "taa-pano"
+surum = "0.1.0"
+arayuz = "1"
+gerektirir = { "taa-ayar" = "1" }
+ozellikler = ["pano"]
+program = "taapano"

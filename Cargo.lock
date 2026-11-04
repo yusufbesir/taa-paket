@@ -440,12 +440,46 @@ dependencies = [
 ]
 
 [[package]]
+name = "taa-pano"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "taa-ayar",
+]
+
+[[package]]
 name = "taa-pdf"
 version = "0.1.0"
 dependencies = [
  "lopdf",
  "taa-ayar",
  "taa-dosya",
+]
+
+[[package]]
+name = "taa-rehber"
+version = "0.1.0"
+dependencies = [
+ "taa-ayar",
+ "taa-nebim",
+]
+
+[[package]]
+name = "taa-tara"
+version = "0.1.0"
+dependencies = [
+ "lopdf",
+ "taa-ayar",
+ "taa-dosya",
+]
+
+[[package]]
+name = "taa-yazici"
+version = "0.1.0"
+dependencies = [
+ "taa-ayar",
+ "taa-nebim",
 ]
 
 [[package]]

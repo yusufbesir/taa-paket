@@ -70,7 +70,10 @@ pub fn metne_cevir(bytes: &[u8]) -> String {
 }
 
 fn ayirac_bul(ilk_satir: &str) -> char {
-    [';', '\t', ','].into_iter().max_by_key(|c| ilk_satir.matches(*c).count()).unwrap_or(';')
+    [';', '\t', ',']
+        .into_iter()
+        .max_by_key(|c| ilk_satir.matches(*c).count())
+        .unwrap_or(';')
 }
 
 /// Tırnaklı alanları destekleyen CSV satır ayrıştırıcı.
@@ -119,7 +122,10 @@ pub fn csv_satirlari(metin: &str, ayirac: char) -> Vec<Vec<String>> {
 
 /// "1.299,90", "1299.90", "1299" -> kuruş.
 pub fn fiyat_kurus(s: &str) -> Option<i64> {
-    let t: String = s.chars().filter(|c| !c.is_whitespace() && *c != '₺').collect();
+    let t: String = s
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != '₺')
+        .collect();
     let t = t.trim_end_matches("TL").trim_end_matches("tl");
     if t.is_empty() {
         return None;
@@ -156,20 +162,40 @@ pub fn urunleri_oku(metin: &str) -> Result<Vec<Urun>, Hata> {
         return Err(Hata("dosya boş".into()));
     };
     let b: Vec<String> = bas.iter().map(|x| katla(x)).collect();
-    let kod = sutun(&b, &["urun kodu", "stok kodu", "kod", "urunkodu", "model kodu"]);
+    let kod = sutun(
+        &b,
+        &["urun kodu", "stok kodu", "kod", "urunkodu", "model kodu"],
+    );
     let barkod = sutun(&b, &["barkod", "barcode"]);
-    let ad = sutun(&b, &["urun aciklamasi", "aciklama", "urun adi", "ad", "urun"]);
+    let ad = sutun(
+        &b,
+        &["urun aciklamasi", "aciklama", "urun adi", "ad", "urun"],
+    );
     let renk = sutun(&b, &["renk", "renk aciklamasi"]);
     let beden = sutun(&b, &["beden", "beden aciklamasi"]);
-    let fiyat = sutun(&b, &["fiyat", "satis fiyati", "perakende fiyat", "liste fiyati"]);
-    let indirimli = sutun(&b, &["indirimli fiyat", "kampanya fiyati", "indirimli satis fiyati"]);
+    let fiyat = sutun(
+        &b,
+        &["fiyat", "satis fiyati", "perakende fiyat", "liste fiyati"],
+    );
+    let indirimli = sutun(
+        &b,
+        &[
+            "indirimli fiyat",
+            "kampanya fiyati",
+            "indirimli satis fiyati",
+        ],
+    );
     if kod.is_none() && barkod.is_none() {
         return Err(Hata("ürün kodu ya da barkod sütunu bulunamadı".into()));
     }
     let Some(fiyat) = fiyat else {
         return Err(Hata("fiyat sütunu bulunamadı".into()));
     };
-    let al = |s: &Vec<String>, i: Option<usize>| i.and_then(|i| s.get(i)).map(|x| x.trim().to_string()).unwrap_or_default();
+    let al = |s: &Vec<String>, i: Option<usize>| {
+        i.and_then(|i| s.get(i))
+            .map(|x| x.trim().to_string())
+            .unwrap_or_default()
+    };
     let mut cikti = Vec::new();
     for s in govde {
         let k = al(s, kod);
@@ -187,7 +213,9 @@ pub fn urunleri_oku(metin: &str) -> Result<Vec<Urun>, Hata> {
             renk: al(s, renk),
             beden: al(s, beden),
             fiyat: f,
-            indirimli: indirimli.and_then(|i| s.get(i)).and_then(|x| fiyat_kurus(x)),
+            indirimli: indirimli
+                .and_then(|i| s.get(i))
+                .and_then(|x| fiyat_kurus(x)),
         });
     }
     Ok(cikti)
@@ -199,7 +227,10 @@ pub fn en_yeni_csv(klasor: &Path) -> Result<Option<PathBuf>, Hata> {
     let mut en: Option<(std::time::SystemTime, PathBuf)> = None;
     for o in ogeler.flatten() {
         let yol = o.path();
-        let csv = yol.extension().map(|e| e.eq_ignore_ascii_case("csv")).unwrap_or(false);
+        let csv = yol
+            .extension()
+            .map(|e| e.eq_ignore_ascii_case("csv"))
+            .unwrap_or(false);
         if !csv {
             continue;
         }
@@ -225,10 +256,18 @@ pub fn klasorden_oku(klasor: &Path) -> Result<(PathBuf, Vec<Urun>), Hata> {
         }
         None => {
             let xlsx = fs::read_dir(klasor)
-                .map(|d| d.flatten().any(|o| o.path().extension().map(|e| e.eq_ignore_ascii_case("xlsx")).unwrap_or(false)))
+                .map(|d| {
+                    d.flatten().any(|o| {
+                        o.path()
+                            .extension()
+                            .map(|e| e.eq_ignore_ascii_case("xlsx"))
+                            .unwrap_or(false)
+                    })
+                })
                 .unwrap_or(false);
             Err(Hata(if xlsx {
-                "klasörde yalnız .xlsx var; şimdilik CSV olarak dışa aktarın (xlsx desteği sonra)".into()
+                "klasörde yalnız .xlsx var; şimdilik CSV olarak dışa aktarın (xlsx desteği sonra)"
+                    .into()
             } else {
                 "klasörde CSV dosyası yok".into()
             }))
@@ -259,7 +298,8 @@ mod testler {
 
     #[test]
     fn urun_okur() {
-        let m = "\u{feff}Ürün Kodu;Barkod;Ürün Açıklaması;Renk;Beden;Satış Fiyatı;İndirimli Fiyat\n\
+        let m =
+            "\u{feff}Ürün Kodu;Barkod;Ürün Açıklaması;Renk;Beden;Satış Fiyatı;İndirimli Fiyat\n\
                  CEK01;8680001;Takım Elbise;Lacivert;50;4.999,90;3.999,00\n\
                  ;;boş;;;1;\n\
                  PAN02;8680002;Pantolon;Siyah;48;1.299,00;\n";
@@ -274,7 +314,10 @@ mod testler {
     #[test]
     fn eksik_sutun() {
         assert!(urunleri_oku("a;b\n1;2\n").is_err());
-        assert!(urunleri_oku("Kod;Ad\nx;y\n").unwrap_err().0.contains("fiyat"));
+        assert!(urunleri_oku("Kod;Ad\nx;y\n")
+            .unwrap_err()
+            .0
+            .contains("fiyat"));
     }
 
     #[test]
