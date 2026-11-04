@@ -84,6 +84,13 @@ pub struct Fis {
     pub kargo: bool,
     #[serde(default)]
     pub kargo_notu: String,
+    /// Kargo işaretliyse zorunlu: alıcı ad-soyad, açık adres, alıcı telefonu.
+    #[serde(default)]
+    pub kargo_ad: String,
+    #[serde(default)]
+    pub kargo_adres: String,
+    #[serde(default)]
+    pub kargo_telefon: String,
     #[serde(default)]
     pub teslim_degisiklikleri: Vec<TeslimDegisti>,
     pub durum: Durum,
@@ -128,6 +135,13 @@ pub struct Girdi {
     pub kargo: bool,
     #[serde(default)]
     pub kargo_notu: String,
+    /// Kargo işaretliyse zorunlu: alıcı ad-soyad, açık adres, alıcı telefonu.
+    #[serde(default)]
+    pub kargo_ad: String,
+    #[serde(default)]
+    pub kargo_adres: String,
+    #[serde(default)]
+    pub kargo_telefon: String,
 }
 
 pub fn tarih_gecerli(t: &str) -> bool {
@@ -307,6 +321,18 @@ impl Defter<'_> {
             taa_ayar::ozellik_acik("serbest-islem", true),
             taa_ayar::ozellik_acik("olcu-zorunlu", false),
         )?;
+        let kargo = g.kargo && taa_ayar::ozellik_acik("kargo-alani", true);
+        let mut kargo_telefon = String::new();
+        if kargo {
+            if g.kargo_ad.split_whitespace().count() < 2 {
+                return Err("kargo: alıcının ad ve soyadı yazılmalı".into());
+            }
+            if g.kargo_adres.trim().chars().count() < 15 {
+                return Err("kargo: açık adres (mahalle, sokak, no, ilçe/il) yazılmalı".into());
+            }
+            kargo_telefon = telefon_duzelt(&g.kargo_telefon)
+                .map_err(|_| "kargo: alıcı telefon numarası geçerli değil".to_string())?;
+        }
         let gun = g.tarih.replace('-', "");
         let sira = self.fisler()?.iter().filter(|f| f.tarih == g.tarih).count() + 1;
         let fis = Fis {
@@ -324,8 +350,19 @@ impl Defter<'_> {
             usta: g.usta.trim().into(),
             satis_danismani: g.satis_danismani.trim().into(),
             olcu_alan: g.olcu_alan.trim().into(),
-            kargo: g.kargo && taa_ayar::ozellik_acik("kargo-alani", true),
+            kargo,
             kargo_notu: g.kargo_notu.trim().into(),
+            kargo_ad: if kargo {
+                g.kargo_ad.trim().into()
+            } else {
+                String::new()
+            },
+            kargo_adres: if kargo {
+                g.kargo_adres.trim().into()
+            } else {
+                String::new()
+            },
+            kargo_telefon,
             teslim_degisiklikleri: Vec::new(),
             durum: Durum::Bekliyor,
         };
@@ -544,6 +581,9 @@ pub fn duz_metin_nusha(f: &Fis, genislik: usize, nusha: &str) -> String {
     }
     if f.kargo {
         ekle("*** KARGO YAPILACAK ***");
+        ekle(&format!("Alıcı: {}", f.kargo_ad));
+        ekle(&format!("Adres: {}", f.kargo_adres));
+        ekle(&format!("Alıcı Tel: {}", f.kargo_telefon));
         if !f.kargo_notu.is_empty() {
             ekle(&format!("Kargo: {}", f.kargo_notu));
         }
@@ -703,6 +743,9 @@ mod testler {
             olcu_alan: "Kadir Y.".into(),
             kargo: false,
             kargo_notu: String::new(),
+            kargo_ad: String::new(),
+            kargo_adres: String::new(),
+            kargo_telefon: String::new(),
         }
     }
 
@@ -717,7 +760,13 @@ mod testler {
         let d = Defter { yol: &y };
         let mut g = girdi();
         g.kargo = true;
-        g.kargo_notu = "Ankara, Çankaya, Atatürk Bul. 5".into();
+        g.kargo_notu = "Zile kapıda ödeme yok".into();
+        assert!(d.ekle(g.clone()).unwrap_err().contains("ad ve soyad"));
+        g.kargo_ad = "Ayşe Çelik".into();
+        assert!(d.ekle(g.clone()).unwrap_err().contains("açık adres"));
+        g.kargo_adres = "Atatürk Mah. 5. Sk. No:3 Çankaya/Ankara".into();
+        assert!(d.ekle(g.clone()).unwrap_err().contains("telefon"));
+        g.kargo_telefon = "0532 111 22 33".into();
         let f = d.ekle(g).unwrap();
         for e in [
             "TERZİHANE NÜSHASI 1",
@@ -805,6 +854,9 @@ mod testler {
             olcu_alan: "Kadir Y.".into(),
             kargo: false,
             kargo_notu: String::new(),
+            kargo_ad: String::new(),
+            kargo_adres: String::new(),
+            kargo_telefon: String::new(),
             teslim_degisiklikleri: Vec::new(),
         };
         let m = duz_metin(&f, 42);
