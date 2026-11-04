@@ -26,3 +26,4 @@ qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 taa-ayar = { path = "../taa-ayar" }
 taa-dosya = { path = "../taa-dosya" }
 taa-fis = { path = "../taa-fis" }
+taa-terzi = { path = "../taa-terzi" }

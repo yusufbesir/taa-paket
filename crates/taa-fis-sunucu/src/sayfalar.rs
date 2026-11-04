@@ -22,25 +22,53 @@ function eslestir(){const kod=new URLSearchParams(location.search).get('kod')||'
  ana.innerHTML='<h1>Telefonu eşleştir</h1><div id="msg"></div><label>Bilgisayardaki kod</label><input id="kod" inputmode="numeric" value="'+esc(kod)+'"><label>Bu telefonun adı</label><input id="ad" placeholder="örn. Ayşe\'nin telefonu"><button id="e">Eşleştir</button>';
  $('#e').onclick=async()=>{try{const r=await fetch('/api/eslestir',{method:'POST',body:JSON.stringify({kod:$('#kod').value.trim(),ad:$('#ad').value.trim()})});const j=await r.json();if(!r.ok)throw new Error(j.hata||'Hata');
   localStorage.setItem('taa_tok',j.token);tok=j.token;history.replaceState(null,'','/telefon');ana.innerHTML='';ana.append(form())}catch(e){mesaj(e.message,1)}}}
-function kalemHtml(){return '<div class="kalem"><input class="urun" list="urunler" placeholder="Ürün (pantolon, ceket…)"><input class="islem" placeholder="İşlem (paça kısalt…)"><input class="knot" placeholder="Not (2 cm…)"></div>'}
+let kat={islemler:[]};
+const GRUPLAR=['Pantolon','Ceket','Gömlek','Yelek','Takım'];
+function kalemHtml(){const d=document.createElement('div');d.className='kalem';
+ d.innerHTML='<select class="grup"><option value="">Ürün seçin</option>'+GRUPLAR.map(g=>'<option>'+g+'</option>').join('')+'<option value="*">Diğer (yazarak)</option></select><div class="icerik"></div>';
+ const ic=d.querySelector('.icerik');
+ d.querySelector('.grup').onchange=e=>{const g=e.target.value;ic.innerHTML='';if(!g)return;
+  if(g==='*'){ic.innerHTML='<input class="urun" placeholder="Ürün"><input class="islem" placeholder="İşlem"><input class="knot" placeholder="Not">';return}
+  const l=kat.islemler.filter(i=>i.grup===g);
+  ic.innerHTML='<select class="kod"><option value="">İşlem seçin</option>'+l.map(i=>'<option value="'+esc(i.kod)+'">'+esc(i.ad)+'</option>').join('')+'</select><div class="det"></div>';
+  ic.querySelector('.kod').onchange=ev=>{const i=kat.islemler.find(x=>x.kod===ev.target.value),det=ic.querySelector('.det');det.innerHTML='';if(!i)return;
+   if(i.varyantlar&&i.varyantlar.length)det.innerHTML+='<select class="varyant"><option value="">Seçenek seçin</option>'+i.varyantlar.map(v=>'<option>'+esc(v)+'</option>').join('')+'</select>';
+   if(i.olcu)det.innerHTML+='<input class="olcu" inputmode="decimal" placeholder="Ölçü (cm)"><input class="pay" inputmode="decimal" placeholder="İçeride kalan pay (cm)">';
+   det.innerHTML+='<input class="knot" placeholder="Not">';
+   if(i.sinir_mm){det.innerHTML+='<label class="onay" hidden><input type="checkbox" class="usta" style="width:auto"> Usta onayladı (sınır '+(i.sinir_mm/10)+' cm)</label>';
+    det.querySelector('.olcu').oninput=o=>{det.querySelector('.onay').hidden=!(kurus(o.target.value)>i.sinir_mm*10)}}}};
+ return d}
+function kalemOku(e){const g=e.querySelector('.grup').value;if(!g)return null;
+ const mm=v=>{const x=kurus(v);return x?Math.round(x/10):null};
+ if(g==='*')return{urun:e.querySelector('.urun').value.trim(),islem:e.querySelector('.islem').value.trim(),not:e.querySelector('.knot').value.trim()};
+ const kod=e.querySelector('.kod').value;const i=kat.islemler.find(x=>x.kod===kod);if(!i)return null;
+ const q=s=>e.querySelector(s);return{urun:g,islem:i.ad,islem_kodu:kod,not:q('.knot').value.trim(),varyant:q('.varyant')?q('.varyant').value||null:null,
+  olcu_mm:q('.olcu')?mm(q('.olcu').value):null,pay_mm:q('.pay')?mm(q('.pay').value):null,usta_onayli:!!(q('.usta')&&q('.usta').checked)}}
 function form(){const d=document.createElement('div');const bugun=new Date().toISOString().slice(0,10);
- d.innerHTML='<h1>Yeni fiş</h1><div id="msg"></div><datalist id="urunler"><option>Pantolon<option>Ceket<option>Yelek<option>Gömlek<option>Palto<option>Etek</datalist>'+
- '<label>Müşteri adı</label><input id="mus"><label>Telefon</label><input id="tel" inputmode="tel"><div id="kalemler">'+kalemHtml()+'</div><button class="ikinci" id="ek">+ Ürün ekle</button>'+
- '<label>Ölçü notu</label><textarea id="olcu" rows="2"></textarea><label>Prova tarihi</label><input id="prova" type="date" min="'+bugun+'"><label>Teslim tarihi</label><input id="teslim" type="date" min="'+bugun+'">'+
+ d.innerHTML='<h1>Yeni tadilat fişi</h1><div id="msg"></div>'+
+ '<label>Satış danışmanı</label><input id="sat"><label>Ölçü alan</label><input id="olcualan">'+
+ '<label>Müşteri adı soyadı</label><input id="mus"><label>Telefon</label><input id="tel" inputmode="tel"><div id="kalemler"></div><button class="ikinci" id="ek">+ Ürün / işlem ekle</button>'+
+ '<label>Ölçü notu</label><textarea id="olcu" rows="2"></textarea><label>Prova tarihi (isteğe bağlı)</label><input id="prova" type="date" min="'+bugun+'"><label>Teslim tarihi</label><input id="teslim" type="date" min="'+bugun+'"><label>Teslim saati</label><input id="saat" type="time" value="17:00">'+
  '<label>Ücret (TL)</label><input id="ucret" inputmode="decimal"><label>Ön ödeme (TL)</label><input id="on" inputmode="decimal"><label>Usta</label><input id="usta"><button id="kaydet">Kaydet</button><button class="ikinci" id="liste">Fişler / Yazdır</button>';
- d.querySelector('#ek').onclick=()=>d.querySelector('#kalemler').insertAdjacentHTML('beforeend',kalemHtml());
+ const v=s=>d.querySelector(s).value.trim();
+ d.querySelector('#sat').value=localStorage.getItem('taa_sat')||'';d.querySelector('#olcualan').value=localStorage.getItem('taa_olcualan')||'';
+ const kl=d.querySelector('#kalemler');kl.append(kalemHtml());
+ d.querySelector('#ek').onclick=()=>kl.append(kalemHtml());
+ api('GET','/api/islemler').then(j=>{kat=j}).catch(e=>mesaj(e.message,1));
  d.querySelector('#liste').onclick=liste;
- d.querySelector('#kaydet').onclick=async()=>{const v=s=>d.querySelector(s).value.trim();
-  const kalemler=[...d.querySelectorAll('.kalem')].map(e=>({urun:e.querySelector('.urun').value.trim(),islem:e.querySelector('.islem').value.trim(),not:e.querySelector('.knot').value.trim()})).filter(x=>x.urun||x.islem);
-  const f={musteri:v('#mus'),telefon:v('#tel'),kalemler,olcu_notu:v('#olcu'),prova:v('#prova'),teslim:v('#teslim'),ucret_kurus:kurus(v('#ucret')),on_odeme_kurus:kurus(v('#on')),usta:v('#usta')};
-  try{const j=await api('POST','/api/fis',f);mesaj('Kaydedildi: '+j.no)}catch(e){if(/Failed|fetch|Network/i.test(e.message)){kuyruk.push(f);localStorage.setItem('taa_kuyruk',JSON.stringify(kuyruk));mesaj('Ağ yok: taslak telefonda saklandı, bağlanınca gönderilecek')}else mesaj(e.message,1)}};
+ d.querySelector('#kaydet').onclick=async()=>{
+  const kalemler=[...d.querySelectorAll('.kalem')].map(kalemOku).filter(Boolean);
+  const f={satis_danismani:v('#sat'),olcu_alan:v('#olcualan'),musteri:v('#mus'),telefon:v('#tel'),kalemler,olcu_notu:v('#olcu'),prova:v('#prova'),teslim:v('#teslim'),teslim_saati:v('#saat')||'17:00',ucret_kurus:kurus(v('#ucret')),on_odeme_kurus:kurus(v('#on')),usta:v('#usta')};
+  localStorage.setItem('taa_sat',f.satis_danismani);localStorage.setItem('taa_olcualan',f.olcu_alan);
+  try{const j=await api('POST','/api/fis',f);mesaj('Kaydedildi: '+j.no+((j.uyarilar||[]).length?' — '+j.uyarilar.join(' | '):''))}catch(e){if(/Failed|fetch|Network/i.test(e.message)){kuyruk.push(f);localStorage.setItem('taa_kuyruk',JSON.stringify(kuyruk));mesaj('Ağ yok: taslak telefonda saklandı, bağlanınca gönderilecek')}else mesaj(e.message,1)}};
  return d}
 async function kuyrukGonder(){if(!tok||!kuyruk.length)return;const kalan=[];for(const f of kuyruk){try{await api('POST','/api/fis',f)}catch(e){if(/Failed|fetch|Network/i.test(e.message))kalan.push(f)}}kuyruk=kalan;localStorage.setItem('taa_kuyruk',JSON.stringify(kuyruk))}
 async function liste(){try{const l=await api('GET','/api/fisler');ana.innerHTML='<h1>Fişler</h1><div id="msg"></div><button class="ikinci" id="geri">← Yeni fiş</button>'+
- l.fisler.slice().reverse().map(f=>'<div class="fis"><b>'+esc(f.no)+'</b> '+esc(f.musteri)+'<br>Teslim '+esc(f.teslim)+' · '+esc(f.durum)+' · kalan '+tl(f.ucret_kurus-f.on_odeme_kurus)+
- '<br><button data-y="'+esc(f.no)+'">Yazdır</button>'+(f.durum=='bekliyor'?'<button class="ikinci" data-d="hazir" data-n="'+esc(f.no)+'">Hazır</button>':'')+(f.durum=='hazir'?'<button class="ikinci" data-d="teslim" data-n="'+esc(f.no)+'">Teslim edildi</button>':'')+'</div>').join('');
+ l.fisler.slice().reverse().map(f=>'<div class="fis"><b>'+esc(f.no)+'</b> '+esc(f.musteri)+'<br>Teslim '+esc(f.teslim)+' '+esc(f.teslim_saati||'')+((f.teslim_degisiklikleri||[]).length?' (değişti: '+f.teslim_degisiklikleri.length+')':'')+' · '+esc(f.durum)+' · kalan '+tl(f.ucret_kurus-f.on_odeme_kurus)+
+ '<br><button data-y="'+esc(f.no)+'">Yazdır</button>'+(f.durum=='bekliyor'?'<button class="ikinci" data-d="terzihanede" data-n="'+esc(f.no)+'">Terzihaneye verildi</button>':'')+(f.durum=='terzihanede'?'<button class="ikinci" data-d="hazir" data-n="'+esc(f.no)+'">Hazır</button>':'')+(['bekliyor','terzihanede','hazir'].includes(f.durum)?'<button class="ikinci" data-t="'+esc(f.no)+'">Teslim tarihini değiştir</button>':'')+(f.durum=='hazir'?'<button class="ikinci" data-d="teslim" data-n="'+esc(f.no)+'">Teslim edildi</button>':'')+'</div>').join('');
  $('#geri').onclick=()=>{ana.innerHTML='';ana.append(form())};
  ana.querySelectorAll('[data-y]').forEach(b=>b.onclick=async()=>{try{await api('POST','/api/fis/'+b.dataset.y+'/yazdir');mesaj('Yazıcıya gönderildi')}catch(e){mesaj(e.message,1)}});
+ ana.querySelectorAll('[data-t]').forEach(b=>b.onclick=async()=>{const y=prompt('Yeni teslim tarihi (YYYY-AA-GG)');if(!y)return;const sa=prompt('Yeni teslim saati (SS:DD)','17:00')||'17:00';const n=prompt('Neden değişti?');if(!n)return;try{await api('POST','/api/fis/'+b.dataset.t+'/teslim',{yeni:y,saat:sa,neden:n});liste()}catch(e){mesaj(e.message,1)}})
  ana.querySelectorAll('[data-d]').forEach(b=>b.onclick=async()=>{try{await api('POST','/api/fis/'+b.dataset.n+'/durum',{durum:b.dataset.d});liste()}catch(e){mesaj(e.message,1)}})}catch(e){mesaj(e.message,1)}}
 if(tok){ana.append(form());kuyrukGonder()}else eslestir();
 </script></body></html>"##;

@@ -253,8 +253,27 @@ impl Uygulama {
                     Err(e) => return Yanit::hata(400, &format!("geçersiz fiş: {e}")),
                 };
                 g.tarih = tarih_iso((self.saat)());
-                match d.ekle(g) {
-                    Ok(f) => Yanit::json(200, json!({ "no": f.no })),
+                match d.ekle_uyarili(g) {
+                    Ok((f, uyarilar)) => {
+                        Yanit::json(200, json!({ "no": f.no, "uyarilar": uyarilar }))
+                    }
+                    Err(e) => Yanit::hata(422, &e),
+                }
+            }
+            ("GET", ["api", "islemler"]) => match taa_terzi::Katalog::dizinden(&self.dizin) {
+                Ok(k) => Yanit::json(200, json!(k)),
+                Err(e) => Yanit::hata(500, &e),
+            },
+            ("POST", ["api", "fis", no, "teslim"]) => {
+                let v: serde_json::Value = serde_json::from_slice(&i.govde).unwrap_or_default();
+                match d.teslim_degistir(
+                    no,
+                    v["yeni"].as_str().unwrap_or(""),
+                    v["saat"].as_str().unwrap_or("17:00"),
+                    v["neden"].as_str().unwrap_or(""),
+                    &tarih_iso((self.saat)()),
+                ) {
+                    Ok(()) => Yanit::json(200, json!({ "tamam": true })),
                     Err(e) => Yanit::hata(422, &e),
                 }
             }
@@ -265,10 +284,11 @@ impl Uygulama {
             ("POST", ["api", "fis", no, "durum"]) => {
                 let v: serde_json::Value = serde_json::from_slice(&i.govde).unwrap_or_default();
                 let yeni = match v["durum"].as_str() {
+                    Some("terzihanede") => Durum::Terzihanede,
                     Some("hazir") => Durum::Hazir,
                     Some("teslim") => Durum::Teslim,
                     Some("iptal") => Durum::Iptal,
-                    _ => return Yanit::hata(400, "durum: hazir, teslim ya da iptal"),
+                    _ => return Yanit::hata(400, "durum: terzihanede, hazir, teslim ya da iptal"),
                 };
                 match d.durum_ata(no, yeni, &tarih_iso((self.saat)())) {
                     Ok(()) => Yanit::json(200, json!({ "tamam": true })),
@@ -297,10 +317,16 @@ impl Uygulama {
                     );
                 };
                 use std::io::Write;
+                let nusha: serde_json::Value = serde_json::from_slice(&i.govde).unwrap_or_default();
+                let baytlar = if nusha["nusha"].as_u64() == Some(1) {
+                    taa_fis::escpos(&f, 42)
+                } else {
+                    taa_fis::escpos_nushalar(&f, 42)
+                };
                 match std::fs::OpenOptions::new()
                     .write(true)
                     .open(yazici)
-                    .and_then(|mut h| h.write_all(&taa_fis::escpos(&f, 42)))
+                    .and_then(|mut h| h.write_all(&baytlar))
                 {
                     Ok(()) => Yanit::json(200, json!({ "tamam": true })),
                     Err(e) => Yanit::hata(502, &format!("yazıcıya yazılamadı: {e}")),
@@ -364,7 +390,7 @@ mod testler {
             .to_string()
     }
 
-    const FIS: &str = r#"{"musteri":"Ayşe Çelik","telefon":"0532 123 45 67","kalemler":[{"urun":"Pantolon","islem":"paça kısalt"}],"teslim":"2099-01-01","ucret_kurus":50000,"on_odeme_kurus":10000}"#;
+    const FIS: &str = r#"{"satis_danismani":"Mert","olcu_alan":"Kadir Y.","musteri":"Ayşe Çelik","telefon":"0532 123 45 67","kalemler":[{"urun":"Pantolon","islem":"paça kısalt"}],"teslim":"2099-01-01","ucret_kurus":50000,"on_odeme_kurus":10000}"#;
 
     #[test]
     fn tarih() {
@@ -560,6 +586,10 @@ mod testler {
         assert_eq!(u.isle(&ist("POST", &yol, Some(&t), "", false)).kod, 200);
         let b = std::fs::read(&p).unwrap();
         assert_eq!(&b[..2], &[0x1B, 0x40]);
+        assert_eq!(
+            b.windows(4).filter(|w| *w == [0x1D, 0x56, 0x42, 0]).count(),
+            3
+        ); // 2 terzihane + 1 müşteri
         u.yazici_yolu = Some(u.dizin.join("yok").join("x"));
         assert_eq!(u.isle(&ist("POST", &yol, Some(&t), "", false)).kod, 502);
     }
@@ -580,5 +610,80 @@ mod testler {
             sayfalar::kacis("<a href=\"x\">&'"),
             "&lt;a href=&quot;x&quot;&gt;&amp;&#39;"
         );
+    }
+
+    #[test]
+    fn islemler_ve_teslim_degisikligi() {
+        let u = uyg();
+        let t = esles(&u);
+        let k = u.isle(&ist("GET", "/api/islemler", Some(&t), "", false));
+        assert_eq!(k.kod, 200);
+        assert!(String::from_utf8(k.govde)
+            .unwrap()
+            .contains("pant-paca-kisalt"));
+        let no = serde_json::from_slice::<serde_json::Value>(
+            &u.isle(&ist("POST", "/api/fis", Some(&t), FIS, false)).govde,
+        )
+        .unwrap()["no"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let yol = format!("/api/fis/{no}/teslim");
+        assert_eq!(
+            u.isle(&ist(
+                "POST",
+                &yol,
+                Some(&t),
+                r#"{"yeni":"2099-02-01"}"#,
+                false
+            ))
+            .kod,
+            422
+        ); // neden yok
+        assert_eq!(
+            u.isle(&ist(
+                "POST",
+                &yol,
+                Some(&t),
+                r#"{"yeni":"2099-02-01","saat":"18:00","neden":"müşteri istedi"}"#,
+                false
+            ))
+            .kod,
+            200
+        );
+        assert_eq!(
+            u.isle(&ist(
+                "POST",
+                &format!("/api/fis/{no}/durum"),
+                Some(&t),
+                r#"{"durum":"terzihanede"}"#,
+                false
+            ))
+            .kod,
+            200
+        );
+        let l = String::from_utf8(
+            u.isle(&ist("GET", "/api/fisler", Some(&t), "", false))
+                .govde,
+        )
+        .unwrap();
+        assert!(l.contains("terzihanede") && l.contains("müşteri istedi"));
+    }
+
+    #[test]
+    fn katalog_siniri_sunucuda_calisir() {
+        let u = uyg();
+        let t = esles(&u);
+        let fis = |olcu: i32, onay: bool| {
+            format!(
+                r#"{{"satis_danismani":"M","olcu_alan":"K","musteri":"A B","telefon":"05321234567","kalemler":[{{"urun":"Pantolon","islem":"Bel daraltma","islem_kodu":"pant-bel-daralt","olcu_mm":{olcu},"usta_onayli":{onay}}}],"teslim":"2099-01-01","ucret_kurus":0}}"#
+            )
+        };
+        let y = u.isle(&ist("POST", "/api/fis", Some(&t), &fis(60, false), false));
+        assert_eq!(y.kod, 422);
+        assert!(String::from_utf8_lossy(&y.govde).contains("Usta onayı"));
+        let y = u.isle(&ist("POST", "/api/fis", Some(&t), &fis(60, true), false));
+        assert_eq!(y.kod, 200);
+        assert!(String::from_utf8_lossy(&y.govde).contains("doğrulanmadı"));
     }
 }

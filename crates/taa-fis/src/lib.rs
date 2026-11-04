@@ -13,6 +13,8 @@ pub const OZELLIK: &str = "fis";
 #[serde(rename_all = "lowercase")]
 pub enum Durum {
     Bekliyor,
+    /// Ürün terzihaneye verildi.
+    Terzihanede,
     Hazir,
     Teslim,
     Iptal,
@@ -22,10 +24,33 @@ pub enum Durum {
 pub struct Kalem {
     /// Ürün (ceket, pantolon...).
     pub urun: String,
-    /// Yapılacak işlem (paça kısalt, bel daralt...).
+    /// Yapılacak işlem (paça kısalt, bel daralt...). Katalogdan seçildiyse katalog adı.
     pub islem: String,
     #[serde(default)]
     pub not: String,
+    /// Katalog işlem kodu (taa-terzi); yoksa serbest metin işlem.
+    #[serde(default)]
+    pub islem_kodu: Option<String>,
+    /// Düz paça / duble paça gibi seçenek.
+    #[serde(default)]
+    pub varyant: Option<String>,
+    /// Yapılacak ölçü, milimetre (2,5 cm = 25).
+    #[serde(default)]
+    pub olcu_mm: Option<i32>,
+    /// İçeride bırakılan pay, milimetre (tekrar uzatma için).
+    #[serde(default)]
+    pub pay_mm: Option<i32>,
+    /// Sınır aşımında usta onayı verildi mi?
+    #[serde(default)]
+    pub usta_onayli: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TeslimDegisti {
+    pub eski: String,
+    pub yeni: String,
+    pub neden: String,
+    pub tarih: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -40,11 +65,24 @@ pub struct Fis {
     #[serde(default)]
     pub prova: String,
     pub teslim: String,
+    /// HH:MM
+    #[serde(default = "varsayilan_saat")]
+    pub teslim_saati: String,
     pub ucret_kurus: i64,
     pub on_odeme_kurus: i64,
     #[serde(default)]
     pub usta: String,
+    #[serde(default)]
+    pub satis_danismani: String,
+    #[serde(default)]
+    pub olcu_alan: String,
+    #[serde(default)]
+    pub teslim_degisiklikleri: Vec<TeslimDegisti>,
     pub durum: Durum,
+}
+
+fn varsayilan_saat() -> String {
+    "17:00".into()
 }
 
 impl Fis {
@@ -66,11 +104,17 @@ pub struct Girdi {
     #[serde(default)]
     pub prova: String,
     pub teslim: String,
+    #[serde(default = "varsayilan_saat")]
+    pub teslim_saati: String,
     pub ucret_kurus: i64,
     #[serde(default)]
     pub on_odeme_kurus: i64,
     #[serde(default)]
     pub usta: String,
+    #[serde(default)]
+    pub satis_danismani: String,
+    #[serde(default)]
+    pub olcu_alan: String,
 }
 
 pub fn tarih_gecerli(t: &str) -> bool {
@@ -99,9 +143,38 @@ pub fn telefon_duzelt(t: &str) -> Result<String, String> {
     }
 }
 
-pub fn dogrula(g: &Girdi) -> Result<String, String> {
+/// Fiş girdisini denetler; telefonu düzeltilmiş halde ve kalem uyarılarıyla döndürür.
+pub fn dogrula(
+    g: &Girdi,
+    katalog: &taa_terzi::Katalog,
+    serbest_islem: bool,
+) -> Result<(String, Vec<String>), String> {
     if g.musteri.trim().is_empty() {
         return Err("müşteri adı gerekli".into());
+    }
+    if g.satis_danismani.trim().is_empty() || g.olcu_alan.trim().is_empty() {
+        return Err("satış danışmanı ve ölçü alan kişi yazılmalı".into());
+    }
+    if !saat_gecerli(&g.teslim_saati) {
+        return Err("teslim saati SS:DD olmalı".into());
+    }
+    let mut uyarilar = Vec::new();
+    for k in &g.kalemler {
+        match &k.islem_kodu {
+            Some(kod) => uyarilar.extend(katalog.kontrol(
+                kod,
+                k.olcu_mm,
+                k.varyant.as_deref(),
+                k.usta_onayli,
+            )?),
+            None if !serbest_islem => {
+                return Err("işlem listeden seçilmeli (serbest işlem kapalı)".into())
+            }
+            None => {}
+        }
+        if matches!(k.pay_mm, Some(p) if p < 0) {
+            return Err("pay negatif olamaz".into());
+        }
     }
     if g.kalemler.is_empty()
         || g.kalemler
@@ -124,7 +197,15 @@ pub fn dogrula(g: &Girdi) -> Result<String, String> {
     if g.ucret_kurus < 0 || g.on_odeme_kurus < 0 || g.on_odeme_kurus > g.ucret_kurus {
         return Err("ücret/ön ödeme geçersiz (ön ödeme ücretten fazla olamaz)".into());
     }
-    telefon_duzelt(&g.telefon)
+    Ok((telefon_duzelt(&g.telefon)?, uyarilar))
+}
+
+pub fn saat_gecerli(s: &str) -> bool {
+    let b = s.as_bytes();
+    b.len() == 5
+        && b[2] == b':'
+        && matches!(s[0..2].parse::<u32>(), Ok(0..=23))
+        && matches!(s[3..5].parse::<u32>(), Ok(0..=59))
 }
 
 #[derive(Serialize, Deserialize)]
@@ -135,6 +216,11 @@ enum Kayit {
         no: String,
         durum: Durum,
         tarih: String,
+    },
+    Teslim {
+        no: String,
+        degisiklik: TeslimDegisti,
+        saat: String,
     },
 }
 
@@ -170,6 +256,17 @@ impl Defter<'_> {
                         x.durum = durum;
                     }
                 }
+                Kayit::Teslim {
+                    no,
+                    degisiklik,
+                    saat,
+                } => {
+                    if let Some(x) = f.iter_mut().find(|x| x.no == no) {
+                        x.teslim = degisiklik.yeni.clone();
+                        x.teslim_saati = saat;
+                        x.teslim_degisiklikleri.push(degisiklik);
+                    }
+                }
             }
         }
         Ok(f)
@@ -180,8 +277,15 @@ impl Defter<'_> {
     }
 
     pub fn ekle(&self, g: Girdi) -> Result<Fis, String> {
+        self.ekle_uyarili(g).map(|(f, _)| f)
+    }
+
+    /// Fişi ekler; kalem uyarılarını da döndürür. Kurallar `terzi-kurallari.json` (defterin klasöründe) ya da gömülü katalogdur.
+    pub fn ekle_uyarili(&self, g: Girdi) -> Result<(Fis, Vec<String>), String> {
         kapali()?;
-        let telefon = dogrula(&g)?;
+        let katalog = taa_terzi::Katalog::dizinden(self.yol.parent().unwrap_or(Path::new(".")))?;
+        let (telefon, uyarilar) =
+            dogrula(&g, &katalog, taa_ayar::ozellik_acik("serbest-islem", true))?;
         let gun = g.tarih.replace('-', "");
         let sira = self.fisler()?.iter().filter(|f| f.tarih == g.tarih).count() + 1;
         let fis = Fis {
@@ -193,25 +297,70 @@ impl Defter<'_> {
             olcu_notu: g.olcu_notu.trim().into(),
             prova: g.prova,
             teslim: g.teslim,
+            teslim_saati: g.teslim_saati,
             ucret_kurus: g.ucret_kurus,
             on_odeme_kurus: g.on_odeme_kurus,
             usta: g.usta.trim().into(),
+            satis_danismani: g.satis_danismani.trim().into(),
+            olcu_alan: g.olcu_alan.trim().into(),
+            teslim_degisiklikleri: Vec::new(),
             durum: Durum::Bekliyor,
         };
         let s = serde_json::to_string(&Kayit::Fis(fis.clone())).map_err(|e| e.to_string())?;
         taa_dosya::satir_ekle(self.yol, &s).map_err(|e| e.to_string())?;
-        Ok(fis)
+        Ok((fis, uyarilar))
     }
 
-    /// Durumu ilerletir: Bekliyor -> Hazir -> Teslim; Iptal her yerden (Teslim'den sonra değil). Geri dönüş yok.
+    /// Teslim tarihini/saatini değiştirir; eski değer silinmez, neden zorunludur.
+    pub fn teslim_degistir(
+        &self,
+        no: &str,
+        yeni: &str,
+        yeni_saat: &str,
+        neden: &str,
+        tarih: &str,
+    ) -> Result<(), String> {
+        kapali()?;
+        let f = self.bul(no)?.ok_or_else(|| format!("fiş yok: {no}"))?;
+        if matches!(f.durum, Durum::Teslim | Durum::Iptal) {
+            return Err("teslim edilmiş ya da iptal fişin teslim tarihi değiştirilemez".into());
+        }
+        if !tarih_gecerli(yeni) || !tarih_gecerli(tarih) || !saat_gecerli(yeni_saat) {
+            return Err("tarih YYYY-AA-GG, saat SS:DD olmalı".into());
+        }
+        if yeni < f.tarih.as_str() {
+            return Err("yeni teslim tarihi fiş tarihinden önce olamaz".into());
+        }
+        if neden.trim().is_empty() {
+            return Err("değişiklik nedeni yazılmalı".into());
+        }
+        let s = serde_json::to_string(&Kayit::Teslim {
+            no: no.into(),
+            degisiklik: TeslimDegisti {
+                eski: f.teslim,
+                yeni: yeni.into(),
+                neden: neden.trim().into(),
+                tarih: tarih.into(),
+            },
+            saat: yeni_saat.into(),
+        })
+        .map_err(|e| e.to_string())?;
+        taa_dosya::satir_ekle(self.yol, &s).map_err(|e| e.to_string())
+    }
+
+    /// Durumu ilerletir: Bekliyor -> (Terzihanede) -> Hazir -> Teslim; Iptal Teslim'den önce. Geri dönüş yok.
     pub fn durum_ata(&self, no: &str, yeni: Durum, tarih: &str) -> Result<(), String> {
         kapali()?;
         let f = self.bul(no)?.ok_or_else(|| format!("fiş yok: {no}"))?;
         let izin = matches!(
             (f.durum, yeni),
-            (Durum::Bekliyor, Durum::Hazir)
+            (Durum::Bekliyor, Durum::Terzihanede | Durum::Hazir)
+                | (Durum::Terzihanede, Durum::Hazir)
                 | (Durum::Hazir, Durum::Teslim)
-                | (Durum::Bekliyor | Durum::Hazir, Durum::Iptal)
+                | (
+                    Durum::Bekliyor | Durum::Terzihanede | Durum::Hazir,
+                    Durum::Iptal
+                )
         );
         if !izin {
             return Err(format!(
@@ -237,7 +386,8 @@ impl Defter<'_> {
             .fisler()?
             .into_iter()
             .filter(|f| {
-                matches!(f.durum, Durum::Bekliyor | Durum::Hazir) && f.teslim.as_str() < bugun
+                matches!(f.durum, Durum::Bekliyor | Durum::Terzihanede | Durum::Hazir)
+                    && f.teslim.as_str() < bugun
             })
             .collect())
     }
@@ -293,6 +443,11 @@ fn sar(metin: &str, genislik: usize) -> Vec<String> {
 
 /// Sabit genişlikli (örn. 42 sütun) düz metin fiş.
 pub fn duz_metin(f: &Fis, genislik: usize) -> String {
+    duz_metin_nusha(f, genislik, "")
+}
+
+/// Aynı fiş, üstte nüsha etiketiyle (örn. "TERZİHANE NÜSHASI", "MÜŞTERİ NÜSHASI").
+pub fn duz_metin_nusha(f: &Fis, genislik: usize, nusha: &str) -> String {
     let g = genislik.max(24);
     let cizgi = "-".repeat(g);
     let mut o = String::new();
@@ -302,8 +457,13 @@ pub fn duz_metin(f: &Fis, genislik: usize) -> String {
             o.push('\n');
         }
     };
-    ekle(&format!("TERZİ FİŞİ {}", f.no));
+    ekle(&format!("TADİLAT FİŞİ {}", f.no));
+    if !nusha.is_empty() {
+        ekle(nusha);
+    }
     ekle(&format!("Tarih: {}", gun_metni(&f.tarih)));
+    ekle(&format!("Sat. Dan.: {}", f.satis_danismani));
+    ekle(&format!("Ölçü Alan: {}", f.olcu_alan));
     ekle(&format!("Müşteri: {}", f.musteri));
     ekle(&format!("Tel: {}", f.telefon));
     o.push_str(&cizgi);
@@ -315,7 +475,20 @@ pub fn duz_metin(f: &Fis, genislik: usize) -> String {
         }
     };
     for k in &f.kalemler {
-        ekle(&format!("* {} - {}", k.urun, k.islem));
+        let mut satir = format!("* {} - {}", k.urun, k.islem);
+        if let Some(v) = &k.varyant {
+            satir.push_str(&format!(" [{v}]"));
+        }
+        if let Some(m) = k.olcu_mm {
+            satir.push_str(&format!(" {} cm", cm_metni(m)));
+        }
+        if let Some(p) = k.pay_mm.filter(|p| *p > 0) {
+            satir.push_str(&format!(" (pay {} cm)", cm_metni(p)));
+        }
+        if k.usta_onayli {
+            satir.push_str(" [USTA ONAYLI]");
+        }
+        ekle(&satir);
         if !k.not.is_empty() {
             ekle(&format!("  ({})", k.not));
         }
@@ -326,7 +499,17 @@ pub fn duz_metin(f: &Fis, genislik: usize) -> String {
     if !f.prova.is_empty() {
         ekle(&format!("Prova: {}", gun_metni(&f.prova)));
     }
-    ekle(&format!("Teslim: {}", gun_metni(&f.teslim)));
+    ekle(&format!(
+        "Teslim: {} {}",
+        gun_metni(&f.teslim),
+        f.teslim_saati
+    ));
+    if !f.teslim_degisiklikleri.is_empty() {
+        ekle(&format!(
+            "(teslim tarihi {} kez değişti)",
+            f.teslim_degisiklikleri.len()
+        ));
+    }
     if !f.usta.is_empty() {
         ekle(&format!("Usta: {}", f.usta));
     }
@@ -344,6 +527,15 @@ pub fn duz_metin(f: &Fis, genislik: usize) -> String {
         o.push_str(&format!("{e}{}{sag}\n", " ".repeat(bosluk)));
     }
     o
+}
+
+/// 25 mm -> "2,5"; 40 mm -> "4".
+pub fn cm_metni(mm: i32) -> String {
+    if mm % 10 == 0 {
+        (mm / 10).to_string()
+    } else {
+        format!("{},{}", mm / 10, (mm % 10).abs())
+    }
 }
 
 fn cp857(c: char) -> u8 {
@@ -367,8 +559,32 @@ fn cp857(c: char) -> u8 {
 
 /// ESC/POS baytları: CP857, metin, fiş numarası QR kodu, kesme. Yazıcıya olduğu gibi gönderilir.
 pub fn escpos(f: &Fis, genislik: usize) -> Vec<u8> {
+    escpos_nusha(f, genislik, "")
+}
+
+/// Kâğıt fişteki düzen: 2 terzihane nüshası + 1 müşteri nüshası, her biri ayrı kesilir.
+pub fn escpos_nushalar(f: &Fis, genislik: usize) -> Vec<u8> {
+    let mut b = Vec::new();
+    for etiket in [
+        "TERZİHANE NÜSHASI 1",
+        "TERZİHANE NÜSHASI 2",
+        "MÜŞTERİ NÜSHASI",
+    ] {
+        b.extend(escpos_nusha(f, genislik, etiket));
+    }
+    b
+}
+
+pub fn escpos_nusha(f: &Fis, genislik: usize, nusha: &str) -> Vec<u8> {
     let mut b = vec![0x1B, 0x40, 0x1B, 0x74, 13]; // başlat, kod sayfası 13 = CP857
-    b.extend(duz_metin(f, genislik).chars().map(cp857));
+    b.extend(duz_metin_nusha(f, genislik, nusha).chars().map(cp857));
+    if nusha.starts_with("MÜŞTERİ") {
+        b.extend(
+            "\nÜrünlerinizi 17:00'den itibaren teslim alabilirsiniz.\n14 gün içinde alınmayan ürünlerden mesul değiliz.\nTeslim alırken fişinizi yanınızda bulundurun.\n"
+                .chars()
+                .map(cp857),
+        );
+    }
     // QR (model 2, boyut 6, düzeltme L)
     let veri = f.no.as_bytes();
     b.extend([0x1B, 0x61, 1]); // ortala
@@ -398,29 +614,41 @@ pub fn escpos(f: &Fis, genislik: usize) -> Vec<u8> {
 mod testler {
     use super::*;
 
+    fn kalem(urun: &str, islem: &str, not: &str) -> Kalem {
+        Kalem {
+            urun: urun.into(),
+            islem: islem.into(),
+            not: not.into(),
+            islem_kodu: None,
+            varyant: None,
+            olcu_mm: None,
+            pay_mm: None,
+            usta_onayli: false,
+        }
+    }
+
+    fn kat() -> taa_terzi::Katalog {
+        taa_terzi::Katalog::varsayilan()
+    }
+
     fn girdi() -> Girdi {
         Girdi {
             tarih: "2026-11-04".into(),
             musteri: " Ayşe Çelik ".into(),
             telefon: "+90 532 123 45 67".into(),
             kalemler: vec![
-                Kalem {
-                    urun: "Pantolon".into(),
-                    islem: "paça kısalt".into(),
-                    not: "2 cm".into(),
-                },
-                Kalem {
-                    urun: "Ceket".into(),
-                    islem: "kol kısalt".into(),
-                    not: "".into(),
-                },
+                kalem("Pantolon", "paça kısalt", "2 cm"),
+                kalem("Ceket", "kol kısalt", ""),
             ],
             olcu_notu: "bel 84".into(),
             prova: "2026-11-07".into(),
             teslim: "2026-11-10".into(),
+            teslim_saati: "17:00".into(),
             ucret_kurus: 85000,
             on_odeme_kurus: 20000,
             usta: "Hasan".into(),
+            satis_danismani: "Mert".into(),
+            olcu_alan: "Kadir Y.".into(),
         }
     }
 
@@ -440,21 +668,21 @@ mod testler {
     #[test]
     fn dogrulama() {
         let mut g = girdi();
-        assert!(dogrula(&g).is_ok());
+        assert!(dogrula(&g, &kat(), true).is_ok());
         g.on_odeme_kurus = 90000;
-        assert!(dogrula(&g).is_err());
+        assert!(dogrula(&g, &kat(), true).is_err());
         let mut g = girdi();
         g.teslim = "2026-11-01".into();
-        assert!(dogrula(&g).is_err());
+        assert!(dogrula(&g, &kat(), true).is_err());
         let mut g = girdi();
         g.prova = "2026-11-12".into();
-        assert!(dogrula(&g).is_err());
+        assert!(dogrula(&g, &kat(), true).is_err());
         let mut g = girdi();
         g.kalemler.clear();
-        assert!(dogrula(&g).is_err());
+        assert!(dogrula(&g, &kat(), true).is_err());
         let mut g = girdi();
         g.musteri = "  ".into();
-        assert!(dogrula(&g).is_err());
+        assert!(dogrula(&g, &kat(), true).is_err());
     }
 
     #[test]
@@ -491,13 +719,17 @@ mod testler {
             olcu_notu: "".into(),
             prova: "".into(),
             teslim: "2026-11-10".into(),
+            teslim_saati: "17:00".into(),
             ucret_kurus: 85000,
             on_odeme_kurus: 20000,
             usta: "".into(),
+            satis_danismani: "Mert".into(),
+            olcu_alan: "Kadir Y.".into(),
+            teslim_degisiklikleri: Vec::new(),
         };
         let m = duz_metin(&f, 42);
-        assert!(m.contains("TERZİ FİŞİ F-20261104-001"));
-        assert!(m.contains("Teslim: 10.11.2026"));
+        assert!(m.contains("TADİLAT FİŞİ F-20261104-001"));
+        assert!(m.contains("Teslim: 10.11.2026 17:00"));
         assert!(m.lines().all(|l| l.chars().count() <= 42));
         assert!(m.contains("KALAN") && m.contains("650,00 TL"));
         let b = escpos(&f, 42);
@@ -511,5 +743,103 @@ mod testler {
         assert_eq!(para(123456), "1.234,56");
         assert_eq!(para(5), "0,05");
         assert!(sar(&"a".repeat(100), 42).iter().all(|l| l.len() <= 42));
+    }
+
+    fn katalogsuz_girdi() -> Girdi {
+        let mut g = girdi();
+        g.kalemler = vec![Kalem {
+            islem_kodu: Some("pant-bel-daralt".into()),
+            olcu_mm: Some(30),
+            ..kalem("Pantolon", "Bel daraltma", "")
+        }];
+        g
+    }
+
+    #[test]
+    fn katalog_kalemi_ve_sinir() {
+        let mut g = katalogsuz_girdi();
+        assert!(dogrula(&g, &kat(), false).is_ok());
+        g.kalemler[0].olcu_mm = Some(60);
+        assert!(dogrula(&g, &kat(), false)
+            .unwrap_err()
+            .contains("Usta onayı"));
+        g.kalemler[0].usta_onayli = true;
+        assert_eq!(dogrula(&g, &kat(), false).unwrap().1.len(), 1);
+        g.kalemler[0].olcu_mm = None; // unutulan ölçü
+        assert!(dogrula(&g, &kat(), false).unwrap_err().contains("ölçü"));
+    }
+
+    #[test]
+    fn serbest_islem_kapatilabilir_ve_zorunlu_isimler() {
+        let g = girdi(); // serbest metin kalemler
+        assert!(dogrula(&g, &kat(), true).is_ok());
+        assert!(dogrula(&g, &kat(), false).unwrap_err().contains("listeden"));
+        let mut g = girdi();
+        g.olcu_alan = " ".into();
+        assert!(dogrula(&g, &kat(), true).is_err());
+        let mut g = girdi();
+        g.teslim_saati = "25:00".into();
+        assert!(dogrula(&g, &kat(), true).is_err());
+    }
+
+    #[test]
+    fn teslim_degisikligi_izlenir() {
+        let y = yol();
+        let d = Defter { yol: &y };
+        let f = d.ekle(girdi()).unwrap();
+        assert!(d
+            .teslim_degistir(&f.no, "2026-11-12", "17:00", " ", "2026-11-05")
+            .is_err());
+        assert!(d
+            .teslim_degistir(&f.no, "2026-11-01", "17:00", "x", "2026-11-05")
+            .is_err());
+        d.teslim_degistir(&f.no, "2026-11-12", "18:30", "müşteri istedi", "2026-11-05")
+            .unwrap();
+        let g = d.bul(&f.no).unwrap().unwrap();
+        assert_eq!(
+            (g.teslim.as_str(), g.teslim_saati.as_str()),
+            ("2026-11-12", "18:30")
+        );
+        assert_eq!(g.teslim_degisiklikleri[0].eski, "2026-11-10");
+        assert!(duz_metin(&g, 42).contains("1 kez değişti"));
+        d.durum_ata(&f.no, Durum::Terzihanede, "2026-11-05")
+            .unwrap();
+        d.durum_ata(&f.no, Durum::Hazir, "2026-11-06").unwrap();
+        d.durum_ata(&f.no, Durum::Teslim, "2026-11-12").unwrap();
+        assert!(d
+            .teslim_degistir(&f.no, "2026-11-20", "17:00", "x", "2026-11-13")
+            .is_err());
+    }
+
+    #[test]
+    fn eski_defter_satiri_okunur() {
+        // yeni alanlardan önce yazılmış bir satır
+        let y = yol();
+        let eski = r#"{"tur":"fis","v":{"no":"F-20260101-001","tarih":"2026-01-01","musteri":"A","telefon":"05321234567","kalemler":[{"urun":"Ceket","islem":"kol"}],"teslim":"2026-01-05","ucret_kurus":0,"on_odeme_kurus":0,"durum":"bekliyor"}}"#;
+        taa_dosya::satir_ekle(&y, eski).unwrap();
+        let f = Defter { yol: &y }.bul("F-20260101-001").unwrap().unwrap();
+        assert_eq!(f.teslim_saati, "17:00");
+        assert!(f.kalemler[0].olcu_mm.is_none());
+    }
+
+    #[test]
+    fn uc_nusha_ve_cm() {
+        assert_eq!(cm_metni(25), "2,5");
+        assert_eq!(cm_metni(40), "4");
+        let y = yol();
+        let d = Defter { yol: &y };
+        let f = d.ekle(katalogsuz_girdi()).unwrap();
+        let m = duz_metin(&f, 42);
+        assert!(
+            m.contains("Bel daraltma 3 cm")
+                && m.contains("Sat. Dan.: Mert")
+                && m.contains("Ölçü Alan: Kadir Y.")
+        );
+        let b = escpos_nushalar(&f, 42);
+        assert_eq!(
+            b.windows(4).filter(|w| *w == [0x1D, 0x56, 0x42, 0]).count(),
+            3
+        );
+        assert!(String::from_utf8_lossy(&b).contains("mesul"));
     }
 }

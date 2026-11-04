@@ -561,6 +561,7 @@ dependencies = [
  "serde_json",
  "taa-ayar",
  "taa-dosya",
+ "taa-terzi",
 ]
 
 [[package]]
@@ -575,6 +576,7 @@ dependencies = [
  "taa-ayar",
  "taa-dosya",
  "taa-fis",
+ "taa-terzi",
  "tiny_http",
 ]
 
@@ -657,6 +659,14 @@ dependencies = [
  "lopdf",
  "taa-ayar",
  "taa-dosya",
+]
+
+[[package]]
+name = "taa-terzi"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
