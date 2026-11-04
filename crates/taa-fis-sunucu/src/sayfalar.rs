@@ -22,7 +22,7 @@ function eslestir(){const kod=new URLSearchParams(location.search).get('kod')||'
  ana.innerHTML='<h1>Telefonu eşleştir</h1><div id="msg"></div><label>Bilgisayardaki kod</label><input id="kod" inputmode="numeric" value="'+esc(kod)+'"><label>Bu telefonun adı</label><input id="ad" placeholder="örn. Ayşe\'nin telefonu"><button id="e">Eşleştir</button>';
  $('#e').onclick=async()=>{try{const r=await fetch('/api/eslestir',{method:'POST',body:JSON.stringify({kod:$('#kod').value.trim(),ad:$('#ad').value.trim()})});const j=await r.json();if(!r.ok)throw new Error(j.hata||'Hata');
   localStorage.setItem('taa_tok',j.token);tok=j.token;history.replaceState(null,'','/telefon');ana.innerHTML='';ana.append(form())}catch(e){mesaj(e.message,1)}}}
-let kat={islemler:[]};
+let sonNo=null;let kat={islemler:[]};
 const GRUPLAR=['Pantolon','Ceket','Gömlek','Yelek','Takım'];
 function kalemHtml(){const d=document.createElement('div');d.className='kalem';
  d.innerHTML='<select class="grup"><option value="">Ürün seçin</option>'+GRUPLAR.map(g=>'<option>'+g+'</option>').join('')+'<option value="*">Diğer (yazarak)</option></select><div class="icerik"></div>';
@@ -49,25 +49,28 @@ function form(){const d=document.createElement('div');const bugun=new Date().toI
  '<label>Satış danışmanı</label><input id="sat"><label>Ölçü alan</label><input id="olcualan">'+
  '<label>Müşteri adı soyadı</label><input id="mus"><label>Telefon</label><input id="tel" inputmode="tel"><div id="kalemler"></div><button class="ikinci" id="ek">+ Ürün / işlem ekle</button>'+
  '<label>Ölçü notu</label><textarea id="olcu" rows="2"></textarea><label>Prova tarihi (isteğe bağlı)</label><input id="prova" type="date" min="'+bugun+'"><label>Teslim tarihi</label><input id="teslim" type="date" min="'+bugun+'"><label>Teslim saati</label><input id="saat" type="time" value="17:00">'+
- '<label>Ücret (TL)</label><input id="ucret" inputmode="decimal"><label>Ön ödeme (TL)</label><input id="on" inputmode="decimal"><label>Usta</label><input id="usta"><label><input type="checkbox" id="kargo"> Kargo yapılacak</label><input id="kargonot" placeholder="Kargo adresi / notu">'+'<button id="kaydet">Kaydet</button><button class="ikinci" id="liste">Fişler / Yazdır</button>';
+ '<label>Ücret (TL)</label><input id="ucret" inputmode="decimal"><label>Ön ödeme (TL)</label><input id="on" inputmode="decimal"><label>Usta</label><input id="usta"><label><input type="checkbox" id="kargo"> Kargo yapılacak</label><input id="kargonot" placeholder="Kargo adresi / notu">'+'<button id="kaydet">Kaydet</button><button class="ikinci" id="foto">📷 Son fişe iğneli ürün fotoğrafı ekle</button><button class="ikinci" id="liste">Fişler / Yazdır</button>';
  const v=s=>d.querySelector(s).value.trim();
  d.querySelector('#sat').value=localStorage.getItem('taa_sat')||'';d.querySelector('#olcualan').value=localStorage.getItem('taa_olcualan')||'';
  const kl=d.querySelector('#kalemler');kl.append(kalemHtml());
  d.querySelector('#ek').onclick=()=>kl.append(kalemHtml());
  api('GET','/api/islemler').then(j=>{kat=j}).catch(e=>mesaj(e.message,1));
- d.querySelector('#liste').onclick=liste;
+ d.querySelector('#liste').onclick=liste;d.querySelector('#foto').onclick=()=>{if(sonNo)fotoSec(sonNo);else mesaj('Önce fişi kaydedin',1)};
  d.querySelector('#kaydet').onclick=async()=>{
   const kalemler=[...d.querySelectorAll('.kalem')].map(kalemOku).filter(Boolean);
   const f={satis_danismani:v('#sat'),olcu_alan:v('#olcualan'),musteri:v('#mus'),telefon:v('#tel'),kalemler,olcu_notu:v('#olcu'),prova:v('#prova'),teslim:v('#teslim'),teslim_saati:v('#saat')||'17:00',ucret_kurus:kurus(v('#ucret')),on_odeme_kurus:kurus(v('#on')),usta:v('#usta'),kargo:d.querySelector('#kargo').checked,kargo_notu:v('#kargonot')};
   localStorage.setItem('taa_sat',f.satis_danismani);localStorage.setItem('taa_olcualan',f.olcu_alan);
-  try{const j=await api('POST','/api/fis',f);mesaj('Kaydedildi: '+j.no+((j.uyarilar||[]).length?' — '+j.uyarilar.join(' | '):''))}catch(e){if(/Failed|fetch|Network/i.test(e.message)){kuyruk.push(f);localStorage.setItem('taa_kuyruk',JSON.stringify(kuyruk));mesaj('Ağ yok: taslak telefonda saklandı, bağlanınca gönderilecek')}else mesaj(e.message,1)}};
+  try{const j=await api('POST','/api/fis',f);sonNo=j.no;mesaj('Kaydedildi: '+j.no+((j.uyarilar||[]).length?' — '+j.uyarilar.join(' | '):''))}catch(e){if(/Failed|fetch|Network/i.test(e.message)){kuyruk.push(f);localStorage.setItem('taa_kuyruk',JSON.stringify(kuyruk));mesaj('Ağ yok: taslak telefonda saklandı, bağlanınca gönderilecek')}else mesaj(e.message,1)}};
  return d}
+async function fotoYukle(no,dosya){const b=await createImageBitmap(dosya);const o=Math.min(1,1280/Math.max(b.width,b.height));const c=document.createElement('canvas');c.width=Math.round(b.width*o);c.height=Math.round(b.height*o);c.getContext('2d').drawImage(b,0,0,c.width,c.height);
+ const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',0.8));const r=await fetch('/api/fis/'+no+'/foto',{method:'POST',headers:{'Authorization':'Bearer '+tok,'Content-Type':'image/jpeg'},body:blob});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.hata||'Hata '+r.status);return j}
+function fotoSec(no){const i=document.createElement('input');i.type='file';i.accept='image/*';i.setAttribute('capture','environment');i.onchange=async()=>{if(!i.files[0])return;try{await fotoYukle(no,i.files[0]);mesaj('Fotoğraf eklendi: '+no)}catch(e){mesaj(e.message,1)}};i.click()}
 async function kuyrukGonder(){if(!tok||!kuyruk.length)return;const kalan=[];for(const f of kuyruk){try{await api('POST','/api/fis',f)}catch(e){if(/Failed|fetch|Network/i.test(e.message))kalan.push(f)}}kuyruk=kalan;localStorage.setItem('taa_kuyruk',JSON.stringify(kuyruk))}
 async function liste(){try{const l=await api('GET','/api/fisler');ana.innerHTML='<h1>Fişler</h1><div id="msg"></div><button class="ikinci" id="geri">← Yeni fiş</button>'+
  l.fisler.slice().reverse().map(f=>'<div class="fis"><b>'+esc(f.no)+'</b> '+esc(f.musteri)+'<br>Teslim '+esc(f.teslim)+' '+esc(f.teslim_saati||'')+((f.teslim_degisiklikleri||[]).length?' (değişti: '+f.teslim_degisiklikleri.length+')':'')+' · '+esc(f.durum)+' · kalan '+tl(f.ucret_kurus-f.on_odeme_kurus)+
- '<br><button data-y="'+esc(f.no)+'">Yazdır</button>'+(f.durum=='bekliyor'?'<button class="ikinci" data-d="terzihanede" data-n="'+esc(f.no)+'">Terzihaneye verildi</button>':'')+(f.durum=='terzihanede'?'<button class="ikinci" data-d="hazir" data-n="'+esc(f.no)+'">Hazır</button>':'')+(['bekliyor','terzihanede','hazir'].includes(f.durum)?'<button class="ikinci" data-t="'+esc(f.no)+'">Teslim tarihini değiştir</button>':'')+(f.durum=='hazir'?'<button class="ikinci" data-d="teslim" data-n="'+esc(f.no)+'">Teslim edildi</button>':'')+'</div>').join('');
+ '<br><button data-y="'+esc(f.no)+'">Yazdır</button><button class="ikinci" data-f="'+esc(f.no)+'">📷 Foto</button>'+(f.durum=='bekliyor'?'<button class="ikinci" data-d="terzihanede" data-n="'+esc(f.no)+'">Terzihaneye verildi</button>':'')+(f.durum=='terzihanede'?'<button class="ikinci" data-d="hazir" data-n="'+esc(f.no)+'">Hazır</button>':'')+(['bekliyor','terzihanede','hazir'].includes(f.durum)?'<button class="ikinci" data-t="'+esc(f.no)+'">Teslim tarihini değiştir</button>':'')+(f.durum=='hazir'?'<button class="ikinci" data-d="teslim" data-n="'+esc(f.no)+'">Teslim edildi</button>':'')+'</div>').join('');
  $('#geri').onclick=()=>{ana.innerHTML='';ana.append(form())};
- ana.querySelectorAll('[data-y]').forEach(b=>b.onclick=async()=>{try{await api('POST','/api/fis/'+b.dataset.y+'/yazdir');mesaj('Yazıcıya gönderildi')}catch(e){mesaj(e.message,1)}});
+ ana.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>fotoSec(b.dataset.f));ana.querySelectorAll('[data-y]').forEach(b=>b.onclick=async()=>{try{await api('POST','/api/fis/'+b.dataset.y+'/yazdir');mesaj('Yazıcıya gönderildi')}catch(e){mesaj(e.message,1)}});
  ana.querySelectorAll('[data-t]').forEach(b=>b.onclick=async()=>{const y=prompt('Yeni teslim tarihi (YYYY-AA-GG)');if(!y)return;const sa=prompt('Yeni teslim saati (SS:DD)','17:00')||'17:00';const n=prompt('Neden değişti?');if(!n)return;try{await api('POST','/api/fis/'+b.dataset.t+'/teslim',{yeni:y,saat:sa,neden:n});liste()}catch(e){mesaj(e.message,1)}})
  ana.querySelectorAll('[data-d]').forEach(b=>b.onclick=async()=>{try{await api('POST','/api/fis/'+b.dataset.n+'/durum',{durum:b.dataset.d});liste()}catch(e){mesaj(e.message,1)}})}catch(e){mesaj(e.message,1)}}
 if(tok){ana.append(form());kuyrukGonder()}else eslestir();

@@ -13,6 +13,9 @@ use std::sync::Mutex;
 use taa_fis::{Defter, Durum, Girdi};
 
 pub const GOVDE_SINIRI: usize = 64 * 1024;
+/// Ürün fotoğrafı (JPEG) için gövde sınırı.
+pub const FOTO_SINIRI: usize = 3 * 1024 * 1024;
+const EN_COK_FOTO: usize = 6;
 const KOD_OMRU: u64 = 600;
 const KILIT_SURESI: u64 = 60;
 const EN_COK_YANLIS: u32 = 5;
@@ -155,7 +158,8 @@ impl Uygulama {
     }
 
     pub fn isle(&self, i: &Istek) -> Yanit {
-        if i.govde.len() > GOVDE_SINIRI {
+        let foto = i.metot == "POST" && i.yol.split('?').next().unwrap_or("").ends_with("/foto");
+        if i.govde.len() > if foto { FOTO_SINIRI } else { GOVDE_SINIRI } {
             return Yanit::hata(413, "istek çok büyük");
         }
         let (yol, _sorgu) = i.yol.split_once('?').unwrap_or((i.yol.as_str(), ""));
@@ -184,6 +188,21 @@ impl Uygulama {
             ("GET" | "POST", ["api", ..]) => self.yetkili(i, &parca),
             _ => Yanit::hata(404, "bulunamadı"),
         }
+    }
+
+    /// Fişe eklenmiş fotoğraf sayısı. Fiş no yalnızca harf/rakam/tire ise sayılır (yol kaçışına karşı).
+    fn foto_sayisi(&self, no: &str) -> usize {
+        if no.is_empty() || !no.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+            return 0;
+        }
+        (1..=EN_COK_FOTO)
+            .filter(|n| {
+                self.dizin
+                    .join("fotolar")
+                    .join(format!("{no}-{n}.jpg"))
+                    .exists()
+            })
+            .count()
     }
 
     fn eslestir(&self, i: &Istek) -> Yanit {
@@ -309,6 +328,48 @@ impl Uygulama {
                 Ok(None) => Yanit::hata(404, "fiş yok"),
                 Err(e) => Yanit::hata(500, &e),
             },
+            ("POST", ["api", "fis", no, "foto"]) => {
+                if !taa_ayar::ozellik_acik("foto-eki", true) {
+                    return Yanit::hata(409, &taa_ayar::kapali_mesaji("foto-eki"));
+                }
+                if !i.govde.starts_with(&[0xFF, 0xD8, 0xFF]) {
+                    return Yanit::hata(400, "yalnız JPEG fotoğraf kabul edilir");
+                }
+                match d.bul(no) {
+                    Ok(Some(_)) => {}
+                    Ok(None) => return Yanit::hata(404, "fiş yok"),
+                    Err(e) => return Yanit::hata(500, &e),
+                }
+                let n = self.foto_sayisi(no);
+                if n >= EN_COK_FOTO {
+                    return Yanit::hata(409, "bir fişe en çok 6 fotoğraf eklenir");
+                }
+                let klasor = self.dizin.join("fotolar");
+                let yaz = std::fs::create_dir_all(&klasor).and_then(|_| {
+                    std::fs::write(klasor.join(format!("{no}-{}.jpg", n + 1)), &i.govde)
+                });
+                match yaz {
+                    Ok(()) => Yanit::json(200, json!({ "tamam": true, "sira": n + 1 })),
+                    Err(e) => Yanit::hata(500, &format!("fotoğraf kaydedilemedi: {e}")),
+                }
+            }
+            ("GET", ["api", "fis", no, "foto"]) => {
+                Yanit::json(200, json!({ "adet": self.foto_sayisi(no) }))
+            }
+            ("GET", ["api", "fis", no, "foto", n]) => {
+                let n: usize = n.parse().unwrap_or(0);
+                if n == 0 || n > self.foto_sayisi(no) {
+                    return Yanit::hata(404, "fotoğraf yok");
+                }
+                match std::fs::read(self.dizin.join("fotolar").join(format!("{no}-{n}.jpg"))) {
+                    Ok(b) => Yanit {
+                        kod: 200,
+                        tur: "image/jpeg",
+                        govde: b,
+                    },
+                    Err(_) => Yanit::hata(404, "fotoğraf yok"),
+                }
+            }
             ("POST", ["api", "fis", no, "yazdir"]) => {
                 let f = match d.bul(no) {
                     Ok(Some(f)) => f,
@@ -607,6 +668,45 @@ mod testler {
         assert_eq!(
             sayfalar::kacis("<a href=\"x\">&'"),
             "&lt;a href=&quot;x&quot;&gt;&amp;&#39;"
+        );
+    }
+
+    #[test]
+    fn foto_eki() {
+        let u = uyg();
+        let t = esles(&u);
+        let y = u.isle(&ist("POST", "/api/fis", Some(&t), FIS, false));
+        assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
+        let no = serde_json::from_slice::<serde_json::Value>(&y.govde).unwrap()["no"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let jpg = vec![0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3];
+        let ist = |m: &str, y: String, g: Vec<u8>| Istek {
+            metot: m.into(),
+            yol: y,
+            yetki: Some(format!("Bearer {t}")),
+            govde: g,
+            yerel: false,
+        };
+        let y = u.isle(&ist("POST", format!("/api/fis/{no}/foto"), jpg.clone()));
+        assert_eq!(y.kod, 200);
+        assert_eq!(
+            u.isle(&ist("POST", format!("/api/fis/{no}/foto"), b"yok".to_vec()))
+                .kod,
+            400
+        );
+        assert_eq!(
+            u.isle(&ist("POST", "/api/fis/F-yok-1/foto".into(), jpg.clone()))
+                .kod,
+            404
+        );
+        let g = u.isle(&ist("GET", format!("/api/fis/{no}/foto/1"), vec![]));
+        assert_eq!((g.kod, g.govde), (200, jpg));
+        assert_eq!(
+            u.isle(&ist("GET", format!("/api/fis/{no}/foto/2"), vec![]))
+                .kod,
+            404
         );
     }
 

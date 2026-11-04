@@ -3,7 +3,7 @@
 //! Yönetim (karekod, telefon listesi): bu bilgisayarda http://localhost:PORT/yonetim
 use std::io::Read;
 use std::path::PathBuf;
-use taa_fis_sunucu::{Istek, Uygulama, GOVDE_SINIRI};
+use taa_fis_sunucu::{Istek, Uygulama, FOTO_SINIRI};
 
 fn arg(ad: &str) -> Option<String> {
     let a: Vec<String> = std::env::args().collect();
@@ -51,7 +51,7 @@ fn main() {
         let mut govde = Vec::new();
         let _ = r
             .as_reader()
-            .take(GOVDE_SINIRI as u64 + 1)
+            .take(FOTO_SINIRI as u64 + 1)
             .read_to_end(&mut govde);
         let y = uyg.isle(&Istek {
             metot: r.method().as_str().to_string(),
