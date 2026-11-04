@@ -1,0 +1,26 @@
+# TaaDön Rust çekirdeği (taa-donustur.exe): arşiv (zip/gzip) ve çıktı imza denetimi, JSON satırlı CLI.
+# Sahip: Yusuf (TaaDön projesi). yazan: [Claude#taadon-rust-asama1 2026-11-04], taşıyan: [Claude#taa-paket-A0 2026-11-04].
+# Derleme profili çalışma alanı kökündeki Cargo.toml'dadır. Modül bilgisi: modul.toml.
+# Değişiklik: Yusuf'un kuralları çerçevesinde; bağımlılık eklemek Yusuf'a sorularak.
+[package]
+name = "taa-donustur"
+version = "1.6.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "TaaDön ağır iş çekirdeği: güvenli zip/gzip ve imza denetimi"
+
+[lib]
+name = "taa_donustur"
+path = "src/lib.rs"
+
+[[bin]]
+name = "taa-donustur"
+path = "src/main.rs"
+
+[dependencies]
+zip = { version = "9.3.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+flate2 = { version = "1.1.10", default-features = false, features = ["zlib-rs"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"

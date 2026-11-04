@@ -1,0 +1,17 @@
+# TAA Paketi çalışma alanı kökü: tüm crate'ler crates/ altındadır. Sahip: Yusuf (yusufbesir/taa-paket).
+# yazan: [Claude#taa-paket-A0 2026-11-04]. Değişiklik: Yusuf'un kuralları çerçevesinde; bağımlılık eklemek Yusuf'a sorularak.
+[workspace]
+members = ["crates/*"]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+publish = false
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
+panic = "abort"

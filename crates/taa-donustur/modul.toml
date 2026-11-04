@@ -1,0 +1,10 @@
+# taa-donustur modül tanımı (TAA paket planı A4). Sahip: Yusuf (TaaDön projesi).
+# yazan: [Claude#taadon-rust-asama2 2026-11-04]. Değişiklik: Yusuf'un kuralları çerçevesinde; surum Cargo.toml version ile aynı tutulur.
+# scripts/cekirdek-hazirla.js "surum" alanını okuyup vendor/cekirdek/SURUM.txt'e yazar.
+ad = "taa-donustur"
+surum = "1.6.0"
+arayuz = "1"
+gerektirir = {}
+ozellikler = ["arsiv", "imza"]
+program = "taadon"
+butce = { acilis_ms = 800 }
