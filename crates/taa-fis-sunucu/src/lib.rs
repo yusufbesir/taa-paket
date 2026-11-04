@@ -347,12 +347,11 @@ mod testler {
     use super::*;
 
     fn uyg() -> Uygulama {
-        let u = Uygulama::yeni(
+        Uygulama::yeni(
             taa_dosya::gecici_klasor().unwrap(),
             None,
             "http://192.168.1.20:8787".into(),
-        );
-        u
+        )
     }
 
     fn ist(metot: &str, yol: &str, yetki: Option<&str>, govde: &str, yerel: bool) -> Istek {
