@@ -54,17 +54,22 @@ impl Fis {
 }
 
 /// Yeni fiş girdisi (numara ve durum defter tarafından verilir).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Girdi {
+    #[serde(default)]
     pub tarih: String,
     pub musteri: String,
     pub telefon: String,
     pub kalemler: Vec<Kalem>,
+    #[serde(default)]
     pub olcu_notu: String,
+    #[serde(default)]
     pub prova: String,
     pub teslim: String,
     pub ucret_kurus: i64,
+    #[serde(default)]
     pub on_odeme_kurus: i64,
+    #[serde(default)]
     pub usta: String,
 }
 

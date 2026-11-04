@@ -1,0 +1,28 @@
+# taa-fis-sunucu: TaaFiş yerel ağ sunucusu (telefon sayfası, QR eşleştirme, yazdırma). Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-04].
+# Yeni bağımlılıklar: tiny_http (sade senkron HTTP), qrcode (eşleştirme karekodu), getrandom (belirteç), sha2 (zaten çalışma alanında).
+[package]
+name = "taa-fis-sunucu"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "TaaFiş yerel sunucusu: telefon sayfası, cihaz eşleştirme, yazdırma"
+
+[lib]
+name = "taa_fis_sunucu"
+path = "src/lib.rs"
+
+[[bin]]
+name = "taa-fis-sunucu"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+getrandom = "0.3"
+tiny_http = "0.12"
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+taa-ayar = { path = "../taa-ayar" }
+taa-dosya = { path = "../taa-dosya" }
+taa-fis = { path = "../taa-fis" }

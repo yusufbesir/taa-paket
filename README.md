@@ -20,6 +20,7 @@ TAA Paketi çekirdek deposu: TaaDön ve diğer TAA programlarının paylaştığ
 | taa-pano | var | Salt okunur şube panosu kartları (stok yok; stok kaynağı Nebim) |
 | taa-kasa | var | TaaKasaDefteri: günlük kasa sayımı, fark notu zorunlu, eklemeli defter |
 | taa-fis | var | TaaFiş: terzi fişi defteri, durum takibi, düz metin ve ESC/POS çıktı (telefon sayfası/OCR sonraki aşama) |
+| taa-fis-sunucu | var | TaaFiş yerel sunucusu: telefon sayfası (PWA), QR/kodla eşleştirme, yazdırma. Çalıştır: `taa-fis-sunucu --yazici <yol>`, yönetim: `http://localhost:8787/yonetim` |
 | taa-kombin | var | TaaKombin: takım rengine göre gömlek/kravat/ayakkabı/kemer önerisi |
 | taa-subesor | var | TaaŞubeSor: şubeler arası beden/ürün sorusu ve yanıtları (ağ taşıması sonraki aşama) |
 | taa-ayarlar | planlı | Ortak ayar yönetimi (dosya/arayüz) |
