@@ -480,15 +480,18 @@ pub fn duz_metin_nusha(f: &Fis, genislik: usize, nusha: &str) -> String {
             o.push('\n');
         }
     };
-    ekle(&format!("TADİLAT FİŞİ {}", f.no));
+    for l in baslik().lines() {
+        ekle(l);
+    }
+    ekle(&format!("TADİLAT FİŞİ No: {}", f.no));
     if !nusha.is_empty() {
         ekle(nusha);
     }
-    ekle(&format!("Tarih: {}", gun_metni(&f.tarih)));
+    ekle(&format!("Fiş Tarihi: {}", gun_metni(&f.tarih)));
     ekle(&format!("Sat. Dan.: {}", f.satis_danismani));
     ekle(&format!("Ölçü Alan: {}", f.olcu_alan));
-    ekle(&format!("Müşteri: {}", f.musteri));
-    ekle(&format!("Tel: {}", f.telefon));
+    ekle(&format!("Müşteri Adı: {}", f.musteri));
+    ekle(&format!("Telefonu: {}", f.telefon));
     o.push_str(&cizgi);
     o.push('\n');
     let mut ekle = |s: &str| {
@@ -526,7 +529,7 @@ pub fn duz_metin_nusha(f: &Fis, genislik: usize, nusha: &str) -> String {
         ekle(&format!("Prova: {}", gun_metni(&f.prova)));
     }
     ekle(&format!(
-        "Teslim: {} {}",
+        "Ürün Teslim Tarihi: {} {}",
         gun_metni(&f.teslim),
         f.teslim_saati
     ));
@@ -558,7 +561,25 @@ pub fn duz_metin_nusha(f: &Fis, genislik: usize, nusha: &str) -> String {
             .max(1);
         o.push_str(&format!("{e}{}{sag}\n", " ".repeat(bosluk)));
     }
+    if imza_blogu() {
+        o.push_str(&cizgi);
+        o.push('\n');
+        o.push_str("Teslim Eden            Teslim Alan\nTarih:                 Tarih:\nİmza:                  İmza:\n\n");
+    }
     o
+}
+
+/// Fiş başlığı (firma adı, adres, destek hattı). `TAA_FIS_BASLIK` ile (satırlar `|` ile) değiştirilir.
+fn baslik() -> String {
+    match std::env::var("TAA_FIS_BASLIK") {
+        Ok(v) if !v.trim().is_empty() => v.replace('|', "\n"),
+        _ => "TERZİ ADEM ALTUN İSTANBUL\nTurgut Özal Mah. 68. Sk. No:12\nE-5 Karayolu Yan Yol Üzeri\nEsenyurt / İstanbul\nMüşteri Destek: 0212 690 02 02\nÇalışma Saatleri: 9:30 - 21:30".into(),
+    }
+}
+
+/// Teslim Eden / Teslim Alan tarih-imza alanları (`fis-imza` ayarıyla kapatılır).
+fn imza_blogu() -> bool {
+    taa_ayar::ozellik_acik("fis-imza", true)
 }
 
 /// 25 mm -> "2,5"; 40 mm -> "4".
@@ -610,13 +631,11 @@ pub fn escpos_nushalar(f: &Fis, genislik: usize) -> Vec<u8> {
 pub fn escpos_nusha(f: &Fis, genislik: usize, nusha: &str) -> Vec<u8> {
     let mut b = vec![0x1B, 0x40, 0x1B, 0x74, 13]; // başlat, kod sayfası 13 = CP857
     b.extend(duz_metin_nusha(f, genislik, nusha).chars().map(cp857));
-    if nusha.starts_with("MÜŞTERİ") {
-        b.extend(
-            "\nÜrünlerinizi 17:00'den itibaren teslim alabilirsiniz.\n14 gün içinde alınmayan ürünlerden mesul değiliz.\nTeslim alırken fişinizi yanınızda bulundurun.\n"
-                .chars()
-                .map(cp857),
-        );
-    }
+    b.extend(
+        "Ürünlerinizi Saat 17:00'den itibaren teslim alabilirsiniz.\n14 Gün içinde alınmayan ürünlerden mesul değiliz.\nÜrünlerinizi teslim alırken tadilat fişinizi yanınızda bulundurmayı unutmayınız.\n"
+            .chars()
+            .map(cp857),
+    );
     // QR (model 2, boyut 6, düzeltme L)
     let veri = f.no.as_bytes();
     b.extend([0x1B, 0x61, 1]); // ortala
@@ -789,8 +808,8 @@ mod testler {
             teslim_degisiklikleri: Vec::new(),
         };
         let m = duz_metin(&f, 42);
-        assert!(m.contains("TADİLAT FİŞİ F-20261104-001"));
-        assert!(m.contains("Teslim: 10.11.2026 17:00"));
+        assert!(m.contains("TADİLAT FİŞİ No: F-20261104-001"));
+        assert!(m.contains("Ürün Teslim Tarihi: 10.11.2026 17:00"));
         assert!(m.lines().all(|l| l.chars().count() <= 42));
         assert!(m.contains("KALAN") && m.contains("650,00 TL"));
         let b = escpos(&f, 42);
