@@ -13,4 +13,4 @@ path = "src/lib.rs"
 [dependencies]
 taa-ayar = { path = "../taa-ayar" }
 taa-dosya = { path = "../taa-dosya" }
-lopdf = { version = "0.34", default-features = false, features = ["nom_parser"] }
+lopdf = { version = "0.42", default-features = false }
