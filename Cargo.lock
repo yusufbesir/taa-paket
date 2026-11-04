@@ -509,7 +509,27 @@ dependencies = [
 
 [[package]]
 name = "taa-dosya"
+version = "0.2.0"
+
+[[package]]
+name = "taa-fis"
 version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "taa-ayar",
+ "taa-dosya",
+]
+
+[[package]]
+name = "taa-kasa"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "taa-ayar",
+ "taa-dosya",
+]
 
 [[package]]
 name = "taa-katalog"
@@ -520,6 +540,13 @@ dependencies = [
  "taa-ayar",
  "taa-dosya",
  "taa-nebim",
+]
+
+[[package]]
+name = "taa-kombin"
+version = "0.1.0"
+dependencies = [
+ "taa-ayar",
 ]
 
 [[package]]
@@ -554,6 +581,16 @@ version = "0.1.0"
 dependencies = [
  "taa-ayar",
  "taa-nebim",
+]
+
+[[package]]
+name = "taa-subesor"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "taa-ayar",
+ "taa-dosya",
 ]
 
 [[package]]

@@ -1,0 +1,7 @@
+# taa-subesor modül tanımı. Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-04].
+ad = "taa-subesor"
+surum = "0.1.0"
+arayuz = "1"
+gerektirir = { "taa-ayar" = "1", "taa-dosya" = "1" }
+ozellikler = ["subesor"]
+program = "taasubesor"

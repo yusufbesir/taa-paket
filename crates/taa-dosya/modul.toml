@@ -1,8 +1,8 @@
 # taa-dosya modül tanımı (bkz. docs/modul-sozlesmesi.md). Sahip: Yusuf. yazan: [Claude#taa-paket-A0 2026-11-04].
 # surum Cargo.toml version ile aynı tutulur.
 ad = "taa-dosya"
-surum = "0.1.0"
+surum = "0.2.0"
 arayuz = "1"
 gerektirir = {}
-ozellikler = ["bicim", "atomik-yazma", "gecici"]
+ozellikler = ["bicim", "atomik-yazma", "gecici", "satir-ekle"]
 program = "ortak"

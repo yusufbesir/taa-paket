@@ -18,6 +18,10 @@ TAA Paketi çekirdek deposu: TaaDön ve diğer TAA programlarının paylaştığ
 | taa-yazici | var | Yazıcı Sağlık tanısı (Windows'ta salt okunur Get-Printer) |
 | taa-tara | var | JPEG'den PDF (OCR/kenar düzeltme/PDF-A henüz yok) |
 | taa-pano | var | Salt okunur şube panosu kartları (stok yok; stok kaynağı Nebim) |
+| taa-kasa | var | TaaKasaDefteri: günlük kasa sayımı, fark notu zorunlu, eklemeli defter |
+| taa-fis | var | TaaFiş: terzi fişi defteri, durum takibi, düz metin ve ESC/POS çıktı (telefon sayfası/OCR sonraki aşama) |
+| taa-kombin | var | TaaKombin: takım rengine göre gömlek/kravat/ayakkabı/kemer önerisi |
+| taa-subesor | var | TaaŞubeSor: şubeler arası beden/ürün sorusu ve yanıtları (ağ taşıması sonraki aşama) |
 | taa-ayarlar | planlı | Ortak ayar yönetimi (dosya/arayüz) |
 | taa-kimlik | planlı | Teknik kimlikler |
 | taa-ipc | planlı | Süreçler arası iletişim |
