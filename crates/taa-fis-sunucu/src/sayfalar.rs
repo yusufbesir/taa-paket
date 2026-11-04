@@ -49,7 +49,7 @@ function form(){const d=document.createElement('div');const bugun=new Date().toI
  '<label>Satış danışmanı</label><input id="sat"><label>Ölçü alan</label><input id="olcualan">'+
  '<label>Müşteri adı soyadı</label><input id="mus"><label>Telefon</label><input id="tel" inputmode="tel"><div id="kalemler"></div><button class="ikinci" id="ek">+ Ürün / işlem ekle</button>'+
  '<label>Ölçü notu</label><textarea id="olcu" rows="2"></textarea><label>Prova tarihi (isteğe bağlı)</label><input id="prova" type="date" min="'+bugun+'"><label>Teslim tarihi</label><input id="teslim" type="date" min="'+bugun+'"><label>Teslim saati</label><input id="saat" type="time" value="17:00">'+
- '<label>Ücret (TL)</label><input id="ucret" inputmode="decimal"><label>Ön ödeme (TL)</label><input id="on" inputmode="decimal"><label>Usta</label><input id="usta"><button id="kaydet">Kaydet</button><button class="ikinci" id="liste">Fişler / Yazdır</button>';
+ '<label>Ücret (TL)</label><input id="ucret" inputmode="decimal"><label>Ön ödeme (TL)</label><input id="on" inputmode="decimal"><label>Usta</label><input id="usta"><label><input type="checkbox" id="kargo"> Kargo yapılacak</label><input id="kargonot" placeholder="Kargo adresi / notu">'+'<button id="kaydet">Kaydet</button><button class="ikinci" id="liste">Fişler / Yazdır</button>';
  const v=s=>d.querySelector(s).value.trim();
  d.querySelector('#sat').value=localStorage.getItem('taa_sat')||'';d.querySelector('#olcualan').value=localStorage.getItem('taa_olcualan')||'';
  const kl=d.querySelector('#kalemler');kl.append(kalemHtml());
@@ -58,7 +58,7 @@ function form(){const d=document.createElement('div');const bugun=new Date().toI
  d.querySelector('#liste').onclick=liste;
  d.querySelector('#kaydet').onclick=async()=>{
   const kalemler=[...d.querySelectorAll('.kalem')].map(kalemOku).filter(Boolean);
-  const f={satis_danismani:v('#sat'),olcu_alan:v('#olcualan'),musteri:v('#mus'),telefon:v('#tel'),kalemler,olcu_notu:v('#olcu'),prova:v('#prova'),teslim:v('#teslim'),teslim_saati:v('#saat')||'17:00',ucret_kurus:kurus(v('#ucret')),on_odeme_kurus:kurus(v('#on')),usta:v('#usta')};
+  const f={satis_danismani:v('#sat'),olcu_alan:v('#olcualan'),musteri:v('#mus'),telefon:v('#tel'),kalemler,olcu_notu:v('#olcu'),prova:v('#prova'),teslim:v('#teslim'),teslim_saati:v('#saat')||'17:00',ucret_kurus:kurus(v('#ucret')),on_odeme_kurus:kurus(v('#on')),usta:v('#usta'),kargo:d.querySelector('#kargo').checked,kargo_notu:v('#kargonot')};
   localStorage.setItem('taa_sat',f.satis_danismani);localStorage.setItem('taa_olcualan',f.olcu_alan);
   try{const j=await api('POST','/api/fis',f);mesaj('Kaydedildi: '+j.no+((j.uyarilar||[]).length?' — '+j.uyarilar.join(' | '):''))}catch(e){if(/Failed|fetch|Network/i.test(e.message)){kuyruk.push(f);localStorage.setItem('taa_kuyruk',JSON.stringify(kuyruk));mesaj('Ağ yok: taslak telefonda saklandı, bağlanınca gönderilecek')}else mesaj(e.message,1)}};
  return d}

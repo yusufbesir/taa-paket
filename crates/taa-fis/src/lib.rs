@@ -79,6 +79,11 @@ pub struct Fis {
     pub satis_danismani: String,
     #[serde(default)]
     pub olcu_alan: String,
+    /// Kargo ile gönderilecek mi? Fişte büyük yazılır (not kâğıdı düşebildiği için).
+    #[serde(default)]
+    pub kargo: bool,
+    #[serde(default)]
+    pub kargo_notu: String,
     #[serde(default)]
     pub teslim_degisiklikleri: Vec<TeslimDegisti>,
     pub durum: Durum,
@@ -118,6 +123,11 @@ pub struct Girdi {
     pub satis_danismani: String,
     #[serde(default)]
     pub olcu_alan: String,
+    /// Kargo ile gönderilecek mi? Fişte büyük yazılır (not kâğıdı düşebildiği için).
+    #[serde(default)]
+    pub kargo: bool,
+    #[serde(default)]
+    pub kargo_notu: String,
 }
 
 pub fn tarih_gecerli(t: &str) -> bool {
@@ -216,6 +226,7 @@ pub fn saat_gecerli(s: &str) -> bool {
 
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "tur", content = "v", rename_all = "lowercase")]
+#[allow(clippy::large_enum_variant)]
 enum Kayit {
     Fis(Fis),
     Durum {
@@ -313,6 +324,8 @@ impl Defter<'_> {
             usta: g.usta.trim().into(),
             satis_danismani: g.satis_danismani.trim().into(),
             olcu_alan: g.olcu_alan.trim().into(),
+            kargo: g.kargo && taa_ayar::ozellik_acik("kargo-alani", true),
+            kargo_notu: g.kargo_notu.trim().into(),
             teslim_degisiklikleri: Vec::new(),
             durum: Durum::Bekliyor,
         };
@@ -526,6 +539,12 @@ pub fn duz_metin_nusha(f: &Fis, genislik: usize, nusha: &str) -> String {
     if !f.usta.is_empty() {
         ekle(&format!("Usta: {}", f.usta));
     }
+    if f.kargo {
+        ekle("*** KARGO YAPILACAK ***");
+        if !f.kargo_notu.is_empty() {
+            ekle(&format!("Kargo: {}", f.kargo_notu));
+        }
+    }
     o.push_str(&cizgi);
     o.push('\n');
     for (e, d) in [
@@ -663,11 +682,37 @@ mod testler {
             usta: "Hasan".into(),
             satis_danismani: "Mert".into(),
             olcu_alan: "Kadir Y.".into(),
+            kargo: false,
+            kargo_notu: String::new(),
         }
     }
 
     fn yol() -> std::path::PathBuf {
         taa_dosya::gecici_klasor().unwrap().join("fis.jsonl")
+    }
+
+    #[test]
+    fn kargo_fiste_basilir() {
+        let dir = taa_dosya::gecici_klasor().unwrap();
+        let y = dir.join("d.jsonl");
+        let d = Defter { yol: &y };
+        let mut g = girdi();
+        g.kargo = true;
+        g.kargo_notu = "Ankara, Çankaya, Atatürk Bul. 5".into();
+        let f = d.ekle(g).unwrap();
+        for e in [
+            "TERZİHANE NÜSHASI 1",
+            "TERZİHANE NÜSHASI 2",
+            "MÜŞTERİ NÜSHASI",
+        ] {
+            let m = duz_metin_nusha(&f, 42, e);
+            assert!(
+                m.contains("KARGO YAPILACAK") && m.contains("Çankaya"),
+                "{e}"
+            );
+        }
+        let f2 = d.ekle(girdi()).unwrap();
+        assert!(!duz_metin(&f2, 42).contains("KARGO"));
     }
 
     #[test]
@@ -739,6 +784,8 @@ mod testler {
             usta: "".into(),
             satis_danismani: "Mert".into(),
             olcu_alan: "Kadir Y.".into(),
+            kargo: false,
+            kargo_notu: String::new(),
             teslim_degisiklikleri: Vec::new(),
         };
         let m = duz_metin(&f, 42);
