@@ -58,7 +58,8 @@ pub struct Uygulama {
     pub yazici_yolu: Option<PathBuf>,
     /// QR'a gömülecek taban adres (örn. `http://192.168.1.20:8787`).
     pub taban_url: String,
-    pub saat: fn() -> u64,
+    /// Saati ileri alır (yalnız test/deneme; kod süresi ve kilit sınanır).
+    pub ileri_sn: std::sync::atomic::AtomicU64,
     kodlar: Mutex<Vec<(String, u64)>>,
     yanlis: Mutex<(u32, u64)>,
 }
@@ -100,10 +101,14 @@ impl Uygulama {
             dizin,
             yazici_yolu,
             taban_url,
-            saat: simdi,
+            ileri_sn: std::sync::atomic::AtomicU64::new(0),
             kodlar: Mutex::new(Vec::new()),
             yanlis: Mutex::new((0, 0)),
         }
+    }
+
+    fn simdi(&self) -> u64 {
+        simdi() + self.ileri_sn.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     fn cihazlar(&self) -> cihaz::Kayitci {
@@ -117,7 +122,7 @@ impl Uygulama {
     }
 
     fn yeni_kod(&self) -> Result<String, String> {
-        let simdi = (self.saat)();
+        let simdi = self.simdi();
         let kod = cihaz::yeni_kod()?;
         let mut k = self.kodlar.lock().map_err(|_| "kilit hatası")?;
         k.retain(|(_, son)| *son > simdi);
@@ -126,7 +131,7 @@ impl Uygulama {
     }
 
     fn kod_tuket(&self, kod: &str) -> Result<(), String> {
-        let simdi = (self.saat)();
+        let simdi = self.simdi();
         let mut y = self.yanlis.lock().map_err(|_| "kilit hatası")?;
         if y.1 > simdi {
             return Err(format!(
@@ -171,7 +176,7 @@ impl Uygulama {
                 if !i.yerel {
                     return Yanit::hata(403, "yalnız bu bilgisayardan");
                 }
-                match self.cihazlar().kapat(id, &tarih_iso((self.saat)())) {
+                match self.cihazlar().kapat(id, &tarih_iso(self.simdi())) {
                     Ok(()) => Yanit::json(200, json!({ "tamam": true })),
                     Err(e) => Yanit::hata(404, &e),
                 }
@@ -200,7 +205,7 @@ impl Uygulama {
             Ok(t) => t,
             Err(e) => return Yanit::hata(500, &e),
         };
-        match self.cihazlar().ekle(ad, &token, &tarih_iso((self.saat)())) {
+        match self.cihazlar().ekle(ad, &token, &tarih_iso(self.simdi())) {
             Ok(c) => Yanit::json(200, json!({ "token": token, "id": c.id })),
             Err(e) => Yanit::hata(400, &e),
         }
@@ -252,7 +257,7 @@ impl Uygulama {
                     Ok(g) => g,
                     Err(e) => return Yanit::hata(400, &format!("geçersiz fiş: {e}")),
                 };
-                g.tarih = tarih_iso((self.saat)());
+                g.tarih = tarih_iso(self.simdi());
                 match d.ekle_uyarili(g) {
                     Ok((f, uyarilar)) => {
                         Yanit::json(200, json!({ "no": f.no, "uyarilar": uyarilar }))
@@ -271,7 +276,7 @@ impl Uygulama {
                     v["yeni"].as_str().unwrap_or(""),
                     v["saat"].as_str().unwrap_or("17:00"),
                     v["neden"].as_str().unwrap_or(""),
-                    &tarih_iso((self.saat)()),
+                    &tarih_iso(self.simdi()),
                 ) {
                     Ok(()) => Yanit::json(200, json!({ "tamam": true })),
                     Err(e) => Yanit::hata(422, &e),
@@ -290,7 +295,7 @@ impl Uygulama {
                     Some("iptal") => Durum::Iptal,
                     _ => return Yanit::hata(400, "durum: terzihanede, hazir, teslim ya da iptal"),
                 };
-                match d.durum_ata(no, yeni, &tarih_iso((self.saat)())) {
+                match d.durum_ata(no, yeni, &tarih_iso(self.simdi())) {
                     Ok(()) => Yanit::json(200, json!({ "tamam": true })),
                     Err(e) => Yanit::hata(409, &e),
                 }
@@ -340,20 +345,13 @@ impl Uygulama {
 #[cfg(test)]
 mod testler {
     use super::*;
-    use std::sync::atomic::{AtomicU64, Ordering};
-
-    static SAAT: AtomicU64 = AtomicU64::new(1_793_000_000); // 2026-10-26 civarı
-    fn saat() -> u64 {
-        SAAT.load(Ordering::SeqCst)
-    }
 
     fn uyg() -> Uygulama {
-        let mut u = Uygulama::yeni(
+        let u = Uygulama::yeni(
             taa_dosya::gecici_klasor().unwrap(),
             None,
             "http://192.168.1.20:8787".into(),
         );
-        u.saat = saat;
         u
     }
 
@@ -491,7 +489,8 @@ mod testler {
             403
         ); // ikinci kullanım
         let k2 = kod_al(&u);
-        SAAT.fetch_add(601, Ordering::SeqCst);
+        u.ileri_sn
+            .fetch_add(601, std::sync::atomic::Ordering::SeqCst);
         let gov2 = format!(r#"{{"kod":"{k2}","ad":"T2"}}"#);
         assert_eq!(
             u.isle(&ist("POST", "/api/eslestir", None, &gov2, false))
