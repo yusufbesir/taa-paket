@@ -82,7 +82,7 @@ pub fn yedekle(kaynaklar: &[PathBuf], hedef: &Path, damga: &str) -> Result<PathB
             return Err(format!("kaynak klasör değil: {}", kaynak.display()));
         }
         // Hedef kaynağın içindeyse sonsuz kopyalamayı önle.
-        if let (Ok(h), Ok(k)) = (hedef.canonicalize(), kaynak.canonicalize()) {
+        if let (Ok(h), Ok(k)) = (std::path::absolute(hedef), std::path::absolute(kaynak)) {
             if h.starts_with(&k) {
                 return Err("yedek hedefi kaynağın içinde olamaz".into());
             }
