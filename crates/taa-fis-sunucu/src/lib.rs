@@ -686,4 +686,14 @@ mod testler {
         assert_eq!(y.kod, 200);
         assert!(String::from_utf8_lossy(&y.govde).contains("doğrulanmadı"));
     }
+
+    #[test]
+    fn olcu_cm_istege_bagli_igneli() {
+        let u = uyg();
+        let t = esles(&u);
+        let fis = r#"{"satis_danismani":"M","olcu_alan":"K","musteri":"A B","telefon":"05321234567","kalemler":[{"urun":"Pantolon","islem":"Bel daraltma","islem_kodu":"pant-bel-daralt","igneli":true},{"urun":"Pantolon","islem":"Paça kısaltma","islem_kodu":"pant-paca-kisalt","varyant":"Düz paça","igneli":true}],"teslim":"2099-01-01","ucret_kurus":0}"#;
+        let y = u.isle(&ist("POST", "/api/fis", Some(&t), fis, false));
+        assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
+        assert!(String::from_utf8_lossy(&y.govde).contains("denetlenemedi"));
+    }
 }

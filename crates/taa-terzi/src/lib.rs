@@ -69,12 +69,15 @@ impl Katalog {
     }
 
     /// Bir kalemi denetler. `Err`: kaydedilemez; `Ok(uyarılar)`: kaydedilebilir, kullanıcıya gösterilir.
+    /// `olcu_zorunlu`: ölçü isteyen işlemde cm yazılmadan kayıt olmaz; ölçü iğneyle alındıysa (`igneli`) cm gerekmez.
     pub fn kontrol(
         &self,
         kod: &str,
         olcu_mm: Option<i32>,
         varyant: Option<&str>,
         usta_onayli: bool,
+        olcu_zorunlu: bool,
+        igneli: bool,
     ) -> Result<Vec<String>, String> {
         let i = self
             .bul(kod)
@@ -90,10 +93,22 @@ impl Katalog {
                 i.varyantlar.join(" / ")
             ));
         }
-        if i.olcu && !olcu_mm.map(|m| m > 0).unwrap_or(false) {
-            return Err(format!("{}: ölçü (cm) yazılmalı", i.ad));
+        if matches!(olcu_mm, Some(m) if m <= 0) {
+            return Err(format!("{}: ölçü pozitif olmalı", i.ad));
+        }
+        if i.olcu && olcu_zorunlu && !igneli && olcu_mm.is_none() {
+            return Err(format!(
+                "{}: ölçü (cm) yazılmalı ya da iğneli seçilmeli",
+                i.ad
+            ));
         }
         let mut uyarilar = Vec::new();
+        if i.sinir_mm.is_some() && olcu_mm.is_none() {
+            uyarilar.push(format!(
+                "{}: cm yazılmadığı için sınır denetlenemedi; iğneli ölçüyü usta kontrol etsin",
+                i.ad
+            ));
+        }
         let asti = matches!((i.sinir_mm, olcu_mm), (Some(s), Some(m)) if m > s);
         if asti {
             if !usta_onayli {
@@ -139,17 +154,38 @@ mod testler {
     fn paca_secenek_ve_olcu_ister() {
         let k = Katalog::varsayilan();
         assert!(k
-            .kontrol("pant-paca-kisalt", Some(30), None, false)
+            .kontrol("pant-paca-kisalt", Some(30), None, false, true, false)
             .is_err());
         assert!(k
-            .kontrol("pant-paca-kisalt", None, Some("Düz paça"), false)
+            .kontrol(
+                "pant-paca-kisalt",
+                None,
+                Some("Düz paça"),
+                false,
+                true,
+                false
+            )
             .is_err());
         assert!(k
-            .kontrol("pant-paca-kisalt", Some(30), Some("Duble paça"), false)
+            .kontrol(
+                "pant-paca-kisalt",
+                Some(30),
+                Some("Duble paça"),
+                false,
+                true,
+                false
+            )
             .unwrap()
             .is_empty());
         assert!(k
-            .kontrol("pant-paca-kisalt", Some(30), Some("yok"), false)
+            .kontrol(
+                "pant-paca-kisalt",
+                Some(30),
+                Some("yok"),
+                false,
+                true,
+                false
+            )
             .is_err());
     }
 
@@ -157,21 +193,25 @@ mod testler {
     fn sinir_usta_onayi_ister() {
         let k = Katalog::varsayilan();
         assert!(k
-            .kontrol("pant-bel-daralt", Some(40), None, false)
+            .kontrol("pant-bel-daralt", Some(40), None, false, true, false)
             .unwrap()
             .is_empty()); // tam 4 cm serbest
         let e = k
-            .kontrol("pant-bel-daralt", Some(50), None, false)
+            .kontrol("pant-bel-daralt", Some(50), None, false, true, false)
             .unwrap_err();
         assert!(e.contains("Usta onayı"));
-        let w = k.kontrol("pant-bel-daralt", Some(50), None, true).unwrap();
+        let w = k
+            .kontrol("pant-bel-daralt", Some(50), None, true, true, false)
+            .unwrap();
         assert!(w[0].contains("doğrulanmadı"));
     }
 
     #[test]
     fn sinirsiz_uyarili_islem_bilgi_verir() {
         let k = Katalog::varsayilan();
-        let w = k.kontrol("cek-sirt-daralt", Some(30), None, false).unwrap();
+        let w = k
+            .kontrol("cek-sirt-daralt", Some(30), None, false, true, false)
+            .unwrap();
         assert!(w[0].contains("kasıntı"));
     }
 
@@ -179,10 +219,10 @@ mod testler {
     fn olcusuz_islem_serbest_ve_bilinmeyen_hata() {
         let k = Katalog::varsayilan();
         assert!(k
-            .kontrol("pant-fermuar", None, None, false)
+            .kontrol("pant-fermuar", None, None, false, true, false)
             .unwrap()
             .is_empty());
-        assert!(k.kontrol("yok", None, None, false).is_err());
+        assert!(k.kontrol("yok", None, None, false, true, false).is_err());
     }
 
     #[test]
@@ -212,5 +252,29 @@ mod testler {
         std::fs::write(d.join("terzi-kurallari.json"), "bozuk").unwrap();
         assert!(Katalog::dizinden(&d).is_err());
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn olcu_istege_bagli_ve_igneli() {
+        let k = Katalog::varsayilan();
+        // zorunlu değilken cm'siz kayıt olur, sınırlı işlemde uyarı verir
+        let w = k
+            .kontrol("pant-bel-daralt", None, None, false, false, false)
+            .unwrap();
+        assert!(w[0].contains("denetlenemedi"));
+        // zorunluyken cm yoksa reddedilir, iğneli ise geçer
+        assert!(k
+            .kontrol("pant-bel-daralt", None, None, false, true, false)
+            .is_err());
+        assert!(k
+            .kontrol("pant-bel-daralt", None, None, false, true, true)
+            .is_ok());
+        // yazılan cm yine denetlenir
+        assert!(k
+            .kontrol("pant-bel-daralt", Some(60), None, false, false, true)
+            .is_err());
+        assert!(k
+            .kontrol("pant-bel-daralt", Some(-5), None, false, false, false)
+            .is_err());
     }
 }

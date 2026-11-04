@@ -43,6 +43,9 @@ pub struct Kalem {
     /// Sınır aşımında usta onayı verildi mi?
     #[serde(default)]
     pub usta_onayli: bool,
+    /// Ölçü iğneyle işaretlendi (cm bilinmiyor).
+    #[serde(default)]
+    pub igneli: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -148,6 +151,7 @@ pub fn dogrula(
     g: &Girdi,
     katalog: &taa_terzi::Katalog,
     serbest_islem: bool,
+    olcu_zorunlu: bool,
 ) -> Result<(String, Vec<String>), String> {
     if g.musteri.trim().is_empty() {
         return Err("müşteri adı gerekli".into());
@@ -166,6 +170,8 @@ pub fn dogrula(
                 k.olcu_mm,
                 k.varyant.as_deref(),
                 k.usta_onayli,
+                olcu_zorunlu,
+                k.igneli,
             )?),
             None if !serbest_islem => {
                 return Err("işlem listeden seçilmeli (serbest işlem kapalı)".into())
@@ -284,8 +290,12 @@ impl Defter<'_> {
     pub fn ekle_uyarili(&self, g: Girdi) -> Result<(Fis, Vec<String>), String> {
         kapali()?;
         let katalog = taa_terzi::Katalog::dizinden(self.yol.parent().unwrap_or(Path::new(".")))?;
-        let (telefon, uyarilar) =
-            dogrula(&g, &katalog, taa_ayar::ozellik_acik("serbest-islem", true))?;
+        let (telefon, uyarilar) = dogrula(
+            &g,
+            &katalog,
+            taa_ayar::ozellik_acik("serbest-islem", true),
+            taa_ayar::ozellik_acik("olcu-zorunlu", false),
+        )?;
         let gun = g.tarih.replace('-', "");
         let sira = self.fisler()?.iter().filter(|f| f.tarih == g.tarih).count() + 1;
         let fis = Fis {
@@ -485,6 +495,9 @@ pub fn duz_metin_nusha(f: &Fis, genislik: usize, nusha: &str) -> String {
         if let Some(p) = k.pay_mm.filter(|p| *p > 0) {
             satir.push_str(&format!(" (pay {} cm)", cm_metni(p)));
         }
+        if k.igneli {
+            satir.push_str(" [İĞNELİ]");
+        }
         if k.usta_onayli {
             satir.push_str(" [USTA ONAYLI]");
         }
@@ -624,6 +637,7 @@ mod testler {
             olcu_mm: None,
             pay_mm: None,
             usta_onayli: false,
+            igneli: false,
         }
     }
 
@@ -668,21 +682,21 @@ mod testler {
     #[test]
     fn dogrulama() {
         let mut g = girdi();
-        assert!(dogrula(&g, &kat(), true).is_ok());
+        assert!(dogrula(&g, &kat(), true, true).is_ok());
         g.on_odeme_kurus = 90000;
-        assert!(dogrula(&g, &kat(), true).is_err());
+        assert!(dogrula(&g, &kat(), true, true).is_err());
         let mut g = girdi();
         g.teslim = "2026-11-01".into();
-        assert!(dogrula(&g, &kat(), true).is_err());
+        assert!(dogrula(&g, &kat(), true, true).is_err());
         let mut g = girdi();
         g.prova = "2026-11-12".into();
-        assert!(dogrula(&g, &kat(), true).is_err());
+        assert!(dogrula(&g, &kat(), true, true).is_err());
         let mut g = girdi();
         g.kalemler.clear();
-        assert!(dogrula(&g, &kat(), true).is_err());
+        assert!(dogrula(&g, &kat(), true, true).is_err());
         let mut g = girdi();
         g.musteri = "  ".into();
-        assert!(dogrula(&g, &kat(), true).is_err());
+        assert!(dogrula(&g, &kat(), true, true).is_err());
     }
 
     #[test]
@@ -758,28 +772,32 @@ mod testler {
     #[test]
     fn katalog_kalemi_ve_sinir() {
         let mut g = katalogsuz_girdi();
-        assert!(dogrula(&g, &kat(), false).is_ok());
+        assert!(dogrula(&g, &kat(), false, true).is_ok());
         g.kalemler[0].olcu_mm = Some(60);
-        assert!(dogrula(&g, &kat(), false)
+        assert!(dogrula(&g, &kat(), false, true)
             .unwrap_err()
             .contains("Usta onayı"));
         g.kalemler[0].usta_onayli = true;
-        assert_eq!(dogrula(&g, &kat(), false).unwrap().1.len(), 1);
+        assert_eq!(dogrula(&g, &kat(), false, true).unwrap().1.len(), 1);
         g.kalemler[0].olcu_mm = None; // unutulan ölçü
-        assert!(dogrula(&g, &kat(), false).unwrap_err().contains("ölçü"));
+        assert!(dogrula(&g, &kat(), false, true)
+            .unwrap_err()
+            .contains("ölçü"));
     }
 
     #[test]
     fn serbest_islem_kapatilabilir_ve_zorunlu_isimler() {
         let g = girdi(); // serbest metin kalemler
-        assert!(dogrula(&g, &kat(), true).is_ok());
-        assert!(dogrula(&g, &kat(), false).unwrap_err().contains("listeden"));
+        assert!(dogrula(&g, &kat(), true, true).is_ok());
+        assert!(dogrula(&g, &kat(), false, true)
+            .unwrap_err()
+            .contains("listeden"));
         let mut g = girdi();
         g.olcu_alan = " ".into();
-        assert!(dogrula(&g, &kat(), true).is_err());
+        assert!(dogrula(&g, &kat(), true, true).is_err());
         let mut g = girdi();
         g.teslim_saati = "25:00".into();
-        assert!(dogrula(&g, &kat(), true).is_err());
+        assert!(dogrula(&g, &kat(), true, true).is_err());
     }
 
     #[test]

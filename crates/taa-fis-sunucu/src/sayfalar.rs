@@ -33,7 +33,7 @@ function kalemHtml(){const d=document.createElement('div');d.className='kalem';
   ic.innerHTML='<select class="kod"><option value="">İşlem seçin</option>'+l.map(i=>'<option value="'+esc(i.kod)+'">'+esc(i.ad)+'</option>').join('')+'</select><div class="det"></div>';
   ic.querySelector('.kod').onchange=ev=>{const i=kat.islemler.find(x=>x.kod===ev.target.value),det=ic.querySelector('.det');det.innerHTML='';if(!i)return;
    if(i.varyantlar&&i.varyantlar.length)det.innerHTML+='<select class="varyant"><option value="">Seçenek seçin</option>'+i.varyantlar.map(v=>'<option>'+esc(v)+'</option>').join('')+'</select>';
-   if(i.olcu)det.innerHTML+='<input class="olcu" inputmode="decimal" placeholder="Ölçü (cm)"><input class="pay" inputmode="decimal" placeholder="İçeride kalan pay (cm)">';
+   if(i.olcu)det.innerHTML+='<input class="olcu" inputmode="decimal" placeholder="Ölçü (cm, biliniyorsa)"><label class="onay"><input type="checkbox" class="igneli" style="width:auto"> İğneyle işaretlendi (cm yok)</label><input class="pay" inputmode="decimal" placeholder="İçeride kalan pay (cm)">';
    det.innerHTML+='<input class="knot" placeholder="Not">';
    if(i.sinir_mm){det.innerHTML+='<label class="onay" hidden><input type="checkbox" class="usta" style="width:auto"> Usta onayladı (sınır '+(i.sinir_mm/10)+' cm)</label>';
     det.querySelector('.olcu').oninput=o=>{det.querySelector('.onay').hidden=!(kurus(o.target.value)>i.sinir_mm*10)}}}};
@@ -43,7 +43,7 @@ function kalemOku(e){const g=e.querySelector('.grup').value;if(!g)return null;
  if(g==='*')return{urun:e.querySelector('.urun').value.trim(),islem:e.querySelector('.islem').value.trim(),not:e.querySelector('.knot').value.trim()};
  const kod=e.querySelector('.kod').value;const i=kat.islemler.find(x=>x.kod===kod);if(!i)return null;
  const q=s=>e.querySelector(s);return{urun:g,islem:i.ad,islem_kodu:kod,not:q('.knot').value.trim(),varyant:q('.varyant')?q('.varyant').value||null:null,
-  olcu_mm:q('.olcu')?mm(q('.olcu').value):null,pay_mm:q('.pay')?mm(q('.pay').value):null,usta_onayli:!!(q('.usta')&&q('.usta').checked)}}
+  olcu_mm:q('.olcu')?mm(q('.olcu').value):null,pay_mm:q('.pay')?mm(q('.pay').value):null,usta_onayli:!!(q('.usta')&&q('.usta').checked),igneli:!!(q('.igneli')&&q('.igneli').checked)}}
 function form(){const d=document.createElement('div');const bugun=new Date().toISOString().slice(0,10);
  d.innerHTML='<h1>Yeni tadilat fişi</h1><div id="msg"></div>'+
  '<label>Satış danışmanı</label><input id="sat"><label>Ölçü alan</label><input id="olcualan">'+
