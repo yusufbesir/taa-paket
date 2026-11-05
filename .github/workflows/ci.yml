@@ -21,6 +21,7 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+      - run: python3 -I tools/sozlesme_denetle.py
   audit:
     runs-on: ubuntu-latest
     continue-on-error: true
