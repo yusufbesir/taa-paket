@@ -3,6 +3,12 @@
 
 ## Yayınlanmamış
 
+### T3-pencere
+
+- `taa-kur-pencere` (yeni bin) ve `taa_kur::pencere_model`: paket listesi (ad, kurulu sürüm, seçili sürüm, durum), Kur / Kaldır / Güncelle düğmeleri ve alt durum satırı. Mantık platformdan bağımsız modelde (7 birim test, gerçek `Kur`, geçici kök); Win32 çizimi `#[cfg(windows)] win.rs` içinde ince katman.
+- Güncelle düğmesi `GuncelleyiciArayuzu` trait'ine bağlı; varsayılan "Güncelleme kaynağı ayarlanmadı" der (taa-guncelle başka dalda).
+- Kaldırma silmez: `Kur::kaldir` ile `eski\` klasörüne taşır; veri alanlarına dokunulmaz.
+- Bağımlılık: yalnız Windows'ta `windows-sys 0.61` (Yusuf onaylı; `zip` zaten dolaylı olarak aynı sürümü çekiyordu), asgari özellikler. Windows'ta elle doğrulanmadı; tür denetimi `--target x86_64-pc-windows-gnu` ile yapıldı. `docs/T3-PENCERE.md` eklendi.
 ### T3-imza
 - Yusuf onaylı yeni bağımlılıklar: `ed25519-dalek 2` (`default-features=false`, `std`) ve `toml` (`parse`). Başka bağımlılık, HTTP ve silme yok.
 - `crates/taa-imza` eklendi: ed25519 anahtar üret/imzala/doğrula, hex, `ed25519:<hex>` genel anahtar dosyası, `taa-imza uret|imzala|dogrula` CLI. Özel anahtar yalnız verilen dosyadan okunur (0600, ezmez, günlüğe/`Debug`'a yazılmaz).

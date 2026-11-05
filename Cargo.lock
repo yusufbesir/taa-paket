@@ -833,6 +833,7 @@ dependencies = [
  "taa-dosya",
  "taa-imza",
  "toml",
+ "windows-sys",
  "zip",
 ]
 
