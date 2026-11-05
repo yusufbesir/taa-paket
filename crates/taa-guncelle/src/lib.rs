@@ -4,7 +4,7 @@
 //! hiç anahtar yoksa imza denetlenmez (kontrol çıktısında uyarı). Geri alma koruması: kayıtlı sürümden DÜŞÜK sürüm
 //! reddedilir. Uygulama: indir → boyut+SHA256 → `Kur::kur(--sec)` → doğrula; başarısızlıkta önceki sürüme dönülür.
 //! Delta yamaları şemada var ama T3'te kullanılmaz: her zaman `tam` dosya indirilir. Hiçbir dosya silinmez
-//! (indirilen dosya iş bitince `eski/` altına taşınır). HTTP yok (T4).
+//! (indirilen dosya iş bitince `eski/` altına taşınır). HTTP(S) kaynağı: `HttpKaynak` (curl ile; T4).
 
 pub mod kaynak;
 pub mod yayin;
@@ -12,7 +12,7 @@ pub mod yayin;
 #[cfg(test)]
 mod testler;
 
-pub use kaynak::{Kaynak, YerelKaynak};
+pub use kaynak::{http_url_mu, HttpKaynak, Kaynak, YerelKaynak};
 pub use yayin::{Yayin, YayinPaketi};
 
 use serde::Serialize;
@@ -96,6 +96,16 @@ fn yayin_yukle(kur: &Kur, kaynak: &dyn Kaynak) -> Sonuc<(Yayin, ImzaDurumu)> {
 
 /// Kur kaydı ile `yayin.json` karşılaştırması. Yalnız kurulu ve seçili paketler değerlendirilir; yazma yapmaz.
 pub fn kontrol(kur: &Kur, kaynak: &dyn Kaynak, kanal: &str) -> Sonuc<KontrolSonuc> {
+    kontrol_paket(kur, kaynak, kanal, None)
+}
+
+/// `kontrol` ile aynı; `yalniz` verilirse yalnız o paket değerlendirilir (pencere "Güncelle" düğmesi).
+pub fn kontrol_paket(
+    kur: &Kur,
+    kaynak: &dyn Kaynak,
+    kanal: &str,
+    yalniz: Option<&str>,
+) -> Sonuc<KontrolSonuc> {
     let (yayin, durum) = yayin_yukle(kur, kaynak)?;
     let mut s = KontrolSonuc {
         kanal: kanal.into(),
@@ -115,6 +125,9 @@ pub fn kontrol(kur: &Kur, kaynak: &dyn Kaynak, kanal: &str) -> Sonuc<KontrolSonu
         );
     }
     for satir in kur.liste()? {
+        if yalniz.is_some_and(|y| y != satir.ad) {
+            continue;
+        }
         let Some(secili) = satir.secili.clone() else {
             continue;
         };
@@ -158,7 +171,17 @@ pub fn kontrol(kur: &Kur, kaynak: &dyn Kaynak, kanal: &str) -> Sonuc<KontrolSonu
 /// `kontrol` + her güncellenebilir paket için indir/doğrula/kur. Paket başına hata diğerlerini durdurmaz;
 /// sonuç satırlarında bildirilir. Kontrol aşamasındaki hata (imza, kaynak) tümünü durdurur.
 pub fn uygula(kur: &Kur, kaynak: &dyn Kaynak, kanal: &str) -> Sonuc<UygulaSonuc> {
-    let kontrol_sonucu = kontrol(kur, kaynak, kanal)?;
+    uygula_paket(kur, kaynak, kanal, None)
+}
+
+/// `uygula` ile aynı; `yalniz` verilirse yalnız o paket güncellenir.
+pub fn uygula_paket(
+    kur: &Kur,
+    kaynak: &dyn Kaynak,
+    kanal: &str,
+    yalniz: Option<&str>,
+) -> Sonuc<UygulaSonuc> {
+    let kontrol_sonucu = kontrol_paket(kur, kaynak, kanal, yalniz)?;
     let (yayin, _) = yayin_yukle(kur, kaynak)?;
     let mut satirlar = Vec::new();
     for g in &kontrol_sonucu.guncellenebilir {

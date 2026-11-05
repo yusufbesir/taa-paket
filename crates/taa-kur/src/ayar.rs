@@ -1,5 +1,6 @@
 // Sahip: Yusuf. yazan: [Claude#taa-paket-T3 2026-11-05]
-//! `<kök>/kur.toml` okuyucusu (T3): `kaynak_klasoru` (yerel güncelleme kaynağı) ve `kanal`. Dosya yoksa varsayılanlar.
+//! `<kök>/kur.toml` okuyucusu (T3): `kaynak_klasoru` (yerel güncelleme kaynağı), `kaynak_url` (HTTP(S) kaynağı, T4)
+//! ve `kanal`. Dosya yoksa varsayılanlar. İkisi de yazılıysa taa-guncelle `kaynak_url`'yi önceler.
 //! Bozuk TOML tek cümlelik Türkçe hata verir. Bilinmeyen anahtarlar yok sayılır (ileriye uyumluluk).
 
 use crate::paket::ad_gecerli;
@@ -16,6 +17,9 @@ pub struct KurAyar {
     /// Yerel güncelleme kaynağı klasörü (içinde `yayin.json`).
     #[serde(default)]
     pub kaynak_klasoru: Option<String>,
+    /// HTTP(S) güncelleme kaynağı (`https://sunucu/yol`; altında `yayin.json`).
+    #[serde(default)]
+    pub kaynak_url: Option<String>,
     /// Yayın kanalı; boşsa [`VARSAYILAN_KANAL`].
     #[serde(default)]
     pub kanal: Option<String>,
@@ -71,6 +75,16 @@ pub fn kur_ayari_oku(kok: &Path) -> Result<KurAyar, KurHata> {
             "kaynak_klasoru boş olamaz; yol yazın ya da satırı kaldırın.".into(),
         ));
     }
+    if let Some(u) = a.kaynak_url.as_deref() {
+        let k = u.trim().to_ascii_lowercase();
+        if !(k.starts_with("http://") || k.starts_with("https://"))
+            || u.contains(char::is_whitespace)
+        {
+            return Err(hata(
+                "kaynak_url http:// ya da https:// ile başlamalı ve boşluk içermemeli; kur.toml'daki kaynak_url değerini düzeltin.".into(),
+            ));
+        }
+    }
     Ok(a)
 }
 
@@ -100,7 +114,25 @@ mod testler {
         )))
         .unwrap();
         assert_eq!(a.kaynak_klasoru.as_deref(), Some("D:/Kaynak"));
+        assert_eq!(a.kaynak_url, None);
         assert_eq!(a.kanal(), "deneme");
+    }
+
+    #[test]
+    fn kaynak_url_okunur_ve_denetlenir() {
+        let a = kur_ayari_oku(&kok_ile(Some(
+            "kaynak_url = \"https://github.com/yusufbesir/taa-yayin/releases/latest/download\"\n",
+        )))
+        .unwrap();
+        assert!(a.kaynak_url.as_deref().unwrap().starts_with("https://"));
+        for kotu in [
+            "kaynak_url = \"ftp://x\"\n",
+            "kaynak_url = \"D:/Kaynak\"\n",
+            "kaynak_url = \"http://a b\"\n",
+        ] {
+            let e = kur_ayari_oku(&kok_ile(Some(kotu))).unwrap_err();
+            assert!(e.mesaj().contains("kaynak_url"), "{e}");
+        }
     }
 
     #[test]
