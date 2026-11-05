@@ -3,7 +3,7 @@
 ad = "taa-kur"
 surum = "0.1.0"
 arayuz = "1"
-gerektirir = { "taa-ayar" = "1", "taa-dosya" = "1" }
+gerektirir = { "taa-ayar" = "1", "taa-dosya" = "1", "taa-imza" = "1" }
 ozellikler = ["kur"]
 program = "ortak"
 sunar = []

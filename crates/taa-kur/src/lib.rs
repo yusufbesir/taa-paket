@@ -7,6 +7,7 @@
 //! Veri alanlarına (`%APPDATA%\TAA\veri`) bu crate hiçbir zaman dokunmaz.
 //! Özellik anahtarı: "kur" (varsayılan açık).
 
+pub mod ayar;
 pub mod kayit;
 pub mod paket;
 mod veri;
@@ -16,8 +17,11 @@ pub mod zipac;
 #[cfg(test)]
 mod testler;
 #[cfg(test)]
+mod testler_imza;
+#[cfg(test)]
 mod testler_zip;
 
+pub use ayar::{kur_ayari_oku, KurAyar};
 pub use kayit::{Kayit, PaketKaydi};
 pub use paket::{paket_dogrula, Paket};
 pub use veri::{sahip_toml_coz, veri_kok_coz, Deger};
@@ -30,6 +34,7 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use taa_imza::{GenelAnahtar, Imza};
 
 pub const OZELLIK: &str = "kur";
 
@@ -176,7 +181,20 @@ pub struct Tani {
     /// Veri kökündeki her `<alan>/SAHIP.toml` için özet (T2-TASARIM §1).
     pub veri_alanlari: Vec<VeriAlani>,
     pub sorunlar: Vec<Sorun>,
+    /// Sorun sayılmayan ama bilinmesi gerekenler (ör. güvenilir anahtar yok: imzalar denetlenmiyor).
+    pub uyarilar: Vec<String>,
+    /// `<kök>\anahtarlar\*.pub` içindeki güvenilir anahtarların kimlikleri.
+    pub guvenilir_anahtarlar: Vec<String>,
     pub son_hatalar: Vec<String>,
+}
+
+/// İmza denetiminin sonucu.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ImzaDurumu {
+    /// Güvenilir bir anahtarla doğrulandı (kimlik).
+    Dogrulandi(String),
+    /// Güvenilir anahtar tanımlı olmadığından denetlenmedi (eski davranış).
+    Denetlenmedi,
 }
 
 /// `taa-kur tani --json` veri alanı satırı.
@@ -242,15 +260,20 @@ fn sayac() -> u64 {
 pub struct Kur {
     kok: PathBuf,
     kaynak: KokKaynagi,
+    /// `<kök>/anahtarlar/*.pub`; okunamayan/bozuk anahtar dosyası sessizce yok sayılmaz (yoksa imza denetimi kapatılabilirdi).
+    anahtarlar: Result<Vec<GenelAnahtar>, String>,
 }
 
 impl Kur {
     /// Verilen kökle çalışır (testler geçici kök verir).
     pub fn yeni(kok: impl Into<PathBuf>) -> Sonuc<Kur> {
         kapi()?;
+        let kok = kok.into();
+        let anahtarlar = anahtarlari_yukle(&kok);
         Ok(Kur {
-            kok: kok.into(),
+            kok,
             kaynak: KokKaynagi::Verilen,
+            anahtarlar,
         })
     }
 
@@ -259,11 +282,61 @@ impl Kur {
         kapi()?;
         let ortam = std::env::var("TAA_KOK").ok();
         let (kok, kaynak) = kok_coz_ile(ortam.as_deref(), &varsayilan_kok()?);
-        Ok(Kur { kok, kaynak })
+        let anahtarlar = anahtarlari_yukle(&kok);
+        Ok(Kur {
+            kok,
+            kaynak,
+            anahtarlar,
+        })
     }
 
     pub fn kok(&self) -> &Path {
         &self.kok
+    }
+
+    /// Güvenilir anahtarlar (`<kök>\anahtarlar\*.pub`). Dosya bozuksa hata: imza denetimi sessizce kapanmaz.
+    pub fn guvenilir_anahtarlar(&self) -> Sonuc<&[GenelAnahtar]> {
+        self.anahtarlar.as_deref().map_err(|m| {
+            KurHata::Bozuk(format!(
+                "Güvenilir anahtar dosyası okunamadı: {m}. Öneri: anahtarlar klasöründeki bozuk .pub dosyasını düzeltin ya da eski/ altına taşıyın."
+            ))
+        })
+    }
+
+    /// İmza kuralı (T3): güvenilir anahtar varsa `imza` ZORUNLU ve anahtarlardan biriyle `veri` üzerinde doğrulanmalıdır;
+    /// hiç anahtar yoksa denetlenmez (eski davranış). `ne` iletide kullanılır ("Paket", "Yayın dosyası").
+    pub fn imza_denetle(
+        &self,
+        ne: &str,
+        veri: &[u8],
+        imza: Option<&serde_json::Value>,
+    ) -> Sonuc<ImzaDurumu> {
+        let anahtarlar = self.guvenilir_anahtarlar()?;
+        if anahtarlar.is_empty() {
+            return Ok(ImzaDurumu::Denetlenmedi);
+        }
+        let ret = |m: String| Err(KurHata::Dogrulama(m));
+        let Some(raw) = imza.filter(|v| !v.is_null()) else {
+            return ret(format!("{ne} imzasız ama güvenilir anahtar tanımlı olduğundan reddedildi; yayıncıdan imzalı paket isteyin."));
+        };
+        let Ok(im) = serde_json::from_value::<Imza>(raw.clone()) else {
+            return ret(format!("{ne} imza alanı okunamadı (alg, anahtar_kimlik ve deger bekleniyor); paketi yeniden imzalatın."));
+        };
+        if im.alg != taa_imza::ALGORITMA {
+            return ret(format!(
+                "{ne} imza algoritması desteklenmiyor ({:?}); yalnız ed25519 kabul edilir.",
+                im.alg
+            ));
+        }
+        let Some(k) = anahtarlar.iter().find(|k| k.kimlik() == im.anahtar_kimlik) else {
+            return ret(format!("{ne} güvenilir anahtarlar arasında olmayan bir anahtarla (kimlik {}) imzalanmış; yayıncının .pub dosyasını anahtarlar klasörüne koymadan kabul edilmez.", im.anahtar_kimlik.chars().take(32).collect::<String>()));
+        };
+        match k.dogrula(veri, &im) {
+            Ok(()) => Ok(ImzaDurumu::Dogrulandi(k.kimlik())),
+            Err(_) => ret(format!(
+                "{ne} imzası geçersiz: içerik imzayla uyuşmuyor, dosya değiştirilmiş olabilir."
+            )),
+        }
     }
 
     fn kayit_yolu(&self) -> PathBuf {
@@ -628,6 +701,7 @@ impl Kur {
 
     fn kur_ic(&self, klasor: &Path, sec: bool) -> Sonuc<KurSonuc> {
         let (paket, paket_bayt) = paket_dogrula(klasor)?;
+        self.imza_denetle("Paket", paket.icerik_sha256.as_bytes(), paket.imza.as_ref())?;
         let mut kayit = self.kayit_yukle()?;
         for alan in &paket.veri_sahibi {
             if let Some(s) = kayit.veri_sahipleri.get(alan) {
@@ -999,6 +1073,15 @@ impl Kur {
             None => (Vec::new(), Vec::new()),
         };
         sorunlar.extend(veri_sorunlari);
+        let mut uyarilar = Vec::new();
+        let mut guvenilir_anahtarlar = Vec::new();
+        match &self.anahtarlar {
+            Ok(a) if a.is_empty() => uyarilar.push(
+                "Güvenilir anahtar yok (anahtarlar/*.pub): paket imzaları denetlenmiyor.".into(),
+            ),
+            Ok(a) => guvenilir_anahtarlar = a.iter().map(|k| k.kimlik()).collect(),
+            Err(m) => sorunlar.push(Sorun::Bozuk(format!("güvenilir anahtar dosyası: {m}"))),
+        }
         let satirlar = taa_dosya::satirlari_oku(&self.gunluk_yolu()).unwrap_or_default();
         let mut hatalar: Vec<String> = satirlar
             .iter()
@@ -1024,12 +1107,38 @@ impl Kur {
             veri_kok: veri_kok.map(|k| k.to_string_lossy().into_owned()),
             veri_alanlari,
             sorunlar,
+            uyarilar,
+            guvenilir_anahtarlar,
             son_hatalar: hatalar,
         })
     }
 }
 
 // ---------------------------------------------------------------- yardımcılar
+
+/// `<kök>/anahtarlar/*.pub` dosyalarını güvenilir anahtar olarak okur (klasör yoksa boş). Aynı anahtar bir kez sayılır.
+fn anahtarlari_yukle(kok: &Path) -> Result<Vec<GenelAnahtar>, String> {
+    let dizin = kok.join("anahtarlar");
+    let okuyucu = match fs::read_dir(&dizin) {
+        Ok(o) => o,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(format!("{} listelenemedi ({e})", dizin.display())),
+    };
+    let mut yollar: Vec<PathBuf> = okuyucu
+        .flatten()
+        .map(|o| o.path())
+        .filter(|y| y.is_file() && y.extension().is_some_and(|u| u.eq_ignore_ascii_case("pub")))
+        .collect();
+    yollar.sort();
+    let mut liste: Vec<GenelAnahtar> = Vec::new();
+    for y in yollar {
+        let k = GenelAnahtar::dosyadan(&y).map_err(|e| format!("{}: {e}", y.display()))?;
+        if !liste.contains(&k) {
+            liste.push(k);
+        }
+    }
+    Ok(liste)
+}
 
 /// Yol bir dosya olarak `.zip` ile bitiyorsa zip paketidir (klasör `x.zip` adlı olsa bile klasör sayılır).
 fn zip_mi(yol: &Path) -> bool {

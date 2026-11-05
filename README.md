@@ -34,7 +34,8 @@ TAA Paketi çekirdek deposu: TaaDön ve diğer TAA programlarının paylaştığ
 | taa-kod | planlı | Kodlama yardımcıları |
 | taa-etiket | planlı | Etiketleme |
 | taa-veri | var | Veri alanları (T2): tek yazar sahipliği, SAHIP.toml, salt okunur okuyucu, öneri kutusu; silmez (`eski\`); bkz. `docs/veri-alani.md` |
-| taa-guncelle | planlı | Güncelleme |
+| taa-guncelle | var | Güncelleme (T3): `yayin.json` kontrolü, geri alma koruması, SHA256 + ed25519 doğrulama, `kur --sec`, hatada önceki sürüme dönme; yerel klasör kaynağı (HTTP T4) |
+| taa-imza | var | ed25519 imza (T3): anahtar üret/imzala/doğrula, `ed25519:<hex>` genel anahtar dosyası; özel anahtar yalnız verilen dosyadan okunur, depoya yazılmaz |
 | taa-log | planlı | Günlükleme |
 
 ## Derleme
@@ -55,6 +56,7 @@ Her crate bir `modul.toml` taşır: bkz. [docs/modul-sozlesmesi.md](docs/modul-s
 Tek çatı belgeleri (plan §18):
 
 - [docs/TEK-CATI.md](docs/TEK-CATI.md): kural, kurulum yöneticisi, sürüm uyumu, veri sahipliği
+- [docs/T3-TASARIM.md](docs/T3-TASARIM.md): imza, güvenilir anahtarlar, güncelleme
 - [docs/ENVANTER.md](docs/ENVANTER.md): veri konumları ve sürüm envanteri
 - [docs/program-sozlesmesi.md](docs/program-sozlesmesi.md): program.toml sözleşmesi (taslak)
 - [docs/sozlesmeler/](docs/sozlesmeler/): yetenek sözleşmeleri

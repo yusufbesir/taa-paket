@@ -149,8 +149,7 @@ class Testler(unittest.TestCase):
             j = json.loads(a.read("paket.json").decode("utf-8"))
             self.assertEqual(a.read("bin/taax.exe"), b"MZ-sahte")
         self.assertEqual(j, p)
-        self.assertIsNone(j["imza"])
-        self.assertIn("imza", j)
+        self.assertNotIn("imza", j)  # imzayı taa-imza atar
         self.assertEqual(j["dosyalar"], [{"yol": "bin/taax.exe", "sha256": hashlib.sha256(b"MZ-sahte").hexdigest()}])
         # klasör paketiyle aynı içerik
         k = pu.uret(self.crate, self.cikti, self.exe)
@@ -170,6 +169,23 @@ class Testler(unittest.TestCase):
             self.assertEqual(pu.main([str(self.crate), "--zip", str(z2)]), 2)  # var
             with self.assertRaises(SystemExit):  # klasör ve --zip birlikte
                 pu.main([str(self.crate), str(self.cikti), "--zip", str(self.kok / "x.zip")])
+
+    def test_imza_dosyasi_yazilir_ve_bicim_denetlenir(self):
+        im = {"alg": "ed25519", "anahtar_kimlik": "ab" * 8, "deger": "cd" * 64}
+        f = self.kok / "imza.json"
+        f.write_text(json.dumps(im))
+        z = self.kok / "imzali.zip"
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(pu.main([str(self.crate), "--zip", str(z), "--bin", str(self.exe), "--imza-dosya", str(f)]), 0)
+        import zipfile
+        with zipfile.ZipFile(z) as a:
+            self.assertEqual(json.loads(a.read("paket.json"))["imza"], im)
+        for kotu in ({"alg": "rsa", "anahtar_kimlik": "ab" * 8, "deger": "cd" * 64},
+                     {"alg": "ed25519", "anahtar_kimlik": "ab" * 8, "deger": "zz"},
+                     {"alg": "ed25519", "deger": "cd" * 64}):
+            f.write_text(json.dumps(kotu))
+            with self.assertRaises(pu.PaketHata):
+                pu.imza_oku(f)
 
 
 if __name__ == "__main__":

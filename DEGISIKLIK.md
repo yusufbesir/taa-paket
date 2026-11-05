@@ -3,6 +3,13 @@
 
 ## Yayınlanmamış
 
+### T3-imza
+- Yusuf onaylı yeni bağımlılıklar: `ed25519-dalek 2` (`default-features=false`, `std`) ve `toml` (`parse`). Başka bağımlılık, HTTP ve silme yok.
+- `crates/taa-imza` eklendi: ed25519 anahtar üret/imzala/doğrula, hex, `ed25519:<hex>` genel anahtar dosyası, `taa-imza uret|imzala|dogrula` CLI. Özel anahtar yalnız verilen dosyadan okunur (0600, ezmez, günlüğe/`Debug`'a yazılmaz).
+- `crates/taa-kur`: `paket.json` `imza` = `{alg, anahtar_kimlik, deger}` (imzalanan veri `icerik_sha256`). `Kur::yeni/ortamdan` `<kök>\anahtarlar\*.pub` okur; anahtar varken imzasız/yanlış imzalı paket `KurHata::Dogrulama` ile reddedilir, anahtar yokken eski davranış (+ `tani` uyarısı). Bozuk `.pub` imza denetimini kapatmaz. `Kur::imza_denetle`, `tani` alanları `uyarilar` ve `guvenilir_anahtarlar`. `kur.toml` (`kaynak_klasoru`, `kanal`) `toml` ile okunur (`kur_ayari_oku`).
+- `crates/taa-guncelle` eklendi: `yayin.json` şeması, `Kaynak` trait'i + `YerelKaynak`, `kontrol` (zorunlu `en_az_surum`, geri alma koruması), `uygula` (SHA256 + imza, `kur --sec`, hatada önceki sürüme dönme; yama yalnız şemada, `tam`a düşülür), `taa-guncelle kontrol|uygula [--json]`.
+- `tools/paket_uret.py` artık `imza` alanı yazmaz; hazır imza `--imza-dosya` ile alınır. `docs/T3-TASARIM.md` eklendi.
+
 ### T2-A4 (güvenlik sertleştirme; Opus incelemesi, 0 yüksek / 9 orta / 7 düşük)
 - `taa-veri.js`: `eskiyeTasi` dışa açıldı (programlar bozuk alan dosyasını `<alan>/eski/` altına alır). `docs/veri-alani.md`: `rehber` + `TAA_VERI_KOK` kuralı kodla hizalandı.
 
