@@ -1,10 +1,12 @@
 // Sahip: Yusuf. yazan: [Claude#taa-paket-T3 2026-11-05]
-//! Güncelleme kaynağı soyutlaması. T3: yalnız yerel klasör; HTTP kaynağı T4'te aynı trait'i uygular.
+//! Güncelleme kaynağı soyutlaması: yerel klasör (`YerelKaynak`) ve HTTP(S) (`HttpKaynak`, T4).
+//! HTTP için yeni crate yok: indirme `curl` komutuyla yapılır (Windows 10 1803+ ve CI'da hazır).
 
 use crate::yayin::MAKS_YAYIN_BAYT;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use taa_kur::paket::guvenli_coz;
 use taa_kur::KurHata;
 
@@ -70,6 +72,181 @@ impl Kaynak for YerelKaynak {
         if n > beklenen_boyut {
             return Err(KurHata::Dogrulama(format!(
                 "{url} yayin.json'daki boyuttan ({beklenen_boyut} bayt) büyük. Öneri: yayını yeniden üretin."
+            )));
+        }
+        Ok(n)
+    }
+}
+
+/// HTTP(S) kaynağı: `<taban>/yayin.json` ve `url` olarak tabana göreli ya da mutlak `http(s)://` adresler.
+/// Aktarım `curl` ile: `--fail` (4xx/5xx hata), `--location` (GitHub Releases yönlendirmesi), `--max-filesize`
+/// (bildirilen boyut + 1; aşılırsa indirme durur) ve `--proto =http,https`. Yerel ağ (127.0.0.1/localhost) için
+/// vekil sunucu atlanır. Çıkış kodu/hata metni Türkçe tek cümleye çevrilir.
+#[derive(Debug, Clone)]
+pub struct HttpKaynak {
+    taban: String,
+}
+
+/// Saniye cinsinden en uzun indirme süresi (curl `--max-time`).
+const EN_UZUN_SURE_SN: u64 = 600;
+
+pub fn http_url_mu(s: &str) -> bool {
+    let k = s.trim().to_ascii_lowercase();
+    k.starts_with("http://") || k.starts_with("https://")
+}
+
+impl HttpKaynak {
+    /// `taban`: `https://sunucu/yol` (sondaki `/` önemsiz). `http://`/`https://` dışı reddedilir.
+    pub fn yeni(taban: &str) -> Result<HttpKaynak, KurHata> {
+        let t = taban.trim();
+        if !http_url_mu(t) || t.contains(char::is_whitespace) {
+            return Err(KurHata::Dogrulama(format!(
+                "Kaynak adresi http:// ya da https:// ile başlamalı ({t}). Öneri: kur.toml kaynak_url değerini düzeltin."
+            )));
+        }
+        Ok(HttpKaynak {
+            taban: t.trim_end_matches('/').to_string(),
+        })
+    }
+
+    pub fn taban(&self) -> &str {
+        &self.taban
+    }
+
+    fn tam_url(&self, url: &str) -> Result<String, KurHata> {
+        let u = url.trim();
+        if u.is_empty() || u.contains(char::is_whitespace) {
+            return Err(KurHata::Dogrulama(
+                "yayin.json url alanı boş ya da boşluk içeriyor. Öneri: yayını yeniden üretin."
+                    .into(),
+            ));
+        }
+        if http_url_mu(u) {
+            return Ok(u.to_string());
+        }
+        if u.contains("://") || u.starts_with('/') || u.starts_with('\\') {
+            return Err(KurHata::Dogrulama(format!(
+                "yayin.json url alanı ({u}) http(s) ya da tabana göreli olmalı. Öneri: yayını yeniden üretin."
+            )));
+        }
+        Ok(format!("{}/{}", self.taban, u))
+    }
+
+    fn komut(url: &str, en_fazla: u64) -> Command {
+        let mut c = Command::new("curl");
+        c.args([
+            "--fail",
+            "--silent",
+            "--show-error",
+            "--location",
+            "--max-redirs",
+            "5",
+        ])
+        .args(["--proto", "=http,https", "--proto-redir", "=http,https"])
+        .args(["--max-time", &EN_UZUN_SURE_SN.to_string()])
+        .args(["--max-filesize", &en_fazla.to_string()])
+        .args(["--user-agent", "taa-guncelle"]);
+        if yerel_mi(url) {
+            c.args(["--noproxy", "*"]);
+        }
+        c.arg(url);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            c.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: pencere uygulamasından çağrılınca konsol açılmaz
+        }
+        c
+    }
+
+    fn hata(url: &str, cikis: Option<i32>, stderr: &[u8]) -> KurHata {
+        let m = String::from_utf8_lossy(stderr)
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        let m = if m.is_empty() {
+            "ayrıntı yok".to_string()
+        } else {
+            m
+        };
+        match cikis {
+            Some(22) => KurHata::Yok(format!(
+                "{url} sunucuda bulunamadı ya da reddedildi ({m}). Öneri: kaynak adresini ve yayını denetleyin."
+            )),
+            Some(63) => KurHata::Dogrulama(format!(
+                "{url} yayin.json'daki boyuttan büyük ({m}). Öneri: yayını yeniden üretin."
+            )),
+            Some(6) | Some(7) | Some(28) | Some(35) | Some(60) => KurHata::Diger(format!(
+                "{url} adresine ulaşılamadı ({m}). Öneri: ağ bağlantısını denetleyip yeniden deneyin."
+            )),
+            Some(k) => KurHata::Diger(format!(
+                "{url} indirilemedi (curl çıkış {k}: {m}). Öneri: yeniden deneyin; sürerse adresi denetleyin."
+            )),
+            None => KurHata::Diger(format!(
+                "{url} indirilirken curl kesildi ({m}). Öneri: yeniden deneyin."
+            )),
+        }
+    }
+}
+
+fn yerel_mi(url: &str) -> bool {
+    let k = url.to_ascii_lowercase();
+    let govde = k
+        .trim_start_matches("http://")
+        .trim_start_matches("https://");
+    let sunucu = govde.split(['/', '?', '#']).next().unwrap_or("");
+    let sunucu = sunucu.rsplit('@').next().unwrap_or(sunucu);
+    sunucu.starts_with("127.0.0.1")
+        || sunucu.starts_with("localhost")
+        || sunucu.starts_with("[::1]")
+}
+
+fn curl_yok(e: std::io::Error) -> KurHata {
+    KurHata::Diger(format!(
+        "curl çalıştırılamadı ({e}). Öneri: Windows 10 1803+ ile gelir; yoksa curl'ü kurun ya da --kaynak ile yerel klasör verin."
+    ))
+}
+
+impl Kaynak for HttpKaynak {
+    fn yayin_oku(&self) -> Result<Vec<u8>, KurHata> {
+        let url = format!("{}/yayin.json", self.taban);
+        let c = HttpKaynak::komut(&url, MAKS_YAYIN_BAYT)
+            .output()
+            .map_err(curl_yok)?;
+        if !c.status.success() {
+            return Err(HttpKaynak::hata(&url, c.status.code(), &c.stderr));
+        }
+        if c.stdout.len() as u64 > MAKS_YAYIN_BAYT {
+            return Err(KurHata::Dogrulama(
+                "yayin.json çok büyük. Öneri: yayıncıdan yeniden isteyin.".into(),
+            ));
+        }
+        Ok(c.stdout)
+    }
+
+    fn getir(&self, url: &str, hedef: &Path, beklenen_boyut: u64) -> Result<u64, KurHata> {
+        let tam = self.tam_url(url)?;
+        if hedef.exists() {
+            return Err(KurHata::Dogrulama(format!(
+                "{} zaten var; üzerine yazılmaz. Öneri: indirilen/ klasörünü denetleyin.",
+                hedef.display()
+            )));
+        }
+        let c = HttpKaynak::komut(&tam, beklenen_boyut.saturating_add(1))
+            .arg("--output")
+            .arg(hedef)
+            .output()
+            .map_err(curl_yok)?;
+        if !c.status.success() {
+            return Err(HttpKaynak::hata(&tam, c.status.code(), &c.stderr));
+        }
+        let n = fs::metadata(hedef).map(|m| m.len()).map_err(|e| {
+            KurHata::Diger(format!(
+                "{tam} indirildi ama dosya okunamadı ({e}). Öneri: indirilen/ klasörünün izinlerini denetleyin."
+            ))
+        })?;
+        if n > beklenen_boyut {
+            return Err(KurHata::Dogrulama(format!(
+                "{tam} yayin.json'daki boyuttan ({beklenen_boyut} bayt) büyük. Öneri: yayını yeniden üretin."
             )));
         }
         Ok(n)

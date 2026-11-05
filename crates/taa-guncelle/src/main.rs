@@ -1,14 +1,18 @@
 // Sahip: Yusuf. yazan: [Claude#taa-paket-T3 2026-11-05]
-//! `taa-guncelle kontrol|uygula [--json] [--kaynak <klasor>] [--kanal <ad>]` (docs/T3-TASARIM.md §3).
-//! Kaynak: `--kaynak`, yoksa `<kök>/kur.toml` içindeki `kaynak_klasoru`. Kök: TAA_KOK (taa-kur ile aynı).
+//! `taa-guncelle kontrol|uygula [--json] [--kaynak <klasor|url>] [--kanal <ad>] [--paket <ad>]` (docs/T3-TASARIM.md §3).
+//! Kaynak: `--kaynak`; yoksa `<kök>/kur.toml` içindeki `kaynak_url`, o da yoksa `kaynak_klasoru`.
+//! `http://`/`https://` ile başlayan değer HTTP kaynağıdır (curl ile indirir). Kök: TAA_KOK (taa-kur ile aynı).
+//! `--paket <ad>`: yalnız o paket (pencere "Güncelle" düğmesi).
 //! Çıkış kodları taa-kur ile aynı: 0 tamam, 2 doğrulama/kullanım, 3 çözüm, 4 yok, 5 bozuk, 6 kilitli, 1 diğer;
 //! `uygula`da en az bir paket hatalıysa 1.
 
 use std::process::ExitCode;
-use taa_guncelle::{kontrol, uygula, KontrolSonuc, YerelKaynak};
+use taa_guncelle::{
+    http_url_mu, kontrol_paket, uygula_paket, HttpKaynak, Kaynak, KontrolSonuc, YerelKaynak,
+};
 use taa_kur::{kur_ayari_oku, Kur, KurHata};
 
-const KULLANIM: &str = "Kullanım: taa-guncelle <kontrol|uygula> [--json] [--kaynak <klasor>] [--kanal <ad>]. Öneri: ayrıntı için docs/T3-TASARIM.md.";
+const KULLANIM: &str = "Kullanım: taa-guncelle <kontrol|uygula> [--json] [--kaynak <klasor|url>] [--kanal <ad>] [--paket <ad>]. Öneri: ayrıntı için docs/T3-TASARIM.md.";
 
 fn main() -> ExitCode {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
@@ -66,20 +70,20 @@ fn calistir(args: &[String], json: bool) -> Result<u8, KurHata> {
     if !matches!(komut.as_str(), "kontrol" | "uygula") {
         return Err(kullanim(&format!("Bilinmeyen komut: {komut}.")));
     }
-    let (mut kaynak_arg, mut kanal_arg) = (None, None);
+    let (mut kaynak_arg, mut kanal_arg, mut paket_arg) = (None, None, None);
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
-            "--kaynak" | "--kanal" => {
+            "--kaynak" | "--kanal" | "--paket" => {
                 let ad = args[i].clone();
                 i += 1;
                 let Some(d) = args.get(i) else {
                     return Err(kullanim(&format!("{ad} için değer eksik.")));
                 };
-                if ad == "--kaynak" {
-                    kaynak_arg = Some(d.clone());
-                } else {
-                    kanal_arg = Some(d.clone());
+                match ad.as_str() {
+                    "--kaynak" => kaynak_arg = Some(d.clone()),
+                    "--kanal" => kanal_arg = Some(d.clone()),
+                    _ => paket_arg = Some(d.clone()),
                 }
             }
             x => return Err(kullanim(&format!("Bilinmeyen bağımsız değişken: {x}."))),
@@ -89,12 +93,20 @@ fn calistir(args: &[String], json: bool) -> Result<u8, KurHata> {
     let kur = Kur::ortamdan()?;
     let ayar = kur_ayari_oku(kur.kok())?;
     let kanal = kanal_arg.unwrap_or_else(|| ayar.kanal().to_string());
-    let klasor = kaynak_arg.or(ayar.kaynak_klasoru.clone()).ok_or_else(|| {
-        kullanim("Güncelleme kaynağı belirtilmedi: --kaynak verin ya da kur.toml'a kaynak_klasoru yazın.")
-    })?;
-    let kaynak = YerelKaynak::yeni(klasor);
+    let deger = kaynak_arg
+        .or(ayar.kaynak_url.clone())
+        .or(ayar.kaynak_klasoru.clone())
+        .ok_or_else(|| {
+            kullanim("Güncelleme kaynağı belirtilmedi: --kaynak verin ya da kur.toml'a kaynak_url / kaynak_klasoru yazın.")
+        })?;
+    let kaynak: Box<dyn Kaynak> = if http_url_mu(&deger) {
+        Box::new(HttpKaynak::yeni(&deger)?)
+    } else {
+        Box::new(YerelKaynak::yeni(deger))
+    };
+    let paket = paket_arg.as_deref();
     if komut == "kontrol" {
-        let k = kontrol(&kur, &kaynak, &kanal)?;
+        let k = kontrol_paket(&kur, kaynak.as_ref(), &kanal, paket)?;
         if json {
             println!("{}", serde_json::to_value(&k).unwrap_or_default());
         } else {
@@ -102,7 +114,7 @@ fn calistir(args: &[String], json: bool) -> Result<u8, KurHata> {
         }
         return Ok(0);
     }
-    let s = uygula(&kur, &kaynak, &kanal)?;
+    let s = uygula_paket(&kur, kaynak.as_ref(), &kanal, paket)?;
     if json {
         println!("{}", serde_json::to_value(&s).unwrap_or_default());
     } else {
