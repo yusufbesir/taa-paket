@@ -56,6 +56,14 @@ pub struct TeslimDegisti {
     pub tarih: String,
 }
 
+/// Telefonla atılan imza: kim (eşleşmiş telefonun kullanıcısı), rol (usta, teslim...), tarih.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Imza {
+    pub kim: String,
+    pub rol: String,
+    pub tarih: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Fis {
     pub no: String,
@@ -94,6 +102,11 @@ pub struct Fis {
     #[serde(default)]
     pub teslim_degisiklikleri: Vec<TeslimDegisti>,
     pub durum: Durum,
+    /// Hazır ürünün asılı olduğu stant/raf kodu (QR okutularak yazılır).
+    #[serde(default)]
+    pub raf: String,
+    #[serde(default)]
+    pub imzalar: Vec<Imza>,
 }
 
 fn varsayilan_saat() -> String {
@@ -253,6 +266,16 @@ enum Kayit {
         degisiklik: TeslimDegisti,
         saat: String,
     },
+    Raf {
+        no: String,
+        raf: String,
+        kim: String,
+        tarih: String,
+    },
+    Imza {
+        no: String,
+        imza: Imza,
+    },
 }
 
 pub struct Defter<'a> {
@@ -298,9 +321,77 @@ impl Defter<'_> {
                         x.teslim_degisiklikleri.push(degisiklik);
                     }
                 }
+                Kayit::Raf { no, raf, .. } => {
+                    if let Some(x) = f.iter_mut().find(|x| x.no == no) {
+                        x.raf = raf;
+                    }
+                }
+                Kayit::Imza { no, imza } => {
+                    if let Some(x) = f.iter_mut().find(|x| x.no == no) {
+                        x.imzalar.push(imza);
+                    }
+                }
             }
         }
         Ok(f)
+    }
+
+    /// Ürünün stant/raf yerini yazar (QR okutulunca). Eski yer silinmez, defterde kalır.
+    pub fn raf_ata(&self, no: &str, raf: &str, kim: &str, tarih: &str) -> Result<(), String> {
+        kapali()?;
+        if !taa_ayar::ozellik_acik("fis-raf", true) {
+            return Err(taa_ayar::kapali_mesaji("fis-raf"));
+        }
+        let raf = raf.trim().to_uppercase();
+        if raf.is_empty()
+            || raf.chars().count() > 20
+            || !raf
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '-' || c == ' ')
+        {
+            return Err("stant/raf kodu 1-20 harf, rakam ya da tire olmalı (örn. A-12)".into());
+        }
+        let f = self.bul(no)?.ok_or("fiş yok")?;
+        if matches!(f.durum, Durum::Teslim | Durum::Iptal) {
+            return Err("teslim edilmiş ya da iptal fişe raf yazılamaz".into());
+        }
+        let s = serde_json::to_string(&Kayit::Raf {
+            no: no.into(),
+            raf,
+            kim: kim.trim().into(),
+            tarih: tarih.into(),
+        })
+        .map_err(|e| e.to_string())?;
+        taa_dosya::satir_ekle(self.yol, &s).map_err(|e| e.to_string())
+    }
+
+    /// Telefondaki kullanıcı adına imza atar (ör. usta işi bitirince). Aynı kişi aynı rolde bir kez imzalar.
+    pub fn imzala(&self, no: &str, kim: &str, rol: &str, tarih: &str) -> Result<(), String> {
+        kapali()?;
+        if !taa_ayar::ozellik_acik("fis-imza", true) {
+            return Err(taa_ayar::kapali_mesaji("fis-imza"));
+        }
+        let (kim, rol) = (kim.trim(), rol.trim());
+        if kim.is_empty() || !["usta", "teslim-eden", "teslim-alan"].contains(&rol) {
+            return Err("imza: kullanıcı ve rol (usta, teslim-eden, teslim-alan) gerekli".into());
+        }
+        let f = self.bul(no)?.ok_or("fiş yok")?;
+        if f.durum == Durum::Iptal {
+            return Err("iptal fiş imzalanamaz".into());
+        }
+        if f.imzalar.iter().any(|i| i.kim == kim && i.rol == rol) {
+            return Err(format!("{kim} bu fişi '{rol}' olarak zaten imzaladı"));
+        }
+        let s = serde_json::to_string(&Kayit::Imza {
+            no: no.into(),
+            imza: Imza {
+                kim: kim.into(),
+                rol: rol.into(),
+                tarih: tarih.into(),
+            },
+        })
+        .map_err(|e| e.to_string())?;
+        taa_dosya::satir_ekle(self.yol, &s).map_err(|e| e.to_string())
     }
 
     pub fn bul(&self, no: &str) -> Result<Option<Fis>, String> {
@@ -365,6 +456,8 @@ impl Defter<'_> {
             kargo_telefon,
             teslim_degisiklikleri: Vec::new(),
             durum: Durum::Bekliyor,
+            raf: String::new(),
+            imzalar: Vec::new(),
         };
         let s = serde_json::to_string(&Kayit::Fis(fis.clone())).map_err(|e| e.to_string())?;
         taa_dosya::satir_ekle(self.yol, &s).map_err(|e| e.to_string())?;
@@ -579,6 +672,17 @@ pub fn duz_metin_nusha(f: &Fis, genislik: usize, nusha: &str) -> String {
     if !f.usta.is_empty() {
         ekle(&format!("Usta: {}", f.usta));
     }
+    if !f.raf.is_empty() {
+        ekle(&format!("Raf/Stant: {}", f.raf));
+    }
+    for i in &f.imzalar {
+        ekle(&format!(
+            "İmza ({}): {} {}",
+            i.rol,
+            i.kim,
+            gun_metni(&i.tarih)
+        ));
+    }
     if f.kargo {
         ekle("*** KARGO YAPILACAK ***");
         ekle(&format!("Alıcı: {}", f.kargo_ad));
@@ -657,18 +761,27 @@ pub fn escpos(f: &Fis, genislik: usize) -> Vec<u8> {
 
 /// Kâğıt fişteki düzen: 2 terzihane nüshası + 1 müşteri nüshası, her biri ayrı kesilir.
 pub fn escpos_nushalar(f: &Fis, genislik: usize) -> Vec<u8> {
+    escpos_nushalar_qr(f, genislik, &f.no)
+}
+
+/// Aynısı; QR içeriği `qr` (ör. `http://sunucu:8787/telefon#fis=F-...`: telefon kamerası fişi doğrudan açar).
+pub fn escpos_nushalar_qr(f: &Fis, genislik: usize, qr: &str) -> Vec<u8> {
     let mut b = Vec::new();
     for etiket in [
         "TERZİHANE NÜSHASI 1",
         "TERZİHANE NÜSHASI 2",
         "MÜŞTERİ NÜSHASI",
     ] {
-        b.extend(escpos_nusha(f, genislik, etiket));
+        b.extend(escpos_nusha_qr(f, genislik, etiket, qr));
     }
     b
 }
 
 pub fn escpos_nusha(f: &Fis, genislik: usize, nusha: &str) -> Vec<u8> {
+    escpos_nusha_qr(f, genislik, nusha, &f.no)
+}
+
+pub fn escpos_nusha_qr(f: &Fis, genislik: usize, nusha: &str, qr: &str) -> Vec<u8> {
     let mut b = vec![0x1B, 0x40, 0x1B, 0x74, 13]; // başlat, kod sayfası 13 = CP857
     b.extend(duz_metin_nusha(f, genislik, nusha).chars().map(cp857));
     b.extend(
@@ -677,7 +790,7 @@ pub fn escpos_nusha(f: &Fis, genislik: usize, nusha: &str) -> Vec<u8> {
             .map(cp857),
     );
     // QR (model 2, boyut 6, düzeltme L)
-    let veri = f.no.as_bytes();
+    let veri = qr.as_bytes();
     b.extend([0x1B, 0x61, 1]); // ortala
     b.extend([0x1D, 0x28, 0x6B, 4, 0, 0x31, 0x41, 0x32, 0]);
     b.extend([0x1D, 0x28, 0x6B, 3, 0, 0x31, 0x43, 6]);
@@ -751,6 +864,33 @@ mod testler {
 
     fn yol() -> std::path::PathBuf {
         taa_dosya::gecici_klasor().unwrap().join("fis.jsonl")
+    }
+
+    #[test]
+    fn raf_ve_imza() {
+        let dir = taa_dosya::gecici_klasor().unwrap();
+        let y = dir.join("d.jsonl");
+        let d = Defter { yol: &y };
+        let f = d.ekle(girdi()).unwrap();
+        assert!(d.raf_ata(&f.no, "", "Ali", "2026-11-05").is_err());
+        assert!(d.raf_ata("yok", "A-1", "Ali", "2026-11-05").is_err());
+        d.raf_ata(&f.no, "a-12", "Ali", "2026-11-05").unwrap();
+        d.raf_ata(&f.no, "B-3", "Ali", "2026-11-06").unwrap();
+        d.imzala(&f.no, "Usta Ahmet", "usta", "2026-11-05").unwrap();
+        assert!(d.imzala(&f.no, "Usta Ahmet", "usta", "2026-11-05").is_err());
+        assert!(d.imzala(&f.no, "", "usta", "2026-11-05").is_err());
+        assert!(d.imzala(&f.no, "X", "patron", "2026-11-05").is_err());
+        let g = d.bul(&f.no).unwrap().unwrap();
+        assert_eq!(g.raf, "B-3");
+        assert_eq!(g.imzalar.len(), 1);
+        let m = duz_metin(&g, 42);
+        assert!(m.contains("Raf/Stant: B-3") && m.contains("İmza (usta): Usta Ahmet"));
+        let q = escpos_nushalar_qr(&g, 42, "http://x/telefon#fis=F");
+        assert!(q.windows(22).any(|w| w == b"http://x/telefon#fis=F"));
+        for st in [Durum::Terzihanede, Durum::Hazir, Durum::Teslim] {
+            d.durum_ata(&f.no, st, "2026-11-06").unwrap();
+        }
+        assert!(d.raf_ata(&f.no, "C-1", "Ali", "2026-11-07").is_err());
     }
 
     #[test]
@@ -840,6 +980,8 @@ mod testler {
             no: "F-20261104-001".into(),
             tarih: "2026-11-04".into(),
             durum: Durum::Bekliyor,
+            raf: String::new(),
+            imzalar: Vec::new(),
             musteri: "Ayşe Çelik".into(),
             telefon: "05321234567".into(),
             kalemler: girdi().kalemler,

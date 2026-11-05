@@ -265,9 +265,9 @@ impl Uygulama {
             .as_deref()
             .and_then(|h| h.strip_prefix("Bearer "))
             .unwrap_or("");
-        if self.cihazlar().dogrula(token).is_none() {
+        let Some(cihaz) = self.cihazlar().dogrula(token) else {
             return Yanit::hata(401, "yetkisiz telefon");
-        }
+        };
         let defter_yolu = self.fis_yolu();
         let d = Defter { yol: &defter_yolu };
         match (i.metot.as_str(), parca) {
@@ -328,6 +328,35 @@ impl Uygulama {
                 Ok(None) => Yanit::hata(404, "fiş yok"),
                 Err(e) => Yanit::hata(500, &e),
             },
+            ("GET", ["api", "fis", no]) => match d.bul(no) {
+                Ok(Some(f)) => Yanit::json(200, json!(f)),
+                Ok(None) => Yanit::hata(404, "fiş yok"),
+                Err(e) => Yanit::hata(500, &e),
+            },
+            ("POST", ["api", "fis", no, "raf"]) => {
+                let v: serde_json::Value = serde_json::from_slice(&i.govde).unwrap_or_default();
+                match d.raf_ata(
+                    no,
+                    v["raf"].as_str().unwrap_or(""),
+                    &cihaz.ad,
+                    &tarih_iso(self.simdi()),
+                ) {
+                    Ok(()) => Yanit::json(200, json!({ "tamam": true })),
+                    Err(e) => Yanit::hata(422, &e),
+                }
+            }
+            ("POST", ["api", "fis", no, "imza"]) => {
+                let v: serde_json::Value = serde_json::from_slice(&i.govde).unwrap_or_default();
+                match d.imzala(
+                    no,
+                    &cihaz.ad,
+                    v["rol"].as_str().unwrap_or("usta"),
+                    &tarih_iso(self.simdi()),
+                ) {
+                    Ok(()) => Yanit::json(200, json!({ "tamam": true })),
+                    Err(e) => Yanit::hata(422, &e),
+                }
+            }
             ("POST", ["api", "fis", no, "foto"]) => {
                 if !taa_ayar::ozellik_acik("foto-eki", true) {
                     return Yanit::hata(409, &taa_ayar::kapali_mesaji("foto-eki"));
@@ -386,7 +415,12 @@ impl Uygulama {
                 let baytlar = if nusha["nusha"].as_u64() == Some(1) {
                     taa_fis::escpos(&f, 42)
                 } else {
-                    taa_fis::escpos_nushalar(&f, 42)
+                    let qr = format!(
+                        "{}/telefon#fis={}",
+                        self.taban_url.trim_end_matches('/'),
+                        f.no
+                    );
+                    taa_fis::escpos_nushalar_qr(&f, 42, &qr)
                 };
                 match yaziciya_yaz(yazici, &baytlar) {
                     Ok(()) => Yanit::json(200, json!({ "tamam": true })),
@@ -723,6 +757,31 @@ mod testler {
         assert!(metin.contains("Şükrü Ğüleç İÖ ığöçş"), "{metin}");
         assert!(metin.contains("TERZİHANE NÜSHASI 1") && metin.contains("MÜŞTERİ NÜSHASI"));
         assert!(!metin.contains('?') || !metin.contains("Müşteri Adı: ?"));
+    }
+
+    #[test]
+    fn raf_imza_ve_qr_adresi() {
+        let u = uyg();
+        let t = esles(&u);
+        let y = u.isle(&ist("POST", "/api/fis", Some(&t), FIS, false));
+        let no = serde_json::from_slice::<serde_json::Value>(&y.govde).unwrap()["no"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let p = |yol: &str, g: &str| u.isle(&ist("POST", yol, Some(&t), g, false)).kod;
+        assert_eq!(p(&format!("/api/fis/{no}/raf"), r#"{"raf":"a-12"}"#), 200);
+        assert_eq!(p(&format!("/api/fis/{no}/raf"), r#"{"raf":""}"#), 422);
+        assert_eq!(p(&format!("/api/fis/{no}/imza"), r#"{"rol":"usta"}"#), 200);
+        assert_eq!(p(&format!("/api/fis/{no}/imza"), r#"{"rol":"usta"}"#), 422);
+        let g = u.isle(&ist("GET", &format!("/api/fis/{no}"), Some(&t), "", false));
+        let j: serde_json::Value = serde_json::from_slice(&g.govde).unwrap();
+        assert_eq!(j["raf"], "A-12");
+        assert_eq!(j["imzalar"][0]["kim"], "Ayşe'nin telefonu");
+        assert_eq!(
+            u.isle(&ist("GET", "/api/fis/F-yok", Some(&t), "", false))
+                .kod,
+            404
+        );
     }
 
     #[test]
