@@ -1,0 +1,13 @@
+# Sahip: Yusuf. yazan: [Claude#taa-paket-T1 2026-11-05]
+# taa-ipc modül tanımı: yetenekler programlara aittir, bu modül yalnız taşır.
+ad = "taa-ipc"
+surum = "0.1.0"
+arayuz = "1"
+gerektirir = { "taa-dosya" = "1" }
+ozellikler = ["ipc", "gelen-kutusu"]
+program = "ortak"
+sunar = []
+ister = []
+veri_sahibi = ["ipc-kayit"]
+veri_okur = []
+ayar_alani = "moduller.taa-ipc"

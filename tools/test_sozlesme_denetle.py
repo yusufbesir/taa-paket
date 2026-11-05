@@ -124,6 +124,33 @@ class Testler(Calisma):
         self.crate("taa-a", program="ortak")
         self.assertFalse(self.hata_var("başka programın"))
 
+    @staticmethod
+    def _cargo(ad, *bagimli):
+        d = "".join(f'{b} = {{ path = "../{b}" }}\n' for b in bagimli)
+        return f'[package]\nname = "{ad}"\nversion = "0.1.0"\n[dependencies]\n{d}'
+
+    def test_gerektirir_dongusu(self):
+        self.crate("taa-a", gerektirir='{ "taa-b" = "1" }', cargo=self._cargo("taa-a", "taa-b"))
+        self.crate("taa-b", gerektirir='{ "taa-c" = "1" }', cargo=self._cargo("taa-b", "taa-c"))
+        self.crate("taa-c", gerektirir='{ "taa-a" = "1" }', cargo=self._cargo("taa-c", "taa-a"))
+        h = [x for x in self.sonuc()["hatalar"] if "döngü" in x]
+        self.assertEqual(h, ["[paket] gerektirir grafında döngü: taa-a -> taa-b -> taa-c -> taa-a"])
+
+    def test_dongu_yok_elmas(self):
+        self.crate("taa-a")
+        self.crate("taa-b", gerektirir='{ "taa-a" = "1" }', cargo=self._cargo("taa-b", "taa-a"))
+        self.crate("taa-c", gerektirir='{ "taa-a" = "1" }', cargo=self._cargo("taa-c", "taa-a"))
+        self.crate("taa-d", gerektirir='{ "taa-b" = "1", "taa-c" = "1" }', cargo=self._cargo("taa-d", "taa-b", "taa-c"))
+        self.assertFalse(self.hata_var("döngü"))
+        self.assertTrue(self.sonuc()["basarili"], self.sonuc()["hatalar"])
+
+    def test_arayuz_ana_surum(self):
+        self.crate("taa-a", arayuz="2")
+        self.crate("taa-b", gerektirir='{ "taa-a" = "1" }', cargo=self._cargo("taa-b", "taa-a"))
+        self.assertTrue(self.hata_var("gerektirir.taa-a arayüz ana sürümü (1) hedefin arayuz değeriyle (2) aynı değil"))
+        self.crate("taa-b", gerektirir='{ "taa-a" = "2" }', cargo=self._cargo("taa-b", "taa-a"))
+        self.assertFalse(self.hata_var("arayüz ana sürümü"))
+
     def test_cikis_kodu_ve_json(self):
         self.crate("taa-a")
         tampon = io.StringIO()

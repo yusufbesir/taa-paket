@@ -594,6 +594,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "taa-ipc"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "taa-dosya",
+]
+
+[[package]]
 name = "taa-kasa"
 version = "0.1.0"
 dependencies = [
@@ -619,6 +628,17 @@ name = "taa-kombin"
 version = "0.1.0"
 dependencies = [
  "taa-ayar",
+]
+
+[[package]]
+name = "taa-kur"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+ "taa-ayar",
+ "taa-dosya",
 ]
 
 [[package]]

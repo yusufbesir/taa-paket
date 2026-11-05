@@ -1,0 +1,24 @@
+# taa-kur: TAA kurulum yöneticisi (kütüphane + CLI). Sahip: Yusuf. yazan: [Claude#taa-paket-T1 2026-11-05]
+# Değişiklik: Yusuf'un kuralları çerçevesinde; bağımlılık eklemek Yusuf'a sorularak.
+[package]
+name = "taa-kur"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "TAA kurulum yöneticisi: paket kurma, sürüm seçme, geri dönme, doğrulama"
+
+[lib]
+name = "taa_kur"
+path = "src/lib.rs"
+
+[[bin]]
+name = "taa-kur"
+path = "src/main.rs"
+
+[dependencies]
+taa-ayar = { path = "../taa-ayar" }
+taa-dosya = { path = "../taa-dosya" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"

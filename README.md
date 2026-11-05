@@ -29,7 +29,8 @@ TAA Paketi çekirdek deposu: TaaDön ve diğer TAA programlarının paylaştığ
 | taa-subesor | var | TaaŞubeSor: şubeler arası beden/ürün sorusu ve yanıtları (ağ taşıması sonraki aşama) |
 | taa-ayarlar | planlı | Ortak ayar yönetimi (dosya/arayüz) |
 | taa-kimlik | planlı | Teknik kimlikler |
-| taa-ipc | planlı | Süreçler arası iletişim |
+| taa-kur | var | Kurulum yöneticisi (T1): klasör paketi kur/sec/geri-don/kaldir/dogrula, SHA256; `eski\`ye taşır, silmez; veri alanına dokunmaz |
+| taa-ipc | var | Programlar arası iletişim (T1): dosya tabanlı gelen kutusu, yetenek kaydı, zarf ve olay günlüğü; adlandırılmış boru T2 |
 | taa-kod | planlı | Kodlama yardımcıları |
 | taa-etiket | planlı | Etiketleme |
 | taa-veri | planlı | Veri katmanı |

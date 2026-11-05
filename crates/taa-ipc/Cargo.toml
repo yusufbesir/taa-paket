@@ -1,0 +1,17 @@
+# Sahip: Yusuf. yazan: [Claude#taa-paket-T1 2026-11-05]
+# taa-ipc: programlar arası iletişim (zarf, taşıyıcı, dosya tabanlı gelen kutusu). Bağımlılık eklemek Yusuf'a sorularak.
+[package]
+name = "taa-ipc"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "TAA programlar arası iletişim: zarf, taşıyıcı soyutlaması, dosya tabanlı GelenKutusu"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+taa-dosya = { path = "../taa-dosya" }
