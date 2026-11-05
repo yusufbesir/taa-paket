@@ -197,7 +197,7 @@ fn yurutucu_bozuk_akisi_yakalar() {
         yurut(&[0x1D, 0x76, 0x30, 0, 72, 0, 10, 0, 1, 2]).is_err(),
         "kesik bitmap"
     );
-    let tasan: Vec<u8> = std::iter::repeat_n(b'x', 49).chain([b'\n']).collect();
+    let tasan: Vec<u8> = std::iter::repeat_n(b'x', 49).chain(*b"\n").collect();
     assert!(yurut(&tasan).is_err(), "49 sütun Font A'ya sığmaz");
     assert!(yurut(b"abc").is_err(), "LF'siz son satır");
 }
