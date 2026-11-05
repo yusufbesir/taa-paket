@@ -1,4 +1,4 @@
-# taa-donustur modül tanımı (TAA paket planı A4). Sahip: Yusuf (TaaDön projesi).
+# taa-donustur modül tanımı (TAA paket planı A4). Sahip: Yusuf (TaaDön projesi). güncelleme: [Claude#taa-paket-T0 2026-11-05]
 # yazan: [Claude#taadon-rust-asama2 2026-11-04]. Değişiklik: Yusuf'un kuralları çerçevesinde; surum Cargo.toml version ile aynı tutulur.
 # scripts/cekirdek-hazirla.js "surum" alanını okuyup vendor/cekirdek/SURUM.txt'e yazar.
 ad = "taa-donustur"
@@ -7,4 +7,9 @@ arayuz = "1"
 gerektirir = {}
 ozellikler = ["arsiv", "imza"]
 program = "taadon"
+sunar = ["arsiv.ac@1", "arsiv.olustur@1", "arsiv.sikistir@1", "imza.denetle@1"]
+ister = []
+veri_sahibi = ["belgeler"]
+veri_okur = []
+ayar_alani = "programlar.taadon"
 butce = { acilis_ms = 800 }

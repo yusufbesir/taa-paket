@@ -1,7 +1,12 @@
-# taa-telegram modül tanımı. Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-05].
+# taa-telegram modül tanımı. Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-05]. güncelleme: [Claude#taa-paket-T0 2026-11-05]
 ad = "taa-telegram"
 surum = "0.1.0"
 arayuz = "1"
-gerektirir = { "taa-ayar" = "1", "taa-fis" = "1", "taa-bildirim" = "1" }
+gerektirir = { "taa-ayar" = "1", "taa-dosya" = "1", "taa-fis" = "1", "taa-bildirim" = "1", "taa-takip" = "1" }
 ozellikler = ["telegram-bot"]
-program = "taatelegram"
+program = "taafis"  # T0 kararı: TaaFiş ailesi tek program; ayrı program için taa-fis-sunucu Cargo features (T2)
+sunar = ["telegram.yanitla@1"]
+ister = ["fis.guncelle@1", "bildirim.gonder@1", "takip.raporla@1"]
+veri_sahibi = ["telegram-ayar"]
+veri_okur = ["fis-defteri"]
+ayar_alani = "programlar.taatelegram"

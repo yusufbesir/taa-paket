@@ -1,7 +1,12 @@
-# taa-katalog modül tanımı. Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-04].
+# taa-katalog modül tanımı. Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-04]. güncelleme: [Claude#taa-paket-T0 2026-11-05]
 ad = "taa-katalog"
 surum = "0.1.0"
 arayuz = "1"
 gerektirir = { "taa-nebim" = "1", "taa-dosya" = "1", "taa-ayar" = "1" }
 ozellikler = ["katalog", "fiyat-fark"]
 program = "ortak"
+sunar = ["urunler.ara@1", "urunler.kur@1", "fiyat.karsilastir@1"]
+ister = []
+veri_sahibi = ["urunler"]
+veri_okur = ["nebim-aktarim"]
+ayar_alani = "moduller.taa-katalog"

@@ -1,7 +1,12 @@
-# taa-fis-sunucu modül tanımı. Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-04].
+# taa-fis-sunucu modül tanımı. Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-04]. güncelleme: [Claude#taa-paket-T0 2026-11-05]
 ad = "taa-fis-sunucu"
 surum = "0.1.0"
 arayuz = "1"
-gerektirir = { "taa-ayar" = "1", "taa-dosya" = "1", "taa-fis" = "1", "taa-terzi" = "1" }
+gerektirir = { "taa-ayar" = "1", "taa-dosya" = "1", "taa-fis" = "1", "taa-terzi" = "1", "taa-bildirim" = "1", "taa-telegram" = "1", "taa-takip" = "1" }
 ozellikler = ["fis-sunucu", "telefon-eslestirme"]
 program = "taafis"
+sunar = ["telefon.eslestir@1", "foto.ekle@1"]
+ister = ["bildirim.gonder@1", "bildirim.listele@1", "telegram.yanitla@1", "takip.raporla@1"]
+veri_sahibi = ["cihazlar", "fis-fotolari", "aydinlatma"]
+veri_okur = ["fis-defteri", "bildirim-kuyrugu", "zorluk"]
+ayar_alani = "programlar.taafis.sunucu"
