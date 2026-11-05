@@ -73,7 +73,15 @@ async function liste(){try{const l=await api('GET','/api/fisler');ana.innerHTML=
  ana.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>fotoSec(b.dataset.f));ana.querySelectorAll('[data-y]').forEach(b=>b.onclick=async()=>{try{await api('POST','/api/fis/'+b.dataset.y+'/yazdir');mesaj('Yazıcıya gönderildi')}catch(e){mesaj(e.message,1)}});
  ana.querySelectorAll('[data-t]').forEach(b=>b.onclick=async()=>{const y=prompt('Yeni teslim tarihi (YYYY-AA-GG)');if(!y)return;const sa=prompt('Yeni teslim saati (SS:DD)','17:00')||'17:00';const n=prompt('Neden değişti?');if(!n)return;try{await api('POST','/api/fis/'+b.dataset.t+'/teslim',{yeni:y,saat:sa,neden:n});liste()}catch(e){mesaj(e.message,1)}})
  ana.querySelectorAll('[data-d]').forEach(b=>b.onclick=async()=>{try{await api('POST','/api/fis/'+b.dataset.n+'/durum',{durum:b.dataset.d});liste()}catch(e){mesaj(e.message,1)}})}catch(e){mesaj(e.message,1)}}
-if(tok){ana.append(form());kuyrukGonder()}else eslestir();
+function fisSayfasi(no){ana.innerHTML='<h1>Fiş '+esc(no)+'</h1><div id="msg"></div><div id="fk"></div>';
+ const yukle=async()=>{try{const f=await api('GET','/api/fis/'+no);$('#fk').innerHTML='<div class="fis"><b>'+esc(f.musteri)+'</b><br>'+f.kalemler.map(k=>esc(k.urun+' - '+k.islem)).join('<br>')+'<br>Teslim '+esc(f.teslim)+' '+esc(f.teslim_saati||'')+' · '+esc(f.durum)+'<br>Raf: <b>'+esc(f.raf||'—')+'</b><br>İmzalar: '+esc((f.imzalar||[]).map(i=>i.kim+' ('+i.rol+')').join(', ')||'—')+'</div>'+
+  '<label>Stant / raf kodu (örn. A-12)</label><input id="raf"><button id="rafk">Rafa yerleştirdim</button><button id="imz">İmzala (ben yaptım)</button><button class="ikinci" id="hz">Hazır olarak işaretle</button><button class="ikinci" id="yeni">← Yeni fiş</button>';
+  $('#rafk').onclick=async()=>{try{await api('POST','/api/fis/'+no+'/raf',{raf:$('#raf').value});mesaj('Raf kaydedildi');yukle()}catch(e){mesaj(e.message,1)}};
+  $('#imz').onclick=async()=>{try{await api('POST','/api/fis/'+no+'/imza',{rol:'usta'});mesaj('İmzalandı');yukle()}catch(e){mesaj(e.message,1)}};
+  $('#hz').onclick=async()=>{try{await api('POST','/api/fis/'+no+'/durum',{durum:'hazir'});mesaj('Hazır işaretlendi');yukle()}catch(e){mesaj(e.message,1)}};
+  $('#yeni').onclick=()=>{history.replaceState(null,'','/telefon');ana.innerHTML='';ana.append(form())}}catch(e){mesaj(e.message,1)}};yukle()}
+const fisNo=(location.hash.match(/^#fis=([A-Za-z0-9-]+)$/)||[])[1];
+if(tok&&fisNo){fisSayfasi(fisNo);kuyrukGonder()}else if(tok){ana.append(form());kuyrukGonder()}else eslestir();
 </script></body></html>"##;
 
 pub fn kacis(s: &str) -> String {
