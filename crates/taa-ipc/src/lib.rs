@@ -1,5 +1,6 @@
 // Sahip: Yusuf. yazan: [Claude#taa-paket-T1 2026-11-05]
-//! taa-ipc: programlar arası iletişim (T1: dosya tabanlı `GelenKutusu`).
+//! taa-ipc: programlar arası iletişim (T1: dosya tabanlı `GelenKutusu`; T3: Windows adlandırılmış
+//! boru taşıyıcısı `BoruTasiyici`, dosyaya yedekli).
 //!
 //! Zarf modeli, `Tasiyici` soyutlaması ve dosya tabanlı uygulama. Yetenekler programlara aittir;
 //! bu crate yalnız taşır. Hiçbir dosya silinmez: işlenen zarflar `islenen/` altına taşınır.
@@ -12,6 +13,18 @@
 //! <kok>/olaylar/<YYYYMMDD>.jsonl    eklemeli olay günlüğü
 //! <kok>/gunluk.jsonl                bozuk dosya vb. günlüğü
 //! ```
+
+#[cfg(windows)]
+mod boru;
+mod boru_ortak;
+
+#[cfg(windows)]
+pub use boru::{BoruTasiyici, WindowsBoru};
+pub use boru_ortak::{
+    acl_sddl, boru_adi, boru_icin_uygun, cerceve_oku, cerceve_yaz, kullanici_kimligi_temizle,
+    sunucu_isle, BoruHatasi, BoruUcu, CerceveHata, Onay, Sure, YedekliTasiyici,
+    BORU_CERCEVE_SINIRI, BORU_ZAMAN_ASIMI,
+};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -351,7 +364,7 @@ pub fn simdi_rfc3339() -> String {
     zaman_biciminde(simdi_saniye()).0
 }
 
-/// Taşıyıcı soyutlaması. T1: `GelenKutusu`; adlandırılmış boru T2'de aynı arayüzle.
+/// Taşıyıcı soyutlaması. T1: `GelenKutusu`; T3: Windows'ta `BoruTasiyici` (aynı arayüz, dosyaya yedekli).
 ///
 /// Tasarım §2.1'den sapma: dönüş tipleri açıkça verildi; `olay_yayinla` olayın kaynağı için
 /// `kaynak` alır; yanıtı almak için `yanit_al` eklendi.
@@ -669,22 +682,7 @@ impl Tasiyici for GelenKutusu {
     }
 
     fn gonder(&self, zarf: &Zarf) -> Result<String, IpcHata> {
-        zarf.dogrula()?;
-        if zarf.tur != ZarfTuru::Istek {
-            return Err(IpcHata::Gecersiz("gonder yalnız istek zarfı alır".into()));
-        }
-        program_dogrula(&zarf.hedef)?;
-        program_dogrula(&zarf.kaynak)?;
-        let sunulan = self
-            .kayit_oku(&self.kayit_yolu(&zarf.hedef))
-            .is_some_and(|y| y.contains(&zarf.yetenek));
-        if !sunulan {
-            return Err(IpcHata::YetenekYok(zarf.yetenek.clone()));
-        }
-        let bytes = Self::serilestir(zarf)?;
-        let yol = self
-            .klasor(&zarf.hedef, "gelen")
-            .join(format!("{}.json", zarf.id));
+        let (bytes, yol) = self.gonder_hazirla(zarf)?;
         // Var olan istek dosyasının üzerine yazılmaz, "(1)" eki de alınmaz.
         Self::yeni_dosya_yaz(&yol, &zarf.id, &bytes)?;
         Ok(zarf.id.clone())
@@ -719,21 +717,7 @@ impl Tasiyici for GelenKutusu {
     }
 
     fn yanitla(&self, istek: &Zarf, yuk: Value) -> Result<String, IpcHata> {
-        istek.dogrula()?;
-        program_dogrula(&istek.kaynak)?;
-        program_dogrula(&istek.hedef)?;
-        let yanit = Zarf {
-            v: ZARF_SURUMU,
-            id: yeni_id(),
-            kaynak: istek.hedef.clone(),
-            hedef: istek.kaynak.clone(),
-            tur: ZarfTuru::Yanit,
-            yetenek: istek.yetenek.clone(),
-            yuk,
-            zaman: simdi_rfc3339(),
-            yanit_id: Some(istek.id.clone()),
-        };
-        let bytes = Self::serilestir(&yanit)?;
+        let (yanit, bytes) = Self::yanit_hazirla(istek, yuk)?;
         // Yanıt, isteği atan programın klasörüne yazılır; dosya adı isteğin kimliğidir.
         let yol = self
             .klasor(&istek.kaynak, "yanit")
@@ -840,6 +824,49 @@ impl Tasiyici for GelenKutusu {
 }
 
 impl GelenKutusu {
+    /// `gonder`in doğrulama kısmı (dosya yazmaz): zarfı denetler, hedefin yeteneği sunduğunu
+    /// kontrol eder; serileştirilmiş baytları ve hedef dosya yolunu döner. Boru taşıyıcısı da
+    /// aynı denetimleri kullanır (boru ya da dosya, hata davranışı aynı kalır).
+    fn gonder_hazirla(&self, zarf: &Zarf) -> Result<(Vec<u8>, PathBuf), IpcHata> {
+        zarf.dogrula()?;
+        if zarf.tur != ZarfTuru::Istek {
+            return Err(IpcHata::Gecersiz("gonder yalnız istek zarfı alır".into()));
+        }
+        program_dogrula(&zarf.hedef)?;
+        program_dogrula(&zarf.kaynak)?;
+        let sunulan = self
+            .kayit_oku(&self.kayit_yolu(&zarf.hedef))
+            .is_some_and(|y| y.contains(&zarf.yetenek));
+        if !sunulan {
+            return Err(IpcHata::YetenekYok(zarf.yetenek.clone()));
+        }
+        let bytes = Self::serilestir(zarf)?;
+        let yol = self
+            .klasor(&zarf.hedef, "gelen")
+            .join(format!("{}.json", zarf.id));
+        Ok((bytes, yol))
+    }
+
+    /// `yanitla`nın doğrulama/kurma kısmı (dosya yazmaz): yanıt zarfını ve baytlarını döner.
+    fn yanit_hazirla(istek: &Zarf, yuk: Value) -> Result<(Zarf, Vec<u8>), IpcHata> {
+        istek.dogrula()?;
+        program_dogrula(&istek.kaynak)?;
+        program_dogrula(&istek.hedef)?;
+        let yanit = Zarf {
+            v: ZARF_SURUMU,
+            id: yeni_id(),
+            kaynak: istek.hedef.clone(),
+            hedef: istek.kaynak.clone(),
+            tur: ZarfTuru::Yanit,
+            yetenek: istek.yetenek.clone(),
+            yuk,
+            zaman: simdi_rfc3339(),
+            yanit_id: Some(istek.id.clone()),
+        };
+        let bytes = Self::serilestir(&yanit)?;
+        Ok((yanit, bytes))
+    }
+
     /// Bir olay günlüğünü okur; en çok `OLAY_SATIR_SINIRI` (en yeni) satır tutulur, fazlası
     /// uyarıyla (günlüğe yazılarak) kesilir. Bozuk satır atlanır.
     fn olay_dosyasi_oku(&self, yol: &Path, cikti: &mut Vec<Zarf>) {
