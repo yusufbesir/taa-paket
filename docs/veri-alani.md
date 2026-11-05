@@ -9,7 +9,7 @@ Bir veri alanı, birden çok programın paylaştığı ama **tek bir programın 
 
 Kök: `TAA_VERI_KOK` ortam değişkeni; yoksa Windows'ta `%APPDATA%\TAA\veri`, diğer sistemlerde `$XDG_DATA_HOME/TAA/veri` (`XDG_DATA_HOME` yoksa `~/.local/share/TAA/veri`).
 
-**İstisna:** `rehber` alanı mevcut konumunda kalır: `%APPDATA%\TAA\rehber\` (`rehber.json` orada; başka başlığın kuralı). `TAA_VERI_KOK` verilmişse yalıtım için `rehber` de onun altına (`<kok>/rehber`) taşınır.
+**İstisna:** `rehber` alanı mevcut konumunda kalır: `%APPDATA%\TAA\rehber\` (`rehber.json` orada; başka başlığın kuralı). `TAA_VERI_KOK` `rehber` konumunu DEĞİŞTİRMEZ (kod ve `taa-veri` testleri böyle): yalıtım için testler `APPDATA` / `XDG_DATA_HOME` değişkenlerini geçici klasöre yönlendirir. Windows dışı eski konum `~/.config/TAA/rehber` Tutaa tarafından bir kez göçürülür (kopya + `.tasindi`).
 
 Alan adı: `[a-z0-9-]`, en çok 32 karakter. Program adı (`sahip`, `oneren`) aynı kurala uyar.
 

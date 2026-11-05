@@ -247,4 +247,4 @@ function goc(secenek) {
   }
 }
 
-module.exports = { VeriHata, BaskaSahip, veriKok, alanYolu, altYol, acSahip, acOkur, sahipTomlCoz, sahipTomlYaz, goc, ONERI_AZAMI };
+module.exports = { VeriHata, BaskaSahip, veriKok, alanYolu, altYol, acSahip, acOkur, sahipTomlCoz, sahipTomlYaz, goc, eskiyeTasi, ONERI_AZAMI };
