@@ -30,6 +30,12 @@ Kaynak: docs/TEK-CATI.md §9, docs/T1-TASARIM.md, docs/T2-TASARIM.md. Yusuf onay
 - **CLI:** `taa-guncelle kontrol|uygula [--json] [--kaynak <klasor|url>] [--kanal <ad>] [--paket <ad>]`; kaynak/kanal yoksa `kur.toml`'dan (`kaynak_url` önce, sonra `kaynak_klasoru`). `--paket`: yalnız o paket (pencere düğmesi).
 - **HTTP(S) kaynağı (T4, `HttpKaynak`):** yeni crate yok; indirme `curl` komutuyla (Windows 10 1803+ ile gelir, CI'da hazır). Seçenekler: `--fail --location --max-redirs 5 --proto =http,https --max-time 600 --max-filesize <boyut+1>`; 127.0.0.1/localhost için vekil atlanır; pencereden çağrılınca konsol açılmaz (`CREATE_NO_WINDOW`). `yayin.json` stdout'tan (en çok 16 MiB), paket `hedef`e yeni dosya olarak; var olan ezilmez; indirilen boyut bildirilenden büyükse `Dogrulama` hatası. `url` tabana göreli ya da mutlak `http(s)://`; başka şema ve `/` ile başlayan yol reddedilir. Hata eşlemesi: curl 22 → `Yok`, 63 → `Dogrulama`, 6/7/28/35/60 → ağ (`Diger`), curl yoksa tek cümlelik öneri.
 
+### 3.1 Yayın üretimi (`tools/yayin_uret.py`, T4)
+`python3 tools/yayin_uret.py --cikti yayin.json [--kanal kararli] [--taban-url <url>] [--onceki eski.json] [--en-az-surum ad=x.y.z] <paket.zip> ...`:
+her zip'in kökteki `paket.json`'undan ad/sürüm/arayüz/gerektirir, dosyadan SHA256 ve boyut alınır; `url` zip adı (tabana göreli) ya da `--taban-url` ile mutlak.
+`--onceki` ile eski kayıtlar korunur, aynı (ad, sürüm, kanal) değiştirilir. Çıktı imzasızdır; `taa-imza imzala yayin.json --ozel <anahtar> --tur yayin` ile imzalanır.
+İmzasız zip uyarı verir (`--imzali-zorunlu` ile hata). Var olan çıktı `.once-N` olarak saklanır, silinmez. Yayın akışı: zip'leri `taa-imza` ile imzala → `yayin_uret.py` → `taa-imza imzala --tur yayin` → zip'ler + `yayin.json` aynı klasöre/sürüme (GitHub Releases: `kaynak_url = .../releases/latest/download`).
+
 ## 4. `kur.toml` (taa-kur `ayar` modülü, `toml` crate)
 `<kök>\kur.toml`: `kaynak_klasoru = "D:/Kaynak"`, `kaynak_url = "https://.../releases/latest/download"` (T4; `http://`/`https://` ile başlamalı, ikisi de varsa `kaynak_url` öncelikli), `kanal = "kararli"` (varsayılan). Dosya yoksa varsayılanlar; bozuk TOML ya da geçersiz değer tek cümlelik Türkçe hata (`KurHata::Dogrulama`, satır numarası ile). Bilinmeyen anahtarlar yok sayılır.
 
