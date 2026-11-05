@@ -1,7 +1,12 @@
-# taa-tara modül tanımı. Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-04].
+# taa-tara modül tanımı. Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-04]. güncelleme: [Claude#taa-paket-T0 2026-11-05]
 ad = "taa-tara"
 surum = "0.1.0"
 arayuz = "1"
 gerektirir = { "taa-ayar" = "1", "taa-dosya" = "1" }
 ozellikler = ["jpeg-pdf"]
 program = "taatara"
+sunar = ["tara.donustur@1"]
+ister = []
+veri_sahibi = []
+veri_okur = []
+ayar_alani = "programlar.taatara"

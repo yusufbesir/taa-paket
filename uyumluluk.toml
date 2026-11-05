@@ -1,0 +1,35 @@
+# Sahip: Yusuf. yazan: [Claude#taa-paket-T0 2026-11-05]
+# Uyumluluk kümeleri (PLAN-TAA-PAKET §18.4). Taslak: test_edildi=false, sürümler 2026-11-05 anlık görüntüsü.
+# Not: taa-kur ve taa-ipc henüz yok (T1); kümeye eklenmedi.
+
+[[kume]]
+ad = "paket 0.1 (taslak)"
+test_edildi = false
+
+[kume.uyeler.crate]
+"taa-ayar" = "0.1.0"
+"taa-bildirim" = "0.1.0"
+"taa-donustur" = "1.6.0"
+"taa-dosya" = "0.2.0"
+"taa-fis" = "0.1.0"
+"taa-fis-sunucu" = "0.1.0"
+"taa-kasa" = "0.1.0"
+"taa-katalog" = "0.1.0"
+"taa-kombin" = "0.1.0"
+"taa-nebim" = "0.1.0"
+"taa-pano" = "0.1.0"
+"taa-pdf" = "0.1.0"
+"taa-rehber" = "0.1.0"
+"taa-subesor" = "0.1.0"
+"taa-takip" = "0.1.0"
+"taa-tara" = "0.1.0"
+"taa-telegram" = "0.1.0"
+"taa-terzi" = "0.1.0"
+"taa-yazici" = "0.1.0"
+"taa-yedek" = "0.1.0"
+
+[kume.uyeler.program]
+"tutaa" = "2.5.0"  # kaynak: /home/user/tutaa/tutaa-paketi/masaustu/package.json (belirsiz: tutaa/masaustu/package.json adı taarnak 2.4.5)
+"taadon" = "1.12.0"  # kaynak: /home/user/dosya-donusturucu/package.json
+"taarkod" = "1.8.0"  # kaynak: /home/user/taarkod/masaustu/package.json (adı barkod-siralama; README ile uyumlu)
+"fiyat-etiketi" = "1.32.0"  # kaynak: /home/user/fiyat-etiketi/package.json

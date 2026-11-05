@@ -1,7 +1,12 @@
-# taa-terzi modül tanımı. Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-04].
+# taa-terzi modül tanımı. Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-04]. güncelleme: [Claude#taa-paket-T0 2026-11-05]
 ad = "taa-terzi"
 surum = "0.1.0"
 arayuz = "1"
 gerektirir = {}
 ozellikler = ["islem-katalogu", "sinir-denetimi"]
-program = "taaterzi"
+program = "ortak"  # T0 kararı: saf kural motoru, veri yazmaz
+sunar = ["terzi.denetle@1"]
+ister = []
+veri_sahibi = ["terzi-kurallari"]
+veri_okur = []
+ayar_alani = "programlar.taaterzi"

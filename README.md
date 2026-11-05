@@ -50,3 +50,11 @@ cargo fmt --check
 ## Modül sözleşmesi
 
 Her crate bir `modul.toml` taşır: bkz. [docs/modul-sozlesmesi.md](docs/modul-sozlesmesi.md).
+
+Tek çatı belgeleri (plan §18):
+
+- [docs/TEK-CATI.md](docs/TEK-CATI.md): kural, kurulum yöneticisi, sürüm uyumu, veri sahipliği
+- [docs/ENVANTER.md](docs/ENVANTER.md): veri konumları ve sürüm envanteri
+- [docs/program-sozlesmesi.md](docs/program-sozlesmesi.md): program.toml sözleşmesi (taslak)
+- [docs/sozlesmeler/](docs/sozlesmeler/): yetenek sözleşmeleri
+- `tools/sozlesme_denetle.py`: CI sözleşme denetimi ([tools/sozlesme_denetle.py](tools/sozlesme_denetle.py))
