@@ -61,6 +61,9 @@ pub struct Uygulama {
     pub yazici_yolu: Option<PathBuf>,
     /// QR'a gömülecek taban adres (örn. `http://192.168.1.20:8787`).
     pub taban_url: String,
+    /// Müşteri nüshasındaki aydınlatma QR'ının adresi. Müşterinin telefonu mağaza ağı dışında olduğundan
+    /// genelde şirketin herkese açık sayfası olmalı; yoksa `taban_url/aydinlatma` (yalnız mağaza Wi-Fi'ında açılır).
+    pub aydinlatma_url: Option<String>,
     /// Saati ileri alır (yalnız test/deneme; kod süresi ve kilit sınanır).
     pub ileri_sn: std::sync::atomic::AtomicU64,
     kodlar: Mutex<Vec<(String, u64)>>,
@@ -104,6 +107,7 @@ impl Uygulama {
             dizin,
             yazici_yolu,
             taban_url,
+            aydinlatma_url: None,
             ileri_sn: std::sync::atomic::AtomicU64::new(0),
             kodlar: Mutex::new(Vec::new()),
             yanlis: Mutex::new((0, 0)),
@@ -456,7 +460,10 @@ impl Uygulama {
                         self.taban_url.trim_end_matches('/'),
                         f.no
                     );
-                    taa_fis::escpos_nushalar_qr(&f, 42, &qr)
+                    let ayd = self.aydinlatma_url.clone().unwrap_or_else(|| {
+                        format!("{}/aydinlatma", self.taban_url.trim_end_matches('/'))
+                    });
+                    taa_fis::escpos_nushalar_tam(&f, 42, &qr, Some(&ayd))
                 };
                 match yaziciya_yaz(yazici, &baytlar) {
                     Ok(()) => Yanit::json(200, json!({ "tamam": true })),
@@ -852,6 +859,19 @@ mod testler {
         let metin = m[0]["metin"].as_str().unwrap();
         assert!(metin.contains(a.as_str()) && !metin.contains("Ayşe") && !metin.contains("0532"));
         assert_eq!(m[0]["telefon"], "905321234567");
+    }
+
+    #[test]
+    fn aydinlatma_sayfasi() {
+        let u = uyg();
+        let y = u.isle(&ist("GET", "/aydinlatma", None, "", false));
+        assert_eq!(y.kod, 200);
+        assert!(String::from_utf8(y.govde)
+            .unwrap()
+            .contains("henüz yüklenmedi"));
+        std::fs::write(u.dizin.join("aydinlatma.html"), "<p>Şirket metni</p>").unwrap();
+        let y = u.isle(&ist("GET", "/aydinlatma", None, "", false));
+        assert!(String::from_utf8(y.govde).unwrap().contains("Şirket metni"));
     }
 
     #[test]

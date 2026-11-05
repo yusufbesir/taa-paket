@@ -773,13 +773,24 @@ pub fn escpos_nushalar(f: &Fis, genislik: usize) -> Vec<u8> {
 
 /// Aynısı; QR içeriği `qr` (ör. `http://sunucu:8787/telefon#fis=F-...`: telefon kamerası fişi doğrudan açar).
 pub fn escpos_nushalar_qr(f: &Fis, genislik: usize, qr: &str) -> Vec<u8> {
+    escpos_nushalar_tam(f, genislik, qr, None)
+}
+
+/// Aynısı; `aydinlatma` verilirse (ve `fis-aydinlatma` ayarı açıksa) MÜŞTERİ nüshasına kısa aydınlatma
+/// cümlesi ve ayrıntılı metne giden ikinci bir QR basılır.
+pub fn escpos_nushalar_tam(
+    f: &Fis,
+    genislik: usize,
+    qr: &str,
+    aydinlatma: Option<&str>,
+) -> Vec<u8> {
     let mut b = Vec::new();
     for etiket in [
         "TERZİHANE NÜSHASI 1",
         "TERZİHANE NÜSHASI 2",
         "MÜŞTERİ NÜSHASI",
     ] {
-        b.extend(escpos_nusha_qr(f, genislik, etiket, qr));
+        b.extend(escpos_nusha_tam(f, genislik, etiket, qr, aydinlatma));
     }
     b
 }
@@ -789,16 +800,15 @@ pub fn escpos_nusha(f: &Fis, genislik: usize, nusha: &str) -> Vec<u8> {
 }
 
 pub fn escpos_nusha_qr(f: &Fis, genislik: usize, nusha: &str, qr: &str) -> Vec<u8> {
-    let mut b = vec![0x1B, 0x40, 0x1B, 0x74, 13]; // başlat, kod sayfası 13 = CP857
-    b.extend(duz_metin_nusha(f, genislik, nusha).chars().map(cp857));
-    b.extend(
-        "Ürünlerinizi Saat 17:00'den itibaren teslim alabilirsiniz.\n14 Gün içinde alınmayan ürünlerden mesul değiliz.\nÜrünlerinizi teslim alırken tadilat fişinizi yanınızda bulundurmayı unutmayınız.\n"
-            .chars()
-            .map(cp857),
-    );
-    // QR (model 2, boyut 6, düzeltme L)
-    let veri = qr.as_bytes();
-    b.extend([0x1B, 0x61, 1]); // ortala
+    escpos_nusha_tam(f, genislik, nusha, qr, None)
+}
+
+/// Müşteri nüshasındaki kısa aydınlatma cümlesi. Metin şirketin KVKK sorumlusu tarafından onaylanmalıdır.
+pub const AYDINLATMA_CUMLESI: &str = "Kişisel verileriniz, tadilat işleminin yürütülmesi ve ürününüzün hazır olduğunun bildirilmesi amacıyla işlenir. Ayrıntılı aydınlatma metni için aşağıdaki QR kodu okutunuz.";
+
+fn qr_baytlari(veri: &[u8]) -> Vec<u8> {
+    // QR (model 2, boyut 6, düzeltme L), ortalı
+    let mut b = vec![0x1B, 0x61, 1];
     b.extend([0x1D, 0x28, 0x6B, 4, 0, 0x31, 0x41, 0x32, 0]);
     b.extend([0x1D, 0x28, 0x6B, 3, 0, 0x31, 0x43, 6]);
     b.extend([0x1D, 0x28, 0x6B, 3, 0, 0x31, 0x45, 0x30]);
@@ -815,8 +825,41 @@ pub fn escpos_nusha_qr(f: &Fis, genislik: usize, nusha: &str, qr: &str) -> Vec<u
     ]);
     b.extend(veri);
     b.extend([0x1D, 0x28, 0x6B, 3, 0, 0x31, 0x51, 0x30]);
-    b.extend(*b"\n\n\n");
     b.extend([0x1B, 0x61, 0]);
+    b
+}
+
+pub fn escpos_nusha_tam(
+    f: &Fis,
+    genislik: usize,
+    nusha: &str,
+    qr: &str,
+    aydinlatma: Option<&str>,
+) -> Vec<u8> {
+    let mut b = vec![0x1B, 0x40, 0x1B, 0x74, 13]; // başlat, kod sayfası 13 = CP857
+    b.extend(duz_metin_nusha(f, genislik, nusha).chars().map(cp857));
+    b.extend(
+        "Ürünlerinizi Saat 17:00'den itibaren teslim alabilirsiniz.\n14 Gün içinde alınmayan ürünlerden mesul değiliz.\nÜrünlerinizi teslim alırken tadilat fişinizi yanınızda bulundurmayı unutmayınız.\n"
+            .chars()
+            .map(cp857),
+    );
+    b.extend(qr_baytlari(qr.as_bytes()));
+    b.extend(*b"\n");
+    if let Some(url) = aydinlatma {
+        if nusha.starts_with("MÜŞTERİ") && taa_ayar::ozellik_acik("fis-aydinlatma", true) {
+            b.extend(
+                format!(
+                    "\n{}\n",
+                    sar(AYDINLATMA_CUMLESI, genislik.max(24)).join("\n")
+                )
+                .chars()
+                .map(cp857),
+            );
+            b.extend(qr_baytlari(url.as_bytes()));
+            b.extend(*b"\n");
+        }
+    }
+    b.extend(*b"\n\n");
     b.extend([0x1D, 0x56, 0x42, 0]); // kısmi kesme
     b
 }
@@ -872,6 +915,34 @@ mod testler {
 
     fn yol() -> std::path::PathBuf {
         taa_dosya::gecici_klasor().unwrap().join("fis.jsonl")
+    }
+
+    #[test]
+    fn aydinlatma_yalniz_musteri_nushasinda() {
+        let dir = taa_dosya::gecici_klasor().unwrap();
+        let y = dir.join("d.jsonl");
+        let f = Defter { yol: &y }.ekle(girdi()).unwrap();
+        let url = "http://x/aydinlatma";
+        let b = escpos_nushalar_tam(&f, 42, "http://x/telefon#fis=F", Some(url));
+        let sayi = |hedef: &[u8]| b.windows(hedef.len()).filter(|w| *w == hedef).count();
+        assert_eq!(sayi(url.as_bytes()), 1); // yalnız müşteri nüshası
+        assert_eq!(
+            sayi(
+                "Kişisel verileriniz"
+                    .chars()
+                    .map(cp857)
+                    .collect::<Vec<_>>()
+                    .as_slice()
+            ),
+            1
+        );
+        // verilmezse hiçbir nüshada yok
+        let c = escpos_nushalar_tam(&f, 42, "q", None);
+        assert!(!c.windows(19).any(|w| w == url.as_bytes()));
+        assert_eq!(
+            c.windows(4).filter(|w| *w == [0x1D, 0x56, 0x42, 0]).count(),
+            3
+        );
     }
 
     #[test]
