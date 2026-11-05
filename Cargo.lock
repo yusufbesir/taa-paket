@@ -587,6 +587,7 @@ dependencies = [
  "taa-bildirim",
  "taa-dosya",
  "taa-fis",
+ "taa-telegram",
  "taa-terzi",
  "tiny_http",
 ]
@@ -670,6 +671,18 @@ dependencies = [
  "lopdf",
  "taa-ayar",
  "taa-dosya",
+]
+
+[[package]]
+name = "taa-telegram"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "taa-ayar",
+ "taa-bildirim",
+ "taa-dosya",
+ "taa-fis",
 ]
 
 [[package]]
