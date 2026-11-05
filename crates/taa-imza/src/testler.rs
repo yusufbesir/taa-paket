@@ -23,7 +23,14 @@ fn uret_imzala_dogrula() {
     assert!(metin.starts_with("ed25519:") && metin.trim().len() == 8 + 64);
     assert_eq!(GenelAnahtar::dosyadan(&ge).unwrap(), g);
     let (o, uyari) = OzelAnahtar::dosyadan(&oz).unwrap();
+    // Unix'te 0600 dosyada uyarı olmaz; Windows'ta izin denetlenemediği için uyarı beklenir.
+    #[cfg(unix)]
     assert!(uyari.is_none(), "0600 dosyada uyarı olmamalı: {uyari:?}");
+    #[cfg(not(unix))]
+    assert!(
+        uyari.is_some(),
+        "Windows'ta izin denetlenemez uyarısı beklenir"
+    );
     let im = o.imzala(b"merhaba");
     assert_eq!(im.alg, "ed25519");
     assert_eq!(im.anahtar_kimlik, g.kimlik());
