@@ -263,3 +263,45 @@ fn tani_komutu() {
     // sır sızmaz: ortamdan başka değişken yazılmaz
     assert!(!c.contains("HOME"));
 }
+
+#[test]
+fn zip_kurulumu_ve_tani_veri_alanlari() {
+    use std::io::Write;
+    let o = Ortam::yeni();
+    // zip: paket.json + veri.txt (klasör paketiyle aynı içerik)
+    let k = o.paket("taa-z", "1.0.0", &[]);
+    let z = o.taban.join("taa-z.zip");
+    let mut zw = zip::ZipWriter::new(fs::File::create(&z).unwrap());
+    let sec = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+    for ad in ["paket.json", "veri.txt"] {
+        zw.start_file(ad, sec).unwrap();
+        zw.write_all(&fs::read(k.join(ad)).unwrap()).unwrap();
+    }
+    zw.finish().unwrap();
+    let r = o.calistir(&["kur", yol(&z)]);
+    assert_eq!(kod(&r), 0, "{}", hata(&r));
+    let r = o.calistir(&["liste", "--json"]);
+    assert!(cikti(&r).contains("taa-z"));
+    assert_eq!(kod(&o.calistir(&["dogrula"])), 0);
+    // sahte TAA_VERI_KOK
+    let vk = o.taban.join("veri");
+    fs::create_dir_all(vk.join("etiket-kuyrugu")).unwrap();
+    fs::write(
+        vk.join("etiket-kuyrugu/SAHIP.toml"),
+        "sema = 1\nsahip = \"taa-z\"\ngecici = true\n",
+    )
+    .unwrap();
+    let r = Command::new(env!("CARGO_BIN_EXE_taa-kur"))
+        .args(["tani", "--json"])
+        .env("TAA_KOK", &o.kok)
+        .env("TAA_VERI_KOK", &vk)
+        .output()
+        .unwrap();
+    assert_eq!(kod(&r), 0, "{}", hata(&r));
+    let v: serde_json::Value = serde_json::from_str(&cikti(&r)).unwrap();
+    assert_eq!(
+        v["veri_alanlari"][0],
+        serde_json::json!({"alan": "etiket-kuyrugu", "sahip": "taa-z", "gecici": true, "sahip_kurulu": true})
+    );
+}

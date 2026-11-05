@@ -2,10 +2,13 @@
 """modul.toml + Cargo sürümü -> klasör paketi (paket.json). T1-TASARIM §1.2 ve §3. Yalnız stdlib.
 
 Kullanım: python3 tools/paket_uret.py <crate-klasoru> <cikti-klasoru> [--bin <exe>]
+          python3 tools/paket_uret.py <crate-klasoru> --zip <cikti.zip> [--bin <exe>]
 
 icerik_sha256 tanımı (Rust tarafı aynısını kullanır): dosyalar yol sırasıyla (UTF-8 bayt sırası),
 her dosya için "yol\\nsha256\\n" metni art arda eklenir; birleşimin SHA256'sı onaltılık küçük harf.
 Çıktı klasörü yoksa oluşturulur, varsa BOŞ olmalıdır (hiçbir şey ezilmez ya da silinmez).
+`--zip` aynı içeriği tek zip olarak üretir (paket.json zipin KÖKÜNDE; deflate; çıktı zip var olamaz).
+`imza` alanı ayrılmıştır ve `null` yazılır (T3 imza; Rust yok sayar, doğrulamaz).
 """
 import argparse
 import hashlib
@@ -14,6 +17,7 @@ import re
 import shutil
 import sys
 import tomllib
+import zipfile
 from pathlib import Path
 
 ICERIK_TANIM = 'yol sırasıyla (UTF-8 bayt sırası) her dosya için "yol\\nsha256\\n" birleşiminin SHA256\'sı'
@@ -104,7 +108,8 @@ def yol_gecerli(yol: str) -> bool:
     return all(p not in ("", ".", "..") for p in yol.split("/"))
 
 
-def uret(crate: Path, cikti: Path, bin_yol: Path | None = None) -> dict:
+def _hazirla(crate: Path, bin_yol: Path | None) -> tuple:
+    """modul.toml'u doğrular; (modül sözlüğü, gerektirir, [(kaynak, hedef göreli yol)]) döner. Hiçbir şey yazmaz."""
     crate = Path(crate)
     m = _toml(crate / "modul.toml")
     for a in ("ad", "surum", "arayuz", "program"):
@@ -127,11 +132,6 @@ def uret(crate: Path, cikti: Path, bin_yol: Path | None = None) -> dict:
         if not isinstance(m.get(a, []), list):
             raise PaketHata(f"modul.toml: {a} dizi olmalı")
 
-    cikti = Path(cikti)
-    if cikti.exists() and (not cikti.is_dir() or any(cikti.iterdir())):
-        raise PaketHata(f"çıktı klasörü boş değil (ezilmez): {cikti}")
-
-    dosyalar = []
     kopyalar = []  # (kaynak, hedef göreli yol)
     if bin_yol is not None:
         bin_yol = Path(bin_yol)
@@ -145,17 +145,11 @@ def uret(crate: Path, cikti: Path, bin_yol: Path | None = None) -> dict:
         raise PaketHata("dosya sayısı sınırı aşıldı")
     if sum(k.stat().st_size for k, _ in kopyalar) > MAKS_TOPLAM:
         raise PaketHata("toplam boyut sınırı aşıldı")
+    return m, ger, kopyalar
 
-    cikti.mkdir(parents=True, exist_ok=True)
-    for kaynak, hedef in kopyalar:
-        h = cikti / hedef
-        h.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(kaynak, h)
-        # SHA256 kopyalanan dosyadan hesaplanır: paket.json, gerçekte çıktıdaki baytları tanımlar.
-        dosyalar.append({"yol": hedef, "sha256": sha256_dosya(h)})
-    dosyalar.sort(key=lambda d: d["yol"].encode("utf-8"))
 
-    paket = {
+def _paket_sozlugu(m: dict, ger: dict, dosyalar: list) -> dict:
+    return {
         "sema": 1,
         "ad": m["ad"],
         "surum": m["surum"],
@@ -169,19 +163,75 @@ def uret(crate: Path, cikti: Path, bin_yol: Path | None = None) -> dict:
         "dosyalar": dosyalar,
         "icerik_sha256": icerik_sha256(dosyalar),
         "icerik_sha256_tanim": ICERIK_TANIM,
+        "imza": None,  # T3 imza için ayrılmış; Rust yok sayar
     }
+
+
+def uret(crate: Path, cikti: Path, bin_yol: Path | None = None) -> dict:
+    m, ger, kopyalar = _hazirla(crate, bin_yol)
+    cikti = Path(cikti)
+    if cikti.exists() and (not cikti.is_dir() or any(cikti.iterdir())):
+        raise PaketHata(f"çıktı klasörü boş değil (ezilmez): {cikti}")
+
+    dosyalar = []
+    cikti.mkdir(parents=True, exist_ok=True)
+    for kaynak, hedef in kopyalar:
+        h = cikti / hedef
+        h.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(kaynak, h)
+        # SHA256 kopyalanan dosyadan hesaplanır: paket.json, gerçekte çıktıdaki baytları tanımlar.
+        dosyalar.append({"yol": hedef, "sha256": sha256_dosya(h)})
+    dosyalar.sort(key=lambda d: d["yol"].encode("utf-8"))
+
+    paket = _paket_sozlugu(m, ger, dosyalar)
     (cikti / "paket.json").write_text(json.dumps(paket, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return paket
 
 
+def _zip_girdi(z: zipfile.ZipFile, ad: str, bayt: bytes) -> None:
+    bilgi = zipfile.ZipInfo(ad, date_time=(1980, 1, 1, 0, 0, 0))  # sabit zaman: aynı girdi aynı zip
+    bilgi.compress_type = zipfile.ZIP_DEFLATED
+    bilgi.external_attr = 0o644 << 16
+    z.writestr(bilgi, bayt)
+
+
+def uret_zip(crate: Path, zip_yolu: Path, bin_yol: Path | None = None) -> dict:
+    """`uret` ile aynı içeriği tek zip olarak yazar (paket.json kökte). Var olan zip ezilmez."""
+    m, ger, kopyalar = _hazirla(crate, bin_yol)
+    zip_yolu = Path(zip_yolu)
+    if zip_yolu.exists():
+        raise PaketHata(f"çıktı zip zaten var (ezilmez): {zip_yolu}")
+    # SHA256 ve zip içeriği aynı baytlardan: önce oku, sonra hem özetle hem yaz.
+    icerikler = []
+    dosyalar = []
+    for kaynak, hedef in kopyalar:
+        bayt = Path(kaynak).read_bytes()
+        icerikler.append((hedef, bayt))
+        dosyalar.append({"yol": hedef, "sha256": hashlib.sha256(bayt).hexdigest()})
+    dosyalar.sort(key=lambda d: d["yol"].encode("utf-8"))
+    paket = _paket_sozlugu(m, ger, dosyalar)
+    zip_yolu.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(zip_yolu, "x") as z:
+        _zip_girdi(z, "paket.json", (json.dumps(paket, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+        for hedef, bayt in sorted(icerikler, key=lambda x: x[0].encode("utf-8")):
+            _zip_girdi(z, hedef, bayt)
+    return paket
+
+
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description="modul.toml -> klasör paketi (T1-TASARIM §1.2)")
+    ap = argparse.ArgumentParser(description="modul.toml -> klasör ya da zip paketi (T1-TASARIM §1.2, T2-TASARIM PR-A2)")
     ap.add_argument("crate_klasoru", type=Path)
-    ap.add_argument("cikti_klasoru", type=Path)
+    ap.add_argument("cikti_klasoru", type=Path, nargs="?", default=None)
     ap.add_argument("--bin", dest="bin_yol", type=Path, default=None, help="pakete konacak çalıştırılabilir (bin/ altına)")
+    ap.add_argument("--zip", dest="zip_yolu", type=Path, default=None, help="klasör yerine tek zip üret (paket.json kökte)")
     a = ap.parse_args(argv)
+    if (a.cikti_klasoru is None) == (a.zip_yolu is None):
+        ap.error("ya <cikti_klasoru> ya da --zip <cikti.zip> verilmeli (ikisi birden olamaz)")
     try:
-        p = uret(a.crate_klasoru, a.cikti_klasoru, a.bin_yol)
+        if a.zip_yolu is not None:
+            p = uret_zip(a.crate_klasoru, a.zip_yolu, a.bin_yol)
+        else:
+            p = uret(a.crate_klasoru, a.cikti_klasoru, a.bin_yol)
     except PaketHata as e:
         print(f"HATA {e}", file=sys.stderr)
         return 2

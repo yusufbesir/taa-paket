@@ -138,6 +138,39 @@ class Testler(unittest.TestCase):
         with redirect_stderr(io.StringIO()):
             self.assertEqual(pu.main([str(self.crate), str(self.cikti)]), 2)  # dolu
 
+    def test_zip_uretir(self):
+        z = self.kok / "cikti.zip"
+        p = pu.uret_zip(self.crate, z, self.exe)
+        import zipfile
+        with zipfile.ZipFile(z) as a:
+            self.assertEqual(sorted(a.namelist()), ["bin/taax.exe", "paket.json"])  # paket.json kökte
+            self.assertTrue(all(i.compress_type == zipfile.ZIP_DEFLATED for i in a.infolist()))
+            self.assertIsNone(a.testzip())
+            j = json.loads(a.read("paket.json").decode("utf-8"))
+            self.assertEqual(a.read("bin/taax.exe"), b"MZ-sahte")
+        self.assertEqual(j, p)
+        self.assertIsNone(j["imza"])
+        self.assertIn("imza", j)
+        self.assertEqual(j["dosyalar"], [{"yol": "bin/taax.exe", "sha256": hashlib.sha256(b"MZ-sahte").hexdigest()}])
+        # klasör paketiyle aynı içerik
+        k = pu.uret(self.crate, self.cikti, self.exe)
+        self.assertEqual(k, p)
+
+    def test_zip_ezmez_ve_cli(self):
+        z = self.kok / "cikti.zip"
+        z.write_bytes(b"var")
+        with self.assertRaises(pu.PaketHata):
+            pu.uret_zip(self.crate, z, self.exe)
+        self.assertEqual(z.read_bytes(), b"var")
+        z2 = self.kok / "yeni.zip"
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(pu.main([str(self.crate), "--zip", str(z2), "--bin", str(self.exe)]), 0)
+        self.assertTrue(z2.is_file())
+        with redirect_stderr(io.StringIO()):
+            self.assertEqual(pu.main([str(self.crate), "--zip", str(z2)]), 2)  # var
+            with self.assertRaises(SystemExit):  # klasör ve --zip birlikte
+                pu.main([str(self.crate), str(self.cikti), "--zip", str(self.kok / "x.zip")])
+
 
 if __name__ == "__main__":
     unittest.main()
