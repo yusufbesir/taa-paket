@@ -126,7 +126,8 @@ fn liste_komutu() {
     // bilinmeyen komut
     let r = o.calistir(&["yok-komut"]);
     assert_eq!(kod(&r), 2);
-    assert_eq!(kod(&o.calistir(&[])), 2);
+    // argümansız çalıştırma yardım basar, 0 çıkar (2026-11-05 Windows denemesi)
+    assert_eq!(kod(&o.calistir(&[])), 0);
 }
 
 #[test]
@@ -304,4 +305,81 @@ fn zip_kurulumu_ve_tani_veri_alanlari() {
         v["veri_alanlari"][0],
         serde_json::json!({"alan": "etiket-kuyrugu", "sahip": "taa-z", "gecici": true, "sahip_kurulu": true})
     );
+}
+
+#[test]
+fn yardim_ve_argumansiz_sifir_cikar() {
+    let o = Ortam::yeni();
+    for a in [&[][..], &["--help"], &["-h"], &["yardim"]] {
+        let r = o.calistir(a);
+        assert_eq!(kod(&r), 0, "{a:?}: {}", hata(&r));
+        assert!(cikti(&r).contains("dogrula <paket.zip|klasör>"), "{a:?}");
+        assert!(hata(&r).is_empty());
+    }
+    // bilinmeyen komut hâlâ 2
+    assert_eq!(kod(&o.calistir(&["--surum"])), 2);
+}
+
+#[test]
+fn dogrula_kurulmamis_paket_klasor_ve_zip() {
+    let o = Ortam::yeni();
+    let a = o.paket("taa-a", "1.0.0", &[]);
+    // klasör: kurulmaz, çıkış 0, tek satır
+    let r = o.calistir(&["dogrula", yol(&a)]);
+    assert_eq!(kod(&r), 0, "{}", hata(&r));
+    assert!(
+        cikti(&r).contains("Paket geçerli: taa-a 1.0.0 (1 dosya"),
+        "{}",
+        cikti(&r)
+    );
+    assert!(cikti(&r).contains("güvenilir anahtar yok"));
+    assert!(!o.kok.join("depo").exists());
+    let r = o.calistir(&["dogrula", yol(&a), "--json"]);
+    let v: serde_json::Value = serde_json::from_str(&cikti(&r)).unwrap();
+    assert_eq!(v["ad"], "taa-a");
+    assert_eq!(v["imza"], "Denetlenmedi");
+    // zip: açılmadan doğrulanır, geçici/eski klasör oluşmaz
+    let z = o.taban.join("taa-a-1.0.0.zip");
+    {
+        let f = fs::File::create(&z).unwrap();
+        let mut w = zip::ZipWriter::new(f);
+        let sec = zip::write::SimpleFileOptions::default();
+        for ad in ["paket.json", "veri.txt"] {
+            use std::io::Write;
+            w.start_file(ad, sec).unwrap();
+            w.write_all(&fs::read(a.join(ad)).unwrap()).unwrap();
+        }
+        w.finish().unwrap();
+    }
+    let r = o.calistir(&["dogrula", yol(&z)]);
+    assert_eq!(kod(&r), 0, "{}", hata(&r));
+    assert!(cikti(&r).contains("Paket geçerli: taa-a 1.0.0"));
+    assert!(!o.kok.join("eski").exists());
+    assert!(!o.kok.join("depo").exists());
+    // bozuk zip (sha uyuşmaz): çıkış 2, kurulmaz
+    let zb = o.taban.join("bozuk.zip");
+    {
+        let f = fs::File::create(&zb).unwrap();
+        let mut w = zip::ZipWriter::new(f);
+        let sec = zip::write::SimpleFileOptions::default();
+        use std::io::Write;
+        w.start_file("paket.json", sec).unwrap();
+        w.write_all(&fs::read(a.join("paket.json")).unwrap())
+            .unwrap();
+        w.start_file("veri.txt", sec).unwrap();
+        w.write_all(b"kurcalandi").unwrap();
+        w.finish().unwrap();
+    }
+    let r = o.calistir(&["dogrula", yol(&zb)]);
+    assert_eq!(kod(&r), 2, "{}", hata(&r));
+    assert!(hata(&r).contains("sha256 uyuşmuyor"), "{}", hata(&r));
+    // güvenilir anahtar varsa imzasız paket reddedilir (kur ile aynı kural)
+    fs::create_dir_all(o.kok.join("anahtarlar")).unwrap();
+    let ozel = o.taban.join("deneme.ozel");
+    taa_imza::anahtar_uret(&ozel, &o.kok.join("anahtarlar").join("deneme.pub")).unwrap();
+    let r = o.calistir(&["dogrula", yol(&z)]);
+    assert_eq!(kod(&r), 2);
+    assert!(hata(&r).contains("imzasız"), "{}", hata(&r));
+    // var olmayan yol: kurulu paket adı sayılır -> 4
+    assert_eq!(kod(&o.calistir(&["dogrula", "taa-yok"])), 4);
 }

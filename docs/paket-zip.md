@@ -10,6 +10,12 @@
 - Yol kuralları `paket::yol_dogrula` ile aynıdır: `..`, mutlak yol, sürücü harfi, `\`, denetim karakteri reddedilir. Sembolik bağ girdileri ve yinelenen adlar reddedilir.
 - SHA256 denetimi: açılan klasör `paket.json` ile birebir doğrulanır (bozuk sha reddedilir, kayıt ve depo değişmez).
 
+## `taa-kur dogrula <paket.zip|klasör>` (kurmadan doğrulama)
+`dogrula` bağımsız değişkeni var olan bir yol ise paket **kurulmadan** doğrulanır: alanlar, yol kuralları, sınırlar, her dosyanın SHA256'sı, `icerik_sha256` ve imza kuralı (`kur` ile aynı: güvenilir anahtar varsa imzasız paket çıkış 2). Zip açılmaz, diske hiçbir şey yazılmaz (`gecici-*`/`eski/` oluşmaz). Çıktı tek satır `Paket geçerli: <ad> <sürüm> (<n> dosya, icerik_sha256 …); imza …` ya da `--json` ile `{ad, surum, dosya_sayisi, icerik_sha256, imza}`. Yol yoksa bağımsız değişken kurulu paket adı sayılır (eski davranış, çıkış 4).
+
+## `taa-kur yardim`
+`taa-kur` argümansız, `yardim`, `--help` ya da `-h` komut listesini stdout'a basar ve 0 çıkar. Bilinmeyen komut/seçenek 2.
+
 ## `imza` alanı (T3 imza)
 `paket.json` içinde `imza` alanı ayrılmıştır; şimdilik `null` yazılır. Rust bu alanı **yok sayar ve doğrulamaz**; imza doğrulaması T3'tedir (ed25519 bağımlılık onayı beklenir). Dolu bir `imza` kurulumu engellemez.
 
