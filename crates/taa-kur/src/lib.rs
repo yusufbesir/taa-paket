@@ -96,6 +96,18 @@ impl KurHata {
         }
     }
 
+    /// Aynı türde (aynı çıkış kodu) yeni mesajlı kopya.
+    pub fn yeniden(&self, mesaj: String) -> KurHata {
+        match self {
+            KurHata::Dogrulama(_) => KurHata::Dogrulama(mesaj),
+            KurHata::Cozum(_) => KurHata::Cozum(mesaj),
+            KurHata::Yok(_) => KurHata::Yok(mesaj),
+            KurHata::Bozuk(_) => KurHata::Bozuk(mesaj),
+            KurHata::Diger(_) => KurHata::Diger(mesaj),
+            KurHata::Kilitli(_) => KurHata::Kilitli(mesaj),
+        }
+    }
+
     pub fn mesaj(&self) -> &str {
         match self {
             KurHata::Dogrulama(m)
