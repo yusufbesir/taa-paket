@@ -1,0 +1,31 @@
+{
+ "aciklama": "Zorluk puanı 1 (kolay) – 5 (çok zor). Başlangıç değerleridir, usta/Yusuf değiştirir. Dosyayı veri klasörüne zorluk.json adıyla koyun.",
+ "varsayilan_puan": 2,
+ "puanlar": {
+  "cek-dugme-saglam": 1,
+  "cek-dugme-kaydir": 1,
+  "gom-dugme-kaydir": 1,
+  "gom-yaka-sabitle": 1,
+  "pant-paca-kisalt": 2,
+  "pant-paca-payi-ac": 2,
+  "gom-kol-kisalt": 2,
+  "cek-vatka-kisalt": 2,
+  "cek-yirtmac-kapat": 2,
+  "yel-kulak-kapat": 2,
+  "cek-etek-kisalt": 2,
+  "pant-bel-daralt": 3,
+  "pant-bacak-daralt": 3,
+  "pant-bacak-payi-ac": 3,
+  "pant-bel-payi-ac": 3,
+  "pant-fermuar": 3,
+  "pant-salvar-daralt": 3,
+  "gom-daralt": 3,
+  "cek-kol-kisalt": 3,
+  "cek-kol-daralt": 3,
+  "yel-daralt": 3,
+  "yel-omuz-kisalt": 3,
+  "cek-sirt-daralt": 4,
+  "cek-omuz-kol-kisalt": 5,
+  "takim-beden-daralt": 5
+ }
+}
