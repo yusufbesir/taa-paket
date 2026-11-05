@@ -128,12 +128,31 @@ fn yol_denetle(dosya: &str, yazma: bool) -> Result<PathBuf, VeriHata> {
         if parca.is_empty() || parca == "." || parca == ".." {
             return Err(kotu());
         }
-        if i == 0 && yazma && ["SAHIP.toml", "oneriler", "eski"].contains(&parca) {
+        if i == 0
+            && yazma
+            && ["sahip.toml", "oneriler", "eski"].contains(&parca.to_lowercase().as_str())
+        {
+            return Err(kotu());
+        }
+        if parca.ends_with('.') || parca.ends_with(' ') || windows_aygit_adi(parca) {
+            return Err(kotu());
+        }
+        if parca.chars().any(|c| (c as u32) < 0x20 || c as u32 == 0x7F) {
             return Err(kotu());
         }
         yol.push(parca);
     }
     Ok(yol)
+}
+
+/// Windows ayrılmış aygıt adları (uzantılı biçimleri de), harfe duyarsız.
+fn windows_aygit_adi(parca: &str) -> bool {
+    let govde = parca.split('.').next().unwrap_or("").to_ascii_lowercase();
+    matches!(govde.as_str(), "con" | "prn" | "aux" | "nul")
+        || ((govde.starts_with("com") || govde.starts_with("lpt"))
+            && govde.len() == 4
+            && govde.as_bytes()[3].is_ascii_digit()
+            && govde.as_bytes()[3] != b'0')
 }
 
 fn kimlik_gecerli(id: &str) -> bool {
@@ -241,6 +260,7 @@ fn kayit_yaz(
     surum: &str,
     gecici: bool,
     eski_harita: Option<BTreeMap<String, Deger>>,
+    ilk: bool,
 ) -> Result<SahipKaydi, VeriHata> {
     let mut harita = eski_harita.unwrap_or_default();
     let simdi = zaman::simdi().0;
@@ -250,10 +270,19 @@ fn kayit_yaz(
     harita.insert("gecici".into(), Deger::Mantik(gecici));
     harita.insert("yazan_surum".into(), Deger::Metin(surum.into()));
     harita.insert("son_yazim".into(), Deger::Metin(simdi));
-    taa_dosya::uzerine_yaz_atomik(
-        &dizin.join("SAHIP.toml"),
-        sahip_toml_yaz(&harita).as_bytes(),
-    )?;
+    let yol = dizin.join("SAHIP.toml");
+    if ilk {
+        // İlk yazım yarışsız: `create_new` ile yalnız bir süreç kazanır; kaybeden `AlreadyExists` alır ve yeniden okur.
+        use std::io::Write;
+        let mut d = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&yol)?;
+        d.write_all(sahip_toml_yaz(&harita).as_bytes())?;
+        d.sync_all()?;
+    } else {
+        taa_dosya::uzerine_yaz_atomik(&yol, sahip_toml_yaz(&harita).as_bytes())?;
+    }
     kayit_cikar(&harita, alan)
 }
 
@@ -338,20 +367,31 @@ impl VeriKok {
         ad_denetle(program)?;
         let dizin = self.alan_yolu(alan)?;
         fs::create_dir_all(&dizin)?;
-        let kayit = match kayit_oku(&dizin, alan)? {
-            None => kayit_yaz(&dizin, alan, program, surum, gecici, None)?,
-            Some((k, harita)) if k.sahip == program => {
-                kayit_yaz(&dizin, alan, program, surum, gecici, Some(harita))?
-            }
-            Some((k, _)) if k.gecici && !gecici => {
-                eskiye_tasi(&dizin, &dizin.join("SAHIP.toml"), "SAHIP.toml")?;
-                kayit_yaz(&dizin, alan, program, surum, gecici, None)?
-            }
-            Some((k, _)) => {
-                return Err(VeriHata::BaskaSahip {
-                    alan: alan.to_string(),
-                    sahip: k.sahip,
-                })
+        let mut deneme = 0;
+        let kayit = loop {
+            deneme += 1;
+            let sonuc = match kayit_oku(&dizin, alan)? {
+                None => kayit_yaz(&dizin, alan, program, surum, gecici, None, true),
+                Some((k, harita)) if k.sahip == program => {
+                    kayit_yaz(&dizin, alan, program, surum, gecici, Some(harita), false)
+                }
+                Some((k, _)) if k.gecici && !gecici => {
+                    eskiye_tasi(&dizin, &dizin.join("SAHIP.toml"), "SAHIP.toml")?;
+                    kayit_yaz(&dizin, alan, program, surum, gecici, None, true)
+                }
+                Some((k, _)) => {
+                    return Err(VeriHata::BaskaSahip {
+                        alan: alan.to_string(),
+                        sahip: k.sahip,
+                    })
+                }
+            };
+            match sonuc {
+                // Yarış: başka süreç bizden önce yazdı; yeniden oku (en çok 3 kez).
+                Err(VeriHata::Io(e)) if e.kind() == io::ErrorKind::AlreadyExists && deneme < 3 => {
+                    continue
+                }
+                diger => break diger?,
             }
         };
         Ok(Sahip {

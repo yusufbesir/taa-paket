@@ -143,8 +143,24 @@ pub fn yol_dogrula(yol: &str) -> Result<(), String> {
             ".." => return Err(format!("üst klasöre çıkan yol: {yol}")),
             _ => {}
         }
+        if parca.ends_with('.') || parca.ends_with(' ') {
+            return Err(format!("yol parçası nokta ya da boşlukla bitiyor: {yol}"));
+        }
+        if windows_aygit_adi(parca) {
+            return Err(format!("Windows aygıt adı: {yol}"));
+        }
     }
     Ok(())
+}
+
+/// Windows ayrılmış aygıt adları (uzantılı biçimleri de): CON, PRN, AUX, NUL, COM1-9, LPT1-9. Harfe duyarsız.
+pub fn windows_aygit_adi(parca: &str) -> bool {
+    let govde = parca.split('.').next().unwrap_or("").to_ascii_lowercase();
+    matches!(govde.as_str(), "con" | "prn" | "aux" | "nul")
+        || ((govde.starts_with("com") || govde.starts_with("lpt"))
+            && govde.len() == 4
+            && govde.as_bytes()[3].is_ascii_digit()
+            && govde.as_bytes()[3] != b'0')
 }
 
 /// Paket klasörü içindeki göreli yolu gerçek yola çevirir; ara klasörlerde ya da dosyada sembolik bağ varsa reddeder.
@@ -268,6 +284,24 @@ pub fn paket_dogrula(klasor: &Path) -> Result<(Paket, Vec<u8>), KurHata> {
 #[cfg(test)]
 mod testler {
     use super::*;
+
+    #[test]
+    fn windows_aygit_adlari_ve_sondaki_nokta_reddedilir() {
+        for kotu in [
+            "NUL",
+            "bin/con.exe",
+            "COM1",
+            "lpt9.txt",
+            "son.",
+            "bosluk /x",
+            "a/AUX.a.b",
+        ] {
+            assert!(yol_dogrula(kotu).is_err(), "{kotu}");
+        }
+        for iyi in ["com10", "console.txt", "nula", "lpt0", "bin/x.exe"] {
+            assert!(yol_dogrula(iyi).is_ok(), "{iyi}");
+        }
+    }
 
     #[test]
     fn yol_kurallari() {

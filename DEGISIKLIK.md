@@ -3,6 +3,14 @@
 
 ## Yayınlanmamış
 
+### T2-A4 (güvenlik sertleştirme; Opus incelemesi, 0 yüksek / 9 orta / 7 düşük)
+
+- `araclar/js/taa-veri.js` v2: `'wx'` + `fsync` ile atomik yazım; ilk `SAHIP.toml` yazımı yarışsız (`wx`, yeniden okuma); `oneriler()` yalnız düz dosya, ≤256 KiB, zarf doğrulaması (`sema`, `oneren`, `degisiklik`), kimlik dosya adından (yük içindeki `id` yok sayılır); `altYol` ayrılmış üst adları harfe duyarsız, Windows aygıt adlarını, sonda nokta/boşluğu ve `:` reddeder; `oneriKapat`/`eskiyeTasi` hedef adı `wx` ile ayırır (ezme yok); bilinmeyen `SAHIP.toml` anahtarları korunur; `goc` `ekler` (ör. `.bak` da `.tasindi`). Programlar kopyayı güncellemeli.
+- `crates/taa-veri`: ilk `SAHIP.toml` `create_new` ile (yarışta yeniden okur); `yol_denetle` harfe duyarsız ayrılmış adlar, Windows aygıt adları, sonda nokta/boşluk, denetim karakterleri.
+- `crates/taa-kur`: `yol_dogrula` Windows aygıt adları ve sonda nokta/boşluk reddi; zip yinelenen ad denetimi harfe duyarsız; `kur_zip` geçici klasörü `create_dir` ile alır (boş ve yarışsız).
+- Açık (T3): sahip tablosunun çalışma anında kitaplığa gömülmesi (sahte `gecici`/sahte asıl sahip), alan içi sembolik bağ denetimi, SAHIP.toml çözücüleri için ortak test kümesi, `eski/` boyut uyarısı (`docs/T2-TASARIM.md` §6).
+
+
 ### T2-A3
 
 - `tools/sozlesme_denetle.py` yeni program modu: `--program <program.toml> [--surum-dosyasi <package.json|Cargo.toml>] [--paket-kok <taa-paket>]` (zorunlu alanlar, ad ve alan adı biçimi, `gerektirir` yalnız `taa-*`, `sunar`/`ister` biçimi ve tekilliği, sürüm eşitliği, `ayar_alani`, `docs/veri-sahipleri.toml` ile sahip/okur çapraz denetimi; `[veri.<alan>] gecici = true` geçici sahip uyarı verir). Mevcut paket denetimi değişmedi; 13 yeni test.

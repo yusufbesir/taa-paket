@@ -83,5 +83,8 @@ Sıra: A1 ve A3 birbirinden bağımsız, A2 bağımsız; B1..B4 **A1+A3 birleşt
 - Programlar: mevcut `npm test` + yeni testler; denetleyici `python3 taa/sozlesme_denetle.py --program program.toml --surum-dosyasi package.json` CI'da (programda CI yoksa `npm test` içine `node taa/denetim.js` eklenmez; yalnız yerelde çalıştırılır ve PR'da sonuç yazılır).
 - Güvenlik incelemesi (Opus): yol kaçışı (alan/dosya adları), zip açma sınırları, SAHIP devralma kötüye kullanımı (sahte `gecici`), öneri dosyası enjeksiyonu (JSON doğrulama, boyut ≤256 KiB), kişisel veri (rehber) günlükte maskeleme.
 
+## 5.1 Güvenlik incelemesi sonucu (Opus, 2026-11-05)
+0 yüksek, 9 orta, 7 düşük. Orta bulgular T2-A4 (taa-paket) ve program PR'larında düzeltildi: `taa-veri.js` v2 (wx+fsync, öneri doğrulaması, ayrılmış adlar), Rust `create_new`/aygıt adları/zip casefold, Fiyat Etiketi `.bak` göçü ve bozuk alan dosyasının `eski/`ye alınması, TaaDön salt okunur kipte userData'ya yazma, Tutaa eski rehber konumundan göç. T3'e kalan: sahip tablosunun kitaplığa gömülmesi, alan içi sembolik bağ denetimi, ortak SAHIP.toml test kümesi, TaaRkod↔Fiyat Etiketi öneri sınırlarının tek yerde tanımı, `eski/` boyut uyarısı.
+
 ## 6. Yusuf'a açık sorular (varsayılanla ilerlendi)
 1. `etiket-kuyrugu` sahibi Fiyat Etiketi (plan TaaRkod diyordu). 2. `rehber` geçici sahip Tutaa; `taarehber` programı devralır. 3. T3 için bağımlılıklar: `toml`, `interprocess`/`windows-sys`, `ed25519-dalek`, GUI (egui?) — onay gelmeden boru/imza/pencere yapılmaz. 4. Program sürümleri yükseltilmedi; teslim kararı sizde.
