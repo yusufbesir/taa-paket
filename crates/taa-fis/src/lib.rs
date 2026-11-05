@@ -615,6 +615,15 @@ pub fn duz_metin_nusha(f: &Fis, genislik: usize, nusha: &str) -> String {
             Stil::Ayrac => o.push_str(&"-".repeat(g)),
             Stil::Cift => o.push_str(&"=".repeat(g)),
             Stil::Ham => o.push_str(&m),
+            Stil::Serit => {
+                let ic = format!(" {m} ");
+                let sol = g.saturating_sub(ic.chars().count()) / 2;
+                o.push_str(&format!(
+                    "{}{ic}{}",
+                    "=".repeat(sol),
+                    "=".repeat(g.saturating_sub(sol + ic.chars().count()))
+                ));
+            }
             _ => {
                 for l in sar(&m, g) {
                     if stil.ortali() {
@@ -650,6 +659,10 @@ enum Stil {
     OrtaKalin,
     OrtaKucuk,
     OrtaBuyuk,
+    /// Ters baskı (siyah zemin, beyaz yazı) bölüm başlığı.
+    Serit,
+    /// Firma logosu (bitmap); logo kapalıysa metin olarak ortalı kalın basılır.
+    Logo,
     Ham,
     Ayrac,
     Cift,
@@ -657,7 +670,10 @@ enum Stil {
 
 impl Stil {
     fn ortali(self) -> bool {
-        matches!(self, Stil::OrtaKalin | Stil::OrtaKucuk | Stil::OrtaBuyuk)
+        matches!(
+            self,
+            Stil::OrtaKalin | Stil::OrtaKucuk | Stil::OrtaBuyuk | Stil::Serit | Stil::Logo
+        )
     }
 }
 
@@ -666,7 +682,14 @@ fn satirlar(f: &Fis, nusha: &str) -> Vec<(Stil, String)> {
     use Stil::*;
     let mut v: Vec<(Stil, String)> = Vec::new();
     for (i, l) in baslik().lines().enumerate() {
-        v.push((if i == 0 { OrtaKalin } else { OrtaKucuk }, l.to_string()));
+        v.push((
+            match i {
+                0 if logo_kullan() => Logo,
+                0 => OrtaKalin,
+                _ => OrtaKucuk,
+            },
+            l.to_string(),
+        ));
     }
     v.push((Cift, String::new()));
     v.push((OrtaKucuk, "TADİLAT FİŞİ".into()));
@@ -679,11 +702,14 @@ fn satirlar(f: &Fis, nusha: &str) -> Vec<(Stil, String)> {
     v.push((Kalin, format!("Müşteri Adı: {}", f.musteri)));
     v.push((Normal, format!("Telefonu: {}", f.telefon)));
     v.push((Ayrac, String::new()));
-    v.push((OrtaKucuk, "ÜRÜN TESLİM TARİHİ".into()));
+    v.push((Serit, "ÜRÜN TESLİM TARİHİ".into()));
     v.push((
         OrtaBuyuk,
         format!("{} {}", gun_metni(&f.teslim), f.teslim_saati),
     ));
+    if let Some(gun) = gun_adi(&f.teslim) {
+        v.push((OrtaKalin, gun.to_string()));
+    }
     if !f.teslim_degisiklikleri.is_empty() {
         v.push((
             OrtaKucuk,
@@ -697,7 +723,7 @@ fn satirlar(f: &Fis, nusha: &str) -> Vec<(Stil, String)> {
         v.push((Normal, format!("Prova: {}", gun_metni(&f.prova))));
     }
     v.push((Ayrac, String::new()));
-    v.push((Kalin, "İŞLEM DETAYI".into()));
+    v.push((Serit, "İŞLEM DETAYI".into()));
     for k in &f.kalemler {
         let mut satir = format!("* {} - {}", k.urun, k.islem);
         if let Some(x) = &k.varyant {
@@ -766,11 +792,53 @@ fn satirlar(f: &Fis, nusha: &str) -> Vec<(Stil, String)> {
     v
 }
 
+/// Logo bitmap'i: `fis-logo` ayarı açıksa ve başlık özelleştirilmemişse (özel başlıkta farklı firma adı olabilir).
+fn logo_kullan() -> bool {
+    taa_ayar::ozellik_acik("fis-logo", true)
+        && std::env::var("TAA_FIS_BASLIK").map_or(true, |v| v.trim().is_empty())
+}
+
+/// 80 mm yazıcı için 576 nokta genişliğinde 1 bit logo (assets/logo-uret.py üretir): [yükseklik u16 LE] + satır başına 72 bayt.
+static LOGO: &[u8] = include_bytes!("../assets/logo-576.bin");
+
+/// ESC/POS ham bitmap (GS v 0) komutu olarak logo; ortalama bitmap içindeki beyaz dolguyla yapılır.
+fn logo_baytlari() -> Vec<u8> {
+    let h = LOGO[0] as usize | (LOGO[1] as usize) << 8;
+    let mut b = vec![0x1D, 0x76, 0x30, 0, 72, 0, (h & 255) as u8, (h >> 8) as u8];
+    b.extend(&LOGO[2..2 + 72 * h]);
+    b
+}
+
+/// "2026-11-10" -> "Salı" (Zeller). Geçersiz tarihte None.
+fn gun_adi(t: &str) -> Option<&'static str> {
+    let y: i32 = t.get(0..4)?.parse().ok()?;
+    let m: i32 = t.get(5..7)?.parse().ok()?;
+    let d: i32 = t.get(8..10)?.parse().ok()?;
+    if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
+        return None;
+    }
+    let (yy, mm) = if m < 3 { (y - 1, m + 12) } else { (y, m) };
+    let k = yy % 100;
+    let j = yy / 100;
+    let h = (d + 13 * (mm + 1) / 5 + k + k / 4 + j / 4 + 5 * j) % 7; // 0 = Cumartesi
+    Some(
+        [
+            "Cumartesi",
+            "Pazar",
+            "Pazartesi",
+            "Salı",
+            "Çarşamba",
+            "Perşembe",
+            "Cuma",
+        ][h as usize],
+    )
+}
+
 /// Fiş başlığı (firma adı, adres, destek hattı). `TAA_FIS_BASLIK` ile (satırlar `|` ile) değiştirilir.
 fn baslik() -> String {
     match std::env::var("TAA_FIS_BASLIK") {
         Ok(v) if !v.trim().is_empty() => v.replace('|', "\n"),
-        _ => "TERZİ ADEM ALTUN İSTANBUL\nTurgut Özal Mah. 68. Sk. No:12, E-5 Karayolu Yan Yol Üzeri\nEsenyurt / İstanbul - Destek: 0212 690 02 02 - 9:30-21:30".into(),
+        _ => "TERZİ ADEM ALTUN\nTurgut Özal Mah. 68. Sk. No:12, E-5 Karayolu Yan Yol Üzeri\nEsenyurt / İstanbul - Destek: 0212 690 02 02 - 9:30-21:30".into(),
     }
 }
 
@@ -911,6 +979,21 @@ pub fn escpos_nusha_tam(
             Stil::Ayrac => b.extend(std::iter::repeat_n(0xC4, g)), // ─
             Stil::Cift => b.extend(std::iter::repeat_n(0xCD, g)),  // ═
             Stil::Ham => b.extend(m.chars().map(cp857)),           // boşlukları olduğu gibi
+            Stil::Logo => {
+                b.extend(logo_baytlari());
+                continue; // bitmap kendi yüksekliğini ilerletir, ek satır boşluğu istemez
+            }
+            Stil::Serit => {
+                // ters baskı: siyah zemin, beyaz yazı; satır genişliğine ortalanıp doldurulur
+                let ic = format!(" {m} ");
+                let sol = g.saturating_sub(ic.chars().count()) / 2;
+                let sag = g.saturating_sub(sol + ic.chars().count());
+                b.extend([0x1D, 0x42, 1, 0x1B, 0x45, 1]);
+                b.extend(" ".repeat(sol).chars().map(cp857));
+                b.extend(ic.chars().map(cp857));
+                b.extend(" ".repeat(sag).chars().map(cp857));
+                b.extend([0x1D, 0x42, 0, 0x1B, 0x45, 0]);
+            }
             _ => {
                 let (genis, ayar): (usize, &[u8]) = match stil {
                     Stil::Kalin => (g, &[0x1B, 0x45, 1]),
@@ -1318,5 +1401,32 @@ mod testler {
             b.windows(h.len()).filter(|w| *w == h.as_slice()).count()
         };
         assert_eq!(yer("mesul değiliz"), 1);
+    }
+
+    #[test]
+    fn logo_gun_adi_ve_serit() {
+        assert_eq!(gun_adi("2026-11-10"), Some("Salı"));
+        assert_eq!(gun_adi("2026-11-05"), Some("Perşembe"));
+        assert_eq!(gun_adi("bozuk"), None);
+        // logo bitmap'i: başlık + 72 bayt x yükseklik, 80 mm genişliğe sığar
+        let h = LOGO[0] as usize | (LOGO[1] as usize) << 8;
+        assert!(h > 20 && h < 200 && LOGO.len() == 2 + 72 * h);
+        let l = logo_baytlari();
+        assert_eq!(&l[..6], &[0x1D, 0x76, 0x30, 0, 72, 0]);
+        assert!(LOGO[2..].iter().any(|b| *b != 0)); // siyah nokta var
+        let dir = taa_dosya::gecici_klasor().unwrap();
+        let f = Defter {
+            yol: &dir.join("d.jsonl"),
+        }
+        .ekle(girdi())
+        .unwrap();
+        let b = escpos_nusha_tam(&f, 42, "MÜŞTERİ NÜSHASI", "q", None);
+        assert!(b.windows(l.len()).any(|w| w == l.as_slice()));
+        let m = duz_metin_nusha(&f, 42, "");
+        assert!(
+            m.contains("TERZİ ADEM ALTUN")
+                && m.contains("Salı")
+                && m.contains("= ÜRÜN TESLİM TARİHİ =")
+        );
     }
 }
