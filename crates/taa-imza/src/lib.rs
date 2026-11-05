@@ -9,7 +9,7 @@
 use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::Path;
 
 pub const ALGORITMA: &str = "ed25519";
@@ -242,6 +242,7 @@ fn izin_uyarisi(_yol: &Path) -> Option<String> {
 
 #[cfg(unix)]
 fn rastgele_doldur(b: &mut [u8]) -> std::io::Result<()> {
+    use std::io::Read;
     fs::File::open("/dev/urandom")?.read_exact(b)
 }
 
