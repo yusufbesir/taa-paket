@@ -340,3 +340,38 @@ fn kaynakta_silme_islevi_yok() {
     assert!(!testler.contains(&format!("{}_file", "remove")));
     assert!(!testler.contains(&format!("{}_dir", "remove")));
 }
+
+#[test]
+fn yol_denetle_windows_ayrilmis_adlar_ve_harf_duyarsiz() {
+    let (kok, _tmp) = kok();
+    let s = kok.ac_sahip("belgeler", "taadon", "1").unwrap();
+    for ad in [
+        "sahip.toml",
+        "SAHIP.TOML",
+        "Oneriler/x.json",
+        "ESKI/y",
+        "NUL",
+        "com1.txt",
+        "a/CON",
+        "son.",
+        "bosluk ",
+        "a\u{7f}b",
+    ] {
+        assert!(
+            matches!(s.yaz(ad, b"x"), Err(VeriHata::YolDisari(_))),
+            "{ad}"
+        );
+    }
+    assert!(s.yaz("kayitlar.json", b"[]").is_ok());
+}
+
+#[test]
+fn ilk_sahip_toml_create_new_ile_yazilir_ve_yeniden_acilis_gunceller() {
+    let (kok, _tmp) = kok();
+    let a = kok.ac_sahip("belgeler", "taadon", "1").unwrap();
+    assert_eq!(a.kayit().yazan_surum, "1");
+    let b = kok.ac_sahip("belgeler", "taadon", "2").unwrap();
+    assert_eq!(b.kayit().yazan_surum, "2");
+    let yazi = std::fs::read_to_string(b.dizin().join("SAHIP.toml")).unwrap();
+    assert!(yazi.starts_with("sema = 1\n"));
+}

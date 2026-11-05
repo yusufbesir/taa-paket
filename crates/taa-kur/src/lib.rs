@@ -589,11 +589,18 @@ impl Kur {
     fn kur_zip(&self, zip: &Path, sec: bool) -> Sonuc<KurSonuc> {
         fs::create_dir_all(&self.kok)?;
         let pid = std::process::id();
+        // Geçici klasör `create_dir` ile alınır (varsa sonraki ad): boş olduğu kesin, yarış yok.
         let mut gecici = self.kok.join(format!("gecici-{pid}"));
         let mut n = 2;
-        while gecici.exists() {
-            gecici = self.kok.join(format!("gecici-{pid}-{n}"));
-            n += 1;
+        loop {
+            match fs::create_dir(&gecici) {
+                Ok(()) => break,
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    gecici = self.kok.join(format!("gecici-{pid}-{n}"));
+                    n += 1;
+                }
+                Err(e) => return Err(e.into()),
+            }
         }
         let r = match zipac::zip_ac(zip, &gecici) {
             Ok(()) => self.kur_klasor(&gecici, sec),

@@ -146,3 +146,56 @@ test('kaynakta silme çağrısı yok', () => {
   assert.ok(!/\b(unlink|rmSync|rmdir|rm)\w*\s*\(/.test(kaynak.replace(/\/\/.*$/gm, '')));
   assert.ok(kaynak.split('\n').length <= 300);
 });
+
+test('v2: öneri doğrulaması — bozuk zarf, yük içindeki id ve büyük dosya atlanır; kimlik dosya adından', () => {
+  const { env } = ortam();
+  const s = v.acSahip({ alan: 'etiket-kuyrugu', program: 'fiyatetiketi', surum: '1', env });
+  const od = path.join(s.dizin, 'oneriler');
+  fs.mkdirSync(od, { recursive: true });
+  fs.writeFileSync(path.join(od, 'a1.json'), JSON.stringify({ sema: 1, oneren: 'taarkod', id: 'sahte', degisiklik: { n: 1 } }));
+  fs.writeFileSync(path.join(od, 'b2.json'), JSON.stringify([1, 2]));
+  fs.writeFileSync(path.join(od, 'c3.json'), JSON.stringify({ sema: 1, oneren: 'Kötü Ad', degisiklik: {} }));
+  fs.writeFileSync(path.join(od, 'd4.json'), '{"sema":1,"oneren":"taarkod","degisiklik":"' + 'x'.repeat(300 * 1024) + '"}');
+  fs.writeFileSync(path.join(od, 'Bad Name.json'), JSON.stringify({ sema: 1, oneren: 'taarkod', degisiklik: {} }));
+  const l = s.oneriler();
+  assert.deepStrictEqual(l.map((x) => x.id), ['a1']);
+  assert.deepStrictEqual(l[0].degisiklik, { n: 1 });
+});
+
+test('v2: altYol ayrılmış ve Windows aygıt adlarını reddeder; okumada SAHIP.toml serbest', () => {
+  const { env } = ortam();
+  const s = v.acSahip({ alan: 'belgeler', program: 'taadon', surum: '1', env });
+  for (const ad of ['sahip.toml', 'SAHIP.TOML', 'Oneriler/x.json', 'eski/y', 'NUL', 'com1.txt', 'a/CON', 'son.', 'bosluk ', 'c:veri', 'a\x00b']) {
+    assert.throws(() => s.yaz(ad, 'x'), (e) => e.kod === 'YolDisari', ad);
+  }
+  assert.ok(/sahip = "taadon"/.test(s.oku('SAHIP.toml')));
+  const toml = fs.readFileSync(path.join(s.dizin, 'SAHIP.toml'), 'utf8');
+  assert.ok(toml.startsWith('sema = 1\nalan = "belgeler"\nsahip = "taadon"\n'));
+});
+
+test('v2: sahip bilinmeyen SAHIP.toml anahtarlarını korur; atomik yazım geçici dosya bırakmaz', () => {
+  const { env } = ortam();
+  v.acSahip({ alan: 'belgeler', program: 'taadon', surum: '1', env });
+  const dizin = v.alanYolu('belgeler', env);
+  fs.appendFileSync(path.join(dizin, 'SAHIP.toml'), 'ek_not = "kalsın"\n');
+  const s = v.acSahip({ alan: 'belgeler', program: 'taadon', surum: '2', env });
+  assert.strictEqual(s.kayit.ek_not, 'kalsın');
+  assert.strictEqual(s.kayit.yazan_surum, '2');
+  s.yaz('k.json', '[]');
+  assert.ok(!fs.readdirSync(dizin).some((a) => a.includes('.gecici-')));
+});
+
+test('v2: sahipTomlCoz Rust kaçışlarını ve tire içeren anahtarı okur', () => {
+  assert.deepStrictEqual(v.sahipTomlCoz('a-b = "x\\ty" # not\nc = "m # değil"\n'), { 'a-b': 'x\ty', c: 'm # değil' });
+});
+
+test('v2: goc ekler — .bak da .tasindi olur', () => {
+  const { env, kok } = ortam();
+  const eski = path.join(kok, 'ud', 'kuyruk.json');
+  fs.mkdirSync(path.dirname(eski), { recursive: true });
+  fs.writeFileSync(eski, '[1]'); fs.writeFileSync(`${eski}.bak`, '[0]');
+  v.acSahip({ alan: 'etiket-kuyrugu', program: 'fiyatetiketi', surum: '1', env });
+  const g = v.goc({ eskiYol: eski, alan: 'etiket-kuyrugu', hedefAd: 'kuyruk.json', env, ekler: [`${eski}.bak`] });
+  assert.strictEqual(g.durum, 'tasindi');
+  assert.ok(fs.existsSync(`${eski}.tasindi`) && fs.existsSync(`${eski}.bak.tasindi`) && !fs.existsSync(`${eski}.bak`));
+});

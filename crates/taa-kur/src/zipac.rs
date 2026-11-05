@@ -2,7 +2,7 @@
 //! Zip paketi güvenli açma (T2-TASARIM PR-A2). Yol kuralları klasör paketiyle aynıdır (`paket::yol_dogrula`).
 //! Sınırlar: girdi sayısı <= 10.000, bildirilen toplam açılmış boyut <= 2 GiB. Zip bombası koruması: her girdinin
 //! bildirilen boyutu önce toplanır, sınır aşılırsa HİÇBİR ŞEY açılmaz; açarken gerçek bayt sayısı da sınırlanır.
-//! Sembolik bağ girdileri, yinelenen adlar ve kökte `paket.json` olmayan zipler reddedilir.
+//! Sembolik bağ girdileri, yinelenen adlar (harfe duyarsız) ve kökte `paket.json` olmayan zipler reddedilir.
 
 use crate::paket::{yol_dogrula, MAKS_DOSYA, MAKS_TOPLAM_BAYT};
 use crate::KurHata;
@@ -67,7 +67,7 @@ pub fn zip_ac_sinirli(
                 "Zip girdisi geçersiz: {m}. Öneri: paketi yeniden üretin."
             ))
         })?;
-        if !gorulen.insert(temiz.to_string()) {
+        if !gorulen.insert(temiz.to_lowercase()) {
             return Err(KurHata::Dogrulama(format!(
                 "Zip içinde yinelenen girdi: {temiz}. Öneri: paketi yeniden üretin."
             )));
