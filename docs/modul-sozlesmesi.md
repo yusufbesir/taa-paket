@@ -8,7 +8,8 @@ Her TAA modülü (crate veya program bileşeni) kök klasöründe bir `modul.tom
 | `ad` | metin | Modül adı (crate adıyla aynı). |
 | `surum` | metin | SemVer; Cargo.toml `version` ile aynı tutulur. |
 | `arayuz` | metin | Arayüz ana sürümü ("1", "2" ...). Modülün dışa sunduğu sözleşmenin sürümü. |
-| `gerektirir` | tablo | Gerekli modüller: `{ "taa-dosya" = "1" }` (ad = en düşük arayüz ana sürümü). Boşsa `{}`. |
+| `gerektirir` | tablo | Gerekli modüller: `{ "taa-dosya" = "1" }` (ad = en düşük arayüz ana sürümü). Boşsa `{}`. Cargo taa-* bağımlılıklarıyla birebirdir; `--bin` paketine yazılmaz (statik). |
+| `calisma_gerektirir` | tablo (isteğe bağlı) | Derlenmiş ikilinin çalışma anında kurulu olmasını istediği paketler; `paket_uret.py --bin` paket.json `gerektirir` alanını buradan alır (`docs/paket-zip.md`). |
 | `ozellikler` | liste | Modülün sunduğu yetenek adları (örn. `["arsiv", "imza"]`). |
 | `program` | metin | Bağlı program (örn. `taadon`); birden çok programca paylaşılıyorsa `ortak`. |
 | `butce` | tablo | İsteğe bağlı performans bütçeleri (örn. `{ acilis_ms = 800 }`). |

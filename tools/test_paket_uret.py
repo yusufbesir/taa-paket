@@ -41,8 +41,21 @@ class Testler(unittest.TestCase):
         j = json.loads((self.cikti / "paket.json").read_text(encoding="utf-8"))
         self.assertEqual(j, p)
         self.assertEqual(j["ad"], "taa-x")
-        self.assertEqual(j["gerektirir"], {"taa-ayar": "1"})
+        self.assertEqual(j["gerektirir"], {})  # ikili: crate bağımlılıkları statik
         self.assertEqual(j["ister"], [])
+
+    def test_bin_yoksa_gerektirir_modulden(self):
+        j = pu.uret(self.crate, self.cikti, None)
+        self.assertEqual(j["gerektirir"], {"taa-ayar": "1"})
+
+    def test_bin_ile_calisma_gerektirir(self):
+        self.yaz(modul='ad="taa-x"\nsurum="0.1.0"\narayuz="1"\nprogram="taax"\n'
+                       'gerektirir={ "taa-ayar" = "1" }\ncalisma_gerektirir={ "taa-y" = "2" }\n')
+        j = pu.uret(self.crate, self.cikti, self.exe)
+        self.assertEqual(j["gerektirir"], {"taa-y": "2"})
+        self.yaz(modul='ad="taa-x"\nsurum="0.1.0"\narayuz="1"\nprogram="taax"\ncalisma_gerektirir="x"\n')
+        with self.assertRaises(pu.PaketHata):
+            pu.uret(self.crate, self.kok / "c2", self.exe)
         self.assertEqual(j["dosyalar"], [{"yol": "bin/taax.exe", "sha256": hashlib.sha256(b"MZ-sahte").hexdigest()}])
         self.assertEqual((self.cikti / "bin" / "taax.exe").read_bytes(), b"MZ-sahte")
         self.assertIn("icerik_sha256_tanim", j)
