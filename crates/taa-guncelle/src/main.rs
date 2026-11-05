@@ -4,7 +4,7 @@
 //! `http://`/`https://` ile başlayan değer HTTP kaynağıdır (curl ile indirir). Kök: TAA_KOK (taa-kur ile aynı).
 //! `--paket <ad>`: yalnız o paket (pencere "Güncelle" düğmesi).
 //! Çıkış kodları taa-kur ile aynı: 0 tamam, 2 doğrulama/kullanım, 3 çözüm, 4 yok, 5 bozuk, 6 kilitli, 1 diğer;
-//! `uygula`da en az bir paket hatalıysa 1.
+//! `uygula`da paket hatası varsa ilk hatalı paketin kodu (örn. SHA256 uyuşmazlığı 2, ağ 1).
 
 use std::process::ExitCode;
 use taa_guncelle::{
@@ -43,13 +43,17 @@ fn kontrol_yaz(k: &KontrolSonuc) {
     }
     for g in &k.guncellenebilir {
         println!(
-            "Güncellenebilir: {} {} -> {}{}{} ({} bayt)",
+            "Güncellenebilir: {} {} -> {}{}{} ({})",
             g.ad,
             g.kurulu,
             g.yeni,
             if g.zorunlu { " [ZORUNLU]" } else { "" },
             if g.sabitli { " [sabitli]" } else { "" },
-            g.indirme_boyutu
+            if g.zaten_kurulu {
+                "zaten kurulu, indirme yok".to_string()
+            } else {
+                format!("{} bayt", g.indirme_boyutu)
+            }
         );
     }
     for r in &k.reddedilen {
@@ -135,5 +139,5 @@ fn calistir(args: &[String], json: bool) -> Result<u8, KurHata> {
             );
         }
     }
-    Ok(if s.hata_var() { 1 } else { 0 })
+    Ok(s.cikis_kodu() as u8)
 }

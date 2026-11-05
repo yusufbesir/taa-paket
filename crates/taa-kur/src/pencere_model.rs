@@ -109,6 +109,9 @@ pub fn guncelle_ciktisi_yorumla(
             .unwrap_or(false);
         return match durum.as_str() {
             "guncellendi" => Ok(format!("{ad} güncellendi: {onceki} -> {yeni}.")),
+            "secildi" => Ok(format!(
+                "{ad} güncellendi: {onceki} -> {yeni} (zaten kuruluydu, indirilmedi)."
+            )),
             "atlandi" => Ok(format!("{ad} güncellenmedi: {mesaj}")),
             _ => Err(format!(
                 "{ad} {onceki} -> {yeni}: {mesaj}{}",
@@ -650,6 +653,8 @@ mod testler {
             y(true, guncellendi, "").unwrap(),
             "a güncellendi: 1.0.0 -> 1.1.0."
         );
+        let secildi = r#"{"kontrol":{},"satirlar":[{"ad":"a","onceki":"1.0.0","yeni":"1.1.0","durum":"secildi","mesaj":"x"}]}"#;
+        assert!(y(true, secildi, "").unwrap().contains("zaten kuruluydu"));
         let atlandi = r#"{"kontrol":{},"satirlar":[{"ad":"a","onceki":"1.0.0","yeni":"1.1.0","durum":"atlandi","mesaj":"paket sabitlenmiş"}]}"#;
         assert_eq!(
             y(true, atlandi, "").unwrap(),

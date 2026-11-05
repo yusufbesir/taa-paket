@@ -639,3 +639,62 @@ fn kontrol_paket_yalniz_verilen_paketi_degerlendirir() {
     let k = kontrol_paket(&o.kur(), &kaynak(&o), "kararli", Some("yok")).unwrap();
     assert!(k.guncellenebilir.is_empty() && k.guncel.is_empty());
 }
+
+#[test]
+fn zaten_kurulu_surum_indirilmeden_secilir() {
+    let o = Ort::yeni();
+    o.kurulu_olsun("a", "1.0.0", None);
+    o.kurulu_olsun("a", "1.1.0", None);
+    o.kur().geri_don("a").unwrap();
+    assert_eq!(o.secili("a").as_deref(), Some("1.0.0"));
+    // yayında 1.1.0; url olmayan dosyaya işaret etsin: indirme denenirse hata olur
+    o.yayin(
+        vec![girdi(
+            "a",
+            "1.1.0",
+            "kararli",
+            ("yok.zip".into(), "0".repeat(64), 10),
+        )],
+        None,
+    );
+    let k = kontrol(&o.kur(), &kaynak(&o), "kararli").unwrap();
+    assert!(k.guncellenebilir[0].zaten_kurulu);
+    let s = uygula(&o.kur(), &kaynak(&o), "kararli").unwrap();
+    assert!(!s.hata_var(), "{s:?}");
+    assert_eq!(s.satirlar[0].durum, "secildi");
+    assert_eq!(s.cikis_kodu(), 0);
+    assert_eq!(o.secili("a").as_deref(), Some("1.1.0"));
+    assert!(!o.kok.join("indirilen").exists());
+    assert!(o.kur().dogrula(None).unwrap().is_empty());
+}
+
+#[test]
+fn hatali_indirme_ayri_klasore_ve_cikis_kodu_hatanin_kodu() {
+    let o = Ort::yeni();
+    o.kurulu_olsun("a", "1.0.0", None);
+    let (url, _, boyut) = o.zip("a", "1.1.0", None);
+    o.yayin(
+        vec![girdi("a", "1.1.0", "kararli", (url, "0".repeat(64), boyut))],
+        None,
+    );
+    let s = uygula(&o.kur(), &kaynak(&o), "kararli").unwrap();
+    assert!(s.hata_var());
+    assert_eq!(s.satirlar[0].kod, 2, "{:?}", s.satirlar[0]);
+    assert_eq!(s.cikis_kodu(), 2);
+    assert_eq!(o.secili("a").as_deref(), Some("1.0.0"));
+    // bozuk indirme eski/indirilen-hatali/ altında; eski/ kökünde indirilen-* yok
+    let hatali: Vec<_> = fs::read_dir(o.kok.join("eski").join("indirilen-hatali"))
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        hatali.iter().any(|a| a.starts_with("indirilen-a-1.1.0")),
+        "{hatali:?}"
+    );
+    assert!(!fs::read_dir(o.kok.join("eski"))
+        .unwrap()
+        .flatten()
+        .any(|e| e.file_name().to_string_lossy().starts_with("indirilen-a-")));
+    assert_eq!(fs::read_dir(o.kok.join("indirilen")).unwrap().count(), 0);
+}
