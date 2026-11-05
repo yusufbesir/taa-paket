@@ -113,7 +113,7 @@ pub fn yedekle(kaynaklar: &[PathBuf], hedef: &Path, damga: &str) -> Result<PathB
     }
     fs::create_dir_all(&yedek).map_err(|e| e.to_string())?;
     let j = serde_json::to_vec_pretty(&manifest).map_err(|e| e.to_string())?;
-    fs::write(yedek.join("manifest.json"), j).map_err(|e| e.to_string())?;
+    taa_dosya::uzerine_yaz_atomik(&yedek.join("manifest.json"), &j).map_err(|e| e.to_string())?;
     Ok(yedek)
 }
 
