@@ -2,3 +2,4 @@
 target/
 *.pdb
 __pycache__/
+.claude/worktrees/
