@@ -9,7 +9,10 @@
 
 pub mod kayit;
 pub mod paket;
+pub mod pencere_model;
 mod veri;
+#[cfg(windows)]
+pub mod win;
 mod zaman;
 pub mod zipac;
 

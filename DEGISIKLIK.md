@@ -3,6 +3,13 @@
 
 ## Yayınlanmamış
 
+### T3-pencere
+
+- `taa-kur-pencere` (yeni bin) ve `taa_kur::pencere_model`: paket listesi (ad, kurulu sürüm, seçili sürüm, durum), Kur / Kaldır / Güncelle düğmeleri ve alt durum satırı. Mantık platformdan bağımsız modelde (7 birim test, gerçek `Kur`, geçici kök); Win32 çizimi `#[cfg(windows)] win.rs` içinde ince katman.
+- Güncelle düğmesi `GuncelleyiciArayuzu` trait'ine bağlı; varsayılan "Güncelleme kaynağı ayarlanmadı" der (taa-guncelle başka dalda).
+- Kaldırma silmez: `Kur::kaldir` ile `eski\` klasörüne taşır; veri alanlarına dokunulmaz.
+- Bağımlılık: yalnız Windows'ta `windows-sys 0.61` (Yusuf onaylı; `zip` zaten dolaylı olarak aynı sürümü çekiyordu), asgari özellikler. Windows'ta elle doğrulanmadı; tür denetimi `--target x86_64-pc-windows-gnu` ile yapıldı. `docs/T3-PENCERE.md` eklendi.
+
 ### T2-A4 (güvenlik sertleştirme; Opus incelemesi, 0 yüksek / 9 orta / 7 düşük)
 - `taa-veri.js`: `eskiyeTasi` dışa açıldı (programlar bozuk alan dosyasını `<alan>/eski/` altına alır). `docs/veri-alani.md`: `rehber` + `TAA_VERI_KOK` kuralı kodla hizalandı.
 

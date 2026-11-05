@@ -16,6 +16,10 @@ path = "src/lib.rs"
 name = "taa-kur"
 path = "src/main.rs"
 
+[[bin]]
+name = "taa-kur-pencere"
+path = "src/pencere_main.rs"
+
 [dependencies]
 taa-ayar = { path = "../taa-ayar" }
 taa-dosya = { path = "../taa-dosya" }
@@ -24,3 +28,15 @@ serde_json = "1"
 sha2 = "0.10"
 # taa-donustur ile AYNI sürüm ve özellikler (T2 PR-A2: zip paket kurulumu). Başka özellik yok.
 zip = { version = "9.3.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+
+# T3-pencere: Win32 penceresi doğrudan windows-sys ile (Yusuf onayladı; zip'in dolaylı sürümüyle aynı, 0.61). Yalnız Windows.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", default-features = false, features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_Controls",
+    "Win32_UI_Controls_Dialogs",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+] }
