@@ -608,16 +608,27 @@ pub fn duz_metin(f: &Fis, genislik: usize) -> String {
 
 /// Aynı fiş, üstte nüsha etiketiyle (örn. "TERZİHANE NÜSHASI", "MÜŞTERİ NÜSHASI").
 pub fn duz_metin_nusha(f: &Fis, genislik: usize, nusha: &str) -> String {
-    let (ust, govde) = duz_parcalar(f, genislik, nusha);
     let g = genislik.max(24);
     let mut o = String::new();
-    for l in &ust {
-        for w in sar(l, g) {
-            o.push_str(&w);
-            o.push('\n');
+    for (stil, m) in satirlar(f, nusha) {
+        match stil {
+            Stil::Ayrac => o.push_str(&"-".repeat(g)),
+            Stil::Cift => o.push_str(&"=".repeat(g)),
+            Stil::Ham => o.push_str(&m),
+            _ => {
+                for l in sar(&m, g) {
+                    if stil.ortali() {
+                        let bos = g.saturating_sub(l.chars().count()) / 2;
+                        o.push_str(&" ".repeat(bos));
+                    }
+                    o.push_str(&l);
+                    o.push('\n');
+                }
+                continue;
+            }
         }
+        o.push('\n');
     }
-    o.push_str(&govde);
     o
 }
 
@@ -630,42 +641,67 @@ fn terzihane_nushasi(nusha: &str) -> bool {
     nusha.starts_with("TERZİHANE")
 }
 
-/// (başlık satırları ham, gövde). Başlık: firma adı ilk satır; yazıcıda ad kalın, kalanı küçük yazıyla basılır.
-fn duz_parcalar(f: &Fis, genislik: usize, nusha: &str) -> (Vec<String>, String) {
-    let g = genislik.max(24);
-    let cizgi = "-".repeat(g);
-    let ust: Vec<String> = baslik().lines().map(str::to_string).collect();
-    let mut o = String::new();
-    let mut ekle = |s: &str| {
-        for l in sar(s, g) {
-            o.push_str(&l);
-            o.push('\n');
-        }
-    };
-    ekle(&format!("TADİLAT FİŞİ No: {}", f.no));
-    if !nusha.is_empty() {
-        ekle(nusha);
+/// Fişteki bir satırın görünümü. Yazıcıda kalın, büyük (2x) ve küçük (Font B) yazı ile ortalama kullanılır;
+/// düz metinde yalnız ortalama ve çizgiler yansır.
+#[derive(Clone, Copy, PartialEq)]
+enum Stil {
+    Normal,
+    Kalin,
+    OrtaKalin,
+    OrtaKucuk,
+    OrtaBuyuk,
+    Ham,
+    Ayrac,
+    Cift,
+}
+
+impl Stil {
+    fn ortali(self) -> bool {
+        matches!(self, Stil::OrtaKalin | Stil::OrtaKucuk | Stil::OrtaBuyuk)
     }
-    ekle(&format!(
-        "Fiş Tarihi: {} | Sat. Dan.: {}",
-        gun_metni(&f.tarih),
-        f.satis_danismani
+}
+
+/// Fişin satırları (ham, sarılmamış). Fiyat/ödeme bilgisi basılmaz: ödeme alınmadan işlem yapılmaz.
+fn satirlar(f: &Fis, nusha: &str) -> Vec<(Stil, String)> {
+    use Stil::*;
+    let mut v: Vec<(Stil, String)> = Vec::new();
+    for (i, l) in baslik().lines().enumerate() {
+        v.push((if i == 0 { OrtaKalin } else { OrtaKucuk }, l.to_string()));
+    }
+    v.push((Cift, String::new()));
+    v.push((OrtaKucuk, "TADİLAT FİŞİ".into()));
+    v.push((OrtaBuyuk, f.no.clone()));
+    if !nusha.is_empty() {
+        v.push((OrtaKalin, nusha.to_string()));
+    }
+    v.push((Normal, format!("Fiş Tarihi: {}", gun_metni(&f.tarih))));
+    v.push((Ayrac, String::new()));
+    v.push((Kalin, format!("Müşteri Adı: {}", f.musteri)));
+    v.push((Normal, format!("Telefonu: {}", f.telefon)));
+    v.push((Ayrac, String::new()));
+    v.push((OrtaKucuk, "ÜRÜN TESLİM TARİHİ".into()));
+    v.push((
+        OrtaBuyuk,
+        format!("{} {}", gun_metni(&f.teslim), f.teslim_saati),
     ));
-    ekle(&format!("Ölçü Alan: {}", f.olcu_alan));
-    ekle(&format!("Müşteri Adı: {}", f.musteri));
-    ekle(&format!("Telefonu: {}", f.telefon));
-    o.push_str(&cizgi);
-    o.push('\n');
-    let mut ekle = |s: &str| {
-        for l in sar(s, g) {
-            o.push_str(&l);
-            o.push('\n');
-        }
-    };
+    if !f.teslim_degisiklikleri.is_empty() {
+        v.push((
+            OrtaKucuk,
+            format!(
+                "(teslim tarihi {} kez değişti)",
+                f.teslim_degisiklikleri.len()
+            ),
+        ));
+    }
+    if !f.prova.is_empty() {
+        v.push((Normal, format!("Prova: {}", gun_metni(&f.prova))));
+    }
+    v.push((Ayrac, String::new()));
+    v.push((Kalin, "İŞLEM DETAYI".into()));
     for k in &f.kalemler {
         let mut satir = format!("* {} - {}", k.urun, k.islem);
-        if let Some(v) = &k.varyant {
-            satir.push_str(&format!(" [{v}]"));
+        if let Some(x) = &k.varyant {
+            satir.push_str(&format!(" [{x}]"));
         }
         if let Some(m) = k.olcu_mm {
             satir.push_str(&format!(" {} cm", cm_metni(m)));
@@ -679,70 +715,55 @@ fn duz_parcalar(f: &Fis, genislik: usize, nusha: &str) -> (Vec<String>, String) 
         if k.usta_onayli {
             satir.push_str(" [USTA ONAYLI]");
         }
-        ekle(&satir);
+        v.push((Normal, satir));
         if !k.not.is_empty() {
-            ekle(&format!("  ({})", k.not));
+            v.push((Normal, format!("  ({})", k.not)));
         }
     }
     if !f.olcu_notu.is_empty() {
-        ekle(&format!("Ölçü: {}", f.olcu_notu));
-    }
-    if !f.prova.is_empty() {
-        ekle(&format!("Prova: {}", gun_metni(&f.prova)));
-    }
-    ekle(&format!(
-        "Ürün Teslim Tarihi: {} {}",
-        gun_metni(&f.teslim),
-        f.teslim_saati
-    ));
-    if !f.teslim_degisiklikleri.is_empty() {
-        ekle(&format!(
-            "(teslim tarihi {} kez değişti)",
-            f.teslim_degisiklikleri.len()
-        ));
-    }
-    if !f.usta.is_empty() {
-        ekle(&format!("Usta: {}", f.usta));
-    }
-    if !f.raf.is_empty() {
-        ekle(&format!("Raf/Stant: {}", f.raf));
-    }
-    for i in &f.imzalar {
-        ekle(&format!(
-            "İmza ({}): {} {}",
-            i.rol,
-            i.kim,
-            gun_metni(&i.tarih)
-        ));
+        v.push((Normal, format!("Ölçü: {}", f.olcu_notu)));
     }
     if f.kargo {
-        ekle("*** KARGO YAPILACAK ***");
-        ekle(&format!("Alıcı: {}", f.kargo_ad));
-        ekle(&format!("Adres: {}", f.kargo_adres));
-        ekle(&format!("Alıcı Tel: {}", f.kargo_telefon));
+        v.push((Ayrac, String::new()));
+        v.push((OrtaKalin, "*** KARGO YAPILACAK ***".into()));
+        v.push((Normal, format!("Alıcı: {}", f.kargo_ad)));
+        v.push((Normal, format!("Adres: {}", f.kargo_adres)));
+        v.push((Normal, format!("Alıcı Tel: {}", f.kargo_telefon)));
         if !f.kargo_notu.is_empty() {
-            ekle(&format!("Kargo: {}", f.kargo_notu));
+            v.push((Normal, format!("Kargo: {}", f.kargo_notu)));
         }
     }
-    o.push_str(&cizgi);
-    o.push('\n');
-    for (e, d) in [
-        ("Ücret", f.ucret_kurus),
-        ("Ön ödeme", f.on_odeme_kurus),
-        ("KALAN", f.kalan_kurus()),
-    ] {
-        let sag = format!("{} TL", para(d));
-        let bosluk = g
-            .saturating_sub(e.chars().count() + sag.chars().count())
-            .max(1);
-        o.push_str(&format!("{e}{}{sag}\n", " ".repeat(bosluk)));
+    v.push((Ayrac, String::new()));
+    v.push((
+        Normal,
+        format!(
+            "Sat. Dan.: {} | Ölçü Alan: {}",
+            f.satis_danismani, f.olcu_alan
+        ),
+    ));
+    if !f.usta.is_empty() {
+        v.push((Normal, format!("Usta: {}", f.usta)));
+    }
+    if !f.raf.is_empty() {
+        v.push((Normal, format!("Raf/Stant: {}", f.raf)));
+    }
+    for i in &f.imzalar {
+        v.push((
+            Normal,
+            format!("İmza ({}): {} {}", i.rol, i.kim, gun_metni(&i.tarih)),
+        ));
     }
     if imza_blogu() && !musteri_nushasi(nusha) {
-        o.push_str(&cizgi);
-        o.push('\n');
-        o.push_str("Teslim Eden            Teslim Alan\nTarih:                 Tarih:\nİmza:                  İmza:\n");
+        v.push((Ayrac, String::new()));
+        for l in [
+            "Teslim Eden            Teslim Alan",
+            "Tarih:                 Tarih:",
+            "İmza:                  İmza:",
+        ] {
+            v.push((Ham, l.into()));
+        }
     }
-    (ust, o)
+    v
 }
 
 /// Fiş başlığı (firma adı, adres, destek hattı). `TAA_FIS_BASLIK` ile (satırlar `|` ile) değiştirilir.
@@ -883,21 +904,31 @@ pub fn escpos_nusha_tam(
     aydinlatma: Option<&str>,
 ) -> Vec<u8> {
     const KUCUK: usize = 60; // Font B: 80 mm kâğıtta 64 sütun sığar, 60 güvenli sınır
+    let g = genislik.max(24);
     let mut b = vec![0x1B, 0x40, 0x1B, 0x74, 13]; // başlat, kod sayfası 13 = CP857
-    let (ust, govde) = duz_parcalar(f, genislik, nusha);
-    for (i, l) in ust.iter().enumerate() {
-        if i == 0 {
-            b.extend([0x1B, 0x45, 1]); // firma adı kalın
-            b.extend(sar(l, genislik.max(24)).join("\n").chars().map(cp857));
-            b.extend(*b"\n");
-            b.extend([0x1B, 0x45, 0, 0x1B, 0x4D, 1]); // kalın kapat, Font B
-        } else {
-            b.extend(sar(l, KUCUK).join("\n").chars().map(cp857));
-            b.extend(*b"\n");
+    for (stil, m) in satirlar(f, nusha) {
+        match stil {
+            Stil::Ayrac => b.extend(std::iter::repeat_n(0xC4, g)), // ─
+            Stil::Cift => b.extend(std::iter::repeat_n(0xCD, g)),  // ═
+            Stil::Ham => b.extend(m.chars().map(cp857)),           // boşlukları olduğu gibi
+            _ => {
+                let (genis, ayar): (usize, &[u8]) = match stil {
+                    Stil::Kalin => (g, &[0x1B, 0x45, 1]),
+                    Stil::OrtaKalin => (g, &[0x1B, 0x61, 1, 0x1B, 0x45, 1]),
+                    Stil::OrtaKucuk => (KUCUK, &[0x1B, 0x61, 1, 0x1B, 0x4D, 1]),
+                    Stil::OrtaBuyuk => (g / 2, &[0x1B, 0x61, 1, 0x1B, 0x45, 1, 0x1D, 0x21, 0x11]),
+                    _ => (g, &[]),
+                };
+                b.extend(ayar);
+                b.extend(sar(&m, genis).join("\n").chars().map(cp857));
+                b.extend(*b"\n");
+                // ayarları sıfırla: hizalama sola, kalın kapalı, Font A, boyut 1x
+                b.extend([0x1B, 0x61, 0, 0x1B, 0x45, 0, 0x1B, 0x4D, 0, 0x1D, 0x21, 0]);
+                continue;
+            }
         }
+        b.extend(*b"\n");
     }
-    b.extend([0x1B, 0x4D, 0]); // Font A
-    b.extend(govde.chars().map(cp857));
     if !terzihane_nushasi(nusha) {
         b.extend([0x1B, 0x4D, 1]);
         for c in [
@@ -1147,10 +1178,11 @@ mod testler {
             teslim_degisiklikleri: Vec::new(),
         };
         let m = duz_metin(&f, 42);
-        assert!(m.contains("TADİLAT FİŞİ No: F-20261104-001"));
-        assert!(m.contains("Ürün Teslim Tarihi: 10.11.2026 17:00"));
+        assert!(m.contains("TADİLAT FİŞİ") && m.contains("F-20261104-001"));
+        assert!(m.contains("ÜRÜN TESLİM TARİHİ") && m.contains("10.11.2026 17:00"));
         assert!(m.lines().all(|l| l.chars().count() <= 42));
-        assert!(m.contains("KALAN") && m.contains("650,00 TL"));
+        // ödeme alınmadan işlem yapılmaz: fiyat basılmaz
+        assert!(!m.contains("KALAN") && !m.contains(" TL"));
         let b = escpos(&f, 42);
         assert_eq!(&b[..5], &[0x1B, 0x40, 0x1B, 0x74, 13]);
         assert!(b.contains(&0x98)); // İ -> CP857
@@ -1276,7 +1308,8 @@ mod testler {
         let t = duz_metin_nusha(&f, 42, "TERZİHANE NÜSHASI");
         let m = duz_metin_nusha(&f, 42, "MÜŞTERİ NÜSHASI");
         assert!(t.contains("Teslim Eden") && !m.contains("Teslim Eden"));
-        assert!(t.contains("Fiş Tarihi: 04.11.2026 | Sat. Dan.: Mert"));
+        assert!(t.contains("Fiş Tarihi: 04.11.2026"));
+        assert!(t.contains("Sat. Dan.: Mert | Ölçü Alan: Kadir Y."));
         assert!(t.lines().all(|l| l.chars().count() <= 42));
         // alt bilgi cümleleri yalnız müşteri nüshasında basılır
         let b = escpos_nushalar(&f, 42);
