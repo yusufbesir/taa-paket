@@ -24,6 +24,13 @@ T1 (kurulum yöneticisi ve iletişim; yeni Cargo bağımlılığı yok).
 - README crate tablosu: `taa-kur` ve `taa-ipc` "var".
 - `docs/TEK-CATI.md` §3'e T1 durum notu eklendi.
 
+### T2-A2
+
+- `taa-kur kur <paket.zip>`: bağımsız değişken `.zip` ile bitiyorsa zip `<kök>/gecici-<pid>/` altına açılır (yol kuralları klasör paketiyle aynı; en çok 10.000 girdi, açılmış toplam en çok 2 GiB; bildirilen boyutlar toplanıp sınır aşılırsa hiçbir şey açılmaz; sembolik bağ ve yinelenen ad reddedilir; `paket.json` zipin kökünde olmalı), sonra mevcut klasör kurulumu çalışır; geçici klasör iş bitince (hata dahil) `eski/` altına taşınır, silinmez. `zip` bağımlılığı `taa-donustur` ile aynı sürüm ve özelliklerle (yeni sürüm ya da özellik yok).
+- `paket.json` şemasına ayrılmış `imza` alanı (`null`; Rust yok sayar, doğrulamaz; T3 imza). `tools/paket_uret.py --zip <cikti.zip>` aynı içeriği zip olarak üretir; testler eklendi.
+- `taa-kur tani --json`: `veri_kok` ve `veri_alanlari` (`TAA_VERI_KOK` ya da platform varsayılanı altındaki her `<alan>/SAHIP.toml` için `{alan, sahip, gecici, sahip_kurulu}`); bozuk SAHIP.toml tanı `sorunlar` listesine girer. SAHIP.toml düz TOML alt kümesi taa-kur içindeki küçük yerel çözücüyle okunur (`taa-veri`'ye bağımlılık yok).
+- `taa-katalog`: `kaydet` artık `fs::remove_file` kullanmaz; eski dosya `eski/<epoch>-<ad>` olarak `rename` ile taşınır (olmazsa kopyalanır ve eski dosya `<ad>.tasindi` adını alır); `eski/` altındaki dosya hiçbir zaman ezilmez. Test eklendi.
+
 T0 (tek çatı, veri ve yapı temizliği). Kırıcı değişiklik yok; yalnız ek alanlar, belge ve denetim.
 
 - 20 `modul.toml` dosyasına `sunar`, `ister`, `veri_sahibi`, `veri_okur`, `ayar_alani` alanları eklendi (mevcut alanlar korundu).

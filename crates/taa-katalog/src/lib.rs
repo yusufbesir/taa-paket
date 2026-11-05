@@ -1,6 +1,6 @@
 //! taa-katalog: Nebim'den gelen ürünlerin yerel, salt okunur aynası. TaaRkod, Fiyat Etiketi ve Tutaa ortak okur.
 //! Nebim'e yazılmaz. Özellik anahtarı: "katalog" (varsayılan açık).
-//! Kaydederken eski dosya silinmez, `eski\` klasörüne taşınır.
+//! Kaydederken eski dosya silinmez, `eski\` klasörüne taşınır (rename; olmazsa kopya + `<ad>.tasindi`).
 //! Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-04].
 
 use serde::{Deserialize, Serialize};
@@ -17,6 +17,17 @@ pub struct Katalog {
     pub kaynak: String,
     /// Anahtar: ürün kodu + barkod; aynı koda farklı beden/renk ayrı satırdır.
     pub urunler: BTreeMap<String, Urun>,
+}
+
+/// `dizin` içinde var olmayan bir ad üretir (`ad`, yoksa `ad-2`, `ad-3`...); var olan dosya ezilmez.
+fn bos_ad(dizin: &Path, ad: &str) -> std::path::PathBuf {
+    let mut aday = dizin.join(ad);
+    let mut n = 2;
+    while aday.exists() {
+        aday = dizin.join(format!("{ad}-{n}"));
+        n += 1;
+    }
+    aday
 }
 
 fn anahtar(u: &Urun) -> String {
@@ -101,12 +112,14 @@ impl Katalog {
                 .file_name()
                 .map(|a| a.to_string_lossy().to_string())
                 .unwrap_or_default();
-            taa_dosya::atomik_yaz(
-                &eski.join(format!("{z}-{ad}")),
-                &fs::read(yol).map_err(|e| e.to_string())?,
-            )
-            .map_err(|e| e.to_string())?;
-            fs::remove_file(yol).map_err(|e| e.to_string())?;
+            let hedef = bos_ad(&eski, &format!("{z}-{ad}"));
+            if fs::rename(yol, &hedef).is_err() {
+                // Taşıma olmadı (ör. farklı sürücü): kopyala, eski dosyayı silmeden `<ad>.tasindi` yap.
+                let bayt = fs::read(yol).map_err(|e| e.to_string())?;
+                taa_dosya::atomik_yaz(&hedef, &bayt).map_err(|e| e.to_string())?;
+                let tasindi = bos_ad(dizin, &format!("{ad}.tasindi"));
+                fs::rename(yol, &tasindi).map_err(|e| e.to_string())?;
+            }
         }
         let json = serde_json::to_vec_pretty(self).map_err(|e| e.to_string())?;
         taa_dosya::atomik_yaz(yol, &json)
@@ -191,6 +204,22 @@ mod testler {
             .unwrap();
         assert_eq!(Katalog::yukle(&yol).unwrap().kaynak, "2");
         assert_eq!(fs::read_dir(d.join("eski")).unwrap().count(), 1);
+        // eski içerik eski/ altında, orijinal yolda yeni içerik
+        let eski_dosya = fs::read_dir(d.join("eski"))
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap();
+        assert!(eski_dosya
+            .file_name()
+            .to_string_lossy()
+            .ends_with("-katalog.json"));
+        assert_eq!(Katalog::yukle(&eski_dosya.path()).unwrap().kaynak, "1");
+        // aynı saniyede üçüncü kayıt: eski/ altındaki hiçbir dosya ezilmez
+        Katalog::yeni("3", vec![u("C", "3", 100, None)])
+            .kaydet(&yol)
+            .unwrap();
+        assert_eq!(fs::read_dir(d.join("eski")).unwrap().count(), 2);
         let _ = fs::remove_dir_all(&d);
     }
 }

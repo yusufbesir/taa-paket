@@ -40,6 +40,9 @@ pub struct Paket {
     pub veri_okur: Vec<String>,
     pub dosyalar: Vec<DosyaKaydi>,
     pub icerik_sha256: String,
+    /// Ayrılmış alan (T3 imza): şimdilik `null`. Rust bu alanı yok sayar, doğrulamaz.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub imza: Option<serde_json::Value>,
 }
 
 pub fn sha256_bayt(b: &[u8]) -> String {

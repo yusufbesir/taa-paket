@@ -76,6 +76,7 @@ fn paket_yap(
         veri_okur: vec![],
         icerik_sha256: icerik_hesapla(&liste),
         dosyalar: liste,
+        imza: None,
     };
     fs::write(k.join("paket.json"), serde_json::to_vec_pretty(&p).unwrap()).unwrap();
     k

@@ -9,13 +9,18 @@
 
 pub mod kayit;
 pub mod paket;
+mod veri;
 mod zaman;
+pub mod zipac;
 
 #[cfg(test)]
 mod testler;
+#[cfg(test)]
+mod testler_zip;
 
 pub use kayit::{Kayit, PaketKaydi};
 pub use paket::{paket_dogrula, Paket};
+pub use veri::{sahip_toml_coz, veri_kok_coz, Deger};
 
 use kayit::surum_karsilastir;
 use paket::{ad_gecerli, guvenli_coz, icerik_hesapla, paket_oku, sha256_dosya, surum_gecerli};
@@ -166,8 +171,22 @@ pub struct Tani {
     pub kayit_saglam: bool,
     pub paketler: Vec<ListeSatiri>,
     pub sahiplik: BTreeMap<String, String>,
+    /// Veri kökü (`TAA_VERI_KOK` ya da platform varsayılanı); çözülemezse yok.
+    pub veri_kok: Option<String>,
+    /// Veri kökündeki her `<alan>/SAHIP.toml` için özet (T2-TASARIM §1).
+    pub veri_alanlari: Vec<VeriAlani>,
     pub sorunlar: Vec<Sorun>,
     pub son_hatalar: Vec<String>,
+}
+
+/// `taa-kur tani --json` veri alanı satırı.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct VeriAlani {
+    pub alan: String,
+    pub sahip: String,
+    pub gecici: bool,
+    /// `kayit.json` paketler içinde `sahip` adı var mı.
+    pub sahip_kurulu: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -557,8 +576,41 @@ impl Kur {
 
     // ---- işlevler
 
-    /// Paket klasörünü doğrular, `depo/<ad>/<surum>` altına kopyalar, kaydı günceller.
-    pub fn kur(&self, paket_klasoru: &Path, sec: bool) -> Sonuc<KurSonuc> {
+    /// Paket klasörünü (ya da `.zip` ile biten dosyayı) doğrular, `depo/<ad>/<surum>` altına kopyalar, kaydı günceller.
+    /// Zip önce `<kok>/gecici-<pid>/` altına açılır (sınırlar: `zipac`), sonra klasör kurulumu çağrılır; geçici
+    /// klasör iş bitince (hata dahil) `eski/` altına taşınır, silinmez.
+    pub fn kur(&self, paket_yolu: &Path, sec: bool) -> Sonuc<KurSonuc> {
+        if zip_mi(paket_yolu) {
+            return self.kur_zip(paket_yolu, sec);
+        }
+        self.kur_klasor(paket_yolu, sec)
+    }
+
+    fn kur_zip(&self, zip: &Path, sec: bool) -> Sonuc<KurSonuc> {
+        fs::create_dir_all(&self.kok)?;
+        let pid = std::process::id();
+        let mut gecici = self.kok.join(format!("gecici-{pid}"));
+        let mut n = 2;
+        while gecici.exists() {
+            gecici = self.kok.join(format!("gecici-{pid}-{n}"));
+            n += 1;
+        }
+        let r = match zipac::zip_ac(zip, &gecici) {
+            Ok(()) => self.kur_klasor(&gecici, sec),
+            Err(e) => {
+                self.gunluk("hata", "kur", "", "", e.mesaj());
+                Err(e)
+            }
+        };
+        if gecici.exists() {
+            if let Err(e) = self.eskiye_tasi(&gecici, &format!("gecici-{pid}")) {
+                self.gunluk("hata", "kur", "", "", e.mesaj());
+            }
+        }
+        r
+    }
+
+    fn kur_klasor(&self, paket_klasoru: &Path, sec: bool) -> Sonuc<KurSonuc> {
         let r = self.kilitli(|| self.kur_ic(paket_klasoru, sec));
         let (ad, surum) = r
             .as_ref()
@@ -928,8 +980,18 @@ impl Kur {
 
     /// Kök, sürümler, sahiplik tablosu, son hatalar. Sır içermez.
     pub fn tani(&self) -> Sonuc<Tani> {
+        self.tani_veri_ile(veri::veri_kok_ortamdan())
+    }
+
+    /// `tani` ile aynı; veri kökü verilir (testler sahte kök kullanır).
+    pub fn tani_veri_ile(&self, veri_kok: Option<PathBuf>) -> Sonuc<Tani> {
         let (kayit, ham) = self.kayit_oku_ham()?;
-        let sorunlar = self.dogrula(None).unwrap_or_default();
+        let mut sorunlar = self.dogrula(None).unwrap_or_default();
+        let (veri_alanlari, veri_sorunlari) = match &veri_kok {
+            Some(k) => veri::alanlari_tara(k, &kayit),
+            None => (Vec::new(), Vec::new()),
+        };
+        sorunlar.extend(veri_sorunlari);
         let satirlar = taa_dosya::satirlari_oku(&self.gunluk_yolu()).unwrap_or_default();
         let mut hatalar: Vec<String> = satirlar
             .iter()
@@ -952,6 +1014,8 @@ impl Kur {
             kayit_saglam: ham.is_none(),
             paketler: liste_satirlari(&kayit),
             sahiplik: kayit.veri_sahipleri.clone(),
+            veri_kok: veri_kok.map(|k| k.to_string_lossy().into_owned()),
+            veri_alanlari,
             sorunlar,
             son_hatalar: hatalar,
         })
@@ -959,6 +1023,14 @@ impl Kur {
 }
 
 // ---------------------------------------------------------------- yardımcılar
+
+/// Yol bir dosya olarak `.zip` ile bitiyorsa zip paketidir (klasör `x.zip` adlı olsa bile klasör sayılır).
+fn zip_mi(yol: &Path) -> bool {
+    !yol.is_dir()
+        && yol
+            .extension()
+            .is_some_and(|u| u.eq_ignore_ascii_case("zip"))
+}
 
 fn kapi() -> Sonuc<()> {
     if taa_ayar::ozellik_acik(OZELLIK, true) {

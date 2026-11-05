@@ -115,7 +115,7 @@ fn calistir(args: &[String], json: bool) -> Result<(), KurHata> {
         }
         "kur" => {
             let a = ayir(kalan, &["--sec"])?;
-            konumsal_say(&a, 1, "taa-kur kur <paket-klasoru> [--sec]")?;
+            konumsal_say(&a, 1, "taa-kur kur <paket-klasoru|paket.zip> [--sec]")?;
             let kur = Kur::ortamdan()?;
             let s = kur.kur(Path::new(&a.konumsal[0]), a.sec)?;
             if json {
@@ -251,6 +251,16 @@ fn calistir(args: &[String], json: bool) -> Result<(), KurHata> {
                 }
                 for (alan, sahip) in &t.sahiplik {
                     println!("Veri sahibi: {alan} -> {sahip}");
+                }
+                println!("Veri kökü: {}", t.veri_kok.as_deref().unwrap_or("-"));
+                for v in &t.veri_alanlari {
+                    println!(
+                        "Veri alanı: {} sahip: {} geçici: {} sahip kurulu: {}",
+                        v.alan,
+                        v.sahip,
+                        if v.gecici { "evet" } else { "hayır" },
+                        if v.sahip_kurulu { "evet" } else { "hayır" }
+                    );
                 }
                 for s in &t.sorunlar {
                     println!("Sorun: {s:?}");

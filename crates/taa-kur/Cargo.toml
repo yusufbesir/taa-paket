@@ -22,3 +22,5 @@ taa-dosya = { path = "../taa-dosya" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
+# taa-donustur ile AYNI sürüm ve özellikler (T2 PR-A2: zip paket kurulumu). Başka özellik yok.
+zip = { version = "9.3.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
