@@ -9,6 +9,14 @@
 - Güncelle düğmesi `GuncelleyiciArayuzu` trait'ine bağlı; varsayılan "Güncelleme kaynağı ayarlanmadı" der (taa-guncelle başka dalda).
 - Kaldırma silmez: `Kur::kaldir` ile `eski\` klasörüne taşır; veri alanlarına dokunulmaz.
 - Bağımlılık: yalnız Windows'ta `windows-sys 0.61` (Yusuf onaylı; `zip` zaten dolaylı olarak aynı sürümü çekiyordu), asgari özellikler. Windows'ta elle doğrulanmadı; tür denetimi `--target x86_64-pc-windows-gnu` ile yapıldı. `docs/T3-PENCERE.md` eklendi.
+### T3-imza
+- Yusuf onaylı yeni bağımlılıklar: `ed25519-dalek 2` (`default-features=false`, `std`) ve `toml` (`parse`). Başka bağımlılık, HTTP ve silme yok.
+- `crates/taa-imza` eklendi: ed25519 anahtar üret/imzala/doğrula, hex, `ed25519:<hex>` genel anahtar dosyası, `taa-imza uret|imzala|dogrula` CLI. Özel anahtar yalnız verilen dosyadan okunur (0600, ezmez, günlüğe/`Debug`'a yazılmaz).
+- `crates/taa-kur`: `paket.json` `imza` = `{alg, anahtar_kimlik, deger}` (imzalanan veri `icerik_sha256`). `Kur::yeni/ortamdan` `<kök>\anahtarlar\*.pub` okur; anahtar varken imzasız/yanlış imzalı paket `KurHata::Dogrulama` ile reddedilir, anahtar yokken eski davranış (+ `tani` uyarısı). Bozuk `.pub` imza denetimini kapatmaz. `Kur::imza_denetle`, `tani` alanları `uyarilar` ve `guvenilir_anahtarlar`. `kur.toml` (`kaynak_klasoru`, `kanal`) `toml` ile okunur (`kur_ayari_oku`).
+- `crates/taa-guncelle` eklendi: `yayin.json` şeması, `Kaynak` trait'i + `YerelKaynak`, `kontrol` (zorunlu `en_az_surum`, geri alma koruması), `uygula` (SHA256 + imza, `kur --sec`, hatada önceki sürüme dönme; yama yalnız şemada, `tam`a düşülür), `taa-guncelle kontrol|uygula [--json]`.
+- `tools/paket_uret.py` artık `imza` alanı yazmaz; hazır imza `--imza-dosya` ile alınır. `docs/T3-TASARIM.md` eklendi.
+### T3-boru
+- `taa-ipc`: Windows adlandırılmış boru taşıyıcısı (`BoruTasiyici`, `#[cfg(windows)]` `src/boru.rs`; `Tasiyici` trait'i, dosya tabanlı `GelenKutusu`'na yedekli). Yusuf onaylı tek yeni bağımlılık `windows-sys` (yalnız `[target.'cfg(windows)'.dependencies]`). Platformdan bağımsız parça `src/boru_ortak.rs` (boru adı `\\.\pipe\taa-<kullanici>-<program>`, 4 bayt uzunluk + JSON çerçeve, 256 KiB sınır, zaman aşımı, ACL = yalnız geçerli kullanıcı, `FIRST_PIPE_INSTANCE`, `YedekliTasiyici`) Linux'ta test edilir. `docs/ipc.md` "T3: Windows adlandırılmış boru" bölümü eklendi. DOĞRULANMADI: Windows kodu yalnız `cargo check --target x86_64-pc-windows-gnu` ile tür denetiminden geçti, Windows'ta çalıştırılmadı.
 
 ### T2-A4 (güvenlik sertleştirme; Opus incelemesi, 0 yüksek / 9 orta / 7 düşük)
 - `taa-veri.js`: `eskiyeTasi` dışa açıldı (programlar bozuk alan dosyasını `<alan>/eski/` altına alır). `docs/veri-alani.md`: `rehber` + `TAA_VERI_KOK` kuralı kodla hizalandı.

@@ -1,0 +1,13 @@
+# Sahip: Yusuf. yazan: [Claude#taa-paket-T3 2026-11-05]
+# taa-guncelle modül tanımı (bkz. docs/T3-TASARIM.md). surum Cargo.toml version ile aynı tutulur.
+ad = "taa-guncelle"
+surum = "0.1.0"
+arayuz = "1"
+gerektirir = { "taa-imza" = "1", "taa-kur" = "1" }
+ozellikler = ["guncelle"]
+program = "ortak"
+sunar = []
+ister = []
+veri_sahibi = []
+veri_okur = []
+ayar_alani = "moduller.taa-guncelle"

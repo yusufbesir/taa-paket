@@ -262,6 +262,12 @@ fn calistir(args: &[String], json: bool) -> Result<(), KurHata> {
                         if v.sahip_kurulu { "evet" } else { "hayır" }
                     );
                 }
+                for k in &t.guvenilir_anahtarlar {
+                    println!("Güvenilir anahtar: {k}");
+                }
+                for u in &t.uyarilar {
+                    println!("Uyarı: {u}");
+                }
                 for s in &t.sorunlar {
                     println!("Sorun: {s:?}");
                 }

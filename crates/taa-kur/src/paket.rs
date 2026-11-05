@@ -40,7 +40,8 @@ pub struct Paket {
     pub veri_okur: Vec<String>,
     pub dosyalar: Vec<DosyaKaydi>,
     pub icerik_sha256: String,
-    /// Ayrılmış alan (T3 imza): şimdilik `null`. Rust bu alanı yok sayar, doğrulamaz.
+    /// T3 imza: `{"alg":"ed25519","anahtar_kimlik":..,"deger":hex}`; imzalanan veri `icerik_sha256` metnidir.
+    /// Ham JSON olarak tutulur: güvenilir anahtar yoksa içeriği hiç yorumlanmaz (eski davranış), varsa `Kur::imza_denetle` çözer.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub imza: Option<serde_json::Value>,
 }
