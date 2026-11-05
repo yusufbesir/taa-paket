@@ -782,6 +782,7 @@ dependencies = [
  "serde",
  "serde_json",
  "taa-dosya",
+ "zip",
 ]
 
 [[package]]

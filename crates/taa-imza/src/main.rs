@@ -8,8 +8,31 @@ use taa_imza::*;
 
 const KULLANIM: &str = "Kullanım: taa-imza uret --ozel <dosya> --genel <dosya> | imzala <dosya> --ozel <dosya> [--tur ham|paket|yayin] [--cikti <dosya>] | dogrula <dosya> --genel <dosya> [--tur ham|paket|yayin] [--imza <dosya>]. Özel anahtarı depoya koymayın.";
 
+const YARDIM: &str = "\
+taa-imza — TAA ed25519 imza aracı (Authenticode değil; kendi anahtarımız).
+  uret --ozel <dosya> --genel <dosya>              Yeni anahtar çifti (var olan dosya ezilmez).
+  imzala <dosya> --ozel <ozel> [--tur ham|paket|yayin] [--cikti <dosya>]
+      paket : paket.json ya da paket ZİP'i (kökteki paket.json yerinde imzalanır, eski kopya <dosya>.once-N).
+              <dosya> .zip ile bitiyorsa --tur paket varsayılır.
+      yayin : yayin.json (imza hariç kanonik JSON).   ham: dosya baytları, imza JSON'u stdout ya da --cikti.
+  dogrula <dosya> --genel <genel> [--tur ham|paket|yayin] [--imza <dosya>]
+      paket ZİP'i de verilebilir (.zip -> paket).
+  yardim | --help | -h                             Bu metin.
+Özel anahtar yalnız --ozel ile verilen dosyadan okunur, hiçbir çıktıya yazılmaz; depoya koymayın.
+Unix'te başkasının okuyabildiği özel anahtar dosyası için uyarı verilir; Windows'ta izin denetlenmez.
+Çıkış: 0 tamam, 2 doğrulama/kullanım, 1 dosya.";
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.is_empty()
+        || matches!(
+            args[0].as_str(),
+            "yardim" | "--yardim" | "--help" | "-h" | "help"
+        )
+    {
+        println!("{YARDIM}");
+        return ExitCode::SUCCESS;
+    }
     match calistir(&args) {
         Ok(()) => ExitCode::SUCCESS,
         Err((kod, m)) => {
@@ -93,7 +116,14 @@ fn calistir(args: &[String]) -> Sonuc {
     let Some(komut) = args.first() else {
         return Err(kullanim("Komut verilmedi."));
     };
-    let s = ayir(&args[1..])?;
+    let mut s = ayir(&args[1..])?;
+    // .zip verildiyse ve --tur yazılmadıysa paket sayılır.
+    if s.tur == "ham"
+        && !args[1..].iter().any(|a| a == "--tur")
+        && s.konumsal.first().is_some_and(|k| zip_mi(Path::new(k)))
+    {
+        s.tur = "paket".into();
+    }
     match komut.as_str() {
         "uret" => {
             if !s.konumsal.is_empty() {
@@ -126,6 +156,16 @@ fn calistir(args: &[String]) -> Sonuc {
                         Some(c) => yeni_yaz(c, &j)?,
                         None => println!("{j}"),
                     }
+                }
+                "paket" if zip_mi(dosya) => {
+                    let mut v = zip_paket_json_oku(dosya).map_err(h)?;
+                    paket_imzala(&mut v, &oz).map_err(h)?;
+                    zip_paket_json_yaz(dosya, &v).map_err(h)?;
+                    println!(
+                        "İmzalandı: {} (zip içindeki paket.json; anahtar kimliği {}).",
+                        dosya.display(),
+                        oz.genel().kimlik()
+                    );
                 }
                 tur => {
                     let mut v = json_oku(dosya)?;
@@ -165,7 +205,11 @@ fn calistir(args: &[String]) -> Sonuc {
                     (b, im)
                 }
                 "paket" => {
-                    let v = json_oku(dosya)?;
+                    let v = if zip_mi(dosya) {
+                        zip_paket_json_oku(dosya).map_err(h)?
+                    } else {
+                        json_oku(dosya)?
+                    };
                     let o = v
                         .get("icerik_sha256")
                         .and_then(|x| x.as_str())
