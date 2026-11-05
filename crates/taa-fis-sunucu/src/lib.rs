@@ -189,6 +189,11 @@ impl Uygulama {
                     Err(e) => Yanit::hata(404, &e),
                 }
             }
+            ("GET", ["aydinlatma"]) => Yanit::html(
+                std::fs::read_to_string(self.dizin.join("aydinlatma.html")).unwrap_or_else(|_| {
+                    "<!doctype html><meta charset=utf-8><title>Aydınlatma</title><body style=\"font-family:sans-serif;max-width:40em;margin:1em auto;padding:0 1em\"><h1>Kişisel Verilerin Korunması Aydınlatma Metni</h1><p>Aydınlatma metni henüz yüklenmedi. Şirket KVKK sorumlusu metni veri klasörüne <code>aydinlatma.html</code> olarak koymalıdır.</p></body>".into()
+                }),
+            ),
             ("GET" | "POST", ["api", ..]) => self.yetkili(i, &parca),
             _ => Yanit::hata(404, "bulunamadı"),
         }
