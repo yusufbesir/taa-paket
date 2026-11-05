@@ -338,6 +338,10 @@ impl Uygulama {
             "geciken" => liste(t.geciken(&bugun)),
             "bugun" => liste(t.bugun_teslim(&bugun)),
             "usta" => Yanit::json(200, json!({ "ustalar": t.usta_performansi(&bugun) })),
+            "usta-is" => match taa_takip::Zorluk::dizinden(&self.dizin) {
+                Ok(z) => Yanit::json(200, json!({ "ustalar": t.usta_is_raporu(&z) })),
+                Err(e) => Yanit::hata(409, &e),
+            },
             _ => Yanit::hata(404, "bilinmeyen takip listesi"),
         }
     }
@@ -1114,6 +1118,7 @@ mod testler {
             ("/api/takip/kuru-temizleme", "fisler"),
             ("/api/takip/geciken", "fisler"),
             ("/api/takip/usta", "ustalar"),
+            ("/api/takip/usta-is", "ustalar"),
         ] {
             let y = u.isle(&ist("GET", yol, Some(&t), "", false));
             assert_eq!(y.kod, 200, "{yol}");

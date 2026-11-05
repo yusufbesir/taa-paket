@@ -1,7 +1,11 @@
 //! taa-takip: TaaTerziTakip raporları. Veri yerel fiş defterinden (`fisler.jsonl`) okunur; Google Sheets ve bulut YOK.
 //! Salt okunur: defteri değiştirmez, yazma işleri `taa-fis` içindedir.
-//! Usta performansı yalnız SAYI verir (biten, zamanında, geciken). Prim formülü/oranı Yusuf'tan gelmeden uydurulmaz.
+//! Usta performansı SAYI verir (biten, zamanında, geciken); iş raporu işlem başına adet ve zorluk puanı verir.
+//! Zorluk puanları düzenlenebilir başlangıç değerleridir (zorluk.json). Prim formülü/oranı YOKTUR.
 //! Özellik anahtarı `fis-takip`: varsayılan AÇIK. Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-05].
+
+mod zorluk;
+pub use zorluk::Zorluk;
 
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -46,6 +50,26 @@ pub struct UstaSatiri {
     pub gec: usize,
     /// Hâlâ işlemde olan ve teslim tarihi geçmiş fişler.
     pub geciken_acik: usize,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct IslemSayisi {
+    /// Katalog işlem kodu; serbest yazılan işlemde "serbest".
+    pub kod: String,
+    pub ad: String,
+    pub adet: usize,
+    /// Tek işlemin zorluk puanı (1–5).
+    pub puan: u32,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct UstaIsRaporu {
+    pub usta: String,
+    /// Biten fişlerdeki toplam işlem (kalem) adedi.
+    pub islem_adedi: usize,
+    /// Her işlemin adedi x zorluk puanı toplamı.
+    pub agirlikli_puan: u32,
+    pub islemler: Vec<IslemSayisi>,
 }
 
 pub struct Takip {
@@ -109,6 +133,54 @@ impl Takip {
             kargo_bekleyen: self.kargo_bekleyen().len(),
             kuru_temizleme: self.kuru_temizleme().len(),
         }
+    }
+
+    /// Ustanın hangi işlemden kaç tane bitirdiği ve zorluğa göre ağırlıklı puanı.
+    /// Biten = en az bir kez "Hazır" ya da "Teslim" olmuş fiş (iptal sayılmaz). Puan prim DEĞİLDİR.
+    pub fn usta_is_raporu(&self, z: &Zorluk) -> Vec<UstaIsRaporu> {
+        let mut m: BTreeMap<String, BTreeMap<String, IslemSayisi>> = BTreeMap::new();
+        for f in &self.fisler {
+            let biten = self
+                .gecmis
+                .iter()
+                .any(|(no, d, _)| *no == f.no && matches!(d, Durum::Hazir | Durum::Teslim));
+            if !biten {
+                continue;
+            }
+            let usta = if f.usta.trim().is_empty() {
+                "(atanmamış)".to_string()
+            } else {
+                f.usta.trim().to_string()
+            };
+            let islemler = m.entry(usta).or_default();
+            for k in &f.kalemler {
+                let (kod, ad) = match &k.islem_kodu {
+                    Some(c) => (c.clone(), k.islem.clone()),
+                    None => ("serbest".to_string(), format!("{} - {}", k.urun, k.islem)),
+                };
+                let anahtar = format!("{kod}|{ad}");
+                islemler
+                    .entry(anahtar)
+                    .or_insert(IslemSayisi {
+                        puan: z.puan(k.islem_kodu.as_deref()),
+                        kod,
+                        ad,
+                        adet: 0,
+                    })
+                    .adet += 1;
+            }
+        }
+        m.into_iter()
+            .map(|(usta, islemler)| {
+                let islemler: Vec<IslemSayisi> = islemler.into_values().collect();
+                UstaIsRaporu {
+                    usta,
+                    islem_adedi: islemler.iter().map(|i| i.adet).sum(),
+                    agirlikli_puan: islemler.iter().map(|i| i.adet as u32 * i.puan).sum(),
+                    islemler,
+                }
+            })
+            .collect()
     }
 
     /// Fişte atanmış ustalara göre sayılar. Usta atanmamış fişler "(atanmamış)" altında toplanır.
@@ -280,11 +352,31 @@ mod testler {
         assert_eq!((h.biten, h.zamaninda, h.gec, h.geciken_acik), (2, 1, 1, 0));
         let a = u.iter().find(|x| x.usta == "Ayten").unwrap();
         assert_eq!((a.biten, a.zamaninda, a.geciken_acik), (1, 1, 1));
+        // iş raporu: yalnız biten fişler; serbest işlem varsayılan puan (2) alır
+        let r = t.usta_is_raporu(&Zorluk::varsayilan());
+        let ra = r.iter().find(|x| x.usta == "Ayten").unwrap();
+        assert_eq!((ra.islem_adedi, ra.agirlikli_puan), (1, 2));
+        let rh = r.iter().find(|x| x.usta == "Hasan").unwrap();
+        assert_eq!(rh.islem_adedi, 2);
+        assert_eq!(rh.agirlikli_puan, 4);
     }
 
     #[test]
     fn turkce_kucuk_harf() {
         assert_eq!(kucuk("KURU TEMİZLEME"), "kuru temizleme");
         assert_eq!(kucuk("Iğdır"), "ığdır");
+    }
+
+    #[test]
+    fn usta_is_raporu_zorluk_agirligi() {
+        let z = Zorluk::varsayilan();
+        assert_eq!(z.puan(Some("cek-omuz-kol-kisalt")), 5);
+        assert_eq!(z.puan(Some("yok")), 2);
+        assert_eq!(z.puan(None), 2);
+        assert!(Zorluk::json_den(r#"{"varsayilan_puan":9,"puanlar":{}}"#).is_err());
+        assert!(Zorluk::json_den("bozuk").is_err());
+        let ozel = Zorluk::json_den(r#"{"varsayilan_puan":1,"puanlar":{"x":4}}"#).unwrap();
+        assert_eq!(ozel.puan(Some("x")), 4);
+        assert_eq!(ozel.puan(None), 1);
     }
 }

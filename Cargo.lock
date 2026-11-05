@@ -670,6 +670,7 @@ name = "taa-takip"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
  "taa-ayar",
  "taa-dosya",
  "taa-fis",
