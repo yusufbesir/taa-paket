@@ -8,7 +8,7 @@ pub mod cihaz;
 pub mod sayfalar;
 
 use serde_json::json;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use taa_fis::{Defter, Durum, Girdi};
 
@@ -382,24 +382,47 @@ impl Uygulama {
                         "yazıcı ayarlı değil (sunucuyu --yazici ile başlatın)",
                     );
                 };
-                use std::io::Write;
                 let nusha: serde_json::Value = serde_json::from_slice(&i.govde).unwrap_or_default();
                 let baytlar = if nusha["nusha"].as_u64() == Some(1) {
                     taa_fis::escpos(&f, 42)
                 } else {
                     taa_fis::escpos_nushalar(&f, 42)
                 };
-                match std::fs::OpenOptions::new()
-                    .write(true)
-                    .open(yazici)
-                    .and_then(|mut h| h.write_all(&baytlar))
-                {
+                match yaziciya_yaz(yazici, &baytlar) {
                     Ok(()) => Yanit::json(200, json!({ "tamam": true })),
                     Err(e) => Yanit::hata(502, &format!("yazıcıya yazılamadı: {e}")),
                 }
             }
             _ => Yanit::hata(404, "bulunamadı"),
         }
+    }
+}
+
+/// Baytları yazıcıya gönderir. Hedef `tcp://IP[:9100]` ise ağ (Ethernet) yazıcısıdır;
+/// aksi halde dosya/paylaşım yoludur (USB yazıcı: `\\\\localhost\\ADI` ya da `/dev/usb/lp0`).
+pub fn yaziciya_yaz(hedef: &Path, baytlar: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let h = hedef.to_string_lossy();
+    if let Some(adres) = h.strip_prefix("tcp://") {
+        use std::net::ToSocketAddrs;
+        let adres = if adres.contains(':') {
+            adres.to_string()
+        } else {
+            format!("{adres}:9100")
+        };
+        let a = adres
+            .to_socket_addrs()?
+            .next()
+            .ok_or_else(|| std::io::Error::other("yazıcı adresi çözülemedi"))?;
+        let mut t = std::net::TcpStream::connect_timeout(&a, std::time::Duration::from_secs(5))?;
+        t.set_write_timeout(Some(std::time::Duration::from_secs(10)))?;
+        t.write_all(baytlar)?;
+        t.flush()
+    } else {
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(hedef)
+            .and_then(|mut f| f.write_all(baytlar))
     }
 }
 
@@ -651,6 +674,55 @@ mod testler {
         ); // 2 terzihane + 1 müşteri
         u.yazici_yolu = Some(u.dizin.join("yok").join("x"));
         assert_eq!(u.isle(&ist("POST", &yol, Some(&t), "", false)).kod, 502);
+    }
+
+    /// Sanal yazıcı: yerel TCP dinleyici, ESC/POS baytlarını alır; CP857 ters çevrilip Türkçe karakterler doğrulanır.
+    #[test]
+    fn sanal_ag_yazicisi_turkce() {
+        use std::io::Read;
+        let dinle = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = dinle.local_addr().unwrap().port();
+        let alici = std::thread::spawn(move || {
+            let (mut c, _) = dinle.accept().unwrap();
+            let mut v = Vec::new();
+            c.read_to_end(&mut v).unwrap();
+            v
+        });
+        let mut u = uyg();
+        let t = esles(&u);
+        let govde = FIS.replace("Ayşe Çelik", "Şükrü Ğüleç İÖ ığöçş");
+        let y = u.isle(&ist("POST", "/api/fis", Some(&t), &govde, false));
+        let no = serde_json::from_slice::<serde_json::Value>(&y.govde).unwrap()["no"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        u.yazici_yolu = Some(PathBuf::from(format!("tcp://127.0.0.1:{port}")));
+        let yol = format!("/api/fis/{no}/yazdir");
+        assert_eq!(u.isle(&ist("POST", &yol, Some(&t), "", false)).kod, 200);
+        let baytlar = alici.join().unwrap();
+        // CP857 -> metin
+        let metin: String = baytlar
+            .iter()
+            .map(|b| match b {
+                0x80 => 'Ç',
+                0x81 => 'ü',
+                0x87 => 'ç',
+                0x8D => 'ı',
+                0x98 => 'İ',
+                0x99 => 'Ö',
+                0x9A => 'Ü',
+                0x94 => 'ö',
+                0xA6 => 'Ğ',
+                0xA7 => 'ğ',
+                0x9E => 'Ş',
+                0x9F => 'ş',
+                b if b.is_ascii() => *b as char,
+                _ => '\u{FFFD}',
+            })
+            .collect();
+        assert!(metin.contains("Şükrü Ğüleç İÖ ığöçş"), "{metin}");
+        assert!(metin.contains("TERZİHANE NÜSHASI 1") && metin.contains("MÜŞTERİ NÜSHASI"));
+        assert!(!metin.contains('?') || !metin.contains("Müşteri Adı: ?"));
     }
 
     #[test]
