@@ -23,14 +23,8 @@ fn uret_imzala_dogrula() {
     assert!(metin.starts_with("ed25519:") && metin.trim().len() == 8 + 64);
     assert_eq!(GenelAnahtar::dosyadan(&ge).unwrap(), g);
     let (o, uyari) = OzelAnahtar::dosyadan(&oz).unwrap();
-    // Unix'te 0600 dosyada uyarı olmaz; Windows'ta izin denetlenemediği için uyarı beklenir.
-    #[cfg(unix)]
-    assert!(uyari.is_none(), "0600 dosyada uyarı olmamalı: {uyari:?}");
-    #[cfg(not(unix))]
-    assert!(
-        uyari.is_some(),
-        "Windows'ta izin denetlenemez uyarısı beklenir"
-    );
+    // Unix'te 0600 dosyada uyarı olmaz; Windows'ta izin denetlenmez, uyarı da basılmaz (yardım metni açıklar).
+    assert!(uyari.is_none(), "uyarı olmamalı: {uyari:?}");
     let im = o.imzala(b"merhaba");
     assert_eq!(im.alg, "ed25519");
     assert_eq!(im.anahtar_kimlik, g.kimlik());
@@ -114,4 +108,52 @@ fn kanonik_imza_alanini_ve_anahtar_sirasini_yok_sayar() {
     let b: serde_json::Value = serde_json::from_str(r#"{"a":[1,2],"b":1}"#).unwrap();
     assert_eq!(kanonik_bayt(&a), kanonik_bayt(&b));
     assert_eq!(kanonik_bayt(&b), br#"{"a":[1,2],"b":1}"#.to_vec());
+}
+
+#[test]
+fn zip_paket_imzala_ve_dogrula() {
+    use std::io::Write;
+    let t = gecici();
+    let (oz, ge) = (t.join("ozel.key"), t.join("genel.pub"));
+    let g = anahtar_uret(&oz, &ge).unwrap();
+    let z = t.join("paket.zip");
+    let paket = serde_json::json!({"sema": 1, "ad": "taa-x", "surum": "0.1.0", "icerik_sha256": "abc", "imza": null});
+    {
+        let mut w = zip::ZipWriter::new(fs::File::create(&z).unwrap());
+        let sec = zip::write::SimpleFileOptions::default();
+        w.start_file("paket.json", sec).unwrap();
+        w.write_all(serde_json::to_string(&paket).unwrap().as_bytes())
+            .unwrap();
+        w.start_file("bin/a.exe", sec).unwrap();
+        w.write_all(b"MZ-sahte").unwrap();
+        w.finish().unwrap();
+    }
+    assert!(zip_mi(&z) && !zip_mi(&t));
+    let mut v = zip_paket_json_oku(&z).unwrap();
+    let (o, _) = OzelAnahtar::dosyadan(&oz).unwrap();
+    paket_imzala(&mut v, &o).unwrap();
+    zip_paket_json_yaz(&z, &v).unwrap();
+    // eski zip yan yana durur
+    assert!(t.join("paket.zip.once-1").is_file());
+    // yeni zipte imza var ve doğrulanır; öteki girdi aynı
+    let v2 = zip_paket_json_oku(&z).unwrap();
+    let im = imza_oku(&v2).unwrap();
+    g.dogrula(b"abc", &im).unwrap();
+    let mut a = zip::ZipArchive::new(fs::File::open(&z).unwrap()).unwrap();
+    assert_eq!(a.len(), 2);
+    let mut b = Vec::new();
+    std::io::Read::read_to_end(&mut a.by_name("bin/a.exe").unwrap(), &mut b).unwrap();
+    assert_eq!(b, b"MZ-sahte");
+    // paket.json olmayan zip reddedilir
+    let z2 = t.join("bos.zip");
+    {
+        let mut w = zip::ZipWriter::new(fs::File::create(&z2).unwrap());
+        w.start_file("a.txt", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        w.write_all(b"x").unwrap();
+        w.finish().unwrap();
+    }
+    assert!(zip_paket_json_oku(&z2).is_err());
+    assert!(zip_paket_json_yaz(&z2, &v).is_err());
+    let _ = fs::remove_dir_all(&t);
 }

@@ -233,9 +233,10 @@ fn izin_uyarisi(yol: &Path) -> Option<String> {
     })
 }
 
+/// Windows'ta POSIX izin kipi yoktur; her imzalamada aynı uyarıyı basmak yerine sessiz kalınır (yardım metni açıklar).
 #[cfg(not(unix))]
 fn izin_uyarisi(_yol: &Path) -> Option<String> {
-    Some("Uyarı: bu sistemde özel anahtar dosyasının izni denetlenemiyor; dosyayı yalnız kendi hesabınızın okuyabileceği yere koyun.".into())
+    None
 }
 
 // ---------------------------------------------------------------- anahtar üretimi
@@ -354,6 +355,109 @@ pub fn imza_oku(v: &serde_json::Value) -> Result<Imza, ImzaHata> {
     serde_json::from_value(i.clone()).map_err(|_| {
         ImzaHata::Bicim("imza alanı {alg, anahtar_kimlik, deger} biçiminde değil.".into())
     })
+}
+
+// ---------------------------------------------------------------- zip paket (paket.json zipin kökünde)
+
+/// Yol `.zip` ile bitiyorsa (harfe duyarsız) ve klasör değilse zip paketi sayılır.
+pub fn zip_mi(yol: &Path) -> bool {
+    yol.extension()
+        .is_some_and(|u| u.eq_ignore_ascii_case("zip"))
+        && !yol.is_dir()
+}
+
+fn zip_hatasi(yol: &Path, e: impl std::fmt::Display) -> ImzaHata {
+    ImzaHata::Dosya(format!(
+        "Zip paketi okunamadı ({}): {e}. Öneri: dosyanın tools/paket_uret.py --zip ile üretildiğini denetleyin.",
+        yol.display()
+    ))
+}
+
+const MAKS_PAKET_JSON: u64 = 16 * 1024 * 1024;
+
+/// Zip paketinin kökündeki `paket.json` değerini okur (zip açılmaz, diske yazılmaz).
+pub fn zip_paket_json_oku(yol: &Path) -> Result<serde_json::Value, ImzaHata> {
+    use std::io::Read;
+    let f = fs::File::open(yol).map_err(|e| zip_hatasi(yol, e))?;
+    let mut arsiv =
+        zip::ZipArchive::new(std::io::BufReader::new(f)).map_err(|e| zip_hatasi(yol, e))?;
+    let g = arsiv.by_name("paket.json").map_err(|_| {
+        ImzaHata::Bicim(format!(
+            "Zip kökünde paket.json yok ({}). Öneri: paket.json zipin kökünde olmalı.",
+            yol.display()
+        ))
+    })?;
+    if g.size() > MAKS_PAKET_JSON {
+        return Err(ImzaHata::Bicim("paket.json çok büyük.".into()));
+    }
+    let mut b = Vec::with_capacity(g.size() as usize);
+    g.take(MAKS_PAKET_JSON + 1)
+        .read_to_end(&mut b)
+        .map_err(|e| zip_hatasi(yol, e))?;
+    serde_json::from_slice(&b)
+        .map_err(|e| ImzaHata::Bicim(format!("paket.json geçerli JSON değil: {e}.")))
+}
+
+/// Zip paketini kökteki `paket.json` yenilenmiş olarak yeniden yazar. Öteki girdiler bayt bayt (ham) kopyalanır,
+/// sırası korunur. Eski zip silinmez: `<zip>.once-N` kopyası alınır, sonra yeni içerik atomik yazılır.
+pub fn zip_paket_json_yaz(yol: &Path, v: &serde_json::Value) -> Result<(), ImzaHata> {
+    use std::io::Write;
+    let eski = fs::read(yol).map_err(|e| zip_hatasi(yol, e))?;
+    let mut arsiv =
+        zip::ZipArchive::new(std::io::Cursor::new(&eski[..])).map_err(|e| zip_hatasi(yol, e))?;
+    let mut yeni = zip::ZipWriter::new(std::io::Cursor::new(Vec::with_capacity(eski.len())));
+    let mut yazildi = false;
+    for i in 0..arsiv.len() {
+        let g = arsiv.by_index_raw(i).map_err(|e| zip_hatasi(yol, e))?;
+        let ad = g.name().map_err(|e| zip_hatasi(yol, e))?.into_owned();
+        if ad == "paket.json" && !g.is_dir() {
+            let sec = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated)
+                .last_modified_time(g.last_modified().unwrap_or_default())
+                .unix_permissions(0o644);
+            let metin = serde_json::to_string_pretty(v)
+                .map_err(|e| ImzaHata::Bicim(format!("paket.json yazılamadı: {e}.")))?;
+            yeni.start_file("paket.json", sec)
+                .and_then(|_| {
+                    yeni.write_all(metin.as_bytes())
+                        .and_then(|_| yeni.write_all(b"\n"))
+                        .map_err(Into::into)
+                })
+                .map_err(|e| zip_hatasi(yol, e))?;
+            yazildi = true;
+        } else {
+            yeni.raw_copy_file(g).map_err(|e| zip_hatasi(yol, e))?;
+        }
+    }
+    if !yazildi {
+        return Err(ImzaHata::Bicim(format!(
+            "Zip kökünde paket.json yok ({}). Öneri: paket.json zipin kökünde olmalı.",
+            yol.display()
+        )));
+    }
+    let bayt = yeni.finish().map_err(|e| zip_hatasi(yol, e))?.into_inner();
+    let mut yedek = None;
+    for n in 1..1000 {
+        let y = std::path::PathBuf::from(format!("{}.once-{n}", yol.display()));
+        if !y.exists() {
+            yedek = Some(y);
+            break;
+        }
+    }
+    let yedek = yedek.ok_or_else(|| ImzaHata::Dosya("Çok fazla .once-N yedeği var.".into()))?;
+    fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&yedek)
+        .and_then(|mut f| f.write_all(&eski))
+        .map_err(|e| {
+            ImzaHata::Dosya(format!(
+                "{} yazılamadı (eski zip ezilmez): {e}.",
+                yedek.display()
+            ))
+        })?;
+    taa_dosya::uzerine_yaz_atomik(yol, &bayt)
+        .map_err(|e| ImzaHata::Dosya(format!("{} yazılamadı: {e}.", yol.display())))
 }
 
 #[cfg(test)]
