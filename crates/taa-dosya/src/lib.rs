@@ -123,6 +123,30 @@ pub fn atomik_yaz(yol: &Path, bytes: &[u8]) -> io::Result<PathBuf> {
     ))
 }
 
+/// Hedefin ÜZERİNE yazar, ama yarım yazma görünmez: önce geçici dosyaya yazıp sync eder, sonra yeniden adlandırır
+/// (çökme olursa eski dosya olduğu gibi kalır). Yanlışlıkla ezmek istemeyen yerde `atomik_yaz` kullanılır.
+pub fn uzerine_yaz_atomik(yol: &Path, bytes: &[u8]) -> io::Result<()> {
+    let dizin = yol.parent().map(Path::to_path_buf).unwrap_or_default();
+    if !dizin.as_os_str().is_empty() {
+        fs::create_dir_all(&dizin)?;
+    }
+    let gecici = dizin.join(format!(".taa-{}-{}.tmp", std::process::id(), sayac()));
+    let sonuc = (|| {
+        let mut f = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&gecici)?;
+        f.write_all(bytes)?;
+        f.sync_all()?;
+        drop(f);
+        fs::rename(&gecici, yol)
+    })();
+    if sonuc.is_err() {
+        let _ = fs::remove_file(&gecici);
+    }
+    sonuc
+}
+
 fn sayac() -> u64 {
     static N: AtomicU64 = AtomicU64::new(0);
     N.fetch_add(1, Ordering::Relaxed)
@@ -254,6 +278,27 @@ mod testler {
         satir_ekle(&y, "iki").unwrap();
         assert_eq!(satirlari_oku(&y).unwrap(), vec!["bir", "iki"]);
         assert!(satir_ekle(&y, "a\nb").is_err());
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn uzerine_yaz_atomik_ezer_ve_artik_birakmaz() {
+        let d = gecici_klasor().unwrap();
+        let y = d.join("alt").join("m.json");
+        uzerine_yaz_atomik(&y, b"bir").unwrap();
+        uzerine_yaz_atomik(&y, b"iki").unwrap();
+        assert_eq!(fs::read(&y).unwrap(), b"iki");
+        let artik = fs::read_dir(d.join("alt"))
+            .unwrap()
+            .filter(|e| {
+                e.as_ref()
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .ends_with(".tmp")
+            })
+            .count();
+        assert_eq!(artik, 0);
         let _ = fs::remove_dir_all(&d);
     }
 }

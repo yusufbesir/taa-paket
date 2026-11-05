@@ -479,7 +479,10 @@ impl Uygulama {
                 }
                 let klasor = self.dizin.join("fotolar");
                 let yaz = std::fs::create_dir_all(&klasor).and_then(|_| {
-                    std::fs::write(klasor.join(format!("{no}-{}.jpg", n + 1)), &i.govde)
+                    taa_dosya::uzerine_yaz_atomik(
+                        &klasor.join(format!("{no}-{}.jpg", n + 1)),
+                        &i.govde,
+                    )
                 });
                 match yaz {
                     Ok(()) => Yanit::json(200, json!({ "tamam": true, "sira": n + 1 })),
