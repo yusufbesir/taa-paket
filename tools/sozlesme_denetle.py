@@ -2,6 +2,8 @@
 """TAA paket sözleşme denetimi (PLAN-TAA-PAKET §18.3). Yalnız stdlib, Python 3.11+.
 
 Kullanım: python3 tools/sozlesme_denetle.py [--kok YOL] [--json]
+Program modu (T2): python3 tools/sozlesme_denetle.py --program program.toml
+    [--surum-dosyasi package.json|Cargo.toml] [--paket-kok taa-paket] [--json]
 Hata varsa çıkış kodu 1, yoksa 0.
 """
 import argparse
@@ -214,12 +216,128 @@ def denetle(kok: Path) -> dict:
     }
 
 
+# ---- Program modu (T2, docs/T2-TASARIM.md §2) ----
+PROGRAM_ZORUNLU = ("ad", "gorunen_ad", "surum", "arayuz", "gerektirir", "sunar", "ister",
+                   "veri_sahibi", "veri_okur", "ayar_alani")
+PROGRAM_AD_RE = re.compile(r"^[a-z0-9-]+$")
+PROGRAM_YETENEK_RE = re.compile(r"^[a-z][a-z0-9-]*\.[a-z][a-z0-9_-]*@[0-9]+$")  # fiil alt çizgi içerebilir (kuyruga_ekle)
+ALAN_AD_RE = re.compile(r"^[a-z0-9-]{1,32}$")
+
+
+def _surum_dosyasindan(yol: Path):
+    """(surum, hata) döndürür: package.json `version` ya da Cargo.toml [package] version."""
+    if yol.name.lower().endswith(".json"):
+        try:
+            v = json.loads(yol.read_text(encoding="utf-8")).get("version")
+        except (OSError, ValueError, AttributeError, UnicodeDecodeError) as e:
+            return None, f"okunamadı: {type(e).__name__}: {e}"
+        return (v, None) if isinstance(v, str) else (None, "version alanı yok ya da metin değil")
+    c, err = _oku(yol)
+    if c is None:
+        return None, err
+    p = c.get("package")
+    v = p.get("version") if isinstance(p, dict) else None
+    return (v, None) if isinstance(v, str) else (None, "[package] version yok ya da metin değil (workspace sürümü desteklenmez)")
+
+
+def program_denetle(program: Path, surum_dosyasi: Path | None = None, paket_kok: Path | None = None) -> dict:
+    hatalar, uyarilar = [], []
+    m, err = _oku(program)
+    if m is None:
+        return {"program": str(program), "hatalar": [f"[program] program.toml {err}"], "uyarilar": [], "basarili": False}
+    ad = m.get("ad") if isinstance(m.get("ad"), str) else "?"
+    on = f"[{ad}]"
+    for a in PROGRAM_ZORUNLU:
+        if a not in m:
+            hatalar.append(f"{on} zorunlu alan eksik: {a}")
+    for a in ("ad", "gorunen_ad", "surum", "arayuz", "ayar_alani"):
+        if a in m and (not isinstance(m[a], str) or _bos(m[a])):
+            hatalar.append(f"{on} {a} boş ya da metin değil")
+    if isinstance(m.get("ad"), str) and not PROGRAM_AD_RE.match(m["ad"]):
+        hatalar.append(f"{on} ad yalnız [a-z0-9-] olabilir: {m['ad']!r}")
+    ger = m.get("gerektirir")
+    if "gerektirir" in m:
+        if not isinstance(ger, dict):
+            hatalar.append(f"{on} gerektirir tablo olmalı")
+        else:
+            for k, v in ger.items():
+                if not k.startswith("taa-"):
+                    hatalar.append(f"{on} gerektirir anahtarı 'taa-' ile başlamalı (program adı yazılamaz): {k}")
+                if not isinstance(v, str) or _bos(v):
+                    hatalar.append(f"{on} gerektirir.{k} sürüm aralığı boş ya da metin değil")
+    for a in ("sunar", "ister", "veri_sahibi", "veri_okur"):
+        if a in m and _liste(m[a]) is None:
+            hatalar.append(f"{on} {a} dizi olmalı")
+    for a in ("sunar", "ister"):
+        gorulen = set()
+        for y in _liste(m.get(a)) or []:
+            if not isinstance(y, str) or not PROGRAM_YETENEK_RE.match(y):
+                hatalar.append(f"{on} {a} girdisi 'ad.fiil@N' biçiminde değil: {y!r}")
+            elif y in gorulen:
+                hatalar.append(f"{on} {a} içinde yinelenen yetenek: {y}")
+            gorulen.add(y)
+    for a in ("veri_sahibi", "veri_okur"):
+        gorulen = set()
+        for alan in _liste(m.get(a)) or []:
+            if not isinstance(alan, str) or not ALAN_AD_RE.match(alan):
+                hatalar.append(f"{on} {a} alan adı [a-z0-9-] ve en çok 32 karakter olmalı: {alan!r}")
+            elif alan in gorulen:
+                hatalar.append(f"{on} {a} içinde yinelenen alan: {alan}")
+            gorulen.add(alan)
+    if isinstance(m.get("ad"), str) and isinstance(m.get("ayar_alani"), str) and m["ayar_alani"] != f"programlar.{m['ad']}":
+        hatalar.append(f"{on} ayar_alani 'programlar.{m['ad']}' olmalı, bulundu: {m['ayar_alani']!r}")
+    # surum eşitliği
+    if surum_dosyasi is not None:
+        v, e = _surum_dosyasindan(surum_dosyasi)
+        if v is None:
+            hatalar.append(f"{on} sürüm dosyası {surum_dosyasi}: {e}")
+        elif isinstance(m.get("surum"), str) and m["surum"] != v:
+            hatalar.append(f"{on} surum ({m['surum']}) sürüm dosyasındaki version ({v}) ile aynı değil")
+    # veri-sahipleri.toml çapraz denetimi
+    veri = m.get("veri") if isinstance(m.get("veri"), dict) else {}
+    if paket_kok is not None:
+        t, e = _oku(paket_kok / "docs" / "veri-sahipleri.toml")
+        tablo = t.get("alanlar") if isinstance(t, dict) and isinstance(t.get("alanlar"), dict) else None
+        if tablo is None:
+            hatalar.append(f"{on} docs/veri-sahipleri.toml [alanlar] okunamadı ({e or '[alanlar] tablosu yok'})")
+        else:
+            for alan in _liste(m.get("veri_sahibi")) or []:
+                if not isinstance(alan, str):
+                    continue
+                if alan not in tablo:
+                    hatalar.append(f"{on} veri_sahibi '{alan}' veri-sahipleri.toml tablosunda yok")
+                elif tablo[alan] != m.get("ad"):
+                    gec = veri.get(alan)
+                    if isinstance(gec, dict) and gec.get("gecici") is True:
+                        uyarilar.append(f"{on} '{alan}' alanında GEÇİCİ sahip; tablodaki asıl sahip: {tablo[alan]}")
+                    else:
+                        hatalar.append(f"{on} veri_sahibi '{alan}' tabloda '{tablo[alan]}' programına ait (geçici sahipse [veri.{alan}] gecici = true yazın)")
+            for alan in _liste(m.get("veri_okur")) or []:
+                if isinstance(alan, str) and alan not in tablo:
+                    hatalar.append(f"{on} veri_okur '{alan}' veri-sahipleri.toml tablosunda yok")
+    return {"program": str(program), "hatalar": hatalar, "uyarilar": uyarilar, "basarili": not hatalar}
+
+
 def main(argv=None) -> int:
     varsayilan = Path(__file__).resolve().parent.parent
     ap = argparse.ArgumentParser(description="TAA paket sözleşme denetimi (§18.3)")
     ap.add_argument("--kok", type=Path, default=varsayilan, help="taa-paket kökü (varsayılan: betiğin iki üst klasörü)")
     ap.add_argument("--json", action="store_true", help="çıktıyı JSON ver")
+    ap.add_argument("--program", type=Path, help="program.toml denetle (program modu)")
+    ap.add_argument("--surum-dosyasi", type=Path, help="program modu: package.json ya da Cargo.toml")
+    ap.add_argument("--paket-kok", type=Path, help="program modu: taa-paket kökü (veri-sahipleri.toml çapraz denetimi)")
     a = ap.parse_args(argv)
+    if a.program is not None:
+        s = program_denetle(a.program, a.surum_dosyasi, a.paket_kok)
+        if a.json:
+            print(json.dumps(s, ensure_ascii=False, indent=2))
+        else:
+            for u in s["uyarilar"]:
+                print(f"UYARI {u}")
+            for h in s["hatalar"]:
+                print(f"HATA  {h}")
+            print(f"Özet: {len(s['hatalar'])} hata, {len(s['uyarilar'])} uyarı. Sonuç: {'GEÇTİ' if s['basarili'] else 'KALDI'}")
+        return 0 if s["basarili"] else 1
     s = denetle(a.kok.resolve())
     if a.json:
         print(json.dumps(s, ensure_ascii=False, indent=2))

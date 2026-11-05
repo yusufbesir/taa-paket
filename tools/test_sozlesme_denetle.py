@@ -163,5 +163,102 @@ class Testler(Calisma):
             self.assertEqual(sd.main(["--kok", str(self.kok)]), 1)
 
 
+PROGRAM_TEMIZ = """ad = "fiyatetiketi"
+gorunen_ad = "Fiyat Etiketi"
+surum = "1.32.0"
+arayuz = "1"
+gerektirir = {}
+sunar = ["etiket.yazdir@1", "etiket.kuyruga_ekle@1"]
+ister = []
+veri_sahibi = ["etiket-kuyrugu"]
+veri_okur = ["urunler"]
+ayar_alani = "programlar.fiyatetiketi"
+"""
+TABLO = '[alanlar]\netiket-kuyrugu = "fiyatetiketi"\nbelgeler = "taadon"\nrehber = "taarehber"\nurunler = "tutaa"\n'
+
+
+class ProgramModu(unittest.TestCase):
+    def setUp(self):
+        self._t = tempfile.TemporaryDirectory()
+        self.kok = Path(self._t.name)
+        (self.kok / "docs").mkdir()
+        (self.kok / "docs" / "veri-sahipleri.toml").write_text(TABLO)
+        self.pt = self.kok / "program.toml"
+        self.pj = self.kok / "package.json"
+        self.pj.write_text('{"version": "1.32.0"}')
+
+    def tearDown(self):
+        self._t.cleanup()
+
+    def den(self, metin=PROGRAM_TEMIZ, surum=True, kok=True):
+        self.pt.write_text(metin)
+        return sd.program_denetle(self.pt, self.pj if surum else None, self.kok if kok else None)
+
+    def hata(self, s, parca):
+        return any(parca in h for h in s["hatalar"])
+
+    def test_temiz(self):
+        s = self.den()
+        self.assertTrue(s["basarili"], s["hatalar"])
+        self.assertEqual(s["uyarilar"], [])
+
+    def test_eksik_alan(self):
+        s = self.den(PROGRAM_TEMIZ.replace('gorunen_ad = "Fiyat Etiketi"\n', ""))
+        self.assertTrue(self.hata(s, "zorunlu alan eksik: gorunen_ad"))
+
+    def test_kotu_ad(self):
+        s = self.den(PROGRAM_TEMIZ.replace('ad = "fiyatetiketi"', 'ad = "Fiyat_E"', 1))
+        self.assertTrue(self.hata(s, "[a-z0-9-]"))
+
+    def test_gerektirir_program_adi(self):
+        s = self.den(PROGRAM_TEMIZ.replace("gerektirir = {}", 'gerektirir = { taadon = "1" }'))
+        self.assertTrue(self.hata(s, "taa-"))
+
+    def test_surum_uyusmaz(self):
+        self.pj.write_text('{"version": "1.33.0"}')
+        s = self.den()
+        self.assertTrue(self.hata(s, "aynı değil"))
+
+    def test_cargo_surum_dosyasi(self):
+        c = self.kok / "Cargo.toml"
+        c.write_text('[package]\nname = "x"\nversion = "1.32.0"\n')
+        self.pt.write_text(PROGRAM_TEMIZ)
+        self.assertTrue(sd.program_denetle(self.pt, c)["basarili"])
+
+    def test_sahip_capraz_hata(self):
+        s = self.den(PROGRAM_TEMIZ.replace('veri_sahibi = ["etiket-kuyrugu"]', 'veri_sahibi = ["belgeler"]'))
+        self.assertTrue(self.hata(s, "taadon"))
+
+    def test_gecici_sahip_uyari(self):
+        m = PROGRAM_TEMIZ.replace('veri_sahibi = ["etiket-kuyrugu"]', 'veri_sahibi = ["rehber"]') + "\n[veri.rehber]\ngecici = true\n"
+        s = self.den(m)
+        self.assertTrue(s["basarili"], s["hatalar"])
+        self.assertTrue(any("GEÇİCİ" in u for u in s["uyarilar"]))
+
+    def test_okur_bilinmeyen_alan(self):
+        s = self.den(PROGRAM_TEMIZ.replace('veri_okur = ["urunler"]', 'veri_okur = ["yok-alan"]'))
+        self.assertTrue(self.hata(s, "veri_okur 'yok-alan'"))
+
+    def test_sunar_bicim_ve_tekil(self):
+        s = self.den(PROGRAM_TEMIZ.replace('"etiket.yazdir@1"', '"etiket-yazdir"'))
+        self.assertTrue(self.hata(s, "ad.fiil@N"))
+        s = self.den(PROGRAM_TEMIZ.replace('"etiket.kuyruga_ekle@1"', '"etiket.yazdir@1"'))
+        self.assertTrue(self.hata(s, "yinelenen"))
+
+    def test_ayar_alani_ve_alan_adi(self):
+        s = self.den(PROGRAM_TEMIZ.replace("programlar.fiyatetiketi", "programlar.baska"))
+        self.assertTrue(self.hata(s, "ayar_alani"))
+        s = self.den(PROGRAM_TEMIZ.replace('veri_okur = ["urunler"]', 'veri_okur = ["Urun_Ler"]'))
+        self.assertTrue(self.hata(s, "alan adı"))
+
+    def test_paket_kok_olmadan_capraz_yok_ve_cli(self):
+        s = self.den(PROGRAM_TEMIZ.replace('veri_okur = ["urunler"]', 'veri_okur = ["yok-alan"]'), kok=False)
+        self.assertTrue(s["basarili"])
+        self.pt.write_text(PROGRAM_TEMIZ)
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(sd.main(["--program", str(self.pt), "--surum-dosyasi", str(self.pj),
+                                      "--paket-kok", str(self.kok)]), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

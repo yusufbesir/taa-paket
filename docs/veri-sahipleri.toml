@@ -1,0 +1,9 @@
+# Sahip: Yusuf. yazan: [Claude#taa-paket-T2 2026-11-05]
+# Paket genelinde veri alanı sahip tablosu (docs/T2-TASARIM.md §2). Her alanın tek asıl sahibi vardır.
+[alanlar]
+etiket-kuyrugu = "fiyatetiketi"
+belgeler = "taadon"
+rehber = "taarehber"
+urunler = "tutaa"
+kimlik = "tutaa"
+ayar-ortak = "taa-kur"

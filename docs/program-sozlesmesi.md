@@ -2,7 +2,7 @@
 # program.toml sözleşmesi
 
 Her program kendi deposunun kökünde `program.toml` taşır (PLAN-TAA-PAKET §18.3). Programlar kendi
-depolarında yaşar; bu belgedeki dosyalar yalnız TASLAK örnektir, kesin değerler her programın deposunda belirlenir.
+depolarında yaşar; kesin değerler aşağıdaki "Kesin örnekler" bölümündedir (T2).
 
 ## Alanlar
 
@@ -34,25 +34,42 @@ veri_okur   = ["urunler", "rehber"]
 ayar_alani  = "programlar.taarkod"
 ```
 
-## Taslak örnekler (beş program)
+## Kesin örnekler (T2, dört program)
 
-Uyarı: sürümler ve `gerektirir` içeriği belirsiz; plandaki uyumluluk kümesinden (tutaa 2.5.x, taadon 1.6.x,
-taarkod 1.x, fiyat-etiketi 1.30.x, taa-rehber 0.x) alınmış yer tutuculardır. Yetenek adları plan sentezindeki
-adlara dayanır; planda geçmeyenler "belirsiz" notludur.
+Kaynak: docs/T2-TASARIM.md §2. `surum` programın `package.json` `version` değeriyle aynı olmalıdır
+(`tools/sozlesme_denetle.py --program ... --surum-dosyasi package.json`). T2'de sürüm yükseltilmez.
+`sunar`/`ister` T2'de yalnız bildirimdir (IPC bağlanması T3); `ister` karşılığı yoksa ilgili düğme gizlenir.
+
+### Geçici sahip notasyonu
+
+Asıl sahip programı henüz kurulmamış bir alanı başka bir program geçici olarak yazıyorsa, o programın
+`program.toml` dosyasında alan `veri_sahibi`ne yazılır ve ayrıca şu tablo eklenir:
+
+```toml
+[veri.rehber]
+gecici = true
+```
+
+`veri-sahipleri.toml` tablosundaki asıl sahip başka bir program olduğu için denetleyici bunu hata değil
+UYARI sayar. Asıl sahip kurulunca alanı devralır (docs/T2-TASARIM.md §1, kural 2). `gecici = true` olmadan
+tablodaki sahipten başka bir programın alanı sahiplenmesi hatadır.
 
 ### tutaa
 
 ```toml
 ad = "tutaa"
 gorunen_ad = "Tutaa"
-surum = "2.5.0"                 # belirsiz (yalnız 2.5.x kümesi biliniyor)
+surum = "2.5.0"                 # tutaa-paketi/masaustu/package.json ile aynı olmalı; denetimde doğrulanır
 arayuz = "1"
-gerektirir = { taa-ayar = "1", taa-dosya = "1" }   # belirsiz: gerçek çekirdek bağımlılıkları depodan doğrulanmalı
-sunar  = []                      # belirsiz
-ister  = ["rehber.oku@1", "arsiv.olustur@1"]       # belirsiz: tutanak alıcı önerisi, tutanak eki
-veri_sahibi = ["kimlik", "urunler"]                # §18.5: Tutaa kimlik ve (merkez varsa) urunler sahibi
-veri_okur   = ["rehber", "belgeler"]
+gerektirir = {}                 # Electron; Rust bağımlılığı yok
+sunar  = ["tutanak.olustur@1"]
+ister  = ["rehber.ara@1"]
+veri_sahibi = ["rehber"]        # GEÇİCİ sahip; taarehber kurulunca devralır
+veri_okur   = []
 ayar_alani  = "programlar.tutaa"
+
+[veri.rehber]
+gecici = true
 ```
 
 ### taadon (TaaDön)
@@ -60,13 +77,13 @@ ayar_alani  = "programlar.tutaa"
 ```toml
 ad = "taadon"
 gorunen_ad = "TaaDön"
-surum = "1.6.0"                 # belirsiz (1.6.x kümesi)
+surum = "1.12.0"
 arayuz = "1"
-gerektirir = { taa-ayar = "1", taa-dosya = "1" }   # belirsiz
-sunar  = ["arsiv.ac@1", "arsiv.olustur@1", "arsiv.sikistir@1", "imza.denetle@1"]
-ister  = ["rehber.oku@1"]        # belirsiz: gönderim taslağı için
-veri_sahibi = ["belgeler"]
-veri_okur   = ["rehber"]
+gerektirir = { taa-donustur = "1" }
+sunar  = ["belge.donustur@1"]
+ister  = []
+veri_sahibi = ["belgeler"]      # userData/gecmis.json -> belgeler/kayitlar.json
+veri_okur   = []
 ayar_alani  = "programlar.taadon"
 ```
 
@@ -75,41 +92,44 @@ ayar_alani  = "programlar.taadon"
 ```toml
 ad = "taarkod"
 gorunen_ad = "TaaRkod"
-surum = "1.4.0"
+surum = "1.8.0"                 # masaustu/package.json
 arayuz = "1"
-gerektirir = { taa-ayar = "1", taa-dosya = "1", taa-kod = "1" }
-sunar  = ["kod.uret@1", "etiket.yazdir@1"]
-ister  = ["urunler.ara@1"]       # belirsiz: planda "veri.urunler@1" geçiyor, sentezde "urunler.ara@1"
-veri_sahibi = ["etiket-kuyrugu"]
-veri_okur   = ["urunler", "rehber"]
+gerektirir = {}
+sunar  = ["kod.uret@1"]
+ister  = ["etiket.kuyruga_ekle@1"]
+veri_sahibi = []
+veri_okur   = ["etiket-kuyrugu"]   # yazmaz; değişikliği oneriler/ altına bırakır
 ayar_alani  = "programlar.taarkod"
 ```
 
-### fiyat-etiketi (Argox Fiyat Etiketi)
+### fiyatetiketi (Fiyat Etiketi)
 
 ```toml
-ad = "fiyat-etiketi"
-gorunen_ad = "Argox Fiyat Etiketi"
-surum = "1.30.0"                # belirsiz (1.30.x kümesi)
+ad = "fiyatetiketi"
+gorunen_ad = "Fiyat Etiketi"
+surum = "1.32.0"
 arayuz = "1"
-gerektirir = { taa-ayar = "1", taa-dosya = "1" }   # belirsiz
-sunar  = []                      # belirsiz
-ister  = ["urunler.ara@1"]       # belirsiz
-veri_sahibi = []                 # etiket-kuyrugu sahibi TaaRkod; yoksa kendi yerel kuyruğunu açar
-veri_okur   = ["urunler", "etiket-kuyrugu"]
-ayar_alani  = "programlar.fiyat-etiketi"
+gerektirir = {}                 # çekirdek kendi wasm'ıdır
+sunar  = ["etiket.yazdir@1", "etiket.kuyruga_ekle@1"]
+ister  = []
+veri_sahibi = ["etiket-kuyrugu"]
+veri_okur   = ["urunler"]       # alan doğarsa salt okunur
+ayar_alani  = "programlar.fiyatetiketi"
 ```
 
-### taarehber (taa-rehber)
+### taarehber (ayrı başlık, taslak)
+
+E-posta rehberi programı ayrı bir başlıkta ele alınır; aşağıdaki yalnız taslaktır, T2 kapsamında değildir.
+`rehber` alanının asıl sahibi `docs/veri-sahipleri.toml`da `taarehber`dir; kurulunca Tutaa'dan devralır.
 
 ```toml
 ad = "taarehber"
 gorunen_ad = "Rehber"
-surum = "0.1.0"                 # belirsiz (0.x kümesi)
+surum = "0.1.0"                 # taslak, belirsiz
 arayuz = "1"
-gerektirir = { taa-ayar = "1", taa-dosya = "1" }   # belirsiz
-sunar  = ["rehber.oku@1", "rehber.dogrula@1"]
-ister  = ["csv.ayristir@1"]
+gerektirir = {}                 # taslak, belirsiz
+sunar  = ["rehber.ara@1"]       # taslak
+ister  = []
 veri_sahibi = ["rehber"]
 veri_okur   = []
 ayar_alani  = "programlar.taarehber"
@@ -117,6 +137,6 @@ ayar_alani  = "programlar.taarehber"
 
 ## Notlar
 
-- `csv.ayristir@1` sunanı taa-nebim'dir (çekirdek crate değil, modül); `ister` ile isteğe bağlıdır, `gerektirir`e yazılmaz.
-- `ad` biçimi: plan "taa-rehber" crate adını kullanır; program kimliği olarak `taarehber` mi `taa-rehber` mi belirsiz.
+- `ad` biçimi `[a-z0-9-]`; veri alanı adları `[a-z0-9-]`, en çok 32 karakter. Program kimliği olarak `taarehber` kullanılır.
+- Denetim: `python3 tools/sozlesme_denetle.py --program program.toml --surum-dosyasi package.json --paket-kok <taa-paket>`.
 - Gerçek `program.toml` dosyaları her programın kendi deposunda tutulur (T2 aşaması).
