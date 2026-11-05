@@ -3,6 +3,9 @@
 
 ## Yayınlanmamış
 
+### T3-boru
+- `taa-ipc`: Windows adlandırılmış boru taşıyıcısı (`BoruTasiyici`, `#[cfg(windows)]` `src/boru.rs`; `Tasiyici` trait'i, dosya tabanlı `GelenKutusu`'na yedekli). Yusuf onaylı tek yeni bağımlılık `windows-sys` (yalnız `[target.'cfg(windows)'.dependencies]`). Platformdan bağımsız parça `src/boru_ortak.rs` (boru adı `\\.\pipe\taa-<kullanici>-<program>`, 4 bayt uzunluk + JSON çerçeve, 256 KiB sınır, zaman aşımı, ACL = yalnız geçerli kullanıcı, `FIRST_PIPE_INSTANCE`, `YedekliTasiyici`) Linux'ta test edilir. `docs/ipc.md` "T3: Windows adlandırılmış boru" bölümü eklendi. DOĞRULANMADI: Windows kodu yalnız `cargo check --target x86_64-pc-windows-gnu` ile tür denetiminden geçti, Windows'ta çalıştırılmadı.
+
 ### T2-A4 (güvenlik sertleştirme; Opus incelemesi, 0 yüksek / 9 orta / 7 düşük)
 - `taa-veri.js`: `eskiyeTasi` dışa açıldı (programlar bozuk alan dosyasını `<alan>/eski/` altına alır). `docs/veri-alani.md`: `rehber` + `TAA_VERI_KOK` kuralı kodla hizalandı.
 
