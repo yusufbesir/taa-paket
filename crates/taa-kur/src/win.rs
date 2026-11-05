@@ -4,7 +4,9 @@
 //! İşlemler arayüz iş parçacığında eşzamanlı çalışır (küçük paketler; T3 sonrası ayrı iş parçacığı düşünülebilir).
 //! DİKKAT: Windows'ta elle doğrulanmadı; Linux'ta yalnız tür denetimi yapıldı.
 
-use crate::pencere_model::{KaynaksizGuncelleyici, PencereModel, SUTUNLAR};
+use crate::pencere_model::{
+    GuncelleyiciArayuzu, KaynaksizGuncelleyici, KomutGuncelleyici, PencereModel, SUTUNLAR,
+};
 use crate::Kur;
 use std::ffi::OsString;
 use std::os::windows::ffi::OsStringExt;
@@ -77,8 +79,12 @@ pub fn calistir() -> i32 {
             return h.cikis_kodu();
         }
     };
+    let guncelleyici: Box<dyn GuncelleyiciArayuzu> = match KomutGuncelleyici::bul(&kur) {
+        Some(g) => Box::new(g),
+        None => Box::new(KaynaksizGuncelleyici),
+    };
     let durum = Box::new(Durum {
-        model: PencereModel::yeni(kur, Box::new(KaynaksizGuncelleyici)),
+        model: PencereModel::yeni(kur, guncelleyici),
         liste: null_mut(),
         kur: null_mut(),
         kaldir: null_mut(),
@@ -293,7 +299,16 @@ unsafe extern "system" fn pencere_proc(h: HWND, ileti: u32, w: WPARAM, l: LPARAM
                         })
                         .map(|_| Eylem::Kaldir)
                     }
-                    KIMLIK_GUNCELLE => Some(Eylem::Guncelle),
+                    KIMLIK_GUNCELLE => {
+                        // İndirip kuracağı için önce sorulur; seçili satır yoksa soru yok, model mesaj verir.
+                        let soru = durum_al(h).and_then(|d| d.model.guncelle_onay_metni());
+                        match soru {
+                            None => Some(Eylem::Guncelle),
+                            Some(s) => (mesaj_kutusu(h, &s, "TAA Kur", MB_YESNO | MB_ICONQUESTION)
+                                == IDYES)
+                                .then_some(Eylem::Guncelle),
+                        }
+                    }
                     _ => None,
                 };
                 if let (Some(eylem), Some(d)) = (eylem, durum_al(h)) {
