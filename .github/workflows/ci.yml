@@ -1,5 +1,5 @@
 # TAA Paketi CI: biçim, clippy, test, güvenlik denetimi (ubuntu + windows). Sahip: Yusuf.
-# yazan: [Claude#taa-paket-A0 2026-11-04]. Değişiklik: Yusuf'un kuralları çerçevesinde. güncelleme: [Claude#taa-paket-T0 2026-11-05] (sozlesme işi, permissions)
+# yazan: [Claude#taa-paket-A0 2026-11-04]. Değişiklik: Yusuf'un kuralları çerçevesinde. güncelleme: [Claude#taa-paket-T0 2026-11-05] (sozlesme işi, permissions); [Claude#taa-paket-T2 2026-11-05] (js işi)
 name: ci
 on:
   push:
@@ -40,3 +40,12 @@ jobs:
           python-version: "3.12"
       - run: python3 tools/sozlesme_denetle.py
       - run: python3 -m unittest tools/test_sozlesme_denetle.py
+  js:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Node 22'de klasör yolu yerine glob gerekir.
+      - run: node --test "araclar/js/test/*.test.js"
