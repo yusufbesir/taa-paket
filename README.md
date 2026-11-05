@@ -23,6 +23,7 @@ TAA Paketi çekirdek deposu: TaaDön ve diğer TAA programlarının paylaştığ
 | taa-fis-sunucu | var | TaaFiş yerel sunucusu: telefon sayfası (PWA), QR/kodla eşleştirme, yazdırma. Çalıştır: `taa-fis-sunucu --yazici <yol>`, yönetim: `http://localhost:8787/yonetim` |
 | taa-terzi | var | Tadilat işlem kataloğu (JSON, mağaza `terzi-kurallari.json` ile değiştirir) ve ölçü sınır denetimi |
 | taa-kombin | var | TaaKombin: takım rengine göre gömlek/kravat/ayakkabı/kemer önerisi |
+| taa-bildirim | var | TaaBildirim: müşteriye KVKK uyumlu "ürününüz hazır" mesajı kuyruğu (WhatsApp Business için gönderici bağlanacak; şimdilik yalnız kuyruk) |
 | taa-subesor | var | TaaŞubeSor: şubeler arası beden/ürün sorusu ve yanıtları (ağ taşıması sonraki aşama) |
 | taa-ayarlar | planlı | Ortak ayar yönetimi (dosya/arayüz) |
 | taa-kimlik | planlı | Teknik kimlikler |

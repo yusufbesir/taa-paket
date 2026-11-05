@@ -205,6 +205,26 @@ impl Uygulama {
             .count()
     }
 
+    /// Fiş hazır olunca bilgilendirme kuyruğuna yazar; sonucu kısa metin olarak döndürür.
+    fn hazir_bildirimi(&self, d: &Defter, no: &str) -> serde_json::Value {
+        let Ok(Some(f)) = d.bul(no) else {
+            return json!(null);
+        };
+        if !f.bildirim_izni {
+            return json!("müşteri bilgilendirme izni vermemiş");
+        }
+        let sablon = std::fs::read_to_string(self.dizin.join("bildirim-sablonu.txt"))
+            .map(|s| s.trim().to_string())
+            .unwrap_or_else(|_| taa_bildirim::VARSAYILAN_SABLON.to_string());
+        let yol = self.dizin.join("bildirimler.jsonl");
+        let k = taa_bildirim::Kuyruk { yol: &yol };
+        match k.hazir_ekle(no, &f.telefon, &sablon, &tarih_iso(self.simdi())) {
+            Ok(Some(m)) => json!({ "kuyrukta": m.id }),
+            Ok(None) => json!("zaten kuyrukta"),
+            Err(e) => json!(e),
+        }
+    }
+
     fn eslestir(&self, i: &Istek) -> Yanit {
         if let Some(k) = kapali("telefon-eslestirme") {
             return k;
@@ -315,7 +335,14 @@ impl Uygulama {
                     _ => return Yanit::hata(400, "durum: terzihanede, hazir, teslim ya da iptal"),
                 };
                 match d.durum_ata(no, yeni, &tarih_iso(self.simdi())) {
-                    Ok(()) => Yanit::json(200, json!({ "tamam": true })),
+                    Ok(()) => {
+                        // Hazır + müşteri izni varsa hazır mesajı kuyruğa yazılır (yalnız fiş no, KVKK).
+                        let mut mesaj = json!(null);
+                        if yeni == Durum::Hazir {
+                            mesaj = self.hazir_bildirimi(&d, no);
+                        }
+                        Yanit::json(200, json!({ "tamam": true, "bildirim": mesaj }))
+                    }
                     Err(e) => Yanit::hata(409, &e),
                 }
             }
@@ -328,6 +355,15 @@ impl Uygulama {
                 Ok(None) => Yanit::hata(404, "fiş yok"),
                 Err(e) => Yanit::hata(500, &e),
             },
+            ("GET", ["api", "bildirimler"]) => {
+                let k = taa_bildirim::Kuyruk {
+                    yol: &self.dizin.join("bildirimler.jsonl"),
+                };
+                match k.mesajlar() {
+                    Ok(m) => Yanit::json(200, json!({ "mesajlar": m })),
+                    Err(e) => Yanit::hata(500, &e),
+                }
+            }
             ("GET", ["api", "fis", no]) => match d.bul(no) {
                 Ok(Some(f)) => Yanit::json(200, json!(f)),
                 Ok(None) => Yanit::hata(404, "fiş yok"),
@@ -782,6 +818,40 @@ mod testler {
                 .kod,
             404
         );
+    }
+
+    #[test]
+    fn hazir_mesaji_kuyruga_yazilir() {
+        let u = uyg();
+        let t = esles(&u);
+        let izinli = FIS.replace(r#""ucret_kurus""#, r#""bildirim_izni":true,"ucret_kurus""#);
+        let kur = |g: &str| {
+            let y = u.isle(&ist("POST", "/api/fis", Some(&t), g, false));
+            serde_json::from_slice::<serde_json::Value>(&y.govde).unwrap()["no"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        };
+        let (a, b) = (kur(&izinli), kur(FIS));
+        for no in [&a, &b] {
+            for st in ["terzihanede", "hazir"] {
+                let y = u.isle(&ist(
+                    "POST",
+                    &format!("/api/fis/{no}/durum"),
+                    Some(&t),
+                    &format!(r#"{{"durum":"{st}"}}"#),
+                    false,
+                ));
+                assert_eq!(y.kod, 200);
+            }
+        }
+        let l = u.isle(&ist("GET", "/api/bildirimler", Some(&t), "", false));
+        let j: serde_json::Value = serde_json::from_slice(&l.govde).unwrap();
+        let m = j["mesajlar"].as_array().unwrap();
+        assert_eq!(m.len(), 1); // yalnız izin veren müşteri
+        let metin = m[0]["metin"].as_str().unwrap();
+        assert!(metin.contains(a.as_str()) && !metin.contains("Ayşe") && !metin.contains("0532"));
+        assert_eq!(m[0]["telefon"], "905321234567");
     }
 
     #[test]

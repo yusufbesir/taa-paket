@@ -539,6 +539,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "taa-bildirim"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "taa-ayar",
+ "taa-dosya",
+]
+
+[[package]]
 name = "taa-donustur"
 version = "1.6.0"
 dependencies = [
@@ -574,6 +584,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "taa-ayar",
+ "taa-bildirim",
  "taa-dosya",
  "taa-fis",
  "taa-terzi",
