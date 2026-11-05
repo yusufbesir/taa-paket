@@ -1,0 +1,16 @@
+# taa-tara: TaaTara çekirdeği: görüntüden PDF (OCR henüz yok). Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-04].
+[package]
+name = "taa-tara"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "TaaTara çekirdeği: görüntüden PDF (OCR henüz yok)"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+taa-ayar = { path = "../taa-ayar" }
+taa-dosya = { path = "../taa-dosya" }
+lopdf = { version = "0.42", default-features = false }

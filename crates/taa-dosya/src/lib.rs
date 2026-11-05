@@ -150,6 +150,38 @@ pub fn gecici_klasor() -> io::Result<PathBuf> {
     ))
 }
 
+/// Dosyanın sonuna tek satır ekler (yalnız ekleme; var olan satırlara dokunulmaz) ve diske yazar.
+/// Satırda satır sonu karakteri olamaz. Klasör yoksa oluşturulur.
+pub fn satir_ekle(yol: &Path, satir: &str) -> io::Result<()> {
+    if satir.contains(['\n', '\r']) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "satır tek satır olmalı",
+        ));
+    }
+    if let Some(d) = yol.parent() {
+        if !d.as_os_str().is_empty() {
+            fs::create_dir_all(d)?;
+        }
+    }
+    let mut f = fs::OpenOptions::new().create(true).append(true).open(yol)?;
+    f.write_all(format!("{satir}\n").as_bytes())?;
+    f.sync_all()
+}
+
+/// Dosyadaki boş olmayan satırları okur; dosya yoksa boş liste döner.
+pub fn satirlari_oku(yol: &Path) -> io::Result<Vec<String>> {
+    match fs::read_to_string(yol) {
+        Ok(m) => Ok(m
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(str::to_string)
+            .collect()),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Vec::new()),
+        Err(e) => Err(e),
+    }
+}
+
 #[cfg(test)]
 mod testler {
     use super::*;
@@ -211,5 +243,17 @@ mod testler {
         let b = gecici_klasor().unwrap();
         assert_ne!(a, b);
         assert!(a.is_dir() && b.is_dir());
+    }
+
+    #[test]
+    fn satir_ekle_ve_oku() {
+        let d = gecici_klasor().unwrap();
+        let y = d.join("a").join("k.jsonl");
+        assert!(satirlari_oku(&y).unwrap().is_empty());
+        satir_ekle(&y, "bir").unwrap();
+        satir_ekle(&y, "iki").unwrap();
+        assert_eq!(satirlari_oku(&y).unwrap(), vec!["bir", "iki"]);
+        assert!(satir_ekle(&y, "a\nb").is_err());
+        let _ = fs::remove_dir_all(&d);
     }
 }

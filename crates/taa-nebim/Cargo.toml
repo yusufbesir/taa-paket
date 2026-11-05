@@ -1,0 +1,16 @@
+# taa-nebim: Nebim dışa aktarım (CSV) alıcısı, YALNIZ OKUMA. Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-04].
+# Nebim'e hiçbir yazma yolu yoktur; canlı bağlantı yoktur (erişim yolu Yusuf'tan gelince ayrı modül).
+[package]
+name = "taa-nebim"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Nebim Excel/CSV dışa aktarım alıcısı (salt okunur)"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+taa-ayar = { path = "../taa-ayar" }
