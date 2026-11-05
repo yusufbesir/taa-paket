@@ -773,8 +773,8 @@ mod testler {
         assert_eq!(&b[..2], &[0x1B, 0x40]);
         assert_eq!(
             b.windows(4).filter(|w| *w == [0x1D, 0x56, 0x42, 0]).count(),
-            3
-        ); // 2 terzihane + 1 müşteri
+            2
+        ); // 1 terzihane + 1 müşteri
         u.yazici_yolu = Some(u.dizin.join("yok").join("x"));
         assert_eq!(u.isle(&ist("POST", &yol, Some(&t), "", false)).kod, 502);
     }
@@ -824,7 +824,7 @@ mod testler {
             })
             .collect();
         assert!(metin.contains("Şükrü Ğüleç İÖ ığöçş"), "{metin}");
-        assert!(metin.contains("TERZİHANE NÜSHASI 1") && metin.contains("MÜŞTERİ NÜSHASI"));
+        assert!(metin.contains("TERZİHANE NÜSHASI") && metin.contains("MÜŞTERİ NÜSHASI"));
         assert!(!metin.contains('?') || !metin.contains("Müşteri Adı: ?"));
     }
 

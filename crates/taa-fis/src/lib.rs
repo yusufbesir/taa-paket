@@ -608,8 +608,33 @@ pub fn duz_metin(f: &Fis, genislik: usize) -> String {
 
 /// Aynı fiş, üstte nüsha etiketiyle (örn. "TERZİHANE NÜSHASI", "MÜŞTERİ NÜSHASI").
 pub fn duz_metin_nusha(f: &Fis, genislik: usize, nusha: &str) -> String {
+    let (ust, govde) = duz_parcalar(f, genislik, nusha);
+    let g = genislik.max(24);
+    let mut o = String::new();
+    for l in &ust {
+        for w in sar(l, g) {
+            o.push_str(&w);
+            o.push('\n');
+        }
+    }
+    o.push_str(&govde);
+    o
+}
+
+/// Müşteri nüshasında teslim imza bloğu ve ürün nüshasında alt bilgi cümleleri basılmaz (kâğıt tasarrufu);
+/// etiketsiz (tek) çıktıda ikisi de basılır.
+fn musteri_nushasi(nusha: &str) -> bool {
+    nusha.starts_with("MÜŞTERİ")
+}
+fn terzihane_nushasi(nusha: &str) -> bool {
+    nusha.starts_with("TERZİHANE")
+}
+
+/// (başlık satırları ham, gövde). Başlık: firma adı ilk satır; yazıcıda ad kalın, kalanı küçük yazıyla basılır.
+fn duz_parcalar(f: &Fis, genislik: usize, nusha: &str) -> (Vec<String>, String) {
     let g = genislik.max(24);
     let cizgi = "-".repeat(g);
+    let ust: Vec<String> = baslik().lines().map(str::to_string).collect();
     let mut o = String::new();
     let mut ekle = |s: &str| {
         for l in sar(s, g) {
@@ -617,15 +642,15 @@ pub fn duz_metin_nusha(f: &Fis, genislik: usize, nusha: &str) -> String {
             o.push('\n');
         }
     };
-    for l in baslik().lines() {
-        ekle(l);
-    }
     ekle(&format!("TADİLAT FİŞİ No: {}", f.no));
     if !nusha.is_empty() {
         ekle(nusha);
     }
-    ekle(&format!("Fiş Tarihi: {}", gun_metni(&f.tarih)));
-    ekle(&format!("Sat. Dan.: {}", f.satis_danismani));
+    ekle(&format!(
+        "Fiş Tarihi: {} | Sat. Dan.: {}",
+        gun_metni(&f.tarih),
+        f.satis_danismani
+    ));
     ekle(&format!("Ölçü Alan: {}", f.olcu_alan));
     ekle(&format!("Müşteri Adı: {}", f.musteri));
     ekle(&format!("Telefonu: {}", f.telefon));
@@ -712,19 +737,19 @@ pub fn duz_metin_nusha(f: &Fis, genislik: usize, nusha: &str) -> String {
             .max(1);
         o.push_str(&format!("{e}{}{sag}\n", " ".repeat(bosluk)));
     }
-    if imza_blogu() {
+    if imza_blogu() && !musteri_nushasi(nusha) {
         o.push_str(&cizgi);
         o.push('\n');
-        o.push_str("Teslim Eden            Teslim Alan\nTarih:                 Tarih:\nİmza:                  İmza:\n\n");
+        o.push_str("Teslim Eden            Teslim Alan\nTarih:                 Tarih:\nİmza:                  İmza:\n");
     }
-    o
+    (ust, o)
 }
 
 /// Fiş başlığı (firma adı, adres, destek hattı). `TAA_FIS_BASLIK` ile (satırlar `|` ile) değiştirilir.
 fn baslik() -> String {
     match std::env::var("TAA_FIS_BASLIK") {
         Ok(v) if !v.trim().is_empty() => v.replace('|', "\n"),
-        _ => "TERZİ ADEM ALTUN İSTANBUL\nTurgut Özal Mah. 68. Sk. No:12\nE-5 Karayolu Yan Yol Üzeri\nEsenyurt / İstanbul\nMüşteri Destek: 0212 690 02 02\nÇalışma Saatleri: 9:30 - 21:30".into(),
+        _ => "TERZİ ADEM ALTUN İSTANBUL\nTurgut Özal Mah. 68. Sk. No:12, E-5 Karayolu Yan Yol Üzeri\nEsenyurt / İstanbul - Destek: 0212 690 02 02 - 9:30-21:30".into(),
     }
 }
 
@@ -785,14 +810,35 @@ pub fn escpos_nushalar_tam(
     aydinlatma: Option<&str>,
 ) -> Vec<u8> {
     let mut b = Vec::new();
-    for etiket in [
-        "TERZİHANE NÜSHASI 1",
-        "TERZİHANE NÜSHASI 2",
-        "MÜŞTERİ NÜSHASI",
-    ] {
+    for etiket in nusha_etiketleri(nusha_sayisi()) {
         b.extend(escpos_nusha_tam(f, genislik, etiket, qr, aydinlatma));
     }
     b
+}
+
+/// Basılacak nüsha sayısı: varsayılan 2 (terzihane + müşteri; takip programda tutulur).
+/// `TAA_FIS_NUSHA=3` eski düzeni (2 terzihane + 1 müşteri) geri getirir.
+fn nusha_sayisi() -> usize {
+    match std::env::var("TAA_FIS_NUSHA")
+        .ok()
+        .as_deref()
+        .map(str::trim)
+    {
+        Some("3") => 3,
+        _ => 2,
+    }
+}
+
+fn nusha_etiketleri(n: usize) -> Vec<&'static str> {
+    if n >= 3 {
+        vec![
+            "TERZİHANE NÜSHASI 1",
+            "TERZİHANE NÜSHASI 2",
+            "MÜŞTERİ NÜSHASI",
+        ]
+    } else {
+        vec!["TERZİHANE NÜSHASI", "MÜŞTERİ NÜSHASI"]
+    }
 }
 
 pub fn escpos_nusha(f: &Fis, genislik: usize, nusha: &str) -> Vec<u8> {
@@ -807,10 +853,10 @@ pub fn escpos_nusha_qr(f: &Fis, genislik: usize, nusha: &str, qr: &str) -> Vec<u
 pub const AYDINLATMA_CUMLESI: &str = "Kişisel verileriniz, tadilat işleminin yürütülmesi ve ürününüzün hazır olduğunun bildirilmesi amacıyla işlenir. Ayrıntılı aydınlatma metni için aşağıdaki QR kodu okutunuz.";
 
 fn qr_baytlari(veri: &[u8]) -> Vec<u8> {
-    // QR (model 2, boyut 6, düzeltme L), ortalı
+    // QR (model 2, boyut 5, düzeltme L), ortalı
     let mut b = vec![0x1B, 0x61, 1];
     b.extend([0x1D, 0x28, 0x6B, 4, 0, 0x31, 0x41, 0x32, 0]);
-    b.extend([0x1D, 0x28, 0x6B, 3, 0, 0x31, 0x43, 6]);
+    b.extend([0x1D, 0x28, 0x6B, 3, 0, 0x31, 0x43, 5]);
     b.extend([0x1D, 0x28, 0x6B, 3, 0, 0x31, 0x45, 0x30]);
     let n = veri.len() + 3;
     b.extend([
@@ -836,31 +882,50 @@ pub fn escpos_nusha_tam(
     qr: &str,
     aydinlatma: Option<&str>,
 ) -> Vec<u8> {
+    const KUCUK: usize = 60; // Font B: 80 mm kâğıtta 64 sütun sığar, 60 güvenli sınır
     let mut b = vec![0x1B, 0x40, 0x1B, 0x74, 13]; // başlat, kod sayfası 13 = CP857
-    b.extend(duz_metin_nusha(f, genislik, nusha).chars().map(cp857));
-    b.extend(
-        "Ürünlerinizi Saat 17:00'den itibaren teslim alabilirsiniz.\n14 Gün içinde alınmayan ürünlerden mesul değiliz.\nÜrünlerinizi teslim alırken tadilat fişinizi yanınızda bulundurmayı unutmayınız.\n"
-            .chars()
-            .map(cp857),
-    );
+    let (ust, govde) = duz_parcalar(f, genislik, nusha);
+    for (i, l) in ust.iter().enumerate() {
+        if i == 0 {
+            b.extend([0x1B, 0x45, 1]); // firma adı kalın
+            b.extend(sar(l, genislik.max(24)).join("\n").chars().map(cp857));
+            b.extend(*b"\n");
+            b.extend([0x1B, 0x45, 0, 0x1B, 0x4D, 1]); // kalın kapat, Font B
+        } else {
+            b.extend(sar(l, KUCUK).join("\n").chars().map(cp857));
+            b.extend(*b"\n");
+        }
+    }
+    b.extend([0x1B, 0x4D, 0]); // Font A
+    b.extend(govde.chars().map(cp857));
+    if !terzihane_nushasi(nusha) {
+        b.extend([0x1B, 0x4D, 1]);
+        for c in [
+            "Ürünlerinizi Saat 17:00'den itibaren teslim alabilirsiniz.",
+            "14 Gün içinde alınmayan ürünlerden mesul değiliz.",
+            "Ürünlerinizi teslim alırken tadilat fişinizi yanınızda bulundurmayı unutmayınız.",
+        ] {
+            b.extend(sar(c, KUCUK).join("\n").chars().map(cp857));
+            b.extend(*b"\n");
+        }
+        b.extend([0x1B, 0x4D, 0]);
+    }
     b.extend(qr_baytlari(qr.as_bytes()));
     b.extend(*b"\n");
     if let Some(url) = aydinlatma {
         if nusha.starts_with("MÜŞTERİ") && taa_ayar::ozellik_acik("fis-aydinlatma", true) {
+            b.extend([0x1B, 0x4D, 1]); // küçük yazı (Font B)
             b.extend(
-                format!(
-                    "\n{}\n",
-                    sar(AYDINLATMA_CUMLESI, genislik.max(24)).join("\n")
-                )
-                .chars()
-                .map(cp857),
+                format!("{}\n", sar(AYDINLATMA_CUMLESI, KUCUK).join("\n"))
+                    .chars()
+                    .map(cp857),
             );
+            b.extend([0x1B, 0x4D, 0]);
             b.extend(qr_baytlari(url.as_bytes()));
             b.extend(*b"\n");
         }
     }
-    b.extend(*b"\n\n");
-    b.extend([0x1D, 0x56, 0x42, 0]); // kısmi kesme
+    b.extend([0x1D, 0x56, 0x42, 0]); // kâğıdı kesme konumuna ilerletip kısmi kes (ek boş satır gerekmez)
     b
 }
 
@@ -941,7 +1006,7 @@ mod testler {
         assert!(!c.windows(19).any(|w| w == url.as_bytes()));
         assert_eq!(
             c.windows(4).filter(|w| *w == [0x1D, 0x56, 0x42, 0]).count(),
-            3
+            2
         );
     }
 
@@ -1196,8 +1261,29 @@ mod testler {
         let b = escpos_nushalar(&f, 42);
         assert_eq!(
             b.windows(4).filter(|w| *w == [0x1D, 0x56, 0x42, 0]).count(),
-            3
+            2
         );
         assert!(String::from_utf8_lossy(&b).contains("mesul"));
+    }
+
+    #[test]
+    fn kagit_tasarrufu_duzeni() {
+        let dir = taa_dosya::gecici_klasor().unwrap();
+        let y = dir.join("d.jsonl");
+        let f = Defter { yol: &y }.ekle(girdi()).unwrap();
+        assert_eq!(nusha_etiketleri(2).len(), 2);
+        assert_eq!(nusha_etiketleri(3).len(), 3);
+        let t = duz_metin_nusha(&f, 42, "TERZİHANE NÜSHASI");
+        let m = duz_metin_nusha(&f, 42, "MÜŞTERİ NÜSHASI");
+        assert!(t.contains("Teslim Eden") && !m.contains("Teslim Eden"));
+        assert!(t.contains("Fiş Tarihi: 04.11.2026 | Sat. Dan.: Mert"));
+        assert!(t.lines().all(|l| l.chars().count() <= 42));
+        // alt bilgi cümleleri yalnız müşteri nüshasında basılır
+        let b = escpos_nushalar(&f, 42);
+        let yer = |hedef: &str| {
+            let h: Vec<u8> = hedef.chars().map(cp857).collect();
+            b.windows(h.len()).filter(|w| *w == h.as_slice()).count()
+        };
+        assert_eq!(yer("mesul değiliz"), 1);
     }
 }
