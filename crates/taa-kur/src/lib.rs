@@ -673,6 +673,12 @@ impl Kur {
     }
 
     fn kur_zip(&self, zip: &Path, sec: bool) -> Sonuc<KurSonuc> {
+        // Ön denetim (zip açılmadan): içerik, imza, veri sahipliği ve çözücü. Reddedilen paket için hiçbir
+        // geçici klasör oluşmaz; eskiden her başarısız denemede eski/gecici-* artığı kalıyordu (2026-11-05 denemesi).
+        if let Err(e) = zipac::zip_denetle(zip).and_then(|(p, _)| self.on_denetim(&p)) {
+            self.gunluk("hata", "kur", "", "", e.mesaj());
+            return Err(e);
+        }
         fs::create_dir_all(&self.kok)?;
         let pid = std::process::id();
         // Geçici klasör `create_dir` ile alınır (varsa sonraki ad): boş olduğu kesin, yarış yok.
@@ -712,10 +718,10 @@ impl Kur {
         self.gunluklu("kur", &ad, &surum, r)
     }
 
-    fn kur_ic(&self, klasor: &Path, sec: bool) -> Sonuc<KurSonuc> {
-        let (paket, paket_bayt) = paket_dogrula(klasor)?;
+    /// Kurulum öncesi kayıt denetimleri: imza kuralı, veri alanı sahipliği, çözücü (`gerektirir`). Kaydı döner.
+    fn on_denetim(&self, paket: &Paket) -> Sonuc<Kayit> {
         self.imza_denetle("Paket", paket.icerik_sha256.as_bytes(), paket.imza.as_ref())?;
-        let mut kayit = self.kayit_yukle()?;
+        let kayit = self.kayit_yukle()?;
         for alan in &paket.veri_sahibi {
             if let Some(s) = kayit.veri_sahipleri.get(alan) {
                 if s != &paket.ad {
@@ -725,7 +731,13 @@ impl Kur {
                 }
             }
         }
-        self.cozucu(&kayit, &paket)?;
+        self.cozucu(&kayit, paket)?;
+        Ok(kayit)
+    }
+
+    fn kur_ic(&self, klasor: &Path, sec: bool) -> Sonuc<KurSonuc> {
+        let (paket, paket_bayt) = paket_dogrula(klasor)?;
+        let mut kayit = self.on_denetim(&paket)?;
         let mevcut = kayit.paketler.get(&paket.ad).cloned().unwrap_or_default();
         let secilecek = sec || mevcut.secili.is_none();
         if secilecek || mevcut.secili.as_deref() == Some(paket.surum.as_str()) {
