@@ -33,7 +33,7 @@ TAA Paketi çekirdek deposu: TaaDön ve diğer TAA programlarının paylaştığ
 | taa-ipc | var | Programlar arası iletişim (T1): dosya tabanlı gelen kutusu, yetenek kaydı, zarf ve olay günlüğü; adlandırılmış boru T2 |
 | taa-kod | planlı | Kodlama yardımcıları |
 | taa-etiket | planlı | Etiketleme |
-| taa-veri | planlı | Veri katmanı |
+| taa-veri | var | Veri alanları (T2): tek yazar sahipliği, SAHIP.toml, salt okunur okuyucu, öneri kutusu; silmez (`eski\`); bkz. `docs/veri-alani.md` |
 | taa-guncelle | planlı | Güncelleme |
 | taa-log | planlı | Günlükleme |
 

@@ -19,6 +19,7 @@ Planlı ama yok: `taa-kur` (T1), `taa-ipc` (T1), `taa-kimlik`, `taa-veri` (§18.
 - Kaldır = `eski\<ad>-<surum>-<tarih>\` altına taşı; veri alanına dokunulmaz. Silme yok.
 - `taa-kur` yokken programlar tek başına çalışır (crate'ler statik bağlı).
 - T1'de yapıldı: klasör paketi, SHA256; zip ve imza T2.
+- T2 durumu (PR-A1): `crates/taa-veri` (veri alanı kitaplığı, `docs/veri-alani.md`) ve `docs/veri-sahipleri.toml` (paket genelinde sahip tablosu) eklendi; `etiket-kuyrugu` sahibi Fiyat Etiketi, `rehber` geçici sahibi Tutaa (tasarım: `docs/T2-TASARIM.md`). Zip kurulum (PR-A2) ve `program.toml` denetimi (PR-A3) ayrı işlerdir.
 
 ## 4. Sözleşme (`modul.toml`, 20 crate)
 Mevcut alanlar korunur (`ad, surum, arayuz, gerektirir, ozellikler, program, butce`); eklenir:
