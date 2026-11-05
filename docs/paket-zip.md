@@ -4,6 +4,7 @@
 `taa-kur kur <paket.zip>` klasör paketiyle aynı içeriği tek zip olarak kurar. Üretim: `python3 tools/paket_uret.py <crate-klasoru> --zip <cikti.zip> [--bin <exe>]` (stdlib `zipfile`, deflate; var olan zip ezilmez).
 
 ## Kurallar
+- `--bin` ile üretilen paket (derlenmiş Rust ikilisi) **kendine yeter**: `modul.toml` `gerektirir` içindeki taa-* crate'leri ikiliye statik bağlıdır, bu yüzden paket.json `gerektirir` alanına YAZILMAZ (yazılsaydı `taa-kur kur taa-kur-0.1.0.zip` "taa-ayar gerekli ama kurulu değil" diye reddederdi; 2026-11-05 Windows denemesi). Çalışma anında ayrıca kurulu olması gereken paketler varsa `modul.toml` `calisma_gerektirir = { "taa-x" = "1" }` tablosuna yazılır; yalnız bunlar paket.json `gerektirir` olur. `--bin` yoksa `gerektirir` modul.toml'daki gibidir.
 - `paket.json` zipin **kökünde** olmalıdır (alt klasörde değil). Şema `docs/T1-TASARIM.md` §1.2 ile aynıdır.
 - Argüman `.zip` ile bitiyorsa ve klasör değilse zip sayılır. Zip `<kök>/gecici-<pid>/` altına açılır, sonra klasör kurulumu (doğrulama, çözücü, kayıt) aynen çalışır; geçici klasör iş bitince (hata dahil) `<kök>/eski/gecici-<pid>-<zaman>` altına taşınır. Silme yoktur.
 - Sınırlar: en çok 10.000 girdi; açılmış toplam en çok 2 GiB. Her girdinin bildirilen boyutu önce toplanır, sınır aşılırsa **hiçbir şey açılmadan** reddedilir (çıkış 2). Açarken gerçek bayt sayısı da denetlenir (bildirilenden büyük çıkarsa zip bombası şüphesiyle durulur).
