@@ -8,7 +8,8 @@ icerik_sha256 tanımı (Rust tarafı aynısını kullanır): dosyalar yol sıras
 her dosya için "yol\\nsha256\\n" metni art arda eklenir; birleşimin SHA256'sı onaltılık küçük harf.
 Çıktı klasörü yoksa oluşturulur, varsa BOŞ olmalıdır (hiçbir şey ezilmez ya da silinmez).
 `--zip` aynı içeriği tek zip olarak üretir (paket.json zipin KÖKÜNDE; deflate; çıktı zip var olamaz).
-`imza` alanı ayrılmıştır ve `null` yazılır (T3 imza; Rust yok sayar, doğrulamaz).
+`imza` alanı YAZILMAZ: imzayı `taa-imza` atar (imzalanan veri `icerik_sha256` metnidir). Zip için hazır imza
+`--imza-dosya <imza.json>` ({"alg":"ed25519","anahtar_kimlik":..,"deger":hex}) ile verilir; araç yalnız biçimini denetler.
 """
 import argparse
 import hashlib
@@ -148,8 +149,25 @@ def _hazirla(crate: Path, bin_yol: Path | None) -> tuple:
     return m, ger, kopyalar
 
 
-def _paket_sozlugu(m: dict, ger: dict, dosyalar: list) -> dict:
-    return {
+def imza_oku(yol: Path) -> dict:
+    """Hazır imza dosyasını okur; yalnız biçimi denetler (doğrulamayı Rust taa-kur yapar)."""
+    try:
+        j = json.loads(Path(yol).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        raise PaketHata(f"imza dosyası okunamadı: {e}")
+    if not isinstance(j, dict) or set(j) != {"alg", "anahtar_kimlik", "deger"}:
+        raise PaketHata("imza dosyası {alg, anahtar_kimlik, deger} alanlarını içermeli")
+    if j["alg"] != "ed25519":
+        raise PaketHata("imza algoritması ed25519 olmalı")
+    if not (isinstance(j["deger"], str) and re.fullmatch(r"[0-9a-f]{128}", j["deger"])):
+        raise PaketHata("imza değeri 128 haneli küçük harf onaltılık olmalı")
+    if not (isinstance(j["anahtar_kimlik"], str) and re.fullmatch(r"[0-9a-f]{16}", j["anahtar_kimlik"])):
+        raise PaketHata("anahtar_kimlik 16 haneli küçük harf onaltılık olmalı")
+    return j
+
+
+def _paket_sozlugu(m: dict, ger: dict, dosyalar: list, imza: dict | None = None) -> dict:
+    p = {
         "sema": 1,
         "ad": m["ad"],
         "surum": m["surum"],
@@ -163,11 +181,13 @@ def _paket_sozlugu(m: dict, ger: dict, dosyalar: list) -> dict:
         "dosyalar": dosyalar,
         "icerik_sha256": icerik_sha256(dosyalar),
         "icerik_sha256_tanim": ICERIK_TANIM,
-        "imza": None,  # T3 imza için ayrılmış; Rust yok sayar
     }
+    if imza is not None:
+        p["imza"] = imza
+    return p
 
 
-def uret(crate: Path, cikti: Path, bin_yol: Path | None = None) -> dict:
+def uret(crate: Path, cikti: Path, bin_yol: Path | None = None, imza: dict | None = None) -> dict:
     m, ger, kopyalar = _hazirla(crate, bin_yol)
     cikti = Path(cikti)
     if cikti.exists() and (not cikti.is_dir() or any(cikti.iterdir())):
@@ -183,7 +203,7 @@ def uret(crate: Path, cikti: Path, bin_yol: Path | None = None) -> dict:
         dosyalar.append({"yol": hedef, "sha256": sha256_dosya(h)})
     dosyalar.sort(key=lambda d: d["yol"].encode("utf-8"))
 
-    paket = _paket_sozlugu(m, ger, dosyalar)
+    paket = _paket_sozlugu(m, ger, dosyalar, imza)
     (cikti / "paket.json").write_text(json.dumps(paket, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return paket
 
@@ -195,7 +215,7 @@ def _zip_girdi(z: zipfile.ZipFile, ad: str, bayt: bytes) -> None:
     z.writestr(bilgi, bayt)
 
 
-def uret_zip(crate: Path, zip_yolu: Path, bin_yol: Path | None = None) -> dict:
+def uret_zip(crate: Path, zip_yolu: Path, bin_yol: Path | None = None, imza: dict | None = None) -> dict:
     """`uret` ile aynı içeriği tek zip olarak yazar (paket.json kökte). Var olan zip ezilmez."""
     m, ger, kopyalar = _hazirla(crate, bin_yol)
     zip_yolu = Path(zip_yolu)
@@ -209,7 +229,7 @@ def uret_zip(crate: Path, zip_yolu: Path, bin_yol: Path | None = None) -> dict:
         icerikler.append((hedef, bayt))
         dosyalar.append({"yol": hedef, "sha256": hashlib.sha256(bayt).hexdigest()})
     dosyalar.sort(key=lambda d: d["yol"].encode("utf-8"))
-    paket = _paket_sozlugu(m, ger, dosyalar)
+    paket = _paket_sozlugu(m, ger, dosyalar, imza)
     zip_yolu.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(zip_yolu, "x") as z:
         _zip_girdi(z, "paket.json", (json.dumps(paket, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
@@ -224,14 +244,16 @@ def main(argv=None) -> int:
     ap.add_argument("cikti_klasoru", type=Path, nargs="?", default=None)
     ap.add_argument("--bin", dest="bin_yol", type=Path, default=None, help="pakete konacak çalıştırılabilir (bin/ altına)")
     ap.add_argument("--zip", dest="zip_yolu", type=Path, default=None, help="klasör yerine tek zip üret (paket.json kökte)")
+    ap.add_argument("--imza-dosya", dest="imza_dosya", type=Path, default=None, help="hazır imza JSON'u (taa-imza çıktısı); yalnız biçimi denetlenir")
     a = ap.parse_args(argv)
     if (a.cikti_klasoru is None) == (a.zip_yolu is None):
         ap.error("ya <cikti_klasoru> ya da --zip <cikti.zip> verilmeli (ikisi birden olamaz)")
     try:
+        imza = imza_oku(a.imza_dosya) if a.imza_dosya is not None else None
         if a.zip_yolu is not None:
-            p = uret_zip(a.crate_klasoru, a.zip_yolu, a.bin_yol)
+            p = uret_zip(a.crate_klasoru, a.zip_yolu, a.bin_yol, imza)
         else:
-            p = uret(a.crate_klasoru, a.cikti_klasoru, a.bin_yol)
+            p = uret(a.crate_klasoru, a.cikti_klasoru, a.bin_yol, imza)
     except PaketHata as e:
         print(f"HATA {e}", file=sys.stderr)
         return 2

@@ -36,7 +36,7 @@ impl Drop for Ortam {
     }
 }
 
-fn paket_yap(
+pub(crate) fn paket_yap(
     taban: &Path,
     ad: &str,
     surum: &str,

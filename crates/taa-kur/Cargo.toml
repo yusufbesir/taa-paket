@@ -19,8 +19,11 @@ path = "src/main.rs"
 [dependencies]
 taa-ayar = { path = "../taa-ayar" }
 taa-dosya = { path = "../taa-dosya" }
+taa-imza = { path = "../taa-imza" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 # taa-donustur ile AYNI sürüm ve özellikler (T2 PR-A2: zip paket kurulumu). Başka özellik yok.
 zip = { version = "9.3.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+# T3 (Yusuf onaylı): kök\kur.toml okumak için. Yalnız ayrıştırma; yazma/biçimleme özellikleri kapalı.
+toml = { version = "0.8", default-features = false, features = ["parse"] }

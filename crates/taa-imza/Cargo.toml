@@ -1,0 +1,23 @@
+# Sahip: Yusuf. yazan: [Claude#taa-paket-T3 2026-11-05]
+# taa-imza: ed25519 imza (T3). Yusuf onaylı bağımlılık: ed25519-dalek 2 (default-features=false, std). Rastgelelik için ek crate YOK (işletim sistemi kaynağı).
+[package]
+name = "taa-imza"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "TAA ed25519 imzalama ve doğrulama: anahtar üret, imzala, doğrula, hex ve genel anahtar dosyası"
+
+[lib]
+name = "taa_imza"
+path = "src/lib.rs"
+
+[[bin]]
+name = "taa-imza"
+path = "src/main.rs"
+
+[dependencies]
+ed25519-dalek = { version = "2", default-features = false, features = ["std"] }
+taa-dosya = { path = "../taa-dosya" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
