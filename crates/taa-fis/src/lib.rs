@@ -99,6 +99,9 @@ pub struct Fis {
     pub kargo_adres: String,
     #[serde(default)]
     pub kargo_telefon: String,
+    /// Müşteri "hazır" bilgilendirmesine izin verdi mi? (KVKK; varsayılan hayır)
+    #[serde(default)]
+    pub bildirim_izni: bool,
     #[serde(default)]
     pub teslim_degisiklikleri: Vec<TeslimDegisti>,
     pub durum: Durum,
@@ -155,6 +158,9 @@ pub struct Girdi {
     pub kargo_adres: String,
     #[serde(default)]
     pub kargo_telefon: String,
+    /// Müşteri "hazır" bilgilendirmesine izin verdi mi? (KVKK; varsayılan hayır)
+    #[serde(default)]
+    pub bildirim_izni: bool,
 }
 
 pub fn tarih_gecerli(t: &str) -> bool {
@@ -454,6 +460,7 @@ impl Defter<'_> {
                 String::new()
             },
             kargo_telefon,
+            bildirim_izni: g.bildirim_izni,
             teslim_degisiklikleri: Vec::new(),
             durum: Durum::Bekliyor,
             raf: String::new(),
@@ -859,6 +866,7 @@ mod testler {
             kargo_ad: String::new(),
             kargo_adres: String::new(),
             kargo_telefon: String::new(),
+            bildirim_izni: false,
         }
     }
 
@@ -999,6 +1007,7 @@ mod testler {
             kargo_ad: String::new(),
             kargo_adres: String::new(),
             kargo_telefon: String::new(),
+            bildirim_izni: false,
             teslim_degisiklikleri: Vec::new(),
         };
         let m = duz_metin(&f, 42);
