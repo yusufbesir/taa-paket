@@ -1,0 +1,7 @@
+{
+ "aciklama": "TaaSüre başlangıç tablosu BOŞTUR; sayı uydurulmaz. Ustadan gelen değerleri bu dosyaya yazıp veri klasörüne sure.json adıyla koyun. sureler_dk: işlem kodu -> bir adet işlemin dakikası. gunluk_dakika: bir ustanın günde ayırabildiği dakika. kapali_gunler: pazartesi..pazar. kapali_tarihler: YYYY-AA-GG.",
+ "sureler_dk": {},
+ "kapali_gunler": [],
+ "kapali_tarihler": [],
+ "ustalar": []
+}

@@ -46,7 +46,7 @@ Raporların ilk 6'sı tam elde; 7. rapor (dosya-donusturucu / taadon) kesik, 8-1
 
 ## 4. Ortam değişkenleri
 `TAA_AYAR`, `TAA_OZELLIK_<AD>` (büyük harf, `-`→`_`; 0/1/acik/kapali/evet/hayir), `TAA_FIS_BASLIK`, `TAA_FIS_NUSHA`, Tutaa'da `TUTANAK_MOTOR_KOMUT`, `TUTANAK_TEST`, `TUTANAK_MOTOR_ONISIT`.
-Koddaki özellik anahtarları: kasa-defteri, fis-raf, fis-imza, serbest-islem, olcu-zorunlu(kapalı), kargo-alani, fis-logo, fis-aydinlatma, foto-eki, telegram-bot(kapalı), nebim-alici, katalog, yedek, pdf-araclari, rehber, yazici-saglik, tara, pano, kombin, bildirim-whatsapp, fis-takip, subesor.
+Koddaki özellik anahtarları: kasa-defteri, fis-raf, fis-imza, serbest-islem, olcu-zorunlu(kapalı), kargo-alani, fis-logo, fis-aydinlatma, foto-eki, telegram-bot(kapalı), nebim-alici, katalog, yedek, pdf-araclari, rehber, yazici-saglik, tara, pano, kombin, bildirim-whatsapp, fis-takip, teslim-oneri, subesor.
 
 ## Temizlik listesi
 

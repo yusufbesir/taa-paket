@@ -66,3 +66,6 @@ T0 (tek çatı, veri ve yapı temizliği). Kırıcı değişiklik yok; yalnız e
 - Karar: `taa-terzi` program=ortak; `taa-bildirim`, `taa-takip`, `taa-telegram` program=taafis (TaaFiş ailesi tek program). Ayrı TaaTerziTakip programı T2'de Cargo features ile.
 - Denetim betiğine: gerektirir = Cargo bağımlılıkları birebir; ince çizgi (başka programın crate'ine zorunlu bağımlılık hata). CI'ya `permissions: contents: read`.
 - `docs/modul-sozlesmesi.md` yeni alanlarla güncellendi; README "Modül sözleşmesi" bölümüne bağlantılar eklendi.
+
+## Teslim tarihi önerisi (TaaSüre)
+- taa-takip: `sure` modülü; usta kuyruğuna ve `sure.json` sürelerine göre tahmini teslim tarihi önerir, tablo yoksa "tahmin yok, elle seç". Özellik anahtarı `teslim-oneri`, yeni yetenek `teslim.oneri@1`. Fiş ekranına düğme bağlama ayrı adım.

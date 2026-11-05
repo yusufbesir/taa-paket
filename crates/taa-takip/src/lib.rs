@@ -2,9 +2,12 @@
 //! Salt okunur: defteri değiştirmez, yazma işleri `taa-fis` içindedir.
 //! Usta performansı SAYI verir (biten, zamanında, geciken); iş raporu işlem başına adet ve zorluk puanı verir.
 //! Zorluk puanları düzenlenebilir başlangıç değerleridir (zorluk.json). Prim formülü/oranı YOKTUR.
+//! TaaSüre (`sure` modülü): fiş yazılırken usta yoğunluğuna göre tahmini teslim tarihi önerisi; özellik anahtarı `teslim-oneri` (varsayılan AÇIK).
 //! Özellik anahtarı `fis-takip`: varsayılan AÇIK. Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-05].
 
+mod sure;
 mod zorluk;
+pub use sure::{oner as teslim_oner, Oneri, SureTablosu};
 pub use zorluk::Zorluk;
 
 use serde::Serialize;
