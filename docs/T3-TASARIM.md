@@ -29,6 +29,12 @@ Kaynak: docs/TEK-CATI.md §9, docs/T1-TASARIM.md, docs/T2-TASARIM.md. Yusuf onay
 - **`uygula`:** paket başına indir (`<kök>\indirilen\`) → boyut + SHA256 → `Kur::kur(--sec)` (paket imzası burada) → `dogrula` ve ad/sürüm eşleşmesi. Herhangi bir adım seçimi değiştirdikten sonra başarısız olursa önceki sürüme `geri_don`/`sec` ile dönülür (`geri_donuldu`). Sabitli paket atlanır, `zorunlu` ise uygulanır. İndirilen dosya `eski\indirilen-*` altına taşınır, silinmez. Bir paketin hatası diğerlerini durdurmaz; en az bir hata varsa çıkış 1.
 - **CLI:** `taa-guncelle kontrol|uygula [--json] [--kaynak <klasor>] [--kanal <ad>]`; kaynak/kanal yoksa `kur.toml`'dan.
 
+### 3.1 Yayın üretimi (`tools/yayin_uret.py`, T4)
+`python3 tools/yayin_uret.py --cikti yayin.json [--kanal kararli] [--taban-url <url>] [--onceki eski.json] [--en-az-surum ad=x.y.z] <paket.zip> ...`:
+her zip'in kökteki `paket.json`'undan ad/sürüm/arayüz/gerektirir, dosyadan SHA256 ve boyut alınır; `url` zip adı (tabana göreli) ya da `--taban-url` ile mutlak.
+`--onceki` ile eski kayıtlar korunur, aynı (ad, sürüm, kanal) değiştirilir. Çıktı imzasızdır; `taa-imza imzala yayin.json --ozel <anahtar> --tur yayin` ile imzalanır.
+İmzasız zip uyarı verir (`--imzali-zorunlu` ile hata). Var olan çıktı `.once-N` olarak saklanır, silinmez. Yayın akışı: zip'leri `taa-imza` ile imzala → `yayin_uret.py` → `taa-imza imzala --tur yayin` → zip'ler + `yayin.json` aynı klasöre/sürüme (GitHub Releases: `kaynak_url = .../releases/latest/download`).
+
 ## 4. `kur.toml` (taa-kur `ayar` modülü, `toml` crate)
 `<kök>\kur.toml`: `kaynak_klasoru = "D:/Kaynak"`, `kanal = "kararli"` (varsayılan). Dosya yoksa varsayılanlar; bozuk TOML ya da geçersiz değer tek cümlelik Türkçe hata (`KurHata::Dogrulama`, satır numarası ile). Bilinmeyen anahtarlar yok sayılır.
 
