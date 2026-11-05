@@ -1,0 +1,16 @@
+# Sahip: Yusuf. yazan: [Claude#taa-paket-T2 2026-11-05]
+# taa-veri: paylaşılan veri alanları (tek yazar, SAHIP.toml, öneri kutusu). Yeni bağımlılık yok: serde_json iş alanında zaten kullanılıyor.
+[package]
+name = "taa-veri"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "TAA veri alanları: tek yazar sahipliği, SAHIP.toml, salt okunur okuyucu ve öneri kutusu"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+serde_json = "1"
+taa-dosya = { path = "../taa-dosya" }
