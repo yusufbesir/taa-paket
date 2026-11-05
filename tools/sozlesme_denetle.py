@@ -48,6 +48,34 @@ def _cargo_surum(cargo: dict, kok_cargo: dict):
     return ad, s, None
 
 
+def _donguler(graf: dict) -> list:
+    """Yönlü grafta bulunan döngüleri (her biri bir kez, ilk düğüm tekrarlanarak) döndürür. Sıralı, deterministik."""
+    bulunan, gorulen, yigin, yolda = [], set(), [], set()
+
+    def gez(d):
+        gorulen.add(d)
+        yigin.append(d)
+        yolda.add(d)
+        for h in sorted(graf.get(d, [])):
+            if h in yolda:
+                dongu = yigin[yigin.index(h):]
+                # normalleştir: en küçük düğümden başlat
+                i = dongu.index(min(dongu))
+                dongu = dongu[i:] + dongu[:i]
+                dongu.append(dongu[0])
+                if dongu not in bulunan:
+                    bulunan.append(dongu)
+            elif h not in gorulen:
+                gez(h)
+        yigin.pop()
+        yolda.discard(d)
+
+    for d in sorted(graf):
+        if d not in gorulen:
+            gez(d)
+    return bulunan
+
+
 def denetle(kok: Path) -> dict:
     hatalar, uyarilar = [], []
     programlar: dict = {}
@@ -149,6 +177,20 @@ def denetle(kok: Path) -> dict:
             hp = programlar.get(h)
             if h in programlar and hp not in (None, "ortak") and hp != programlar.get(kad):
                 hatalar.append(f"[{kad}] (program={programlar.get(kad)}) başka programın crate'ine zorunlu bağımlı: {h} (program={hp}); yetenek (ister) ya da ortak crate olmalı")
+    # (9) gerektirir grafında döngü
+    for dongu in _donguler({k: [h for h in v if h in modeller and h != k] for k, v in gerekler.items()}):
+        hatalar.append("[paket] gerektirir grafında döngü: " + " -> ".join(dongu))
+    # (10) istenen arayüz ana sürümü = hedef modülün arayuz değeri
+    for kad, m in sorted(modeller.items()):
+        ger = m.get("gerektirir")
+        if not isinstance(ger, dict):
+            continue
+        for h, istenen in sorted(ger.items()):
+            hedef = modeller.get(h)
+            if hedef is None or h == kad or not isinstance(istenen, str) or not isinstance(hedef.get("arayuz"), str):
+                continue
+            if istenen.strip() != hedef["arayuz"].strip():
+                hatalar.append(f"[{kad}] gerektirir.{h} arayüz ana sürümü ({istenen}) hedefin arayuz değeriyle ({hedef['arayuz']}) aynı değil")
     # (3) veri sahipliği
     for alan, liste in sorted(sahipler.items()):
         if len(liste) > 1:

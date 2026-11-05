@@ -18,6 +18,7 @@ Planlı ama yok: `taa-kur` (T1), `taa-ipc` (T1), `taa-kimlik`, `taa-veri` (§18.
 - Düzen: `TAA\depo\<ad>\<surum>\`, `TAA\programlar\<ad>\secili.json`, `TAA\eski\`, `TAA\kayit.json` (`taa-dosya::uzerine_yaz_atomik`). Komutlar: `liste | kur | kaldir | sec | geri-don | dogrula | tani`.
 - Kaldır = `eski\<ad>-<surum>-<tarih>\` altına taşı; veri alanına dokunulmaz. Silme yok.
 - `taa-kur` yokken programlar tek başına çalışır (crate'ler statik bağlı).
+- T1'de yapıldı: klasör paketi, SHA256; zip ve imza T2.
 
 ## 4. Sözleşme (`modul.toml`, 20 crate)
 Mevcut alanlar korunur (`ad, surum, arayuz, gerektirir, ozellikler, program, butce`); eklenir:
