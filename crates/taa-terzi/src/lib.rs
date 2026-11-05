@@ -24,6 +24,11 @@ pub struct Islem {
     pub sinir_mm: Option<i32>,
     #[serde(default)]
     pub uyari: String,
+    /// Yalnız UYARI eşiği (milimetre): yazılan cm bunu aşarsa uyarı verilir, kayıt engellenmez.
+    #[serde(default)]
+    pub uyari_mm: Option<i32>,
+    #[serde(default)]
+    pub uyari_notu: String,
     /// Sınır usta tarafından doğrulandı mı?
     #[serde(default)]
     pub dogrulandi: bool,
@@ -108,6 +113,11 @@ impl Katalog {
                 "{}: cm yazılmadığı için sınır denetlenemedi; iğneli ölçüyü usta kontrol etsin",
                 i.ad
             ));
+        }
+        if let (Some(e), Some(m)) = (i.uyari_mm, olcu_mm) {
+            if m > e {
+                uyarilar.push(format!("{}: {}", i.ad, i.uyari_notu));
+            }
         }
         let asti = matches!((i.sinir_mm, olcu_mm), (Some(s), Some(m)) if m > s);
         if asti {
@@ -213,6 +223,45 @@ mod testler {
             .kontrol("cek-sirt-daralt", Some(30), None, false, true, false)
             .unwrap();
         assert!(w[0].contains("kasıntı"));
+    }
+
+    #[test]
+    fn yalniz_uyari_esigi_engellemez() {
+        let k = Katalog::varsayilan();
+        let w = k
+            .kontrol(
+                "pant-paca-kisalt",
+                Some(120),
+                Some("Düz paça"),
+                false,
+                false,
+                false,
+            )
+            .unwrap();
+        assert!(w[0].contains("doğrulamadı"));
+        assert!(k
+            .kontrol(
+                "pant-paca-kisalt",
+                Some(80),
+                Some("Düz paça"),
+                false,
+                false,
+                false
+            )
+            .unwrap()
+            .is_empty());
+        // cm yazılmadıysa denetlenmez
+        assert!(k
+            .kontrol(
+                "pant-paca-kisalt",
+                None,
+                Some("Düz paça"),
+                false,
+                false,
+                true
+            )
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
