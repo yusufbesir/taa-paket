@@ -791,6 +791,7 @@ dependencies = [
  "serde",
  "serde_json",
  "taa-dosya",
+ "windows-sys",
 ]
 
 [[package]]

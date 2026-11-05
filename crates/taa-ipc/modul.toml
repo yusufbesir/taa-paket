@@ -4,7 +4,7 @@ ad = "taa-ipc"
 surum = "0.1.0"
 arayuz = "1"
 gerektirir = { "taa-dosya" = "1" }
-ozellikler = ["ipc", "gelen-kutusu"]
+ozellikler = ["ipc", "gelen-kutusu", "boru"]
 program = "ortak"
 sunar = []
 ister = []
