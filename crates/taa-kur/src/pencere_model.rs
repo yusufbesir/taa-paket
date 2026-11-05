@@ -8,11 +8,12 @@ use crate::kayit::surum_karsilastir;
 use crate::{KaldirSonuc, Kur, KurHata, KurSonuc, ListeSatiri};
 use std::cmp::Ordering;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 /// Liste sütun başlıkları (Win32 katmanı bunları kullanır).
 pub const SUTUNLAR: [&str; 4] = ["Paket", "Kurulu sürüm", "Seçili sürüm", "Durum"];
 
-/// Güncelleme kaynağı (taa-guncelle başka dalda yazılıyor; o gelince bu trait'e bağlanır).
+/// Güncelleme kaynağı: pencere bu trait üzerinden günceller (`KomutGuncelleyici` taa-guncelle.exe'yi çalıştırır).
 pub trait GuncelleyiciArayuzu {
     /// Paketi güncellemeyi dener; başarıda ya da bilgi durumunda Türkçe tek satır mesaj, hatada neden + öneri.
     fn guncelle(&self, kur: &Kur, paket_adi: &str) -> Result<String, String>;
@@ -25,6 +26,163 @@ pub struct KaynaksizGuncelleyici;
 impl GuncelleyiciArayuzu for KaynaksizGuncelleyici {
     fn guncelle(&self, _kur: &Kur, _paket_adi: &str) -> Result<String, String> {
         Err("Güncelleme kaynağı ayarlanmadı. Öneri: güncelleme modülü (taa-guncelle) kurulunca etkinleşir.".into())
+    }
+}
+
+/// `taa-guncelle` komutunu çalıştıran güncelleyici: `taa-guncelle uygula --json --paket <ad>` (TAA_KOK = kök).
+/// taa-kur, taa-guncelle'ye bağlanamaz (taa-guncelle taa-kur'u kullanır); bu yüzden komut olarak çağrılır.
+/// Komut bulunamazsa pencere `KaynaksizGuncelleyici` ile açılır.
+#[derive(Debug, Clone)]
+pub struct KomutGuncelleyici {
+    komut: PathBuf,
+}
+
+impl KomutGuncelleyici {
+    pub fn yeni(komut: impl Into<PathBuf>) -> KomutGuncelleyici {
+        KomutGuncelleyici {
+            komut: komut.into(),
+        }
+    }
+
+    pub fn komut(&self) -> &Path {
+        &self.komut
+    }
+
+    /// Sırasıyla: çalışan programın yanındaki `taa-guncelle[.exe]`, sonra kökte seçili `taa-guncelle` paketinin
+    /// `bin\taa-guncelle[.exe]` dosyası. Yoksa `None`.
+    pub fn bul(kur: &Kur) -> Option<KomutGuncelleyici> {
+        let ad = format!("taa-guncelle{}", std::env::consts::EXE_SUFFIX);
+        let yanimda = std::env::current_exe()
+            .ok()
+            .and_then(|e| e.parent().map(|p| p.join(&ad)));
+        let depoda = kur
+            .liste()
+            .ok()
+            .and_then(|l| l.into_iter().find(|s| s.ad == "taa-guncelle"))
+            .and_then(|s| s.secili)
+            .map(|surum| {
+                kur.kok()
+                    .join("depo")
+                    .join("taa-guncelle")
+                    .join(surum)
+                    .join("bin")
+                    .join(&ad)
+            });
+        [yanimda, depoda]
+            .into_iter()
+            .flatten()
+            .find(|y| y.is_file())
+            .map(KomutGuncelleyici::yeni)
+    }
+}
+
+/// Komut çıktısını tek satır Türkçe mesaja çevirir (komuttan bağımsız; testlenebilir).
+/// `stdout`: `uygula --json` çıktısı; `stderr`: hata durumunda `{"hata":..,"kod":..}`.
+pub fn guncelle_ciktisi_yorumla(
+    ad: &str,
+    basarili: bool,
+    stdout: &[u8],
+    stderr: &[u8],
+) -> Result<String, String> {
+    let cikti = String::from_utf8_lossy(stdout);
+    let sonuc: Option<serde_json::Value> = serde_json::from_str(cikti.trim()).ok();
+    if let Some(satir) = sonuc
+        .as_ref()
+        .and_then(|v| v.get("satirlar"))
+        .and_then(|s| s.as_array())
+        .and_then(|a| {
+            a.iter()
+                .find(|r| r.get("ad").and_then(|x| x.as_str()) == Some(ad))
+        })
+    {
+        let al = |k: &str| {
+            satir
+                .get(k)
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string()
+        };
+        let (durum, onceki, yeni, mesaj) = (al("durum"), al("onceki"), al("yeni"), al("mesaj"));
+        let geri = satir
+            .get("geri_donuldu")
+            .and_then(|x| x.as_bool())
+            .unwrap_or(false);
+        return match durum.as_str() {
+            "guncellendi" => Ok(format!("{ad} güncellendi: {onceki} -> {yeni}.")),
+            "atlandi" => Ok(format!("{ad} güncellenmedi: {mesaj}")),
+            _ => Err(format!(
+                "{ad} {onceki} -> {yeni}: {mesaj}{}",
+                if geri {
+                    " (önceki sürüm seçili)"
+                } else {
+                    ""
+                }
+            )),
+        };
+    }
+    if let Some(k) = sonuc.as_ref().and_then(|v| v.get("kontrol")) {
+        let icerir = |alan: &str| {
+            k.get(alan)
+                .and_then(|x| x.as_array())
+                .is_some_and(|a| a.iter().any(|x| x.as_str() == Some(ad)))
+        };
+        if icerir("guncel") {
+            return Ok(format!("{ad} güncel; yayında daha yeni sürüm yok."));
+        }
+        if let Some(r) = k
+            .get("reddedilen")
+            .and_then(|x| x.as_array())
+            .and_then(|a| {
+                a.iter()
+                    .find(|r| r.get("ad").and_then(|x| x.as_str()) == Some(ad))
+            })
+        {
+            let neden = r.get("neden").and_then(|x| x.as_str()).unwrap_or("");
+            return Err(format!("{ad} reddedildi: {neden}."));
+        }
+        if basarili {
+            return Ok(format!(
+                "{ad} için yayında kayıt yok. Öneri: paketin kanalını ve yayin.json'u denetleyin."
+            ));
+        }
+    }
+    let hata = String::from_utf8_lossy(stderr);
+    let hata_metin: Option<String> = serde_json::from_str::<serde_json::Value>(hata.trim())
+        .ok()
+        .and_then(|v| v.get("hata").and_then(|h| h.as_str()).map(String::from));
+    let hata_metin = hata_metin.unwrap_or_else(|| {
+        let h = hata.trim();
+        if h.is_empty() {
+            "taa-guncelle beklenmeyen çıktı verdi. Öneri: komut satırından `taa-guncelle kontrol` çalıştırın.".into()
+        } else {
+            h.to_string()
+        }
+    });
+    Err(hata_metin)
+}
+
+impl GuncelleyiciArayuzu for KomutGuncelleyici {
+    fn guncelle(&self, kur: &Kur, paket_adi: &str) -> Result<String, String> {
+        let mut c = Command::new(&self.komut);
+        c.args(["uygula", "--json", "--paket", paket_adi])
+            .env("TAA_KOK", kur.kok());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            c.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        }
+        let cikti = c.output().map_err(|e| {
+            format!(
+                "{} çalıştırılamadı ({e}). Öneri: taa-guncelle paketini kurun.",
+                self.komut.display()
+            )
+        })?;
+        guncelle_ciktisi_yorumla(
+            paket_adi,
+            cikti.status.success(),
+            &cikti.stdout,
+            &cikti.stderr,
+        )
     }
 }
 
@@ -201,6 +359,15 @@ impl PencereModel {
         Some(format!(
             "{} paketinin seçili sürümü ({}) kaldırılacak.\nİçerik silinmez, kök klasördeki eski\\ klasörüne taşınır; veri alanlarına dokunulmaz.\nDevam edilsin mi?",
             s.ad, s.secili
+        ))
+    }
+
+    /// Güncelleme onay metni; seçili satır yoksa `None` (o durumda `guncelle` yalnız uyarı verir).
+    pub fn guncelle_onay_metni(&self) -> Option<String> {
+        let s = self.secili_satir()?;
+        Some(format!(
+            "{} paketi için güncelleme kaynağına bakılacak; yeni sürüm varsa indirilip kurulacak ve seçilecek.\nÖnceki sürüm silinmez (geri dönülebilir).\nDevam edilsin mi?",
+            s.ad
         ))
     }
 
@@ -462,9 +629,106 @@ mod testler {
         m.sec_satir(Some(0));
         let d = m.guncelle().to_string();
         assert!(d.contains("Güncelleme kaynağı ayarlanmadı"), "{d}");
+        assert!(m
+            .guncelle_onay_metni()
+            .unwrap()
+            .starts_with("taa-ornek paketi"));
         // güncelleme başarısızlığı kurulu paketi etkilemez
         assert_eq!(m.satirlar().len(), 1);
         assert_eq!(m.secili_indeks(), Some(0), "seçim ada göre korunur");
+        m.sec_satir(None);
+        assert!(m.guncelle_onay_metni().is_none());
+    }
+
+    #[test]
+    fn komut_ciktisi_yorumlanir() {
+        let y = |ok: bool, out: &str, err: &str| {
+            guncelle_ciktisi_yorumla("a", ok, out.as_bytes(), err.as_bytes())
+        };
+        let guncellendi = r#"{"kontrol":{"guncellenebilir":[{"ad":"a"}],"guncel":[],"reddedilen":[]},"satirlar":[{"ad":"a","onceki":"1.0.0","yeni":"1.1.0","durum":"guncellendi","mesaj":"tamam","geri_donuldu":false}]}"#;
+        assert_eq!(
+            y(true, guncellendi, "").unwrap(),
+            "a güncellendi: 1.0.0 -> 1.1.0."
+        );
+        let atlandi = r#"{"kontrol":{},"satirlar":[{"ad":"a","onceki":"1.0.0","yeni":"1.1.0","durum":"atlandi","mesaj":"paket sabitlenmiş"}]}"#;
+        assert_eq!(
+            y(true, atlandi, "").unwrap(),
+            "a güncellenmedi: paket sabitlenmiş"
+        );
+        let hata = r#"{"kontrol":{},"satirlar":[{"ad":"a","onceki":"1.0.0","yeni":"1.1.0","durum":"hata","mesaj":"SHA256 uyuşmuyor","geri_donuldu":true}]}"#;
+        let e = y(false, hata, "").unwrap_err();
+        assert!(
+            e.contains("SHA256") && e.contains("önceki sürüm seçili"),
+            "{e}"
+        );
+        let guncel =
+            r#"{"kontrol":{"guncellenebilir":[],"guncel":["a"],"reddedilen":[]},"satirlar":[]}"#;
+        assert!(y(true, guncel, "").unwrap().starts_with("a güncel"));
+        let red = r#"{"kontrol":{"guncel":[],"reddedilen":[{"ad":"a","neden":"geri alma koruması"}]},"satirlar":[]}"#;
+        assert!(y(true, red, "").unwrap_err().contains("geri alma"));
+        let yok = r#"{"kontrol":{"guncel":[],"reddedilen":[]},"satirlar":[]}"#;
+        assert!(y(true, yok, "").unwrap().contains("yayında kayıt yok"));
+        // stderr JSON hatası ve düz metin
+        let e = y(
+            false,
+            "",
+            r#"{"hata":"Güncelleme kaynağı belirtilmedi: --kaynak verin","kod":2}"#,
+        )
+        .unwrap_err();
+        assert!(e.starts_with("Güncelleme kaynağı belirtilmedi"), "{e}");
+        assert!(y(false, "", "bozuk").unwrap_err().contains("bozuk"));
+        assert!(y(false, "", "").unwrap_err().contains("beklenmeyen"));
+    }
+
+    #[test]
+    fn komut_guncelleyici_bulma_ve_calistirma() {
+        let o = Ortam::yeni();
+        let kur = Kur::yeni(&o.kok).unwrap();
+        // ne exe yanında ne depoda: None
+        assert!(KomutGuncelleyici::bul(&kur).is_none());
+        // depoda seçili taa-guncelle paketi: bin/taa-guncelle bulunur
+        let mut m = o.model();
+        m.kur_paketi(&o.paket("taa-guncelle", "0.1.0"));
+        let bin = o
+            .kok
+            .join("depo")
+            .join("taa-guncelle")
+            .join("0.1.0")
+            .join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let yol = bin.join(format!("taa-guncelle{}", std::env::consts::EXE_SUFFIX));
+        std::fs::write(
+            &yol,
+            "#!/bin/sh\necho '{\"kontrol\":{\"guncel\":[\"taa-ornek\"]},\"satirlar\":[]}'\n",
+        )
+        .unwrap();
+        let g = KomutGuncelleyici::bul(&kur).expect("depodaki komut bulunmalı");
+        assert_eq!(g.komut(), yol);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&yol, std::fs::Permissions::from_mode(0o755)).unwrap();
+            let mut m = PencereModel::yeni(Kur::yeni(&o.kok).unwrap(), Box::new(g));
+            m.kur_paketi(&o.paket("taa-ornek", "0.1.0"));
+            let i = m
+                .satirlar()
+                .iter()
+                .position(|s| s.ad == "taa-ornek")
+                .unwrap();
+            m.sec_satir(Some(i));
+            assert!(
+                m.guncelle().starts_with("taa-ornek güncel"),
+                "{}",
+                m.durum()
+            );
+        }
+        // çalıştırılamayan komut: tek satır hata, kurulu paketler etkilenmez
+        let mut m = PencereModel::yeni(
+            Kur::yeni(&o.kok).unwrap(),
+            Box::new(KomutGuncelleyici::yeni(o.taban.join("yok-boyle-komut"))),
+        );
+        m.sec_satir(Some(0));
+        assert!(m.guncelle().starts_with("Güncellenemedi:"));
     }
 
     #[test]
