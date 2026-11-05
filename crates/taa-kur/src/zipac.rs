@@ -4,8 +4,12 @@
 //! bildirilen boyutu önce toplanır, sınır aşılırsa HİÇBİR ŞEY açılmaz; açarken gerçek bayt sayısı da sınırlanır.
 //! Sembolik bağ girdileri, yinelenen adlar (harfe duyarsız) ve kökte `paket.json` olmayan zipler reddedilir.
 
-use crate::paket::{yol_dogrula, MAKS_DOSYA, MAKS_TOPLAM_BAYT};
+use crate::paket::{
+    dogrula_alanlar, icerik_hesapla, yol_dogrula, Paket, MAKS_DOSYA, MAKS_PAKET_JSON,
+    MAKS_TOPLAM_BAYT,
+};
 use crate::KurHata;
+use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::fs;
 use std::io::{BufReader, Read, Write};
@@ -23,26 +27,21 @@ fn sinir_hatasi(ne: &str) -> KurHata {
     ))
 }
 
-/// Zipi `hedef` klasörüne açar (`hedef` yoksa oluşturulur, boş olmalıdır). Hata olursa kısmen açılmış içerik
-/// yerinde kalır; temizlik (eski/ altına taşıma) çağıranındır.
-pub fn zip_ac(zip_yolu: &Path, hedef: &Path) -> Result<(), KurHata> {
-    zip_ac_sinirli(zip_yolu, hedef, MAKS_DOSYA, MAKS_TOPLAM_BAYT)
-}
+type Arsiv = zip::ZipArchive<BufReader<fs::File>>;
 
-/// `zip_ac` ile aynı; sınırlar verilir (testler küçük sınırla çalışır).
-pub fn zip_ac_sinirli(
-    zip_yolu: &Path,
-    hedef: &Path,
-    maks_dosya: usize,
-    maks_bayt: u64,
-) -> Result<(), KurHata> {
+fn arsiv_ac(zip_yolu: &Path) -> Result<Arsiv, KurHata> {
     let dosya = fs::File::open(zip_yolu).map_err(|e| {
         KurHata::Yok(format!(
             "Zip dosyası açılamadı ({}): {e}. Öneri: yolu denetleyin.",
             zip_yolu.display()
         ))
     })?;
-    let mut arsiv = zip::ZipArchive::new(BufReader::new(dosya)).map_err(zip_hatasi)?;
+    zip::ZipArchive::new(BufReader::new(dosya)).map_err(zip_hatasi)
+}
+
+/// Birinci geçiş: hiçbir şey yazmadan tüm girdileri denetler (yol, yinelenen ad, sembolik bağ, kökte paket.json,
+/// sınırlar) ve bildirilen boyutları döner.
+fn tara(arsiv: &mut Arsiv, maks_dosya: usize, maks_bayt: u64) -> Result<Vec<u64>, KurHata> {
     let n = arsiv.len();
     if n > maks_dosya {
         return Err(sinir_hatasi(&format!("girdi sayısı {n} > {maks_dosya}")));
@@ -97,6 +96,101 @@ pub fn zip_ac_sinirli(
                 .into(),
         ));
     }
+
+    Ok(boyutlar)
+}
+
+/// Girdiyi en çok `bildirilen` bayt okuyup SHA256'sını döner; fazlası zip bombası şüphesidir.
+fn girdi_ozeti(g: &mut impl Read, temiz: &str, bildirilen: u64) -> Result<String, KurHata> {
+    let mut okuyan = g.take(bildirilen.saturating_add(1));
+    let mut h = Sha256::new();
+    let mut tampon = vec![0u8; 1 << 16];
+    let mut bu = 0u64;
+    loop {
+        let k = okuyan.read(&mut tampon).map_err(|e| {
+            KurHata::Dogrulama(format!(
+                "Zip girdisi okunamadı ({temiz}): {e}. Öneri: paketi yeniden üretin."
+            ))
+        })?;
+        if k == 0 {
+            break;
+        }
+        bu += k as u64;
+        if bu > bildirilen {
+            return Err(sinir_hatasi(&format!(
+                "{temiz} bildirilen boyuttan büyük çıktı (zip bombası şüphesi)"
+            )));
+        }
+        h.update(&tampon[..k]);
+    }
+    if bu != bildirilen {
+        return Err(KurHata::Dogrulama(format!(
+            "Zip girdisi bildirilen boyutla uyuşmuyor ({temiz}). Öneri: paketi yeniden üretin."
+        )));
+    }
+    Ok(format!("{:x}", h.finalize()))
+}
+
+/// Zip paketini AÇMADAN doğrular: girdi kuralları ve sınırlar (`tara`), kökteki `paket.json` alanları, `icerik_sha256`
+/// ve listedeki her dosyanın SHA256'sı akıştan hesaplanır. Diske hiçbir şey yazılmaz. `(paket, paket.json baytları)` döner.
+pub fn zip_denetle(zip_yolu: &Path) -> Result<(Paket, Vec<u8>), KurHata> {
+    let mut arsiv = arsiv_ac(zip_yolu)?;
+    tara(&mut arsiv, MAKS_DOSYA, MAKS_TOPLAM_BAYT)?;
+    let hata = |m: String| KurHata::Dogrulama(format!("{m}. Öneri: paketi yeniden üretin."));
+    let bayt = {
+        let mut g = arsiv.by_name("paket.json").map_err(zip_hatasi)?;
+        if g.size() > MAKS_PAKET_JSON {
+            return Err(hata("paket.json çok büyük".into()));
+        }
+        let mut b = Vec::with_capacity(g.size() as usize);
+        g.read_to_end(&mut b)
+            .map_err(|e| hata(format!("paket.json okunamadı: {e}")))?;
+        b
+    };
+    let paket: Paket = serde_json::from_slice(&bayt).map_err(|e| {
+        KurHata::Dogrulama(format!(
+            "paket.json bozuk: {e}. Öneri: tools/paket_uret.py ile yeniden üretin."
+        ))
+    })?;
+    dogrula_alanlar(&paket).map_err(hata)?;
+    if icerik_hesapla(&paket.dosyalar) != paket.icerik_sha256 {
+        return Err(hata("icerik_sha256 dosya listesiyle uyuşmuyor".into()));
+    }
+    let mut toplam = 0u64;
+    for d in &paket.dosyalar {
+        let mut g = arsiv
+            .by_name(&d.yol)
+            .map_err(|_| hata(format!("{} paket.json'da listeli ama zipte yok", d.yol)))?;
+        if g.is_dir() {
+            return Err(hata(format!("{} normal dosya değil", d.yol)));
+        }
+        let bildirilen = g.size();
+        toplam = toplam.saturating_add(bildirilen);
+        if toplam > MAKS_TOPLAM_BAYT {
+            return Err(hata("toplam boyut sınırı (2 GiB) aşıldı".into()));
+        }
+        if girdi_ozeti(&mut g, &d.yol, bildirilen)? != d.sha256 {
+            return Err(hata(format!("{} için sha256 uyuşmuyor", d.yol)));
+        }
+    }
+    Ok((paket, bayt))
+}
+
+/// Zipi `hedef` klasörüne açar (`hedef` yoksa oluşturulur, boş olmalıdır). Hata olursa kısmen açılmış içerik
+/// yerinde kalır; temizlik (eski/ altına taşıma) çağıranındır.
+pub fn zip_ac(zip_yolu: &Path, hedef: &Path) -> Result<(), KurHata> {
+    zip_ac_sinirli(zip_yolu, hedef, MAKS_DOSYA, MAKS_TOPLAM_BAYT)
+}
+
+/// `zip_ac` ile aynı; sınırlar verilir (testler küçük sınırla çalışır).
+pub fn zip_ac_sinirli(
+    zip_yolu: &Path,
+    hedef: &Path,
+    maks_dosya: usize,
+    maks_bayt: u64,
+) -> Result<(), KurHata> {
+    let mut arsiv = arsiv_ac(zip_yolu)?;
+    let boyutlar = tara(&mut arsiv, maks_dosya, maks_bayt)?;
 
     // İkinci geçiş: aç; gerçek bayt sayısı bildirilenle eşit olmalı, toplam sınırı aşamaz.
     fs::create_dir_all(hedef)?;

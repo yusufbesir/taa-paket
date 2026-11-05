@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 pub const MAKS_DOSYA: usize = 10_000;
 /// Tasarımdaki "2 GB" ikili (GiB) olarak uygulandı.
 pub const MAKS_TOPLAM_BAYT: u64 = 2 * 1024 * 1024 * 1024;
-const MAKS_PAKET_JSON: u64 = 16 * 1024 * 1024;
+pub(crate) const MAKS_PAKET_JSON: u64 = 16 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DosyaKaydi {
@@ -204,7 +204,7 @@ pub fn paket_oku(klasor: &Path) -> Result<(Paket, Vec<u8>), KurHata> {
     Ok((paket, bayt))
 }
 
-fn dogrula_alanlar(p: &Paket) -> Result<(), String> {
+pub(crate) fn dogrula_alanlar(p: &Paket) -> Result<(), String> {
     if p.sema != 1 {
         return Err(format!("desteklenmeyen paket şeması: {}", p.sema));
     }

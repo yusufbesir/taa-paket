@@ -192,12 +192,22 @@ pub struct Tani {
 }
 
 /// İmza denetiminin sonucu.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub enum ImzaDurumu {
     /// Güvenilir bir anahtarla doğrulandı (kimlik).
     Dogrulandi(String),
     /// Güvenilir anahtar tanımlı olmadığından denetlenmedi (eski davranış).
     Denetlenmedi,
+}
+
+/// `taa-kur dogrula <paket.zip|klasör>` sonucu: paket kurulmadan doğrulandı.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct PaketDenetim {
+    pub ad: String,
+    pub surum: String,
+    pub dosya_sayisi: usize,
+    pub icerik_sha256: String,
+    pub imza: ImzaDurumu,
 }
 
 /// `taa-kur tani --json` veri alanı satırı.
@@ -971,6 +981,25 @@ impl Kur {
     pub fn liste(&self) -> Sonuc<Vec<ListeSatiri>> {
         let (k, _) = self.kayit_oku_ham()?;
         Ok(liste_satirlari(&k))
+    }
+
+    /// Kurulmamış bir paketi (klasör ya da `.zip`) kurmadan doğrular: alanlar, yollar, sınırlar, her dosyanın SHA256'sı,
+    /// `icerik_sha256` ve imza kuralı (güvenilir anahtar varsa imza zorunlu). Zip açılmaz, diske hiçbir şey yazılmaz.
+    pub fn paket_denetle(&self, yol: &Path) -> Sonuc<PaketDenetim> {
+        let (paket, _) = if zip_mi(yol) {
+            zipac::zip_denetle(yol)?
+        } else {
+            paket::paket_dogrula(yol)?
+        };
+        let imza =
+            self.imza_denetle("Paket", paket.icerik_sha256.as_bytes(), paket.imza.as_ref())?;
+        Ok(PaketDenetim {
+            ad: paket.ad,
+            surum: paket.surum,
+            dosya_sayisi: paket.dosyalar.len(),
+            icerik_sha256: paket.icerik_sha256,
+            imza,
+        })
     }
 
     /// Depo içeriği SHA256 ↔ paket.json; kayit.json iç özeti (`ozet`); tutarlılık. Boş liste = sağlam.
