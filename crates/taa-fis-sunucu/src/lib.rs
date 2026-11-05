@@ -309,6 +309,39 @@ impl Uygulama {
         Yanit::html(sayfalar::yonetim(&qr, &kod, &url, &cihazlar))
     }
 
+    /// TaaTerziTakip listeleri (salt okunur): özet, kargo, kuru-temizleme, geciken, bugun, usta.
+    fn takip(&self, d: &taa_fis::Defter, ad: &str) -> Yanit {
+        let bugun = tarih_iso(self.simdi());
+        let t = match taa_takip::Takip::defterden(d) {
+            Ok(t) => t,
+            Err(e) => return Yanit::hata(409, &e),
+        };
+        let liste = |v: Vec<&taa_fis::Fis>| {
+            let satirlar: Vec<_> = v
+                .iter()
+                .map(|f| {
+                    json!({
+                        "no": f.no, "musteri": f.musteri, "telefon": f.telefon,
+                        "durum": f.durum, "teslim": f.teslim, "teslim_saati": f.teslim_saati,
+                        "usta": f.usta, "raf": f.raf,
+                        "urunler": f.kalemler.iter().map(|k| format!("{} - {}", k.urun, k.islem)).collect::<Vec<_>>(),
+                        "kargo_ad": f.kargo_ad, "kargo_adres": f.kargo_adres, "kargo_telefon": f.kargo_telefon,
+                    })
+                })
+                .collect();
+            Yanit::json(200, json!({ "sayi": satirlar.len(), "fisler": satirlar }))
+        };
+        match ad {
+            "ozet" => Yanit::json(200, json!(t.ozet(&bugun))),
+            "kargo" => liste(t.kargo_bekleyen()),
+            "kuru-temizleme" => liste(t.kuru_temizleme()),
+            "geciken" => liste(t.geciken(&bugun)),
+            "bugun" => liste(t.bugun_teslim(&bugun)),
+            "usta" => Yanit::json(200, json!({ "ustalar": t.usta_performansi(&bugun) })),
+            _ => Yanit::hata(404, "bilinmeyen takip listesi"),
+        }
+    }
+
     fn yetkili(&self, i: &Istek, parca: &[&str]) -> Yanit {
         let token = i
             .yetki
@@ -385,6 +418,7 @@ impl Uygulama {
                 Ok(None) => Yanit::hata(404, "fiş yok"),
                 Err(e) => Yanit::hata(500, &e),
             },
+            ("GET", ["api", "takip", ad]) => self.takip(&d, ad),
             ("GET", ["api", "bildirimler"]) => {
                 let k = taa_bildirim::Kuyruk {
                     yol: &self.dizin.join("bildirimler.jsonl"),
@@ -1068,5 +1102,33 @@ mod testler {
         let y = u.isle(&ist("POST", "/api/fis", Some(&t), fis, false));
         assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
         assert!(String::from_utf8_lossy(&y.govde).contains("denetlenemedi"));
+    }
+
+    #[test]
+    fn takip_listeleri() {
+        let u = uyg();
+        let t = esles(&u);
+        for (yol, anahtar) in [
+            ("/api/takip/ozet", "kargo_bekleyen"),
+            ("/api/takip/kargo", "fisler"),
+            ("/api/takip/kuru-temizleme", "fisler"),
+            ("/api/takip/geciken", "fisler"),
+            ("/api/takip/usta", "ustalar"),
+        ] {
+            let y = u.isle(&ist("GET", yol, Some(&t), "", false));
+            assert_eq!(y.kod, 200, "{yol}");
+            let j: serde_json::Value = serde_json::from_slice(&y.govde).unwrap();
+            assert!(j.get(anahtar).is_some(), "{yol}");
+        }
+        assert_eq!(
+            u.isle(&ist("GET", "/api/takip/yok", Some(&t), "", false))
+                .kod,
+            404
+        );
+        // belirteçsiz erişim yok
+        assert_eq!(
+            u.isle(&ist("GET", "/api/takip/ozet", None, "", false)).kod,
+            401
+        );
     }
 }

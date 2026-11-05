@@ -1,0 +1,19 @@
+# taa-takip: TaaTerziTakip raporları (kargo, kuru temizleme, geciken, usta performansı). Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-05].
+[package]
+name = "taa-takip"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "TaaTerziTakip çekirdeği: fiş defterinden takip listeleri ve usta performansı"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+taa-ayar = { path = "../taa-ayar" }
+taa-fis = { path = "../taa-fis" }
+
+[dev-dependencies]
+taa-dosya = { path = "../taa-dosya" }

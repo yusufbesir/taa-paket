@@ -1,0 +1,7 @@
+# taa-takip modül tanımı. Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-05].
+ad = "taa-takip"
+surum = "0.1.0"
+arayuz = "1"
+gerektirir = { "taa-ayar" = "1", "taa-fis" = "1" }
+ozellikler = ["fis-takip"]
+program = "taatakip"

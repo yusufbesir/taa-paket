@@ -540,6 +540,19 @@ impl Defter<'_> {
         taa_dosya::satir_ekle(self.yol, &s).map_err(|e| e.to_string())
     }
 
+    /// Durum değişikliklerinin tarihli geçmişi: (fiş no, yeni durum, tarih), defter sırasıyla.
+    /// Takip raporları (usta zamanında bitirme vb.) bunu kullanır.
+    pub fn durum_gecmisi(&self) -> Result<Vec<(String, Durum, String)>, String> {
+        Ok(self
+            .kayitlar()?
+            .into_iter()
+            .filter_map(|k| match k {
+                Kayit::Durum { no, durum, tarih } => Some((no, durum, tarih)),
+                _ => None,
+            })
+            .collect())
+    }
+
     /// Teslim tarihi geçmiş ve teslim edilmemiş fişler.
     pub fn geciken(&self, bugun: &str) -> Result<Vec<Fis>, String> {
         Ok(self
