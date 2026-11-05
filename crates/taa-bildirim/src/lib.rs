@@ -177,6 +177,23 @@ impl Kuyruk<'_> {
     }
 }
 
+/// Fiş "hazır" olunca: izin varsa mesajı kuyruğa yazar; sonucu kısa metin olarak döndürür.
+/// Şablon `dizin/bildirim-sablonu.txt` varsa o, yoksa varsayılandır; kuyruk `dizin/bildirimler.jsonl`.
+pub fn hazir_bildir(dizin: &Path, fis_no: &str, telefon: &str, izin: bool, tarih: &str) -> String {
+    if !izin {
+        return "müşteri bilgilendirme izni vermemiş".into();
+    }
+    let sablon = std::fs::read_to_string(dizin.join("bildirim-sablonu.txt"))
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|_| VARSAYILAN_SABLON.to_string());
+    let yol = dizin.join("bildirimler.jsonl");
+    match (Kuyruk { yol: &yol }).hazir_ekle(fis_no, telefon, &sablon, tarih) {
+        Ok(Some(m)) => format!("hazır mesajı kuyruğa yazıldı ({})", m.id),
+        Ok(None) => "hazır mesajı zaten kuyrukta".into(),
+        Err(e) => e,
+    }
+}
+
 #[cfg(test)]
 mod testler {
     use super::*;

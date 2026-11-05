@@ -194,6 +194,7 @@ impl Uygulama {
                     "<!doctype html><meta charset=utf-8><title>Aydınlatma</title><body style=\"font-family:sans-serif;max-width:40em;margin:1em auto;padding:0 1em\"><h1>Kişisel Verilerin Korunması Aydınlatma Metni</h1><p>Aydınlatma metni henüz yüklenmedi. Şirket KVKK sorumlusu metni veri klasörüne <code>aydinlatma.html</code> olarak koymalıdır.</p></body>".into()
                 }),
             ),
+            ("POST", ["telegram", gizli]) => self.telegram(gizli, i),
             ("GET" | "POST", ["api", ..]) => self.yetkili(i, &parca),
             _ => Yanit::hata(404, "bulunamadı"),
         }
@@ -219,18 +220,38 @@ impl Uygulama {
         let Ok(Some(f)) = d.bul(no) else {
             return json!(null);
         };
-        if !f.bildirim_izni {
-            return json!("müşteri bilgilendirme izni vermemiş");
+        json!(taa_bildirim::hazir_bildir(
+            &self.dizin,
+            no,
+            &f.telefon,
+            f.bildirim_izni,
+            &tarih_iso(self.simdi())
+        ))
+    }
+
+    /// Telegram webhook'u: adreste gizli parça olmalı; özellik kapalıyken ya da gizli yanlışken 404 (varlığı belli etmez).
+    fn telegram(&self, gizli: &str, i: &Istek) -> Yanit {
+        if !taa_ayar::ozellik_acik("telegram-bot", false) {
+            return Yanit::hata(404, "bulunamadı");
         }
-        let sablon = std::fs::read_to_string(self.dizin.join("bildirim-sablonu.txt"))
-            .map(|s| s.trim().to_string())
-            .unwrap_or_else(|_| taa_bildirim::VARSAYILAN_SABLON.to_string());
-        let yol = self.dizin.join("bildirimler.jsonl");
-        let k = taa_bildirim::Kuyruk { yol: &yol };
-        match k.hazir_ekle(no, &f.telefon, &sablon, &tarih_iso(self.simdi())) {
-            Ok(Some(m)) => json!({ "kuyrukta": m.id }),
-            Ok(None) => json!("zaten kuyrukta"),
-            Err(e) => json!(e),
+        let Ok(ayar) = taa_telegram::Ayar::dizinden(&self.dizin) else {
+            return Yanit::hata(404, "bulunamadı");
+        };
+        if !ayar.gizli_dogru(gizli) {
+            return Yanit::hata(404, "bulunamadı");
+        }
+        let Ok(g) = serde_json::from_slice::<serde_json::Value>(&i.govde) else {
+            return Yanit::hata(400, "geçersiz güncelleme");
+        };
+        let bugun = tarih_iso(self.simdi());
+        let bot = taa_telegram::Bot {
+            dizin: &self.dizin,
+            ayar: &ayar,
+            bugun: &bugun,
+        };
+        match bot.yanit(&g) {
+            Some(y) => Yanit::json(200, y),
+            None => Yanit::json(200, json!({})),
         }
     }
 
@@ -877,6 +898,34 @@ mod testler {
         std::fs::write(u.dizin.join("aydinlatma.html"), "<p>Şirket metni</p>").unwrap();
         let y = u.isle(&ist("GET", "/aydinlatma", None, "", false));
         assert!(String::from_utf8(y.govde).unwrap().contains("Şirket metni"));
+    }
+
+    #[test]
+    fn telegram_webhook() {
+        std::env::set_var("TAA_OZELLIK_TELEGRAM_BOT", "1");
+        let u = uyg();
+        let g = r#"{"message":{"chat":{"id":7},"from":{"id":42},"text":"/yardim"}}"#;
+        // ayar yok -> 404
+        assert_eq!(
+            u.isle(&ist("POST", "/telegram/0123456789abcdef", None, g, false))
+                .kod,
+            404
+        );
+        std::fs::write(
+            u.dizin.join("telegram.json"),
+            r#"{"gizli":"0123456789abcdef","kullanicilar":{"42":"Usta Ahmet"}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            u.isle(&ist("POST", "/telegram/yanlis-gizli-xxxxx", None, g, false))
+                .kod,
+            404
+        );
+        let y = u.isle(&ist("POST", "/telegram/0123456789abcdef", None, g, false));
+        assert_eq!(y.kod, 200);
+        let j: serde_json::Value = serde_json::from_slice(&y.govde).unwrap();
+        assert_eq!(j["method"], "sendMessage");
+        assert!(j["text"].as_str().unwrap().contains("Komutlar"));
     }
 
     #[test]

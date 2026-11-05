@@ -1,0 +1,7 @@
+# taa-telegram modül tanımı. Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-05].
+ad = "taa-telegram"
+surum = "0.1.0"
+arayuz = "1"
+gerektirir = { "taa-ayar" = "1", "taa-fis" = "1", "taa-bildirim" = "1" }
+ozellikler = ["telegram-bot"]
+program = "taatelegram"
