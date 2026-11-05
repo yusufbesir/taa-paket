@@ -1,5 +1,5 @@
 //! taa-fis-sunucu: TaaFiş yerel sunucusu. Kullanım:
-//!   taa-fis-sunucu [--veri KLASÖR] [--port 8787] [--yazici YOL|tcp://IP[:9100]] [--adres http://192.168.1.20:8787]
+//!   taa-fis-sunucu [--veri KLASÖR] [--port 8787] [--yazici YOL|tcp://IP[:9100]] [--adres http://192.168.1.20:8787] [--aydinlatma-url https://...]
 //! Yönetim (karekod, telefon listesi): bu bilgisayarda http://localhost:PORT/yonetim
 use std::io::Read;
 use std::path::PathBuf;
@@ -28,7 +28,8 @@ fn main() {
             yerel_ip().unwrap_or_else(|| "localhost".into())
         )
     });
-    let uyg = Uygulama::yeni(veri, arg("--yazici").map(PathBuf::from), taban.clone());
+    let mut uyg = Uygulama::yeni(veri, arg("--yazici").map(PathBuf::from), taban.clone());
+    uyg.aydinlatma_url = arg("--aydinlatma-url");
     let sunucu = match tiny_http::Server::http(format!("0.0.0.0:{port}")) {
         Ok(s) => s,
         Err(e) => {
