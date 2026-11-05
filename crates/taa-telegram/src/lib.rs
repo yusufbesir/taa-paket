@@ -84,7 +84,7 @@ pub fn maske_tel(t: &str) -> String {
     )
 }
 
-const YARDIM: &str = "Komutlar:\n/durum FİŞNO\n/terzihanede FİŞNO\n/hazir FİŞNO\n/raf FİŞNO A-12\n/imza FİŞNO\n/bugun (bugün teslim)\n/geciken\n/yardim";
+const YARDIM: &str = "Komutlar:\n/durum FİŞNO\n/terzihanede FİŞNO\n/hazir FİŞNO\n/raf FİŞNO A-12\n/imza FİŞNO\n/bugun (bugün teslim)\n/geciken\n/kargo (kargo bekleyenler)\n/kuru (kuru temizleme)\n/ozet\n/yardim";
 
 impl Bot<'_> {
     /// Telegram güncellemesine webhook yanıtı üretir; yanıtlanacak bir şey yoksa `None`.
@@ -185,6 +185,27 @@ impl Bot<'_> {
                         .join("\n")
                 }
             }),
+            "/kargo" | "/kuru" | "/ozet" => taa_takip::Takip::defterden(&d).map(|t| match k.as_str() {
+                "/ozet" => {
+                    let o = t.ozet(self.bugun);
+                    format!(
+                        "Bekliyor {} | Terzihanede {} | Hazır {}\nGeciken {} | Bugün teslim {}\nKargo bekleyen {} | Kuru temizleme {}",
+                        o.bekliyor, o.terzihanede, o.hazir, o.geciken, o.bugun_teslim, o.kargo_bekleyen, o.kuru_temizleme
+                    )
+                }
+                ad => {
+                    let v = if ad == "/kargo" { t.kargo_bekleyen() } else { t.kuru_temizleme() };
+                    if v.is_empty() {
+                        "Liste boş.".into()
+                    } else {
+                        // KVKK: bot mesajında yalnız maskeli ad; kargo adresi/telefonu gösterilmez
+                        v.iter()
+                            .map(|f| format!("{} {} teslim {}", f.no, maske_ad(&f.musteri), f.teslim))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    }
+                }
+            }),
             "/terzihanede" => d
                 .durum_ata(a1, Durum::Terzihanede, self.bugun)
                 .map(|_| format!("{a1}: terzihanede")),
@@ -268,6 +289,10 @@ mod testler {
         assert!(y(42, &format!("/durum {no}")).contains("Hazir"));
         assert!(y(42, "/hazir F-yok").starts_with("Hata"));
         assert!(y(42, "/bugun").contains("yok"));
+        // takip komutları: kargo/kuru listesi boş, özet sayıları var, ad maskeli
+        assert_eq!(y(42, "/kargo"), "Liste boş.");
+        assert_eq!(y(42, "/kuru"), "Liste boş.");
+        assert!(y(42, "/ozet").contains("Hazır 1"));
         assert!(y(42, "/xyz").contains("Komutlar"));
         // yanıt biçimi
         let r = b.yanit(&mesaj(42, "/yardim")).unwrap();

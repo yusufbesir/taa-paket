@@ -587,6 +587,7 @@ dependencies = [
  "taa-bildirim",
  "taa-dosya",
  "taa-fis",
+ "taa-takip",
  "taa-telegram",
  "taa-terzi",
  "tiny_http",
@@ -665,6 +666,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "taa-takip"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "taa-ayar",
+ "taa-dosya",
+ "taa-fis",
+]
+
+[[package]]
 name = "taa-tara"
 version = "0.1.0"
 dependencies = [
@@ -683,6 +694,7 @@ dependencies = [
  "taa-bildirim",
  "taa-dosya",
  "taa-fis",
+ "taa-takip",
 ]
 
 [[package]]

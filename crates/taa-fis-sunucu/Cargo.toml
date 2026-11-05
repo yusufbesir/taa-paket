@@ -28,4 +28,5 @@ taa-dosya = { path = "../taa-dosya" }
 taa-fis = { path = "../taa-fis" }
 taa-bildirim = { path = "../taa-bildirim" }
 taa-telegram = { path = "../taa-telegram" }
+taa-takip = { path = "../taa-takip" }
 taa-terzi = { path = "../taa-terzi" }
