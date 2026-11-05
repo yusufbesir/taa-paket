@@ -24,6 +24,7 @@ TAA Paketi çekirdek deposu: TaaDön ve diğer TAA programlarının paylaştığ
 | taa-terzi | var | Tadilat işlem kataloğu (JSON, mağaza `terzi-kurallari.json` ile değiştirir) ve ölçü sınır denetimi |
 | taa-kombin | var | TaaKombin: takım rengine göre gömlek/kravat/ayakkabı/kemer önerisi |
 | taa-bildirim | var | TaaBildirim: müşteriye KVKK uyumlu "ürününüz hazır" mesajı kuyruğu (WhatsApp Business için gönderici bağlanacak; şimdilik yalnız kuyruk) |
+| taa-telegram | var | TaaTelegram: izinli kullanıcılar için fiş komutları (/durum, /hazir, /raf, /imza); webhook yanıtı üretir, ağ kodu yok; varsayılan KAPALI |
 | taa-subesor | var | TaaŞubeSor: şubeler arası beden/ürün sorusu ve yanıtları (ağ taşıması sonraki aşama) |
 | taa-ayarlar | planlı | Ortak ayar yönetimi (dosya/arayüz) |
 | taa-kimlik | planlı | Teknik kimlikler |
