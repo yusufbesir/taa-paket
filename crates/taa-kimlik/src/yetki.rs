@@ -34,9 +34,9 @@ pub struct Yetki {
 }
 
 impl Yetki {
-    /// `yonetici` rolü her izni taşır (K4 hiyerarşi); sunucu yine her istekte denetler (K6).
+    /// Yalnız `izinler` listesine bakılır (K1 varsayılan reddet; rol adı, `yonetici` dahil, tek başına izin vermez).
     pub fn izinli(&self, izin: &str) -> bool {
-        self.roller.iter().any(|r| r == "yonetici") || self.izinler.iter().any(|i| i == izin)
+        self.izinler.iter().any(|i| i == izin)
     }
 
     /// Liste boşsa (eski sunucu) açık sayılır.

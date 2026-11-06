@@ -150,9 +150,10 @@ impl Oturum {
         })
     }
 
-    /// Bu izin var mı? (`yonetici` rolü her izni taşır: K4 rol hiyerarşisi; sunucu yine her istekte denetler.)
+    /// Bu izin var mı? Yalnız sunucunun verdiği `izinler` listesine bakılır (K1 varsayılan reddet): rol adı izin vermez,
+    /// `yonetici` dahil (sunucu rol mirasını açarak listeyi tam gönderir). Var olmayan izin adı her zaman reddedilir.
     pub fn izinli(&self, izin: &str) -> bool {
-        self.roller.iter().any(|r| r == "yonetici") || self.izinler.iter().any(|i| i == izin)
+        self.izinler.iter().any(|i| i == izin)
     }
 
     /// Program bu oturuma açık mı? Liste boşsa (eski sunucu) açık sayılır.

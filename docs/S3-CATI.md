@@ -9,7 +9,8 @@ Karar (Yusuf 2026-11-06 21:40): Çatı programı tüm TAA paket programlarını 
   deposundan (Windows: Kimlik Bilgisi Yöneticisi), cihaz anahtarı `<kök>\cihaz\` (yoksa hata: `taa-cihaz uret`, sunucuda
   `tutaa-sunucu merkez-cihaz`).
 - **Varsayılan reddet (K1):** komut, oturumun izin listesinde gerekli izin yoksa sunucuya gitmeden çıkış 7 verir;
-  `yonetici` rolü her izni taşır (K4). Sunucu yine her istekte denetler (K6).
+  rol adı tek başına izin vermez: `yonetici` de sunucunun açtığı tam `izinler` listesiyle gelir (K4 miras sunucuda);
+  var olmayan izin adı her zaman reddedilir. Sunucu yine her istekte denetler (K6). [düzeltme: sunucu başlığı Windows denemesi, 2026-11-06 23:18]
 - **Yazma işlemleri** son 15 dk içinde parola doğrulaması ister: `taa-cati dogrula` (parola stdin'den) → `POST /v1/yeniden-dogrula`.
   Sunucu 401 `yeniden_dogrula` dönerse çıkış 6 ve öneri basılır.
 - **Silme yok (K10):** kullanıcı `kapat`, cihaz `iptal`; günlük yalnız okunur.
