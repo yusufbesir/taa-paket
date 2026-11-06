@@ -213,8 +213,8 @@ fn curl_cikti_ve_kod_yorumu() {
         Value::String("tamam".into())
     );
     assert!(matches!(
-        kodu_yorumla(409, b"cakisma"),
-        Err(GonderHata::Reddedildi { kod: 409, .. })
+        kodu_yorumla(409, b"tekrar"),
+        Err(GonderHata::Ulasilamadi(_))
     ));
     assert!(matches!(
         kodu_yorumla(503, b""),
@@ -506,4 +506,19 @@ fn curl_ulasilamayan_sunucu() {
         g.gonder("/v1/olay", &json!({})),
         Err(GonderHata::Ulasilamadi(_))
     ));
+}
+
+#[test]
+fn zaman_coz_ve_bicimle() {
+    for (iso, sn) in [
+        ("1970-01-01T00:00:00Z", 0),
+        ("2026-11-06T21:40:12Z", 1_794_001_212),
+        ("2000-02-29T12:00:00Z", 951_825_600),
+    ] {
+        assert_eq!(zaman::coz(iso), Some(sn), "{iso}");
+        assert_eq!(zaman::bicimle(sn), iso);
+    }
+    assert_eq!(zaman::coz("2026-13-06T21:40:12Z"), None);
+    assert_eq!(zaman::coz("2026-11-06 21:40:12"), None);
+    assert_eq!(zaman::coz("kısa"), None);
 }

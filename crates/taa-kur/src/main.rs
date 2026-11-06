@@ -8,7 +8,7 @@ use std::path::Path;
 use std::process::ExitCode;
 use taa_kur::{Kur, KurHata, Sorun};
 
-const KULLANIM: &str = "Kullanım: taa-kur <liste|kur|kaldir|sec|geri-don|dogrula|tani|rapor> [bağımsız değişkenler] [--json]. Öneri: `taa-kur yardim` komutları açıklar.";
+const KULLANIM: &str = "Kullanım: taa-kur <liste|kur|kaldir|sec|geri-don|dogrula|tani|rapor|cihaz> [bağımsız değişkenler] [--json]. Öneri: `taa-kur yardim` komutları açıklar.";
 
 const YARDIM: &str = "\
 taa-kur — TAA kurulum yöneticisi. Kök: TAA_KOK ortamı ya da ikilinin yanı; `tani` gösterir.
@@ -25,6 +25,9 @@ Komutlar:
   tani                               Kök, kayıt, veri alanları, güvenilir anahtarlar, uyarılar.
   rapor [--kaydet] [--bugun T]        Paket raporu: fiş, kasa, bildirim, katalog, pano, yedek alanlarını tek yerden
                                      okur (salt okunur). --kaydet kök\\raporlar\\rapor-<damga>.csv yazar (Excel açar).
+  cihaz [--ad A] [--sunucu URL] [--sube K] [--sertifika pem]
+                                     Bu PC'nin cihaz anahtarını üretir (varsa korur); --sunucu verilirse merkeze
+                                     kaydeder (yönetici TAA Çatı'dan onaylar). Veri kökü: TAA_VERI_KOK / %APPDATA%\\TAA\\veri.
   yardim | --help | -h               Bu metin.
 Her komut --json alır (makine okunur). Çıkış: 0 tamam, 2 doğrulama/kullanım, 3 çözüm yok, 4 yok, 5 bozuk, 6 kilitli, 1 diğer.
 Ayrıntı: docs/T1-TASARIM.md §1.4, docs/paket-zip.md, docs/T3-TASARIM.md.";
@@ -325,6 +328,67 @@ fn calistir(args: &[String], json: bool) -> Result<(), KurHata> {
                 }
                 for h in &t.son_hatalar {
                     println!("Son hata: {}", tek_satir(h));
+                }
+            }
+            Ok(())
+        }
+        "cihaz" => {
+            let mut ad = None;
+            let mut sunucu = None;
+            let mut sube = None;
+            let mut sertifika: Option<std::path::PathBuf> = None;
+            let mut i = 0;
+            while i < kalan.len() {
+                let deger = |i: &mut usize, a: &str| -> Result<String, KurHata> {
+                    *i += 1;
+                    kalan
+                        .get(*i)
+                        .cloned()
+                        .ok_or_else(|| kullanim(&format!("{a} için değer eksik.")))
+                };
+                match kalan[i].as_str() {
+                    "--ad" => ad = Some(deger(&mut i, "--ad")?),
+                    "--sunucu" => sunucu = Some(deger(&mut i, "--sunucu")?),
+                    "--sube" => sube = Some(deger(&mut i, "--sube")?),
+                    "--sertifika" => sertifika = Some(deger(&mut i, "--sertifika")?.into()),
+                    x => {
+                        return Err(kullanim(&format!(
+                            "Bilinmeyen bağımsız değişken: {x}. Örnek: taa-kur cihaz [--ad A] [--sunucu URL] [--sube K] [--json]."
+                        )))
+                    }
+                }
+                i += 1;
+            }
+            let kur = Kur::ortamdan()?;
+            let o = kur.cihaz_hazirla(
+                ad.as_deref(),
+                sunucu.as_deref(),
+                sube.as_deref(),
+                sertifika.as_deref(),
+            )?;
+            if json {
+                yaz_json(&o);
+            } else {
+                println!(
+                    "Cihaz: kimlik {} ad {} ({})",
+                    o["kimlik"].as_str().unwrap_or("?"),
+                    o["ad"].as_str().unwrap_or("?"),
+                    if o["uretildi"].as_bool().unwrap_or(false) {
+                        "yeni üretildi"
+                    } else {
+                        "zaten vardı"
+                    }
+                );
+                if let Some(k) = o.get("kayit") {
+                    println!(
+                        "Sunucu kaydı: durum {}{}",
+                        k["durum"].as_str().unwrap_or("?"),
+                        if k["durum"] == "bekliyor" {
+                            " — yönetici TAA Çatı'dan onaylamalı"
+                        } else {
+                            ""
+                        }
+                    );
                 }
             }
             Ok(())
