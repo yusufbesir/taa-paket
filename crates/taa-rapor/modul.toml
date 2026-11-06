@@ -1,0 +1,13 @@
+# Sahip: Yusuf. yazan: [Claude#taa-rapor-T5 2026-11-06]
+# taa-rapor modül tanımı. Başka programın crate'ine bağımlı değildir; alanları dosya sözleşmesinden (JSONL/JSON) okur.
+ad = "taa-rapor"
+surum = "0.1.0"
+arayuz = "1"
+gerektirir = { "taa-ayar" = "1", "taa-dosya" = "1" }
+ozellikler = ["rapor"]
+program = "ortak"
+sunar = ["rapor.uret@1"]
+ister = []
+veri_sahibi = []
+veri_okur = ["fis-defteri", "kasa-defteri", "bildirim-kuyrugu", "urunler", "pano-kartlari", "yedekler"]
+ayar_alani = "moduller.taa-rapor"
