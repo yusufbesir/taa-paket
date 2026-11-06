@@ -211,3 +211,133 @@ fn izinler_programlar_ve_cihaz() {
         "bozuk anahtar sessizce atlanmamalı"
     );
 }
+
+#[test]
+fn yetki_belgesi_imza_sure_ve_dosya() {
+    let kok = taa_dosya::gecici_klasor().unwrap();
+    // Sunucu anahtarı: özel geçici, genel <kök>/anahtarlar/sunucu.pub.
+    let ozel_yol = kok.join("gizli").join("sunucu.key");
+    let genel_yol = kok.join("anahtarlar").join("sunucu.pub");
+    let genel = taa_imza::anahtar_uret(&ozel_yol, &genel_yol).unwrap();
+    let (ozel, _) = taa_imza::OzelAnahtar::dosyadan(&ozel_yol).unwrap();
+    assert_eq!(sunucu_anahtari_oku(&kok).unwrap(), Some(genel.clone()));
+    let mut belge = json!({
+        "kullanici": "ali", "sube_id": 3, "roller": ["kasa"], "izinler": ["kasa.kapat"],
+        "programlar": ["tutaa"], "gecerlilik": "2026-11-13T00:00:00Z"
+    });
+    taa_imza::yayin_imzala(&mut belge, &ozel).unwrap();
+    // İmzalı giriş yanıtı: oturum da imzanın içinde.
+    let mut giris_yaniti = belge.clone();
+    giris_yaniti.as_object_mut().unwrap().remove("imza");
+    giris_yaniti["oturum"] = json!("tok");
+    taa_imza::yayin_imzala(&mut giris_yaniti, &ozel).unwrap();
+    let o = giris_dogrulayarak(
+        &Sahte::yeni(Ok(giris_yaniti.clone())),
+        "https://s",
+        "ali",
+        "p",
+        None,
+        Some(&genel),
+    )
+    .unwrap();
+    assert_eq!(o.izinler, vec!["kasa.kapat"]);
+    // Kurcalanmış giriş yanıtı reddedilir; imzasız da reddedilir; anahtar yokken kabul edilir.
+    let mut kurcalanmis = giris_yaniti.clone();
+    kurcalanmis["roller"] = json!(["yonetici"]);
+    assert!(matches!(
+        giris_dogrulayarak(
+            &Sahte::yeni(Ok(kurcalanmis.clone())),
+            "https://s",
+            "ali",
+            "p",
+            None,
+            Some(&genel)
+        ),
+        Err(KimlikHata::BozukYanit(_))
+    ));
+    let mut imzasiz = giris_yaniti.clone();
+    imzasiz.as_object_mut().unwrap().remove("imza");
+    assert!(giris_dogrulayarak(
+        &Sahte::yeni(Ok(imzasiz.clone())),
+        "https://s",
+        "ali",
+        "p",
+        None,
+        Some(&genel)
+    )
+    .is_err());
+    assert!(giris(&Sahte::yeni(Ok(imzasiz)), "https://s", "ali", "p", None).is_ok());
+    // yetki_al: belge dosyaya yazılır, oturum içeren belge reddedilir.
+    assert!(
+        yetki_oku(&kok, "https://s", Some(&genel), None).is_err(),
+        "dosya yokken yetki yok"
+    );
+    let y = yetki_al(
+        &Sahte::yeni(Ok(belge.clone())),
+        &kok,
+        "https://s",
+        Some(&genel),
+    )
+    .unwrap();
+    assert!(
+        y.dogrulandi && y.izinli("kasa.kapat") && !y.izinli("fis.sil") && y.program_acik("tutaa")
+    );
+    assert!(yetki_al(
+        &Sahte::yeni(Ok(giris_yaniti)),
+        &kok,
+        "https://s",
+        Some(&genel)
+    )
+    .is_err());
+    let yol = crate::yetki::yetki_dosyasi(&kok, "https://s");
+    assert!(yol.is_file());
+    assert!(!std::fs::read_to_string(&yol).unwrap().contains("tok"));
+    // yetki_oku: geçerli, süresi geçmiş, kurcalanmış.
+    let g = yetki_oku(
+        &kok,
+        "https://s",
+        Some(&genel),
+        Some("2026-11-12T23:59:59Z"),
+    )
+    .unwrap();
+    assert_eq!(g.kullanici, "ali");
+    assert!(matches!(
+        yetki_oku(
+            &kok,
+            "https://s",
+            Some(&genel),
+            Some("2026-11-13T00:00:00Z")
+        ),
+        Err(KimlikHata::YetkiYok(_))
+    ));
+    let mut sarmal: Value = serde_json::from_str(&std::fs::read_to_string(&yol).unwrap()).unwrap();
+    sarmal["belge"]["izinler"] = json!(["fis.sil"]);
+    std::fs::write(&yol, sarmal.to_string()).unwrap();
+    assert!(
+        yetki_oku(
+            &kok,
+            "https://s",
+            Some(&genel),
+            Some("2026-11-10T00:00:00Z")
+        )
+        .is_err(),
+        "kurcalanmış belge"
+    );
+    // Anahtar yokken: dogrulandi=false, gecerlilik yoksa alınma+7 gün.
+    let kok2 = taa_dosya::gecici_klasor().unwrap();
+    assert!(sunucu_anahtari_oku(&kok2).unwrap().is_none());
+    let y2 = yetki_al(
+        &Sahte::yeni(Ok(json!({"kullanici": "veli", "roller": ["yonetici"]}))),
+        &kok2,
+        "https://s",
+        None,
+    )
+    .unwrap();
+    assert!(!y2.dogrulandi && y2.izinli("her.sey"));
+    assert_eq!(y2.gecerlilik, crate::yetki::gun_ekle(&y2.alinma, 7));
+    assert!(yetki_oku(&kok2, "https://s", None, None).is_ok());
+    // Bozuk sunucu.pub sessizce atlanmaz.
+    std::fs::create_dir_all(kok2.join("anahtarlar")).unwrap();
+    std::fs::write(kok2.join("anahtarlar/sunucu.pub"), "bozuk").unwrap();
+    assert!(sunucu_anahtari_oku(&kok2).is_err());
+}

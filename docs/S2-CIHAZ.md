@@ -25,3 +25,12 @@ taa-cihaz kayit --sunucu http://127.0.0.1:8443 --sube PND
 echo parola | taa-kimlik giris --sunucu http://127.0.0.1:8443 --kullanici ali
 ```
 Çıkış kodları taa-cihaz: 0 tamam, 2 kullanım, 3 ulaşılamadı, 4 sunucu reddetti, 5 anahtar yok, 1 diğer.
+
+## S3a — Yetki belgesi ve kurulum kancası · yazan: [Claude#taa-kimlik-S3a 2026-11-06]
+Sunucu başlığı (tutaa PR #23) sözleşmeyi uyguladı; istemci buna göre:
+- **Giriş imzası:** `<veri kökü>\anahtarlar\sunucu.pub` (`tutaa-sunucu anahtar sunucu.pub` üretir; şube paketine konur) varsa `taa-kimlik giris` sunucu yanıtının `imza`sını doğrular (kanonik bayt, `imza` hariç); yanlış/imzasız yanıt reddedilir. Dosya yoksa uyarı basılır, doğrulanmaz (sunucu kurulana kadar).
+- **Çevrimdışı yetki belgesi:** girişten sonra `POST /v1/yetki {}` (oturumlu + cihaz imzalı) → `<kök>\kimlik\yetki-<sunucu>.json` (`{"belge": <imzalı, oturumsuz>, "alinma", "sunucu"}`). `taa-kimlik yetki --sunucu URL [--program ad] [--izin program.islem]` internet olmadan karar verir: çıkış 0 izinli, 7 yetkisiz, 5 belge yok/süresi geçmiş/imzası tutmuyor (**varsayılan: reddet**, K1). `gecerlilik` yoksa alınma + 7 gün. `yonetici` rolü her izni taşır (K4); sunucu her istekte yine denetler (K6).
+- **409 tekrar:** aynı saniyede birebir aynı imzalı istek sunucuda 409 alır; taa-kuyruk bunu kalıcı ret değil "yeniden dene" sayar (kuyruk durur, sonraki çalıştırmada yeniden imzalanır).
+- **`taa-kur cihaz [--ad A] [--sunucu URL] [--sube K]`:** kurulumda cihaz anahtarını üretir (varsa korur), `--sunucu` verilirse kaydeder. taa-kur → taa-cihaz bağımlılığı eklendi (yeni dış bağımlılık yok).
+- Çatı ilk cihazı: sunucu PC'de `tutaa-sunucu merkez-cihaz ed25519:<hex> "ad"` ile Çatı'nın anahtarı onaylı kaydedilir (onay ucu yönetici oturumu ister).
+- Yapılmadı: taa-kur penceresine "Cihaz" düğmesi; taa-cati programı (S3b).

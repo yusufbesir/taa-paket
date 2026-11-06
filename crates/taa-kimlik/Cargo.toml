@@ -21,6 +21,7 @@ path = "src/main.rs"
 [dependencies]
 serde_json = "1"
 taa-dosya = { path = "../taa-dosya" }
+taa-imza = { path = "../taa-imza" }
 taa-cihaz = { path = "../taa-cihaz" }
 taa-kuyruk = { path = "../taa-kuyruk" }
 

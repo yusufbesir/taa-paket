@@ -1,9 +1,9 @@
 # Sahip: Yusuf. yazan: [Claude#taa-paket-T1 2026-11-05]. güncelleme: [Claude#taa-rapor-T5 2026-11-06] (taa-rapor)
-# taa-kur modül tanımı.
+# taa-kur modül tanımı. güncelleme: [Claude#taa-kimlik-S3a 2026-11-06] (taa-cihaz: `taa-kur cihaz`)
 ad = "taa-kur"
 surum = "0.1.0"
 arayuz = "1"
-gerektirir = { "taa-ayar" = "1", "taa-dosya" = "1", "taa-imza" = "1", "taa-rapor" = "1" }
+gerektirir = { "taa-ayar" = "1", "taa-cihaz" = "1", "taa-dosya" = "1", "taa-imza" = "1", "taa-rapor" = "1" }
 ozellikler = ["kur"]
 program = "ortak"
 sunar = []
