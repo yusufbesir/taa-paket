@@ -170,3 +170,44 @@ fn kuyrugu_oturumla_gonder() {
     assert_eq!(s[0].1.kalan, 1);
     assert!(s[0].1.durma_nedeni.is_some());
 }
+
+#[test]
+fn izinler_programlar_ve_cihaz() {
+    let g = Sahte::yeni(Ok(json!({
+        "oturum": "t", "roller": ["kasa"], "izinler": ["fis.ekle", "kasa.kapat"],
+        "programlar": ["tutaa", "taa-takip"], "gecerlilik": "2026-11-13T00:00:00Z"
+    })));
+    let o = giris(&g, "https://s", "ali", "p", None).unwrap();
+    assert!(o.izinli("kasa.kapat") && !o.izinli("fis.sil"));
+    assert!(o.program_acik("tutaa") && !o.program_acik("taa-raporlar"));
+    assert_eq!(o.gecerlilik, "2026-11-13T00:00:00Z");
+    // Depoya yaz-oku izinleri korur; ozet anahtarı içermez.
+    let kok = taa_dosya::gecici_klasor().unwrap();
+    let depo = DosyaDeposu::kokten(&kok);
+    depo.kaydet(&o).unwrap();
+    let geri = depo.oku("https://s").unwrap();
+    assert_eq!(geri.izinler, o.izinler);
+    assert_eq!(geri.programlar, o.programlar);
+    assert!(o.ozet().get("oturum").is_none());
+    // Yönetici her izni taşır; eski sunucu (liste yok) her programı açık sayar.
+    let y = giris(
+        &Sahte::yeni(Ok(json!({"oturum": "t", "roller": ["yonetici"]}))),
+        "https://s",
+        "v",
+        "p",
+        None,
+    )
+    .unwrap();
+    assert!(y.izinli("her.sey") && y.program_acik("x"));
+    // Cihaz anahtarı yoksa None; üretilince imzalayıcı gelir ve gönderici imzalı olur.
+    assert!(cihaz_imzalayici(&kok).unwrap().is_none());
+    assert!(!o.gonderici(None).unwrap().imzali_mi());
+    taa_cihaz::CihazAnahtari::uret(&kok, Some("test")).unwrap();
+    let i = cihaz_imzalayici(&kok).unwrap().expect("cihaz yüklenmeli");
+    assert!(o.gonderici_ile(None, Some(i)).unwrap().imzali_mi());
+    std::fs::write(kok.join("cihaz/cihaz.key"), "bozuk").unwrap();
+    assert!(
+        cihaz_imzalayici(&kok).is_err(),
+        "bozuk anahtar sessizce atlanmamalı"
+    );
+}

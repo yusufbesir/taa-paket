@@ -365,6 +365,74 @@ fn curl_ile_gonderim() {
     assert!(!yol.parent().unwrap().exists(), "geçici klasör silinmemiş");
 }
 
+struct SahteImzalayici;
+
+impl Imzalayici for SahteImzalayici {
+    fn basliklar(
+        &self,
+        yontem: &str,
+        yol: &str,
+        govde: &[u8],
+    ) -> Result<Vec<(String, String)>, String> {
+        Ok(vec![
+            ("X-TAA-Cihaz".into(), "abcdef0123456789".into()),
+            (
+                "X-TAA-Imza".into(),
+                format!("{yontem}|{yol}|{}", govde.len()),
+            ),
+        ])
+    }
+}
+
+struct BozukImzalayici;
+
+impl Imzalayici for BozukImzalayici {
+    fn basliklar(&self, _: &str, _: &str, _: &[u8]) -> Result<Vec<(String, String)>, String> {
+        Ok(vec![("X-TAA-Imza".into(), "satır\nsonu".into())])
+    }
+}
+
+#[test]
+fn curl_imzali_basliklar() {
+    if !curl_var() {
+        return;
+    }
+    let _k = CURL_KILIT.lock().unwrap_or_else(|e| e.into_inner());
+    let kayit = Arc::new(Mutex::new(Vec::new()));
+    let adres = http_sunucu(kayit.clone());
+    let g = CurlGonderici::yeni(&adres)
+        .unwrap()
+        .imzalayici(Arc::new(SahteImzalayici));
+    assert!(g.imzali_mi());
+    let govde = json!({"tur": "kod_okundu"});
+    g.gonder("/v1/olay", &govde).unwrap();
+    let istekler = kayit.lock().unwrap();
+    assert!(istekler[0]
+        .basliklar
+        .iter()
+        .any(|b| b == "X-TAA-Cihaz: abcdef0123456789"));
+    // İmzalanan gövde, gönderilen gövdeyle aynı bayt sayısında.
+    let beklenen = format!("X-TAA-Imza: POST|/v1/olay|{}", govde.to_string().len());
+    assert!(
+        istekler[0].basliklar.iter().any(|b| b == &beklenen),
+        "{:?}",
+        istekler[0].basliklar
+    );
+    drop(istekler);
+    let bozuk = CurlGonderici::yeni(&adres)
+        .unwrap()
+        .imzalayici(Arc::new(BozukImzalayici));
+    assert!(matches!(
+        bozuk.gonder("/v1/olay", &json!({})),
+        Err(GonderHata::Yapilandirma(_))
+    ));
+    assert_eq!(
+        kayit.lock().unwrap().len(),
+        1,
+        "bozuk başlıkla istek gitmemeli"
+    );
+}
+
 #[test]
 fn curl_ulasilamayan_sunucu() {
     if !curl_var() {
