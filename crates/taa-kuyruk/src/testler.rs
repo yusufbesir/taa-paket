@@ -297,6 +297,9 @@ fn http_sunucu(kayit: Arc<Mutex<Vec<Istek>>>) -> String {
     adres
 }
 
+/// curl testleri sırayla koşar: SON_BASLIK_DOSYASI tek değer tutar.
+static CURL_KILIT: Mutex<()> = Mutex::new(());
+
 fn curl_var() -> bool {
     std::process::Command::new("curl")
         .arg("--version")
@@ -310,6 +313,7 @@ fn curl_ile_gonderim() {
         eprintln!("curl yok, test atlandı");
         return;
     }
+    let _k = CURL_KILIT.lock().unwrap_or_else(|e| e.into_inner());
     let kayit = Arc::new(Mutex::new(Vec::new()));
     let adres = http_sunucu(kayit.clone());
     let g = CurlGonderici::yeni(&adres)
@@ -346,13 +350,19 @@ fn curl_ile_gonderim() {
         .any(|b| b.eq_ignore_ascii_case("content-type: application/json")));
     assert_eq!(k.gonderilenler().unwrap()["N-1"].yanit, json!({"id": 42}));
     assert_eq!(k.reddedilenler().unwrap()["N-2"].kod, 422);
-    // Geçici başlık dosyası (anahtar) geride kalmadı.
-    let kalan: Vec<_> = std::fs::read_dir(std::env::temp_dir())
+    // Geçici başlık dosyası (anahtar) geride kalmadı. (Yalnız bu göndericinin kendi dosyası denetlenir;
+    // temp klasörünün tümü taranmaz, çünkü paralel koşan başka test o anda kendi dosyasını yazıyor olabilir.)
+    let yol = gonderici::SON_BASLIK_DOSYASI
+        .lock()
         .unwrap()
-        .flatten()
-        .filter(|g| g.path().join("basliklar.txt").exists())
-        .collect();
-    assert!(kalan.is_empty(), "başlık dosyası silinmemiş");
+        .clone()
+        .expect("başlık dosyası yazılmadı");
+    assert!(
+        !yol.exists(),
+        "başlık dosyası silinmemiş: {}",
+        yol.display()
+    );
+    assert!(!yol.parent().unwrap().exists(), "geçici klasör silinmemiş");
 }
 
 #[test]
@@ -360,6 +370,7 @@ fn curl_ulasilamayan_sunucu() {
     if !curl_var() {
         return;
     }
+    let _k = CURL_KILIT.lock().unwrap_or_else(|e| e.into_inner());
     // Kapalı port: bağlantı reddedilir → Ulasilamadi.
     let dinle = TcpListener::bind("127.0.0.1:0").unwrap();
     let adres = format!("http://{}", dinle.local_addr().unwrap());

@@ -40,6 +40,11 @@ impl fmt::Display for GonderHata {
 
 impl std::error::Error for GonderHata {}
 
+/// Yalnız testler için: son yazılan geçici başlık dosyasının yolu (silindiği doğrulanır).
+#[cfg(test)]
+pub(crate) static SON_BASLIK_DOSYASI: std::sync::Mutex<Option<PathBuf>> =
+    std::sync::Mutex::new(None);
+
 pub trait Gonderici {
     /// `uc` `/v1/...` biçiminde; `govde` JSON nesnesi. Başarıda sunucu yanıtı (JSON ya da Null).
     fn gonder(&self, uc: &str, govde: &Value) -> Result<Value, GonderHata>;
@@ -200,6 +205,10 @@ impl Gonderici for CurlGonderici {
         }
         let url = format!("{}{}", self.taban, uc);
         let basliklar = self.basliklar()?;
+        #[cfg(test)]
+        {
+            *SON_BASLIK_DOSYASI.lock().unwrap() = Some(basliklar.clone());
+        }
         let sonuc = (|| {
             let mut cocuk = self
                 .komut(&url, &basliklar)
