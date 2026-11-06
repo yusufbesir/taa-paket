@@ -8,7 +8,7 @@ use std::path::Path;
 use std::process::ExitCode;
 use taa_kur::{Kur, KurHata, Sorun};
 
-const KULLANIM: &str = "Kullanım: taa-kur <liste|kur|kaldir|sec|geri-don|dogrula|tani> [bağımsız değişkenler] [--json]. Öneri: `taa-kur yardim` komutları açıklar.";
+const KULLANIM: &str = "Kullanım: taa-kur <liste|kur|kaldir|sec|geri-don|dogrula|tani|rapor> [bağımsız değişkenler] [--json]. Öneri: `taa-kur yardim` komutları açıklar.";
 
 const YARDIM: &str = "\
 taa-kur — TAA kurulum yöneticisi. Kök: TAA_KOK ortamı ya da ikilinin yanı; `tani` gösterir.
@@ -23,6 +23,8 @@ Komutlar:
   dogrula <ad>                       Yalnız kurulu <ad> paketi.
   dogrula <paket.zip|klasör>         Kurulmamış paketi KURMADAN doğrular (sha256, icerik_sha256, imza).
   tani                               Kök, kayıt, veri alanları, güvenilir anahtarlar, uyarılar.
+  rapor [--kaydet] [--bugun T]        Paket raporu: fiş, kasa, bildirim, katalog, pano, yedek alanlarını tek yerden
+                                     okur (salt okunur). --kaydet kök\\raporlar\\rapor-<damga>.csv yazar (Excel açar).
   yardim | --help | -h               Bu metin.
 Her komut --json alır (makine okunur). Çıkış: 0 tamam, 2 doğrulama/kullanım, 3 çözüm yok, 4 yok, 5 bozuk, 6 kilitli, 1 diğer.
 Ayrıntı: docs/T1-TASARIM.md §1.4, docs/paket-zip.md, docs/T3-TASARIM.md.";
@@ -323,6 +325,51 @@ fn calistir(args: &[String], json: bool) -> Result<(), KurHata> {
                 }
                 for h in &t.son_hatalar {
                     println!("Son hata: {}", tek_satir(h));
+                }
+            }
+            Ok(())
+        }
+        "rapor" => {
+            let mut kaydet = false;
+            let mut bugun: Option<String> = None;
+            let mut i = 0;
+            while i < kalan.len() {
+                match kalan[i].as_str() {
+                    "--kaydet" => kaydet = true,
+                    "--bugun" => {
+                        i += 1;
+                        bugun = Some(
+                            kalan
+                                .get(i)
+                                .cloned()
+                                .ok_or_else(|| kullanim("--bugun için değer eksik."))?,
+                        );
+                    }
+                    x => {
+                        return Err(kullanim(&format!(
+                            "Bilinmeyen bağımsız değişken: {x}. Örnek: taa-kur rapor [--kaydet] [--bugun YYYY-AA-GG] [--json]."
+                        )))
+                    }
+                }
+                i += 1;
+            }
+            let kur = Kur::ortamdan()?;
+            let r = kur.rapor(bugun.as_deref())?;
+            let yol = if kaydet {
+                Some(kur.rapor_kaydet(&r)?)
+            } else {
+                None
+            };
+            if json {
+                let mut v = r.json();
+                if let Some(y) = &yol {
+                    v["csv"] = Value::String(y.display().to_string());
+                }
+                yaz_json(&v);
+            } else {
+                print!("{}", r.metin());
+                if let Some(y) = &yol {
+                    println!("CSV kaydedildi: {}", y.display());
                 }
             }
             Ok(())
