@@ -26,6 +26,10 @@ pub struct SureTablosu {
     /// İşlem kodu -> bir adet işlemin ortalama dakikası (usta verir).
     #[serde(default)]
     pub sureler_dk: BTreeMap<String, u32>,
+    /// Zor durum: işlem kodu -> {esik_mm, dk, soru}. Kalemin ölçüsü eşiği aşarsa ya da personel "evet"
+    /// derse `dk` kullanılır. Ayrı alan değil, sorulan bir sorudur (Yusuf kararı).
+    #[serde(default)]
+    pub zor: BTreeMap<String, Zor>,
     /// Bir ustanın günde bu işlere ayırabildiği dakika (usta/Yusuf verir). Yoksa tahmin yapılmaz.
     #[serde(default)]
     pub gunluk_dakika: Option<u32>,
@@ -40,6 +44,13 @@ pub struct SureTablosu {
     pub kapali_tarihler: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Zor {
+    pub esik_mm: i32,
+    pub dk: u32,
+    pub soru: String,
+}
+
 impl SureTablosu {
     pub fn varsayilan() -> SureTablosu {
         Self::json_den(VARSAYILAN).expect("gömülü süre tablosu geçerli olmalı")
@@ -48,7 +59,10 @@ impl SureTablosu {
     pub fn json_den(s: &str) -> Result<SureTablosu, String> {
         let t: SureTablosu =
             serde_json::from_str(s).map_err(|e| format!("süre dosyası geçersiz: {e}"))?;
-        if t.sureler_dk.values().any(|d| *d == 0) || t.gunluk_dakika == Some(0) {
+        if t.sureler_dk.values().any(|d| *d == 0)
+            || t.gunluk_dakika == Some(0)
+            || t.zor.values().any(|z| z.dk == 0 || z.esik_mm <= 0)
+        {
             return Err("süre ve günlük dakika 0'dan büyük olmalı".into());
         }
         for g in &t.kapali_gunler {
@@ -80,10 +94,26 @@ impl SureTablosu {
             || self.kapali_tarihler.iter().any(|d| gun_no(d) == Some(gun))
     }
 
-    fn kalem_dk(&self, k: &Kalem) -> Option<u32> {
+    /// Fiş yazarken personele sorulacak soru (kalemin işleminde zor durum tanımlıysa).
+    pub fn zor_soru(&self, k: &Kalem) -> Option<&str> {
         k.islem_kodu
             .as_deref()
-            .and_then(|c| self.sureler_dk.get(c).copied())
+            .and_then(|c| self.zor.get(c))
+            .map(|z| z.soru.as_str())
+    }
+
+    /// `zor_evet`: personel zor-durum sorusuna "evet" dedi mi. Ölçü eşiği aşılmışsa da zor sayılır.
+    fn kalem_dk(&self, k: &Kalem, zor_evet: bool) -> Option<u32> {
+        let kod = k.islem_kodu.as_deref()?;
+        if let Some(z) = self.zor.get(kod) {
+            if zor_evet || k.olcu_mm.is_some_and(|m| m > z.esik_mm) {
+                return Some(z.dk);
+            }
+        }
+        k.varyant
+            .as_deref()
+            .and_then(|v| self.sureler_dk.get(&format!("{kod}:{v}")).copied())
+            .or_else(|| self.sureler_dk.get(kod).copied())
     }
 }
 
@@ -152,11 +182,13 @@ pub enum Oneri {
 }
 
 /// Yeni (henüz kaydedilmemiş) fiş için teslim tarihi önerir.
+/// `zor_kalemler`: personelin zor-durum sorusuna "evet" dediği kalem sıraları (`SureTablosu::zor_soru`).
 /// `kalemler`: yeni fişin kalemleri; `usta`: fişte atanmışsa adı (boşsa en az yüklü usta seçilir);
 /// `bugun`: YYYY-AA-GG; `acik_fisler`: defterdeki tüm fişler (açık olanlar kuyruğa sayılır).
 pub fn oner(
     tablo: &SureTablosu,
     kalemler: &[Kalem],
+    zor_kalemler: &[usize],
     usta: &str,
     bugun: &str,
     fisler: &[Fis],
@@ -166,12 +198,13 @@ pub fn oner(
             neden: taa_ayar::kapali_mesaji(OZELLIK),
         };
     }
-    oner_cekirdek(tablo, kalemler, usta, bugun, fisler)
+    oner_cekirdek(tablo, kalemler, zor_kalemler, usta, bugun, fisler)
 }
 
 fn oner_cekirdek(
     tablo: &SureTablosu,
     kalemler: &[Kalem],
+    zor_kalemler: &[usize],
     usta: &str,
     bugun: &str,
     fisler: &[Fis],
@@ -187,8 +220,8 @@ fn oner_cekirdek(
         return yok("tahmin yok, elle seç: fişte işlem yok");
     }
     let mut yeni_dk: u32 = 0;
-    for k in kalemler {
-        match tablo.kalem_dk(k) {
+    for (i, k) in kalemler.iter().enumerate() {
+        match tablo.kalem_dk(k, zor_kalemler.contains(&i)) {
             Some(d) => yeni_dk += d,
             None => {
                 return yok(&format!(
@@ -215,7 +248,7 @@ fn oner_cekirdek(
         }
         let e = kuyruk.entry(u.to_string()).or_default();
         for k in &f.kalemler {
-            match tablo.kalem_dk(k) {
+            match tablo.kalem_dk(k, false) {
                 Some(d) => e.0 += d,
                 None => e.1 += 1,
             }
@@ -298,8 +331,8 @@ mod testler {
     #[test]
     fn gomulu_tablo_bos_ve_tahmin_yok() {
         let t = SureTablosu::varsayilan();
-        assert!(t.sureler_dk.is_empty() && t.gunluk_dakika.is_none());
-        match oner_cekirdek(&t, &[kalem(Some("x"))], "", "2026-11-05", &[]) {
+        assert!(!t.sureler_dk.is_empty() && t.gunluk_dakika.is_none());
+        match oner_cekirdek(&t, &[kalem(Some("x"))], &[], "", "2026-11-05", &[]) {
             Oneri::TahminYok { neden } => assert!(neden.contains("elle seç")),
             o => panic!("{o:?}"),
         }
@@ -320,12 +353,12 @@ mod testler {
     #[test]
     fn suresiz_islem_tahmini_durdurur() {
         let t = tablo(r#"{"gunluk_dakika":100,"sureler_dk":{"a":10}}"#);
-        match oner_cekirdek(&t, &[kalem(Some("b"))], "", "2026-11-05", &[]) {
+        match oner_cekirdek(&t, &[kalem(Some("b"))], &[], "", "2026-11-05", &[]) {
             Oneri::TahminYok { neden } => assert!(neden.contains("süresi tabloda yok")),
             o => panic!("{o:?}"),
         }
         assert!(matches!(
-            oner_cekirdek(&t, &[kalem(None)], "", "2026-11-05", &[]),
+            oner_cekirdek(&t, &[kalem(None)], &[], "", "2026-11-05", &[]),
             Oneri::TahminYok { .. }
         ));
     }
@@ -335,7 +368,7 @@ mod testler {
         let t =
             tablo(r#"{"gunluk_dakika":100,"sureler_dk":{"a":30},"kapali_gunler":["persembe"]}"#);
         // bugün perşembe (kapalı) -> ilk iş günü cuma
-        match oner_cekirdek(&t, &[kalem(Some("a"))], "Ali", "2026-11-05", &[]) {
+        match oner_cekirdek(&t, &[kalem(Some("a"))], &[], "Ali", "2026-11-05", &[]) {
             Oneri::Tarih { tarih, yogun, .. } => {
                 assert_eq!(tarih, "2026-11-06");
                 assert!(!yogun);
@@ -382,7 +415,7 @@ mod testler {
             fis("Veli", "a", Durum::Bekliyor),
             fis("Ali", "a", Durum::Teslim), // kapalı iş kuyruğa girmez
         ];
-        match oner_cekirdek(&t, &[kalem(Some("a"))], "", "2026-11-02", &fisler) {
+        match oner_cekirdek(&t, &[kalem(Some("a"))], &[], "", "2026-11-02", &fisler) {
             Oneri::Tarih {
                 tarih,
                 usta,
@@ -398,7 +431,7 @@ mod testler {
             o => panic!("{o:?}"),
         }
         // atanmış yoğun usta: 120+60=180 dk -> 2 gün, yoğun
-        match oner_cekirdek(&t, &[kalem(Some("a"))], "Ali", "2026-11-02", &fisler) {
+        match oner_cekirdek(&t, &[kalem(Some("a"))], &[], "Ali", "2026-11-02", &fisler) {
             Oneri::Tarih {
                 tarih,
                 yogun,
@@ -416,7 +449,7 @@ mod testler {
     fn suresiz_kuyruk_isi_uyarilir() {
         let t = tablo(r#"{"gunluk_dakika":100,"sureler_dk":{"a":10}}"#);
         let fisler = vec![fis("Ali", "bilinmeyen", Durum::Bekliyor)];
-        match oner_cekirdek(&t, &[kalem(Some("a"))], "Ali", "2026-11-02", &fisler) {
+        match oner_cekirdek(&t, &[kalem(Some("a"))], &[], "Ali", "2026-11-02", &fisler) {
             Oneri::Tarih {
                 suresiz_kuyruk_isi,
                 gerekce,
@@ -427,6 +460,43 @@ mod testler {
             }
             o => panic!("{o:?}"),
         }
+    }
+
+    #[test]
+    fn duble_paca_ayri_sure_ve_zor_durum() {
+        let t = tablo(
+            r#"{"gunluk_dakika":600,"sureler_dk":{"p":5,"p:Duble paça":8,"b":10},
+                "zor":{"b":{"esik_mm":40,"dk":60,"soru":"4 cm'den fazla mı?"}}}"#,
+        );
+        let mut duble = kalem(Some("p"));
+        duble.varyant = Some("Duble paça".into());
+        assert_eq!(t.kalem_dk(&duble, false), Some(8));
+        assert_eq!(t.kalem_dk(&kalem(Some("p")), false), Some(5));
+        let b = kalem(Some("b"));
+        assert_eq!(t.zor_soru(&b), Some("4 cm'den fazla mı?"));
+        assert_eq!(t.zor_soru(&duble), None);
+        assert_eq!(t.kalem_dk(&b, false), Some(10));
+        assert_eq!(t.kalem_dk(&b, true), Some(60)); // personel "evet" dedi
+        let mut olcu = kalem(Some("b"));
+        olcu.olcu_mm = Some(41);
+        assert_eq!(t.kalem_dk(&olcu, false), Some(60)); // ölçü eşiği aştı
+        olcu.olcu_mm = Some(40);
+        assert_eq!(t.kalem_dk(&olcu, false), Some(10));
+        // 600 dk günde, zor bel 60 dk -> aynı gün
+        match oner_cekirdek(&t, &[b], &[0], "Ali", "2026-11-02", &[]) {
+            Oneri::Tarih { tarih, gerekce, .. } => {
+                assert_eq!(tarih, "2026-11-02");
+                assert!(gerekce.contains("60 dk"));
+            }
+            o => panic!("{o:?}"),
+        }
+    }
+
+    #[test]
+    fn gomulu_tablo_gecerli_ve_katalogla_uyumlu() {
+        let t = SureTablosu::varsayilan();
+        assert_eq!(t.sureler_dk["pant-paca-kisalt:Duble paça"], 8);
+        assert_eq!(t.zor["pant-bel-daralt"].dk, 60);
     }
 
     #[test]

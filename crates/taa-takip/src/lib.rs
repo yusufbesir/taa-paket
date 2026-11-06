@@ -7,7 +7,7 @@
 
 mod sure;
 mod zorluk;
-pub use sure::{oner as teslim_oner, Oneri, SureTablosu};
+pub use sure::{oner as teslim_oner, Oneri, SureTablosu, Zor};
 pub use zorluk::Zorluk;
 
 use serde::Serialize;
