@@ -1,0 +1,13 @@
+# Sahip: Yusuf. yazan: [Claude#taa-cati-S3b 2026-11-06]
+# taa-cati modül tanımı. Program: TAA Çatı (yalnız sunucu PC'si). Sunucunun yönetim uçlarını çağırır; yerelde veri alanı yok.
+ad = "taa-cati"
+surum = "0.1.0"
+arayuz = "1"
+gerektirir = { "taa-kimlik" = "1", "taa-kuyruk" = "1" }
+ozellikler = ["cati"]
+program = "taa-cati"
+sunar = ["cati.kullanici@1", "cati.cihaz@1", "cati.program-yetki@1", "cati.gunluk@1", "cati.sube@1"]
+ister = []
+veri_sahibi = []
+veri_okur = []
+ayar_alani = "moduller.taa-cati"

@@ -718,6 +718,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "taa-cati"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "taa-kimlik",
+ "taa-kuyruk",
+]
+
+[[package]]
 name = "taa-cihaz"
 version = "0.1.0"
 dependencies = [
