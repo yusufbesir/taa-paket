@@ -10,7 +10,10 @@
     "Duble paça"
    ],
    "uyari_mm": 100,
-   "uyari_notu": "Kaynaklara göre paça kısaltmada yaklaşık 10 cm; fazlası riskli olabilir. Usta doğrulamadı, usta kontrol etsin."
+   "uyari_notu": "Kaynaklara göre paça kısaltmada yaklaşık 10 cm; fazlası riskli olabilir. Usta doğrulamadı, usta kontrol etsin.",
+   "varyant_uyari": {
+    "Duble paça": "Duble paça için yaklaşık 8 cm paça payı kalmalı; pay yoksa duble yapılamaz."
+   }
   },
   {
    "kod": "pant-bacak-daralt",
@@ -36,7 +39,8 @@
    "ad": "Bacak payı açma",
    "olcu": true,
    "uyari_mm": 50,
-   "uyari_notu": "Kaynaklara göre pay açmada genelde 3,8–5 cm; fazlası riskli olabilir. Usta doğrulamadı, usta kontrol etsin."
+   "uyari_notu": "Kaynaklara göre pay açmada genelde 3,8–5 cm; fazlası riskli olabilir. Usta doğrulamadı, usta kontrol etsin.",
+   "uyari": "İç dikiş payı yoksa açılamaz; önce dikiş payına bakın."
   },
   {
    "kod": "pant-paca-payi-ac",
@@ -44,7 +48,8 @@
    "ad": "Paça payı açma",
    "olcu": true,
    "uyari_mm": 25,
-   "uyari_notu": "Kaynaklara göre uzatmada genelde yaklaşık 2,5 cm; fazlası riskli olabilir. Usta doğrulamadı, usta kontrol etsin."
+   "uyari_notu": "Kaynaklara göre uzatmada genelde yaklaşık 2,5 cm; fazlası riskli olabilir. Usta doğrulamadı, usta kontrol etsin.",
+   "uyari": "Alt kıvrımda kalan pay kadar uzar; pay yoksa uzatma yapılamaz."
   },
   {
    "kod": "pant-bel-payi-ac",
@@ -52,7 +57,8 @@
    "ad": "Bel payı açma",
    "olcu": true,
    "uyari_mm": 50,
-   "uyari_notu": "Kaynaklara göre pay açmada genelde 3,8–5 cm; fazlası riskli olabilir. Usta doğrulamadı, usta kontrol etsin."
+   "uyari_notu": "Kaynaklara göre pay açmada genelde 3,8–5 cm; fazlası riskli olabilir. Usta doğrulamadı, usta kontrol etsin.",
+   "uyari": "İç dikiş payı yoksa açılamaz; önce dikiş payına bakın."
   },
   {
    "kod": "pant-fermuar",
@@ -72,7 +78,8 @@
    "ad": "Etek boyu kısaltma",
    "olcu": true,
    "uyari_mm": 38,
-   "uyari_notu": "Kaynaklara göre etek kısaltmada genelde 1,3–3,8 cm; fazlası riskli olabilir. Usta doğrulamadı, usta kontrol etsin."
+   "uyari_notu": "Kaynaklara göre etek kısaltmada genelde 1,3–3,8 cm; fazlası riskli olabilir. Usta doğrulamadı, usta kontrol etsin.",
+   "uyari": "Torba cepli (yama cepli) ceketlerde etek kısaltma önerilmez; cep ve düğme aralığı bozulur. Ceket torba cepliyse ustaya danışın."
   },
   {
    "kod": "cek-kol-kisalt",
@@ -102,7 +109,8 @@
    "ad": "Omuzdan kol kısaltma",
    "olcu": true,
    "uyari_mm": 25,
-   "uyari_notu": "Kaynaklara göre omuzdan kol kısaltmada genelde yaklaşık 2,5 cm; fazlası riskli olabilir. Usta doğrulamadı, usta kontrol etsin."
+   "uyari_notu": "Kaynaklara göre omuzdan kol kısaltmada genelde yaklaşık 2,5 cm; fazlası riskli olabilir. Usta doğrulamadı, usta kontrol etsin.",
+   "uyari": "Omuz genişliği değişikliği önerilmez; omuzdan müdahale ürüne bakılarak ustaya danışılır."
   },
   {
    "kod": "cek-dugme-kaydir",
@@ -120,7 +128,8 @@
    "kod": "cek-vatka-kisalt",
    "grup": "Ceket",
    "ad": "Omuz vatkası kısaltma",
-   "olcu": true
+   "olcu": true,
+   "uyari": "Omuz değişikliği önerilmez; ürüne bakılarak ustaya danışın."
   },
   {
    "kod": "cek-yirtmac-kapat",

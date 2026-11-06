@@ -329,11 +329,24 @@ mod testler {
     }
 
     #[test]
-    fn gomulu_tablo_bos_ve_tahmin_yok() {
-        let t = SureTablosu::varsayilan();
-        assert!(!t.sureler_dk.is_empty() && t.gunluk_dakika.is_none());
-        match oner_cekirdek(&t, &[kalem(Some("x"))], &[], "", "2026-11-05", &[]) {
+    fn bos_tablo_tahmin_yok_gomulu_tablo_tahmin_verir() {
+        let bos = tablo("{}");
+        match oner_cekirdek(&bos, &[kalem(Some("x"))], &[], "", "2026-11-05", &[]) {
             Oneri::TahminYok { neden } => assert!(neden.contains("elle seç")),
+            o => panic!("{o:?}"),
+        }
+        let t = SureTablosu::varsayilan();
+        assert_eq!(t.gunluk_dakika, Some(510));
+        // 2026-11-05 perşembe, boş kuyrukta 30 dk'lık iş aynı gün
+        match oner_cekirdek(
+            &t,
+            &[kalem(Some("cek-kol-kisalt"))],
+            &[],
+            "",
+            "2026-11-05",
+            &[],
+        ) {
+            Oneri::Tarih { tarih, .. } => assert_eq!(tarih, "2026-11-05"),
             o => panic!("{o:?}"),
         }
     }

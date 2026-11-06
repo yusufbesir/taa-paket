@@ -1,5 +1,5 @@
 {
- "aciklama": "TaaSüre süre tablosu (dakika). Kaynak: usta bilgisi, Yusuf 2026-11-06. gunluk_dakika ustadan (fiilen iş yapılan dakika) gelene kadar boş: boşken tahmin yapılmaz. 'kod:varyant' anahtarı varyanta özel süredir. zor: ölçü eşiği aşılırsa (ya da personel 'evet' derse) uzun süre kullanılır; soru fiş yazarken sorulur.",
+ "aciklama": "TaaSüre süre tablosu (dakika). Kaynak: usta bilgisi, Yusuf 2026-11-06. gunluk_dakika: Yusuf 2026-11-06: molalar hariç 8,5 saat = 510 dk (usta yalnız tadilat yapıyor, prova yok). Usta sayısı şu an 2, normalde 3-4: usta adlarını 'ustalar' listesine ya da fişlerin usta alanına yazın. 'kod:varyant' anahtarı varyanta özel süredir. zor: ölçü eşiği aşılırsa (ya da personel 'evet' derse) uzun süre kullanılır; soru fiş yazarken sorulur.",
  "sureler_dk": {
   "pant-paca-kisalt": 5,
   "pant-paca-kisalt:Düz paça": 5,
@@ -43,5 +43,6 @@
  },
  "kapali_gunler": [],
  "kapali_tarihler": [],
- "ustalar": []
+ "ustalar": [],
+ "gunluk_dakika": 510
 }
