@@ -1,0 +1,30 @@
+# taa-kimlik: merkez sunucuya giriş ve oturum saklama. Sahip: Yusuf. yazan: [Claude#taa-kimlik-T7 2026-11-06]
+# Değişiklik: Yusuf'un kuralları çerçevesinde; bağımlılık eklemek Yusuf'a sorularak.
+# HTTP: taa-kuyruk'un curl göndericisi (yeni crate yok). Oturum saklama: Windows Kimlik Bilgisi Yöneticisi,
+# windows-sys ile (Yusuf onaylı bağımlılık, taa-kur/taa-ipc ile aynı 0.61; yalnız Credentials özelliği).
+[package]
+name = "taa-kimlik"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "TAA kimlik: merkez sunucuya giriş (POST /v1/giris), oturumu Windows Kimlik Bilgisi Yöneticisi'nde saklama, kuyruğu oturumla gönderme"
+
+[lib]
+name = "taa_kimlik"
+path = "src/lib.rs"
+
+[[bin]]
+name = "taa-kimlik"
+path = "src/main.rs"
+
+[dependencies]
+serde_json = "1"
+taa-dosya = { path = "../taa-dosya" }
+taa-kuyruk = { path = "../taa-kuyruk" }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", default-features = false, features = [
+    "Win32_Foundation",
+    "Win32_Security_Credentials",
+] }

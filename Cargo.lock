@@ -817,6 +817,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "taa-kimlik"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "taa-dosya",
+ "taa-kuyruk",
+ "windows-sys",
+]
+
+[[package]]
 name = "taa-kombin"
 version = "0.1.0"
 dependencies = [
