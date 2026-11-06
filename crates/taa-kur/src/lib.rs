@@ -1115,6 +1115,42 @@ impl Kur {
         }
     }
 
+    /// Paket raporu (T5): veri kökündeki tüm alanları tek yerden okur (salt okunur). Veri kökü ortamdan
+    /// (`TAA_VERI_KOK`, yoksa `%APPDATA%\TAA\veri`) çözülür; `bugun` verilmezse bugün (UTC).
+    pub fn rapor(&self, bugun: Option<&str>) -> Sonuc<taa_rapor::Rapor> {
+        self.rapor_veri_ile(veri::veri_kok_ortamdan(), bugun)
+    }
+
+    /// `rapor` ile aynı; veri kökü verilir (testler sahte kök kullanır). Kök yoksa tüm bölümler "yok" olur.
+    pub fn rapor_veri_ile(
+        &self,
+        veri_kok: Option<PathBuf>,
+        bugun: Option<&str>,
+    ) -> Sonuc<taa_rapor::Rapor> {
+        let kaynaklar = match veri_kok {
+            Some(k) => taa_rapor::Kaynaklar::veri_kokunden(&k),
+            None => taa_rapor::Kaynaklar::default(),
+        };
+        let bugun = bugun
+            .map(str::to_string)
+            .unwrap_or_else(taa_rapor::tarih::bugun);
+        taa_rapor::uret(&kaynaklar, &bugun).map_err(KurHata::Dogrulama)
+    }
+
+    /// Raporu `<kök>/raporlar/rapor-<damga>.csv` olarak kaydeder (var olan dosya ezilmez); yolu döner.
+    pub fn rapor_kaydet(&self, rapor: &taa_rapor::Rapor) -> Sonuc<PathBuf> {
+        let yol = self
+            .kok
+            .join("raporlar")
+            .join(format!("rapor-{}.csv", zaman::simdi().1));
+        taa_dosya::atomik_yaz(&yol, rapor.csv().as_bytes()).map_err(|e| {
+            KurHata::Diger(format!(
+                "Rapor yazılamadı ({}): {e}. Öneri: kök klasörün yazılabilir olduğunu denetleyin.",
+                yol.display()
+            ))
+        })
+    }
+
     /// Kök, sürümler, sahiplik tablosu, son hatalar. Sır içermez.
     pub fn tani(&self) -> Sonuc<Tani> {
         self.tani_veri_ile(veri::veri_kok_ortamdan())

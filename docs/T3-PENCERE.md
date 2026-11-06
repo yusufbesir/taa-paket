@@ -14,7 +14,7 @@
 | taa-ornek    | 0.1.0, 0.2.0  | 0.1.0        | Daha yeni sürüm kurulu|
 |              |               |              |  (0.2.0), seçili değil|
 +--------------------------------------------------------------------+
-| [ Kur... ]  [ Kaldır ]  [ Güncelle ]                               |
+| [ Kur... ]  [ Kaldır ]  [ Güncelle ]  [ Rapor ]                    |
 | Kuruldu: taa-ornek 0.2.0 (seçili değil).   [Kök: D:\Programlar\TAA]|
 +--------------------------------------------------------------------+
 ```
@@ -25,6 +25,7 @@ Durum metinleri: "Hazır", "Hazır (sabit)", "Seçili sürüm yok", "Kurulu değ
 |---|---|---|
 | Kur... | her zaman | dosya seçici (`paket.zip` ya da klasör paketinin `paket.json` dosyası) -> `Kur::kur(yol, false)` |
 | Kaldır | seçili satırın seçili sürümü varsa | onay sorusu -> `Kur::kaldir(ad, None)`; içerik silinmez, `eski\` klasörüne taşınır; veri alanlarına dokunulmaz |
+| Rapor | her zaman | soru yok (salt okunur). `PencereModel::rapor` → `Kur::rapor` (taa-rapor, veri kökü `TAA_VERI_KOK`/`%APPDATA%\TAA\veri`) metni bilgi kutusunda gösterir; CSV `kök\raporlar\rapor-<damga>.csv` yazılır, yolu durum satırında. T5, docs/T5-RAPOR.md |
 | Güncelle | bir satır seçiliyse | onay sorusu → `GuncelleyiciArayuzu::guncelle`. `KomutGuncelleyici`: `taa-guncelle uygula --json --paket <ad>` (TAA_KOK kök; konsol penceresi açılmaz); komut exe'nin yanında ya da depodaki seçili `taa-guncelle` paketinde aranır. Bulunamazsa `KaynaksizGuncelleyici`: "Güncelleme kaynağı ayarlanmadı" |
 
 Durum satırı her işlemin sonucunu (ya da hata + öneriyi) Türkçe tek satır yazar; hata varsa kayıt değişmez.

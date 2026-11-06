@@ -246,6 +246,8 @@ pub struct DugmeDurumu {
     pub kur: bool,
     pub kaldir: bool,
     pub guncelle: bool,
+    /// Rapor her zaman alınabilir (veri yoksa bölümler "yok" görünür).
+    pub rapor: bool,
 }
 
 /// Pencere durumu: satırlar, seçim ve alt durum satırı.
@@ -353,6 +355,25 @@ impl PencereModel {
             kur: true,
             kaldir: s.is_some_and(|s| s.secili_var),
             guncelle: s.is_some(),
+            rapor: true,
+        }
+    }
+
+    /// Rapor düğmesi: paket raporunu üretir, kök\raporlar altına CSV kaydeder; pencerede gösterilecek metni döner.
+    /// Durum satırına CSV yolu (ya da hata) yazılır. Kaydetme başarısız olsa bile metin döner.
+    pub fn rapor(&mut self) -> String {
+        match self.kur.rapor(None) {
+            Err(h) => {
+                self.durum = format!("Rapor alınamadı: {}", hata_metni(&h));
+                self.durum.clone()
+            }
+            Ok(r) => {
+                self.durum = match self.kur.rapor_kaydet(&r) {
+                    Ok(y) => format!("Rapor CSV olarak kaydedildi: {}", y.display()),
+                    Err(h) => format!("Rapor gösterildi, CSV kaydedilemedi: {}", hata_metni(&h)),
+                };
+                r.metin()
+            }
         }
     }
 
@@ -524,7 +545,8 @@ mod testler {
             DugmeDurumu {
                 kur: true,
                 kaldir: false,
-                guncelle: false
+                guncelle: false,
+                rapor: true
             }
         );
     }
@@ -549,7 +571,8 @@ mod testler {
             DugmeDurumu {
                 kur: true,
                 kaldir: false,
-                guncelle: false
+                guncelle: false,
+                rapor: true
             }
         );
         m.sec_satir(Some(0));
@@ -558,7 +581,8 @@ mod testler {
             DugmeDurumu {
                 kur: true,
                 kaldir: true,
-                guncelle: true
+                guncelle: true,
+                rapor: true
             }
         );
         assert!(m.kaldir_onay_metni().unwrap().contains("silinmez"));
@@ -751,5 +775,51 @@ mod testler {
         assert_eq!(m.guncelle(), "taa-ornek güncel.");
         m.sec_satir(Some(9));
         assert_eq!(m.secili_indeks(), None);
+    }
+}
+
+#[cfg(test)]
+mod testler_rapor {
+    //! Rapor düğmesi: veri kökü olmadan da metin döner; sahte veri kökü ile fiş sayısı görünür; CSV kök\raporlar'a yazılır.
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn rapor_dugmesi_metin_ve_csv() {
+        let taban = taa_dosya::gecici_klasor().unwrap();
+        let kur = Kur::yeni(taban.join("kok")).unwrap();
+        let mut m = PencereModel::yeni(kur, Box::new(KaynaksizGuncelleyici));
+        assert!(m.dugmeler().rapor);
+        let metin = m.rapor();
+        assert!(metin.starts_with("TAA paket raporu — "), "{metin}");
+        assert!(
+            m.durum().starts_with("Rapor CSV olarak kaydedildi: "),
+            "{}",
+            m.durum()
+        );
+        let raporlar = taban.join("kok").join("raporlar");
+        let dosyalar: Vec<_> = fs::read_dir(&raporlar).unwrap().flatten().collect();
+        assert_eq!(dosyalar.len(), 1);
+        let icerik = fs::read_to_string(dosyalar[0].path()).unwrap();
+        assert!(icerik.starts_with("\u{feff}bolum;durum;anahtar;deger"));
+        assert!(icerik.contains("fis;yok;kaynak;"));
+
+        // Sahte veri kökü ile (Kur::rapor_veri_ile) fiş bölümü dolu.
+        let veri = taban.join("veri");
+        fs::create_dir_all(veri.join("fis-defteri")).unwrap();
+        fs::write(
+            veri.join("fis-defteri").join("fisler.jsonl"),
+            "{\"tur\":\"fis\",\"v\":{\"no\":\"F-1\",\"teslim\":\"2026-01-01\",\"ucret_kurus\":100,\"on_odeme_kurus\":0,\"durum\":\"bekliyor\"}}\n",
+        )
+        .unwrap();
+        let kur = Kur::yeni(taban.join("kok")).unwrap();
+        let r = kur.rapor_veri_ile(Some(veri), Some("2026-11-06")).unwrap();
+        let fis = r.bolumler.iter().find(|b| b.ad == "fis").unwrap();
+        assert_eq!(fis.durum, taa_rapor::Durum::Var);
+        assert!(fis
+            .satirlar
+            .contains(&("geciken".to_string(), "1".to_string())));
+        assert!(kur.rapor_veri_ile(None, Some("kötü")).is_err());
+        let _ = fs::remove_dir_all(&taban);
     }
 }

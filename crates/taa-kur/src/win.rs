@@ -32,14 +32,15 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetWindowLongPtrW, LoadCursorW, MessageBoxW, MoveWindow, PostQuitMessage, RegisterClassW,
     SendMessageW, SetWindowLongPtrW, SetWindowTextW, ShowWindow, TranslateMessage, BN_CLICKED,
     BS_PUSHBUTTON, CREATESTRUCTW, CW_USEDEFAULT, GWLP_USERDATA, IDC_ARROW, IDYES, MB_ICONERROR,
-    MB_ICONQUESTION, MB_YESNO, MSG, SW_SHOW, WM_COMMAND, WM_CREATE, WM_DESTROY, WM_NCCREATE,
-    WM_NOTIFY, WM_SETFONT, WM_SIZE, WNDCLASSW, WS_CHILD, WS_EX_CLIENTEDGE, WS_OVERLAPPEDWINDOW,
-    WS_TABSTOP, WS_VISIBLE,
+    MB_ICONINFORMATION, MB_ICONQUESTION, MB_OK, MB_YESNO, MSG, SW_SHOW, WM_COMMAND, WM_CREATE,
+    WM_DESTROY, WM_NCCREATE, WM_NOTIFY, WM_SETFONT, WM_SIZE, WNDCLASSW, WS_CHILD, WS_EX_CLIENTEDGE,
+    WS_OVERLAPPEDWINDOW, WS_TABSTOP, WS_VISIBLE,
 };
 
 const KIMLIK_KUR: isize = 101;
 const KIMLIK_KALDIR: isize = 102;
 const KIMLIK_GUNCELLE: isize = 103;
+const KIMLIK_RAPOR: isize = 104;
 
 /// Liste yenilenirken gelen bildirimler (silme/ekleme) yok sayılır.
 static YENILIYOR: AtomicBool = AtomicBool::new(false);
@@ -48,6 +49,7 @@ enum Eylem {
     Kur(PathBuf),
     Kaldir,
     Guncelle,
+    Rapor,
 }
 
 struct Durum {
@@ -56,6 +58,7 @@ struct Durum {
     kur: HWND,
     kaldir: HWND,
     guncelle: HWND,
+    rapor: HWND,
     durum: HWND,
 }
 
@@ -89,6 +92,7 @@ pub fn calistir() -> i32 {
         kur: null_mut(),
         kaldir: null_mut(),
         guncelle: null_mut(),
+        rapor: null_mut(),
         durum: null_mut(),
     });
     let durum_ptr = Box::into_raw(durum);
@@ -254,6 +258,15 @@ unsafe extern "system" fn pencere_proc(h: HWND, ileti: u32, w: WPARAM, l: LPARAM
                     h,
                     ornek,
                 );
+                d.rapor = cocuk(
+                    0,
+                    btn.as_ptr(),
+                    "Rapor",
+                    WS_TABSTOP | BS_PUSHBUTTON as u32,
+                    KIMLIK_RAPOR,
+                    h,
+                    ornek,
+                );
                 let st = "STATIC\0".encode_utf16().collect::<Vec<u16>>();
                 d.durum = cocuk(0, st.as_ptr(), "", 0, 0, h, ornek);
                 liste_doldur(d);
@@ -309,6 +322,8 @@ unsafe extern "system" fn pencere_proc(h: HWND, ileti: u32, w: WPARAM, l: LPARAM
                                 .then_some(Eylem::Guncelle),
                         }
                     }
+                    // Salt okunur; soru yok. Rapor metni bilgi kutusunda gösterilir, CSV kök\raporlar'a yazılır.
+                    KIMLIK_RAPOR => Some(Eylem::Rapor),
                     _ => None,
                 };
                 if let (Some(eylem), Some(d)) = (eylem, durum_al(h)) {
@@ -321,6 +336,11 @@ unsafe extern "system" fn pencere_proc(h: HWND, ileti: u32, w: WPARAM, l: LPARAM
                         }
                         Eylem::Guncelle => {
                             d.model.guncelle();
+                        }
+                        Eylem::Rapor => {
+                            let metin = d.model.rapor();
+                            durum_yaz(d);
+                            mesaj_kutusu(h, &metin, "TAA paket raporu", MB_OK | MB_ICONINFORMATION);
                         }
                     }
                     liste_doldur(d);
@@ -356,6 +376,7 @@ unsafe fn yerlestir(h: HWND, d: &Durum) {
     MoveWindow(d.kur, kenar, dy, 100, dugme_y, 1);
     MoveWindow(d.kaldir, kenar + 108, dy, 100, dugme_y, 1);
     MoveWindow(d.guncelle, kenar + 216, dy, 100, dugme_y, 1);
+    MoveWindow(d.rapor, kenar + 324, dy, 100, dugme_y, 1);
     MoveWindow(
         d.durum,
         kenar,
@@ -392,6 +413,7 @@ unsafe fn dugmeleri_guncelle(d: &Durum) {
     EnableWindow(d.kur, k.kur as i32);
     EnableWindow(d.kaldir, k.kaldir as i32);
     EnableWindow(d.guncelle, k.guncelle as i32);
+    EnableWindow(d.rapor, k.rapor as i32);
 }
 
 unsafe fn durum_yaz(d: &Durum) {

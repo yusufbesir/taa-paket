@@ -30,7 +30,12 @@ taa-rapor [--kok <veri kökü>] [--fis-klasoru <klasör>] [--bugun YYYY-AA-GG] [
 ```
 Çıkış: 0 tamam, 2 kullanım/doğrulama, 1 diğer. CSV: UTF-8 BOM, `;` ayraç, `bolum;durum;anahtar;deger` (Excel çift tıkla açar).
 
+## Çatıdan kullanım (ikinci PR)
+- `taa-kur rapor [--kaydet] [--bugun YYYY-AA-GG] [--json]`: veri kökü ortamdan; `--kaydet` → `kök\raporlar\rapor-<damga>.csv` (var olan ezilmez).
+- Pencere: **Rapor** düğmesi her zaman açık; metin bilgi kutusunda, CSV aynı klasöre; durum satırı yolu gösterir.
+- Kitaplık: `Kur::rapor`, `Kur::rapor_veri_ile` (test), `Kur::rapor_kaydet`.
+
 ## Sonraki adımlar
-1. `taa-kur rapor` komutu ve pencerede "Rapor" düğmesi (ayrı PR).
+1. ~~`taa-kur rapor` komutu ve pencerede "Rapor" düğmesi~~ (yapıldı).
 2. Rapor JSON'u AI yorumu için girdi olur (Yusuf kararı: API anahtarı, kim görür).
 3. Tutaa tutanakları ve etiket kuyruğu bölümleri (o programların dosya sözleşmesi netleşince).
