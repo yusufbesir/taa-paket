@@ -279,3 +279,46 @@ fn tani_veri_alanlari() {
     // tani veri alanlarına yazmaz
     assert!(!vk.join("etiket-kuyrugu/eski").exists());
 }
+
+#[test]
+fn zip_reddinde_gecici_ve_eski_olusmaz() {
+    // Sorun 2 (2026-11-05 Windows denemesi): çözümsüz paket için gecici-* açılıp eski/ altına taşınıyordu.
+    let o = Ortam::yeni();
+    let z = o.taban.join("taa-b-1.0.0.zip");
+    let liste = vec![DosyaKaydi {
+        yol: "a.txt".into(),
+        sha256: sha256_bayt(b"x"),
+    }];
+    let p = serde_json::json!({
+        "sema": 1, "ad": "taa-b", "surum": "1.0.0", "arayuz": "1", "program": "ortak",
+        "gerektirir": {"taa-yok": "1"}, "sunar": [], "ister": [], "veri_sahibi": [], "veri_okur": [],
+        "dosyalar": liste, "icerik_sha256": icerik_hesapla(&liste),
+    });
+    zip_yaz(
+        &z,
+        &[
+            ("paket.json", serde_json::to_vec(&p).unwrap()),
+            ("a.txt", b"x".to_vec()),
+        ],
+    );
+    let h = o.kur.kur(&z, true).unwrap_err();
+    assert!(matches!(h, KurHata::Cozum(_)), "{h:?}");
+    assert!(
+        !o.kur.kok().join("eski").exists(),
+        "ön denetimde reddedilen zip için eski/ oluşmamalı"
+    );
+    let gecici = fs::read_dir(o.kur.kok())
+        .map(|d| {
+            d.flatten()
+                .any(|e| e.file_name().to_string_lossy().starts_with("gecici-"))
+        })
+        .unwrap_or(false);
+    assert!(!gecici);
+    // bozuk sha da ön denetimde: eski/ yok
+    let zb = paket_zip(&o.taban, "taa-c", "0.1.0", &[("a.txt", "x")], true);
+    assert!(matches!(
+        o.kur.kur(&zb, true).unwrap_err(),
+        KurHata::Dogrulama(_)
+    ));
+    assert!(!o.kur.kok().join("eski").exists());
+}

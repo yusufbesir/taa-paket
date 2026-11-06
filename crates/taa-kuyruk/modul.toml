@@ -1,0 +1,13 @@
+# Sahip: Yusuf. yazan: [Claude#taa-kuyruk-T6 2026-11-06]
+# taa-kuyruk modül tanımı. Ortak crate; her program kendi alt klasörüne yazar (<veri kökü>/kuyruk/<program>/), gönderim tek yerden.
+ad = "taa-kuyruk"
+surum = "0.1.0"
+arayuz = "1"
+gerektirir = { "taa-dosya" = "1" }
+ozellikler = ["kuyruk"]
+program = "ortak"
+sunar = ["kuyruk.gonder@1"]
+ister = []
+veri_sahibi = []
+veri_okur = []
+ayar_alani = "moduller.taa-kuyruk"

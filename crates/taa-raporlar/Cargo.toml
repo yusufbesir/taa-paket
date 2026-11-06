@@ -1,0 +1,23 @@
+# taa-raporlar: yönetici rapor programı + kural tabanlı yorum motoru. Sahip: Yusuf. yazan: [Claude#taa-raporlar-T8 2026-11-06]
+# Değişiklik: Yusuf'un kuralları çerçevesinde; bağımlılık eklemek Yusuf'a sorularak. Yeni harici bağımlılık yok.
+[package]
+name = "taa-raporlar"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "TAA Raporlar: yönetici girişiyle tek yerden rapor, eşik kurallarıyla Türkçe yorum, önceki raporla karşılaştırma"
+
+[lib]
+name = "taa_raporlar"
+path = "src/lib.rs"
+
+[[bin]]
+name = "taa-raporlar"
+path = "src/main.rs"
+
+[dependencies]
+serde_json = "1"
+taa-dosya = { path = "../taa-dosya" }
+taa-kimlik = { path = "../taa-kimlik" }
+taa-rapor = { path = "../taa-rapor" }

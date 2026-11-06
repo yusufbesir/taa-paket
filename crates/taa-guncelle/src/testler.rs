@@ -435,3 +435,266 @@ fn yayin_semasi_hatalari_ve_yol_kacisi() {
         Err(KurHata::Yok(_))
     ));
 }
+
+// ---- HTTP kaynağı (curl ile): kaynak klasörünü yerel bir HTTP sunucusuyla yayınlar ----
+
+/// Tek iş parçacıklı küçük HTTP/1.1 sunucusu: `kok` altındaki dosyaları GET ile verir; `/yonlendir/<x>` → `/<x>` (302).
+/// Yalnız test içindir. Döndürdüğü `http://127.0.0.1:<port>` tabanı curl'ün ulaşacağı adrestir.
+fn http_sunucu(kok: PathBuf) -> String {
+    use std::io::{BufRead, BufReader};
+    use std::net::TcpListener;
+    let dinle = TcpListener::bind("127.0.0.1:0").unwrap();
+    let adres = format!("http://{}", dinle.local_addr().unwrap());
+    std::thread::spawn(move || {
+        for baglanti in dinle.incoming() {
+            let Ok(mut b) = baglanti else { continue };
+            let mut okuyucu = BufReader::new(b.try_clone().unwrap());
+            let mut satir = String::new();
+            if okuyucu.read_line(&mut satir).is_err() {
+                continue;
+            }
+            // başlıkları tüket
+            loop {
+                let mut s = String::new();
+                if okuyucu.read_line(&mut s).unwrap_or(0) == 0 || s == "\r\n" || s == "\n" {
+                    break;
+                }
+            }
+            let yol = satir.split_whitespace().nth(1).unwrap_or("/").to_string();
+            let yanit: Vec<u8> = if let Some(hedef) = yol.strip_prefix("/yonlendir/") {
+                format!("HTTP/1.1 302 Found\r\nLocation: /{hedef}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                    .into_bytes()
+            } else {
+                let dosya = kok.join(yol.trim_start_matches('/'));
+                match fs::read(&dosya) {
+                    Ok(govde) => {
+                        let mut v = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                            govde.len()
+                        )
+                        .into_bytes();
+                        v.extend_from_slice(&govde);
+                        v
+                    }
+                    Err(_) => {
+                        b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                            .to_vec()
+                    }
+                }
+            };
+            let _ = b.write_all(&yanit);
+            let _ = b.flush();
+        }
+    });
+    adres
+}
+
+fn curl_var() -> bool {
+    std::process::Command::new("curl")
+        .arg("--version")
+        .output()
+        .is_ok()
+}
+
+#[test]
+fn http_kaynak_adres_denetimi() {
+    assert!(HttpKaynak::yeni("ftp://x").is_err());
+    assert!(HttpKaynak::yeni("D:/Kaynak").is_err());
+    assert!(HttpKaynak::yeni("https://a b").is_err());
+    let k = HttpKaynak::yeni("https://sunucu/yol/").unwrap();
+    assert_eq!(k.taban(), "https://sunucu/yol");
+    assert!(http_url_mu("HTTP://x") && !http_url_mu("/tmp/x"));
+    // göreli url tabana eklenir; mutlak kalır; yol kaçışı/şema dışı reddedilir
+    let t = taa_dosya::gecici_klasor().unwrap();
+    let hedef = t.join("x.zip");
+    assert!(matches!(
+        k.getir("/mutlak.zip", &hedef, 1),
+        Err(KurHata::Dogrulama(_))
+    ));
+    assert!(matches!(
+        k.getir("ftp://x/a.zip", &hedef, 1),
+        Err(KurHata::Dogrulama(_))
+    ));
+    let _ = fs::remove_dir_all(&t);
+}
+
+#[test]
+fn http_kaynak_uctan_uca_kontrol_ve_uygula() {
+    if !curl_var() {
+        eprintln!("curl yok; test atlandı");
+        return;
+    }
+    let o = Ort::yeni();
+    let imza = o.anahtar("yayinci", true);
+    o.kurulu_olsun("a", "1.0.0", Some(&imza));
+    o.kurulu_olsun("b", "2.0.0", Some(&imza));
+    let fa = o.zip("a", "1.1.0", Some(&imza));
+    let fb = o.zip("b", "2.1.0", Some(&imza));
+    // b'nin url'si yönlendirme üzerinden (GitHub Releases gibi)
+    let fb = (format!("yonlendir/{}", fb.0), fb.1, fb.2);
+    o.yayin(
+        vec![
+            girdi("a", "1.1.0", "kararli", fa),
+            girdi("b", "2.1.0", "kararli", fb),
+        ],
+        Some(&imza),
+    );
+    let taban = http_sunucu(o.kaynak.clone());
+    let h = HttpKaynak::yeni(&format!("{taban}/")).unwrap();
+    let k = kontrol(&o.kur(), &h, "kararli").unwrap();
+    assert_eq!(k.imza, "dogrulandi");
+    assert_eq!(k.guncellenebilir.len(), 2, "{k:?}");
+    // yalnız b (pencere düğmesi): a dokunulmaz
+    let s = uygula_paket(&o.kur(), &h, "kararli", Some("b")).unwrap();
+    assert!(!s.hata_var(), "{s:?}");
+    assert_eq!(s.satirlar.len(), 1);
+    assert_eq!(o.secili("b").as_deref(), Some("2.1.0"));
+    assert_eq!(o.secili("a").as_deref(), Some("1.0.0"));
+    // kalan: a
+    let s = uygula(&o.kur(), &h, "kararli").unwrap();
+    assert!(!s.hata_var(), "{s:?}");
+    assert_eq!(o.secili("a").as_deref(), Some("1.1.0"));
+    assert!(o.kur().dogrula(None).unwrap().is_empty());
+    assert!(kontrol(&o.kur(), &h, "kararli")
+        .unwrap()
+        .guncellenebilir
+        .is_empty());
+    // indirilen dosya eski/ altında, indirilen/ boş
+    assert!(fs::read_dir(o.kok.join("eski"))
+        .unwrap()
+        .flatten()
+        .any(|e| e
+            .file_name()
+            .to_string_lossy()
+            .starts_with("indirilen-b-2.1.0")));
+    assert_eq!(fs::read_dir(o.kok.join("indirilen")).unwrap().count(), 0);
+}
+
+#[test]
+fn http_kaynak_hatalari_bulunamadi_buyuk_ve_var_olan_hedef() {
+    if !curl_var() {
+        eprintln!("curl yok; test atlandı");
+        return;
+    }
+    let o = Ort::yeni();
+    o.kurulu_olsun("a", "1.0.0", None);
+    let taban = http_sunucu(o.kaynak.clone());
+    let h = HttpKaynak::yeni(&taban).unwrap();
+    // yayin.json yok → Yok
+    assert!(matches!(
+        kontrol(&o.kur(), &h, "kararli"),
+        Err(KurHata::Yok(_))
+    ));
+    // olmayan dosya → Yok
+    let hedef = o.taban.join("indir.zip");
+    assert!(matches!(
+        h.getir("yok.zip", &hedef, 100),
+        Err(KurHata::Yok(_))
+    ));
+    assert!(!hedef.exists());
+    // bildirilen boyuttan büyük → Dogrulama (curl --max-filesize ya da sonradan ölçüm)
+    let (url, _, boyut) = o.zip("a", "1.1.0", None);
+    let e = h.getir(&url, &hedef, boyut - 1).unwrap_err();
+    assert!(matches!(e, KurHata::Dogrulama(_)), "{e}");
+    assert!(e.mesaj().contains("büyük"), "{e}");
+    // tam boyut → tamam; aynı hedef ikinci kez → üzerine yazılmaz
+    let _ = fs::remove_file(&hedef);
+    assert_eq!(h.getir(&url, &hedef, boyut).unwrap(), boyut);
+    assert!(matches!(
+        h.getir(&url, &hedef, boyut),
+        Err(KurHata::Dogrulama(_))
+    ));
+    // uygula akışında boyut uyuşmazlığı: önceki sürüm kalır
+    o.yayin(
+        vec![girdi("a", "1.1.0", "kararli", (url, "0".repeat(64), boyut))],
+        None,
+    );
+    let s = uygula(&o.kur(), &h, "kararli").unwrap();
+    assert!(s.hata_var());
+    assert!(
+        s.satirlar[0].mesaj.contains("SHA256"),
+        "{:?}",
+        s.satirlar[0]
+    );
+    assert_eq!(o.secili("a").as_deref(), Some("1.0.0"));
+}
+
+#[test]
+fn kontrol_paket_yalniz_verilen_paketi_degerlendirir() {
+    let o = Ort::yeni();
+    o.kurulu_olsun("a", "1.0.0", None);
+    o.kurulu_olsun("b", "1.0.0", None);
+    let fa = o.zip("a", "1.1.0", None);
+    let fb = o.zip("b", "1.1.0", None);
+    o.yayin(
+        vec![
+            girdi("a", "1.1.0", "kararli", fa),
+            girdi("b", "1.1.0", "kararli", fb),
+        ],
+        None,
+    );
+    let k = kontrol_paket(&o.kur(), &kaynak(&o), "kararli", Some("b")).unwrap();
+    assert_eq!(k.guncellenebilir.len(), 1);
+    assert_eq!(k.guncellenebilir[0].ad, "b");
+    let k = kontrol_paket(&o.kur(), &kaynak(&o), "kararli", Some("yok")).unwrap();
+    assert!(k.guncellenebilir.is_empty() && k.guncel.is_empty());
+}
+
+#[test]
+fn zaten_kurulu_surum_indirilmeden_secilir() {
+    let o = Ort::yeni();
+    o.kurulu_olsun("a", "1.0.0", None);
+    o.kurulu_olsun("a", "1.1.0", None);
+    o.kur().geri_don("a").unwrap();
+    assert_eq!(o.secili("a").as_deref(), Some("1.0.0"));
+    // yayında 1.1.0; url olmayan dosyaya işaret etsin: indirme denenirse hata olur
+    o.yayin(
+        vec![girdi(
+            "a",
+            "1.1.0",
+            "kararli",
+            ("yok.zip".into(), "0".repeat(64), 10),
+        )],
+        None,
+    );
+    let k = kontrol(&o.kur(), &kaynak(&o), "kararli").unwrap();
+    assert!(k.guncellenebilir[0].zaten_kurulu);
+    let s = uygula(&o.kur(), &kaynak(&o), "kararli").unwrap();
+    assert!(!s.hata_var(), "{s:?}");
+    assert_eq!(s.satirlar[0].durum, "secildi");
+    assert_eq!(s.cikis_kodu(), 0);
+    assert_eq!(o.secili("a").as_deref(), Some("1.1.0"));
+    assert!(!o.kok.join("indirilen").exists());
+    assert!(o.kur().dogrula(None).unwrap().is_empty());
+}
+
+#[test]
+fn hatali_indirme_ayri_klasore_ve_cikis_kodu_hatanin_kodu() {
+    let o = Ort::yeni();
+    o.kurulu_olsun("a", "1.0.0", None);
+    let (url, _, boyut) = o.zip("a", "1.1.0", None);
+    o.yayin(
+        vec![girdi("a", "1.1.0", "kararli", (url, "0".repeat(64), boyut))],
+        None,
+    );
+    let s = uygula(&o.kur(), &kaynak(&o), "kararli").unwrap();
+    assert!(s.hata_var());
+    assert_eq!(s.satirlar[0].kod, 2, "{:?}", s.satirlar[0]);
+    assert_eq!(s.cikis_kodu(), 2);
+    assert_eq!(o.secili("a").as_deref(), Some("1.0.0"));
+    // bozuk indirme eski/indirilen-hatali/ altında; eski/ kökünde indirilen-* yok
+    let hatali: Vec<_> = fs::read_dir(o.kok.join("eski").join("indirilen-hatali"))
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        hatali.iter().any(|a| a.starts_with("indirilen-a-1.1.0")),
+        "{hatali:?}"
+    );
+    assert!(!fs::read_dir(o.kok.join("eski"))
+        .unwrap()
+        .flatten()
+        .any(|e| e.file_name().to_string_lossy().starts_with("indirilen-a-")));
+    assert_eq!(fs::read_dir(o.kok.join("indirilen")).unwrap().count(), 0);
+}

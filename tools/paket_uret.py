@@ -8,6 +8,10 @@ icerik_sha256 tanımı (Rust tarafı aynısını kullanır): dosyalar yol sıras
 her dosya için "yol\\nsha256\\n" metni art arda eklenir; birleşimin SHA256'sı onaltılık küçük harf.
 Çıktı klasörü yoksa oluşturulur, varsa BOŞ olmalıdır (hiçbir şey ezilmez ya da silinmez).
 `--zip` aynı içeriği tek zip olarak üretir (paket.json zipin KÖKÜNDE; deflate; çıktı zip var olamaz).
+`--bin` ile üretilen paket derlenmiş bir Rust ikilisidir: `modul.toml` `gerektirir` içindeki taa-* crate'leri
+ikiliye STATİK bağlıdır, ayrıca kurulu paket olarak aranmaz; paket.json `gerektirir` alanı bu durumda yalnız
+`modul.toml` `calisma_gerektirir` tablosundan (çalışma anında kurulu olması gereken paketler; isteğe bağlı) alınır.
+`--bin` yoksa `gerektirir` modul.toml'daki gibi yazılır.
 `imza` alanı YAZILMAZ: imzayı `taa-imza` atar (imzalanan veri `icerik_sha256` metnidir). Zip için hazır imza
 `--imza-dosya <imza.json>` ({"alg":"ed25519","anahtar_kimlik":..,"deger":hex}) ile verilir; araç yalnız biçimini denetler.
 """
@@ -126,6 +130,11 @@ def _hazirla(crate: Path, bin_yol: Path | None) -> tuple:
     for g in ger:
         if not ad_gecerli(g):
             raise PaketHata(f"modul.toml: geçersiz gerektirir adı: {g!r}")
+    calisma = m.get("calisma_gerektirir", {})
+    if not isinstance(calisma, dict) or not all(ad_gecerli(g) and isinstance(a, str) and a for g, a in calisma.items()):
+        raise PaketHata("modul.toml: calisma_gerektirir { \"taa-x\" = \"1\" } biçiminde tablo olmalı")
+    if bin_yol is not None:
+        ger = calisma  # ikili: crate bağımlılıkları statik; yalnız çalışma anı paketleri gerektirir
     surum = cargo_surum(crate)
     if surum != m["surum"]:
         raise PaketHata(f"modul.toml surum ({m['surum']}) Cargo.toml version ({surum}) ile aynı değil")

@@ -4,7 +4,7 @@
 //! hiç anahtar yoksa imza denetlenmez (kontrol çıktısında uyarı). Geri alma koruması: kayıtlı sürümden DÜŞÜK sürüm
 //! reddedilir. Uygulama: indir → boyut+SHA256 → `Kur::kur(--sec)` → doğrula; başarısızlıkta önceki sürüme dönülür.
 //! Delta yamaları şemada var ama T3'te kullanılmaz: her zaman `tam` dosya indirilir. Hiçbir dosya silinmez
-//! (indirilen dosya iş bitince `eski/` altına taşınır). HTTP yok (T4).
+//! (indirilen dosya iş bitince `eski/` altına taşınır). HTTP(S) kaynağı: `HttpKaynak` (curl ile; T4).
 
 pub mod kaynak;
 pub mod yayin;
@@ -12,7 +12,7 @@ pub mod yayin;
 #[cfg(test)]
 mod testler;
 
-pub use kaynak::{Kaynak, YerelKaynak};
+pub use kaynak::{http_url_mu, HttpKaynak, Kaynak, YerelKaynak};
 pub use yayin::{Yayin, YayinPaketi};
 
 use serde::Serialize;
@@ -37,6 +37,9 @@ pub struct Guncelleme {
     pub indirme_boyutu: u64,
     /// Kurulu sürümden yama var mı (bilgi; T3 yine de `tam` dosyayı indirir).
     pub yama_var: bool,
+    /// Yeni sürüm zaten depoda kurulu (seçili değil): `uygula` indirmez, seçip doğrular.
+    #[serde(default)]
+    pub zaten_kurulu: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -64,11 +67,14 @@ pub struct UygulaSatiri {
     pub ad: String,
     pub onceki: String,
     pub yeni: String,
-    /// "guncellendi", "atlandi" ya da "hata".
+    /// "guncellendi", "secildi" (zaten kuruluydu, indirme yok), "atlandi" ya da "hata".
     pub durum: String,
     pub mesaj: String,
     /// Hata sonrası önceki sürüm yeniden seçildi mi.
     pub geri_donuldu: bool,
+    /// Hatanın çıkış kodu (taa-kur ile aynı: 2 doğrulama, 4 yok, 5 bozuk, 1 diğer); hata yoksa 0.
+    #[serde(default)]
+    pub kod: i32,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -80,6 +86,15 @@ pub struct UygulaSonuc {
 impl UygulaSonuc {
     pub fn hata_var(&self) -> bool {
         self.satirlar.iter().any(|s| s.durum == "hata")
+    }
+
+    /// CLI çıkış kodu: hata yoksa 0; varsa ilk hatalı satırın kodu (kontrol aşaması hataları zaten `Err` ile çıkar).
+    pub fn cikis_kodu(&self) -> i32 {
+        self.satirlar
+            .iter()
+            .find(|s| s.durum == "hata")
+            .map(|s| if s.kod == 0 { 1 } else { s.kod })
+            .unwrap_or(0)
     }
 }
 
@@ -96,6 +111,16 @@ fn yayin_yukle(kur: &Kur, kaynak: &dyn Kaynak) -> Sonuc<(Yayin, ImzaDurumu)> {
 
 /// Kur kaydı ile `yayin.json` karşılaştırması. Yalnız kurulu ve seçili paketler değerlendirilir; yazma yapmaz.
 pub fn kontrol(kur: &Kur, kaynak: &dyn Kaynak, kanal: &str) -> Sonuc<KontrolSonuc> {
+    kontrol_paket(kur, kaynak, kanal, None)
+}
+
+/// `kontrol` ile aynı; `yalniz` verilirse yalnız o paket değerlendirilir (pencere "Güncelle" düğmesi).
+pub fn kontrol_paket(
+    kur: &Kur,
+    kaynak: &dyn Kaynak,
+    kanal: &str,
+    yalniz: Option<&str>,
+) -> Sonuc<KontrolSonuc> {
     let (yayin, durum) = yayin_yukle(kur, kaynak)?;
     let mut s = KontrolSonuc {
         kanal: kanal.into(),
@@ -115,6 +140,9 @@ pub fn kontrol(kur: &Kur, kaynak: &dyn Kaynak, kanal: &str) -> Sonuc<KontrolSonu
         );
     }
     for satir in kur.liste()? {
+        if yalniz.is_some_and(|y| y != satir.ad) {
+            continue;
+        }
         let Some(secili) = satir.secili.clone() else {
             continue;
         };
@@ -143,6 +171,7 @@ pub fn kontrol(kur: &Kur, kaynak: &dyn Kaynak, kanal: &str) -> Sonuc<KontrolSonu
                 s.guncellenebilir.push(Guncelleme {
                     ad: satir.ad.clone(),
                     yama_var: aday.yamalar.iter().any(|y| y.kaynak_surum == secili),
+                    zaten_kurulu: satir.kurulu.contains(&aday.surum),
                     kurulu: secili,
                     yeni: aday.surum.clone(),
                     zorunlu,
@@ -158,7 +187,17 @@ pub fn kontrol(kur: &Kur, kaynak: &dyn Kaynak, kanal: &str) -> Sonuc<KontrolSonu
 /// `kontrol` + her güncellenebilir paket için indir/doğrula/kur. Paket başına hata diğerlerini durdurmaz;
 /// sonuç satırlarında bildirilir. Kontrol aşamasındaki hata (imza, kaynak) tümünü durdurur.
 pub fn uygula(kur: &Kur, kaynak: &dyn Kaynak, kanal: &str) -> Sonuc<UygulaSonuc> {
-    let kontrol_sonucu = kontrol(kur, kaynak, kanal)?;
+    uygula_paket(kur, kaynak, kanal, None)
+}
+
+/// `uygula` ile aynı; `yalniz` verilirse yalnız o paket güncellenir.
+pub fn uygula_paket(
+    kur: &Kur,
+    kaynak: &dyn Kaynak,
+    kanal: &str,
+    yalniz: Option<&str>,
+) -> Sonuc<UygulaSonuc> {
+    let kontrol_sonucu = kontrol_paket(kur, kaynak, kanal, yalniz)?;
     let (yayin, _) = yayin_yukle(kur, kaynak)?;
     let mut satirlar = Vec::new();
     for g in &kontrol_sonucu.guncellenebilir {
@@ -169,6 +208,7 @@ pub fn uygula(kur: &Kur, kaynak: &dyn Kaynak, kanal: &str) -> Sonuc<UygulaSonuc>
             durum: "guncellendi".into(),
             mesaj: "tamam".into(),
             geri_donuldu: false,
+            kod: 0,
         };
         if g.sabitli && !g.zorunlu {
             satir.durum = "atlandi".into();
@@ -186,10 +226,21 @@ pub fn uygula(kur: &Kur, kaynak: &dyn Kaynak, kanal: &str) -> Sonuc<UygulaSonuc>
             satirlar.push(satir);
             continue;
         };
-        if let Err((e, geri)) = paketi_uygula(kur, kaynak, p, &g.kurulu) {
+        let sonuc = if g.zaten_kurulu {
+            satir.durum = "secildi".into();
+            satir.mesaj = format!(
+                "{} zaten kuruluydu; indirilmeden seçildi ve doğrulandı",
+                g.yeni
+            );
+            kuruluyu_sec(kur, &p.ad, &p.surum, &g.kurulu)
+        } else {
+            paketi_uygula(kur, kaynak, p, &g.kurulu)
+        };
+        if let Err((e, geri)) = sonuc {
             satir.durum = "hata".into();
             satir.mesaj = e.mesaj().to_string();
             satir.geri_donuldu = geri;
+            satir.kod = e.cikis_kodu();
         }
         satirlar.push(satir);
     }
@@ -197,6 +248,26 @@ pub fn uygula(kur: &Kur, kaynak: &dyn Kaynak, kanal: &str) -> Sonuc<UygulaSonuc>
         kontrol: kontrol_sonucu,
         satirlar,
     })
+}
+
+/// Yeni sürüm depoda zaten varsa indirme yapılmaz: seçilir ve doğrulanır; doğrulanamazsa önceki sürüme dönülür.
+fn kuruluyu_sec(kur: &Kur, ad: &str, surum: &str, onceki: &str) -> Result<(), (KurHata, bool)> {
+    kur.sec(ad, surum).map_err(|e| (e, false))?;
+    let hata = match kur.dogrula(Some(ad)) {
+        Ok(sorunlar) if sorunlar.is_empty() => return Ok(()),
+        Ok(sorunlar) => KurHata::Bozuk(format!(
+            "{ad} {surum} depoda kurulu ama doğrulanamadı ({} sorun). Öneri: `taa-kur kaldir {ad}` sonra yeniden güncelleyin.",
+            sorunlar.len()
+        )),
+        Err(e) => e,
+    };
+    let geri = geri_don(kur, ad, onceki);
+    let ek = if geri {
+        format!(" Önceki sürüme ({onceki}) dönüldü.")
+    } else {
+        String::new()
+    };
+    Err((hata.yeniden(format!("{}{ek}", tek(hata.mesaj()))), geri))
 }
 
 fn sayac() -> u64 {
@@ -222,7 +293,8 @@ fn paketi_uygula(
     }
     let indirilen = indirme_yolu(kur, &p.ad, &p.surum).map_err(|e| (e, false))?;
     let sonuc = indir_ve_kur(kur, kaynak, p, onceki, &indirilen);
-    if let Err(e) = eskiye_tasi(kur, &indirilen) {
+    // Başarılı indirme eski\ altında kalır (silme yok); başarısız/bozuk olanlar eski\indirilen-hatali\ altına ayrılır.
+    if let Err(e) = eskiye_tasi(kur, &indirilen, sonuc.is_err()) {
         return sonuc.and(Err((e, false)));
     }
     sonuc
@@ -285,7 +357,7 @@ fn indir_ve_kur(
     } else {
         String::new()
     };
-    Err((KurHata::Diger(format!("{}{ek}", tek(hata.mesaj()))), geri))
+    Err((hata.yeniden(format!("{}{ek}", tek(hata.mesaj()))), geri))
 }
 
 fn tek(m: &str) -> String {
@@ -309,12 +381,16 @@ fn geri_don(kur: &Kur, ad: &str, onceki: &str) -> bool {
     kur.sec(ad, onceki).is_ok() && secili().as_deref() == Some(onceki)
 }
 
-/// İndirilen dosyayı silmez: `<kök>/eski/indirilen-<ad>` altına taşır.
-fn eskiye_tasi(kur: &Kur, dosya: &Path) -> Sonuc<()> {
+/// İndirilen dosyayı silmez: `<kök>/eski/indirilen-<ad>` altına taşır; `hatali` ise `<kök>/eski/indirilen-hatali/`.
+fn eskiye_tasi(kur: &Kur, dosya: &Path, hatali: bool) -> Sonuc<()> {
     if !dosya.exists() {
         return Ok(());
     }
-    let dizin = kur.kok().join("eski");
+    let dizin = if hatali {
+        kur.kok().join("eski").join("indirilen-hatali")
+    } else {
+        kur.kok().join("eski")
+    };
     fs::create_dir_all(&dizin)?;
     let ad = dosya
         .file_name()

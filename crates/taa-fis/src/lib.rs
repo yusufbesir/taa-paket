@@ -258,6 +258,8 @@ pub fn saat_gecerli(s: &str) -> bool {
 
 mod basim;
 mod defter;
+#[cfg(test)]
+mod sanal_baski;
 pub use basim::*;
 pub use defter::*;
 

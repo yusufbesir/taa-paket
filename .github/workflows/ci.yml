@@ -39,7 +39,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: python3 tools/sozlesme_denetle.py
-      - run: python3 -m unittest tools/test_sozlesme_denetle.py
+      - run: python3 -m unittest tools/test_sozlesme_denetle.py tools/test_paket_uret.py tools/test_yayin_uret.py
   js:
     runs-on: ubuntu-latest
     steps:

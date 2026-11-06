@@ -1,0 +1,14 @@
+# Sahip: Yusuf. yazan: [Claude#taa-raporlar-T8 2026-11-06]
+# taa-raporlar: yöneticiye özel rapor programı (Yusuf 2026-11-06 15:35: "raporlar sadece yöneticiler tarafından çekilebilir").
+# Ortak crate'lere bağımlı (taa-rapor okur, taa-kimlik yönetici oturumunu denetler); hiçbir programın crate'ine bağımlı değil.
+ad = "taa-raporlar"
+surum = "0.1.0"
+arayuz = "1"
+gerektirir = { "taa-dosya" = "1", "taa-kimlik" = "1", "taa-rapor" = "1" }
+ozellikler = ["raporlar", "yorum"]
+program = "taa-raporlar"
+sunar = ["rapor.yorumla@1"]
+ister = []
+veri_sahibi = ["raporlar"]
+veri_okur = ["fis-defteri", "kasa-defteri", "bildirim-kuyrugu", "urunler", "pano-kartlari", "yedekler"]
+ayar_alani = "moduller.taa-raporlar"

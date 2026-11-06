@@ -1,0 +1,22 @@
+# taa-rapor: paket raporu (tüm veri alanlarını tek yerden okur, SALT OKUNUR). Sahip: Yusuf. yazan: [Claude#taa-rapor-T5 2026-11-06]
+# Değişiklik: Yusuf'un kuralları çerçevesinde; bağımlılık eklemek Yusuf'a sorularak.
+[package]
+name = "taa-rapor"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "TAA paket raporu: fiş, kasa, bildirim, katalog, pano ve yedek alanlarını tek yerden özetler (salt okunur)"
+
+[lib]
+name = "taa_rapor"
+path = "src/lib.rs"
+
+[[bin]]
+name = "taa-rapor"
+path = "src/main.rs"
+
+[dependencies]
+serde_json = "1"
+taa-ayar = { path = "../taa-ayar" }
+taa-dosya = { path = "../taa-dosya" }

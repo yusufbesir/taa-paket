@@ -96,6 +96,18 @@ impl KurHata {
         }
     }
 
+    /// Aynı türde (aynı çıkış kodu) yeni mesajlı kopya.
+    pub fn yeniden(&self, mesaj: String) -> KurHata {
+        match self {
+            KurHata::Dogrulama(_) => KurHata::Dogrulama(mesaj),
+            KurHata::Cozum(_) => KurHata::Cozum(mesaj),
+            KurHata::Yok(_) => KurHata::Yok(mesaj),
+            KurHata::Bozuk(_) => KurHata::Bozuk(mesaj),
+            KurHata::Diger(_) => KurHata::Diger(mesaj),
+            KurHata::Kilitli(_) => KurHata::Kilitli(mesaj),
+        }
+    }
+
     pub fn mesaj(&self) -> &str {
         match self {
             KurHata::Dogrulama(m)
@@ -192,12 +204,22 @@ pub struct Tani {
 }
 
 /// İmza denetiminin sonucu.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub enum ImzaDurumu {
     /// Güvenilir bir anahtarla doğrulandı (kimlik).
     Dogrulandi(String),
     /// Güvenilir anahtar tanımlı olmadığından denetlenmedi (eski davranış).
     Denetlenmedi,
+}
+
+/// `taa-kur dogrula <paket.zip|klasör>` sonucu: paket kurulmadan doğrulandı.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct PaketDenetim {
+    pub ad: String,
+    pub surum: String,
+    pub dosya_sayisi: usize,
+    pub icerik_sha256: String,
+    pub imza: ImzaDurumu,
 }
 
 /// `taa-kur tani --json` veri alanı satırı.
@@ -663,6 +685,12 @@ impl Kur {
     }
 
     fn kur_zip(&self, zip: &Path, sec: bool) -> Sonuc<KurSonuc> {
+        // Ön denetim (zip açılmadan): içerik, imza, veri sahipliği ve çözücü. Reddedilen paket için hiçbir
+        // geçici klasör oluşmaz; eskiden her başarısız denemede eski/gecici-* artığı kalıyordu (2026-11-05 denemesi).
+        if let Err(e) = zipac::zip_denetle(zip).and_then(|(p, _)| self.on_denetim(&p)) {
+            self.gunluk("hata", "kur", "", "", e.mesaj());
+            return Err(e);
+        }
         fs::create_dir_all(&self.kok)?;
         let pid = std::process::id();
         // Geçici klasör `create_dir` ile alınır (varsa sonraki ad): boş olduğu kesin, yarış yok.
@@ -702,10 +730,10 @@ impl Kur {
         self.gunluklu("kur", &ad, &surum, r)
     }
 
-    fn kur_ic(&self, klasor: &Path, sec: bool) -> Sonuc<KurSonuc> {
-        let (paket, paket_bayt) = paket_dogrula(klasor)?;
+    /// Kurulum öncesi kayıt denetimleri: imza kuralı, veri alanı sahipliği, çözücü (`gerektirir`). Kaydı döner.
+    fn on_denetim(&self, paket: &Paket) -> Sonuc<Kayit> {
         self.imza_denetle("Paket", paket.icerik_sha256.as_bytes(), paket.imza.as_ref())?;
-        let mut kayit = self.kayit_yukle()?;
+        let kayit = self.kayit_yukle()?;
         for alan in &paket.veri_sahibi {
             if let Some(s) = kayit.veri_sahipleri.get(alan) {
                 if s != &paket.ad {
@@ -715,7 +743,13 @@ impl Kur {
                 }
             }
         }
-        self.cozucu(&kayit, &paket)?;
+        self.cozucu(&kayit, paket)?;
+        Ok(kayit)
+    }
+
+    fn kur_ic(&self, klasor: &Path, sec: bool) -> Sonuc<KurSonuc> {
+        let (paket, paket_bayt) = paket_dogrula(klasor)?;
+        let mut kayit = self.on_denetim(&paket)?;
         let mevcut = kayit.paketler.get(&paket.ad).cloned().unwrap_or_default();
         let secilecek = sec || mevcut.secili.is_none();
         if secilecek || mevcut.secili.as_deref() == Some(paket.surum.as_str()) {
@@ -973,6 +1007,25 @@ impl Kur {
         Ok(liste_satirlari(&k))
     }
 
+    /// Kurulmamış bir paketi (klasör ya da `.zip`) kurmadan doğrular: alanlar, yollar, sınırlar, her dosyanın SHA256'sı,
+    /// `icerik_sha256` ve imza kuralı (güvenilir anahtar varsa imza zorunlu). Zip açılmaz, diske hiçbir şey yazılmaz.
+    pub fn paket_denetle(&self, yol: &Path) -> Sonuc<PaketDenetim> {
+        let (paket, _) = if zip_mi(yol) {
+            zipac::zip_denetle(yol)?
+        } else {
+            paket::paket_dogrula(yol)?
+        };
+        let imza =
+            self.imza_denetle("Paket", paket.icerik_sha256.as_bytes(), paket.imza.as_ref())?;
+        Ok(PaketDenetim {
+            ad: paket.ad,
+            surum: paket.surum,
+            dosya_sayisi: paket.dosyalar.len(),
+            icerik_sha256: paket.icerik_sha256,
+            imza,
+        })
+    }
+
     /// Depo içeriği SHA256 ↔ paket.json; kayit.json iç özeti (`ozet`); tutarlılık. Boş liste = sağlam.
     pub fn dogrula(&self, ad: Option<&str>) -> Sonuc<Vec<Sorun>> {
         let (kayit, ham) = self.kayit_oku_ham()?;
@@ -1060,6 +1113,91 @@ impl Kur {
                 Err(_) => sorunlar.push(Sorun::Eksik(format!("{etiket}: {} okunamadı", d.yol))),
             }
         }
+    }
+
+    /// Cihaz anahtarı (S3a, VPN yok kararı): veri kökünde `cihaz/cihaz.key` yoksa üretir; `sunucu` verilmişse
+    /// `POST /v1/cihaz/kayit` ile kaydeder (yönetici TAA Çatı'dan onaylar). Dönen özet: {kimlik, ad, uretildi, kayit?}.
+    pub fn cihaz_hazirla(
+        &self,
+        ad: Option<&str>,
+        sunucu: Option<&str>,
+        sube: Option<&str>,
+        sertifika: Option<&Path>,
+    ) -> Sonuc<serde_json::Value> {
+        self.cihaz_hazirla_veri_ile(veri::veri_kok_ortamdan(), ad, sunucu, sube, sertifika)
+    }
+
+    pub fn cihaz_hazirla_veri_ile(
+        &self,
+        veri_kok: Option<PathBuf>,
+        ad: Option<&str>,
+        sunucu: Option<&str>,
+        sube: Option<&str>,
+        sertifika: Option<&Path>,
+    ) -> Sonuc<serde_json::Value> {
+        use taa_cihaz::CihazAnahtari;
+        let kok = veri_kok.ok_or_else(|| {
+            KurHata::Cozum(
+                "Veri kökü bulunamadı (TAA_VERI_KOK ya da APPDATA). Öneri: TAA_VERI_KOK verin."
+                    .into(),
+            )
+        })?;
+        let uretildi = !CihazAnahtari::var_mi(&kok);
+        let c = if uretildi {
+            CihazAnahtari::uret(&kok, ad)
+        } else {
+            CihazAnahtari::yukle(&kok)
+        }
+        .map_err(|e| KurHata::Bozuk(format!("Cihaz anahtarı: {e}")))?;
+        let mut ozet = serde_json::json!({
+            "kimlik": c.kimlik(), "ad": c.ad(), "uretildi": uretildi,
+            "klasor": CihazAnahtari::klasor(&kok).display().to_string(),
+        });
+        if let Some(s) = sunucu {
+            let c = std::sync::Arc::new(c);
+            let g = std::sync::Arc::clone(&c)
+                .gonderici(s, sertifika)
+                .map_err(|e| KurHata::Dogrulama(e.to_string()))?;
+            let y = taa_cihaz::kayit(&g, &c, sube).map_err(|e| KurHata::Diger(e.to_string()))?;
+            ozet["kayit"] = y;
+        }
+        Ok(ozet)
+    }
+
+    /// Paket raporu (T5): veri kökündeki tüm alanları tek yerden okur (salt okunur). Veri kökü ortamdan
+    /// (`TAA_VERI_KOK`, yoksa `%APPDATA%\TAA\veri`) çözülür; `bugun` verilmezse bugün (UTC).
+    pub fn rapor(&self, bugun: Option<&str>) -> Sonuc<taa_rapor::Rapor> {
+        self.rapor_veri_ile(veri::veri_kok_ortamdan(), bugun)
+    }
+
+    /// `rapor` ile aynı; veri kökü verilir (testler sahte kök kullanır). Kök yoksa tüm bölümler "yok" olur.
+    pub fn rapor_veri_ile(
+        &self,
+        veri_kok: Option<PathBuf>,
+        bugun: Option<&str>,
+    ) -> Sonuc<taa_rapor::Rapor> {
+        let kaynaklar = match veri_kok {
+            Some(k) => taa_rapor::Kaynaklar::veri_kokunden(&k),
+            None => taa_rapor::Kaynaklar::default(),
+        };
+        let bugun = bugun
+            .map(str::to_string)
+            .unwrap_or_else(taa_rapor::tarih::bugun);
+        taa_rapor::uret(&kaynaklar, &bugun).map_err(KurHata::Dogrulama)
+    }
+
+    /// Raporu `<kök>/raporlar/rapor-<damga>.csv` olarak kaydeder (var olan dosya ezilmez); yolu döner.
+    pub fn rapor_kaydet(&self, rapor: &taa_rapor::Rapor) -> Sonuc<PathBuf> {
+        let yol = self
+            .kok
+            .join("raporlar")
+            .join(format!("rapor-{}.csv", zaman::simdi().1));
+        taa_dosya::atomik_yaz(&yol, rapor.csv().as_bytes()).map_err(|e| {
+            KurHata::Diger(format!(
+                "Rapor yazılamadı ({}): {e}. Öneri: kök klasörün yazılabilir olduğunu denetleyin.",
+                yol.display()
+            ))
+        })
     }
 
     /// Kök, sürümler, sahiplik tablosu, son hatalar. Sır içermez.

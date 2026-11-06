@@ -8,10 +8,41 @@ use std::path::Path;
 use std::process::ExitCode;
 use taa_kur::{Kur, KurHata, Sorun};
 
-const KULLANIM: &str = "Kullanım: taa-kur <liste|kur|kaldir|sec|geri-don|dogrula|tani> [bağımsız değişkenler] [--json]. Öneri: ayrıntı için docs/T1-TASARIM.md §1.4.";
+const KULLANIM: &str = "Kullanım: taa-kur <liste|kur|kaldir|sec|geri-don|dogrula|tani|rapor|cihaz> [bağımsız değişkenler] [--json]. Öneri: `taa-kur yardim` komutları açıklar.";
+
+const YARDIM: &str = "\
+taa-kur — TAA kurulum yöneticisi. Kök: TAA_KOK ortamı ya da ikilinin yanı; `tani` gösterir.
+Komutlar:
+  liste                              Kurulu paketler (ad, kurulu sürümler, seçili, sabit).
+  kur <paket.zip|paket-klasörü> [--sec]
+                                     Paketi doğrulayıp depo\\<ad>\\<sürüm> altına kurar; --sec seçili yapar.
+                                     Güvenilir anahtar (anahtarlar\\*.pub) varsa imzasız paket reddedilir.
+  kaldir <ad> [--surum S]            Seçili (ya da verilen) sürümü eski\\ altına taşır; veri silinmez.
+  sec <ad> <sürüm>                   Seçili sürümü değiştirir.    geri-don <ad>   Önceki seçili sürüme döner.
+  dogrula                            Depo + kayıt tutarlılığı (tüm paketler).
+  dogrula <ad>                       Yalnız kurulu <ad> paketi.
+  dogrula <paket.zip|klasör>         Kurulmamış paketi KURMADAN doğrular (sha256, icerik_sha256, imza).
+  tani                               Kök, kayıt, veri alanları, güvenilir anahtarlar, uyarılar.
+  rapor [--kaydet] [--bugun T]        Paket raporu: fiş, kasa, bildirim, katalog, pano, yedek alanlarını tek yerden
+                                     okur (salt okunur). --kaydet kök\\raporlar\\rapor-<damga>.csv yazar (Excel açar).
+  cihaz [--ad A] [--sunucu URL] [--sube K] [--sertifika pem]
+                                     Bu PC'nin cihaz anahtarını üretir (varsa korur); --sunucu verilirse merkeze
+                                     kaydeder (yönetici TAA Çatı'dan onaylar). Veri kökü: TAA_VERI_KOK / %APPDATA%\\TAA\\veri.
+  yardim | --help | -h               Bu metin.
+Her komut --json alır (makine okunur). Çıkış: 0 tamam, 2 doğrulama/kullanım, 3 çözüm yok, 4 yok, 5 bozuk, 6 kilitli, 1 diğer.
+Ayrıntı: docs/T1-TASARIM.md §1.4, docs/paket-zip.md, docs/T3-TASARIM.md.";
 
 fn main() -> ExitCode {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
+    if args.is_empty()
+        || matches!(
+            args[0].as_str(),
+            "yardim" | "--yardim" | "--help" | "-h" | "help"
+        )
+    {
+        println!("{YARDIM}");
+        return ExitCode::from(0);
+    }
     let json = args.iter().any(|a| a == "--json");
     args.retain(|a| a != "--json");
     match calistir(&args, json) {
@@ -199,6 +230,30 @@ fn calistir(args: &[String], json: bool) -> Result<(), KurHata> {
                 return Err(kullanim("Fazla bağımsız değişken: taa-kur dogrula [ad]."));
             }
             let kur = Kur::ortamdan()?;
+            // Var olan bir yol (klasör ya da .zip) verildiyse kurulmamış paket doğrulanır; kurulmaz.
+            if let Some(y) = a.konumsal.first().map(Path::new).filter(|y| y.exists()) {
+                let d = kur.paket_denetle(y)?;
+                if json {
+                    yaz_json(&serde_json::to_value(&d).unwrap_or(Value::Null));
+                } else {
+                    let imza = match &d.imza {
+                        taa_kur::ImzaDurumu::Dogrulandi(k) => {
+                            format!("imza doğrulandı (anahtar {k})")
+                        }
+                        taa_kur::ImzaDurumu::Denetlenmedi => {
+                            "imza denetlenmedi: güvenilir anahtar yok".to_string()
+                        }
+                    };
+                    println!(
+                        "Paket geçerli: {} {} ({} dosya, icerik_sha256 {}…); {imza}.",
+                        d.ad,
+                        d.surum,
+                        d.dosya_sayisi,
+                        d.icerik_sha256.chars().take(12).collect::<String>()
+                    );
+                }
+                return Ok(());
+            }
             let sorunlar = kur.dogrula(a.konumsal.first().map(String::as_str))?;
             if json {
                 yaz_json(&json!({
@@ -273,6 +328,112 @@ fn calistir(args: &[String], json: bool) -> Result<(), KurHata> {
                 }
                 for h in &t.son_hatalar {
                     println!("Son hata: {}", tek_satir(h));
+                }
+            }
+            Ok(())
+        }
+        "cihaz" => {
+            let mut ad = None;
+            let mut sunucu = None;
+            let mut sube = None;
+            let mut sertifika: Option<std::path::PathBuf> = None;
+            let mut i = 0;
+            while i < kalan.len() {
+                let deger = |i: &mut usize, a: &str| -> Result<String, KurHata> {
+                    *i += 1;
+                    kalan
+                        .get(*i)
+                        .cloned()
+                        .ok_or_else(|| kullanim(&format!("{a} için değer eksik.")))
+                };
+                match kalan[i].as_str() {
+                    "--ad" => ad = Some(deger(&mut i, "--ad")?),
+                    "--sunucu" => sunucu = Some(deger(&mut i, "--sunucu")?),
+                    "--sube" => sube = Some(deger(&mut i, "--sube")?),
+                    "--sertifika" => sertifika = Some(deger(&mut i, "--sertifika")?.into()),
+                    x => {
+                        return Err(kullanim(&format!(
+                            "Bilinmeyen bağımsız değişken: {x}. Örnek: taa-kur cihaz [--ad A] [--sunucu URL] [--sube K] [--json]."
+                        )))
+                    }
+                }
+                i += 1;
+            }
+            let kur = Kur::ortamdan()?;
+            let o = kur.cihaz_hazirla(
+                ad.as_deref(),
+                sunucu.as_deref(),
+                sube.as_deref(),
+                sertifika.as_deref(),
+            )?;
+            if json {
+                yaz_json(&o);
+            } else {
+                println!(
+                    "Cihaz: kimlik {} ad {} ({})",
+                    o["kimlik"].as_str().unwrap_or("?"),
+                    o["ad"].as_str().unwrap_or("?"),
+                    if o["uretildi"].as_bool().unwrap_or(false) {
+                        "yeni üretildi"
+                    } else {
+                        "zaten vardı"
+                    }
+                );
+                if let Some(k) = o.get("kayit") {
+                    println!(
+                        "Sunucu kaydı: durum {}{}",
+                        k["durum"].as_str().unwrap_or("?"),
+                        if k["durum"] == "bekliyor" {
+                            " — yönetici TAA Çatı'dan onaylamalı"
+                        } else {
+                            ""
+                        }
+                    );
+                }
+            }
+            Ok(())
+        }
+        "rapor" => {
+            let mut kaydet = false;
+            let mut bugun: Option<String> = None;
+            let mut i = 0;
+            while i < kalan.len() {
+                match kalan[i].as_str() {
+                    "--kaydet" => kaydet = true,
+                    "--bugun" => {
+                        i += 1;
+                        bugun = Some(
+                            kalan
+                                .get(i)
+                                .cloned()
+                                .ok_or_else(|| kullanim("--bugun için değer eksik."))?,
+                        );
+                    }
+                    x => {
+                        return Err(kullanim(&format!(
+                            "Bilinmeyen bağımsız değişken: {x}. Örnek: taa-kur rapor [--kaydet] [--bugun YYYY-AA-GG] [--json]."
+                        )))
+                    }
+                }
+                i += 1;
+            }
+            let kur = Kur::ortamdan()?;
+            let r = kur.rapor(bugun.as_deref())?;
+            let yol = if kaydet {
+                Some(kur.rapor_kaydet(&r)?)
+            } else {
+                None
+            };
+            if json {
+                let mut v = r.json();
+                if let Some(y) = &yol {
+                    v["csv"] = Value::String(y.display().to_string());
+                }
+                yaz_json(&v);
+            } else {
+                print!("{}", r.metin());
+                if let Some(y) = &yol {
+                    println!("CSV kaydedildi: {}", y.display());
                 }
             }
             Ok(())
