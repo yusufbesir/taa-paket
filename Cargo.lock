@@ -865,6 +865,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "taa-rapor"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "taa-ayar",
+ "taa-dosya",
+]
+
+[[package]]
 name = "taa-rehber"
 version = "0.1.0"
 dependencies = [
