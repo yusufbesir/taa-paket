@@ -1,0 +1,14 @@
+# Sahip: Yusuf. yazan: [Claude#taa-kimlik-T7 2026-11-06]
+# taa-kimlik modül tanımı. Ortak crate: giriş, oturum deposu, kuyruğu oturumla gönderme. Parola/oturum depoya ve dosyaya yazılmaz
+# (Windows'ta Kimlik Bilgisi Yöneticisi; Windows dışı yalnız test içindir).
+ad = "taa-kimlik"
+surum = "0.1.0"
+arayuz = "1"
+gerektirir = { "taa-dosya" = "1", "taa-kuyruk" = "1" }
+ozellikler = ["kimlik"]
+program = "ortak"
+sunar = ["kimlik.giris@1", "kimlik.kuyruk-gonder@1"]
+ister = []
+veri_sahibi = []
+veri_okur = []
+ayar_alani = "moduller.taa-kimlik"
