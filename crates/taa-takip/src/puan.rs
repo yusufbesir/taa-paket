@@ -504,6 +504,11 @@ fn birlestir(kayitlar: &[Kayit]) -> Gorunum {
     g
 }
 
+/// Tüm işaretler, tutanaklarıyla birleşik (yönetici ekranı için). Özellik denetimi çağıranda.
+pub fn isaretler(kayitlar: &[Kayit]) -> Vec<Isaret> {
+    birlestir(kayitlar).isaretler
+}
+
 fn aralik(bas: &str, bit: &str) -> Result<(i64, i64), String> {
     match (gun_no(bas), gun_no(bit)) {
         (Some(b), Some(e)) if b <= e => Ok((b, e)),

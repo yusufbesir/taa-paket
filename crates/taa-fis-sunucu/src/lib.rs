@@ -197,6 +197,13 @@ impl Uygulama {
                     Err(e) => Yanit::hata(404, &e),
                 }
             }
+            ("GET", ["yonetim", "puan"]) => {
+                if !i.yerel {
+                    return Yanit::hata(403, "yalnız bu bilgisayardan");
+                }
+                Yanit::html(sayfalar::PUAN_YONETIM.into())
+            }
+            ("GET", ["api", "yonetim", "isaretler"]) => self.puan_isaretleri(i),
             ("POST", ["api", "yonetim", "tutanak"]) => self.puan_tutanak(i),
             ("GET", ["api", "yonetim", "puan", bas, bit]) => self.puan_raporu(i, bas, bit),
             ("POST", ["api", "yonetim", "puan", "gozden-gecir", bas, bit]) => {
@@ -506,6 +513,20 @@ impl Uygulama {
         match defter.tutanak_yaz(v["isaret_id"].as_u64().unwrap_or(0), t) {
             Ok(()) => Yanit::json(200, json!({ "tamam": true })),
             Err(e) => Yanit::hata(422, &e),
+        }
+    }
+
+    /// Tutanak bekleyenler ve yazılmış tutanaklar (yalnız bu bilgisayardan, `usta-puan` açıkken).
+    fn puan_isaretleri(&self, i: &Istek) -> Yanit {
+        if !i.yerel {
+            return Yanit::hata(403, "yalnız bu bilgisayardan");
+        }
+        if !taa_ayar::ozellik_acik("usta-puan", false) {
+            return Yanit::hata(503, &taa_ayar::kapali_mesaji("usta-puan"));
+        }
+        match taa_takip::PuanDefteri::dizinden(&self.dizin).oku() {
+            Ok(k) => Yanit::json(200, json!({ "isaretler": taa_takip::puan_isaretleri(&k) })),
+            Err(e) => Yanit::hata(500, &e),
         }
     }
 
@@ -1200,6 +1221,24 @@ mod testler {
         assert!(
             v["puanlar"][0]["puan"].is_number(),
             "aralık deneme dönemini aşıyor"
+        );
+        let l = u.isle(&ist("GET", "/api/yonetim/isaretler", None, "", true));
+        assert_eq!(l.kod, 200);
+        let v: serde_json::Value = serde_json::from_slice(&l.govde).unwrap();
+        assert_eq!(v["isaretler"][0]["tutanak"]["yonetici"], "Yusuf");
+        assert_eq!(
+            u.isle(&ist("GET", "/api/yonetim/isaretler", Some(&t), "", false))
+                .kod,
+            403
+        );
+        assert_eq!(
+            u.isle(&ist("GET", "/yonetim/puan", Some(&t), "", false))
+                .kod,
+            403
+        );
+        assert_eq!(
+            u.isle(&ist("GET", "/yonetim/puan", None, "", true)).kod,
+            200
         );
         std::env::remove_var("TAA_OZELLIK_QR_URETIM");
         std::env::remove_var("TAA_OZELLIK_USTA_PUAN");
