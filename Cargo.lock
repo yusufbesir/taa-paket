@@ -840,6 +840,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "taa-kuyruk"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "taa-dosya",
+]
+
+[[package]]
 name = "taa-nebim"
 version = "0.1.0"
 dependencies = [
