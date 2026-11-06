@@ -105,6 +105,14 @@ pub enum Kayit {
     },
 }
 
+/// İki YYYY-AA-GG tarihi arasındaki gün farkı (b − a); geçersizse 0.
+pub fn gun_farki(a: &str, b: &str) -> i64 {
+    match (gun_no(a), gun_no(b)) {
+        (Some(x), Some(y)) => y - x,
+        _ => 0,
+    }
+}
+
 fn tarih_gecerli(t: &str) -> bool {
     gun_no(t).is_some()
 }

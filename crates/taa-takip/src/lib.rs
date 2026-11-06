@@ -9,8 +9,8 @@ mod puan;
 mod sure;
 mod zorluk;
 pub use puan::{
-    anomaliler, gozden_gecir, hesapla as puan_hesapla, Anomali, AyarOnerisi, Isaret, IsaretTuru,
-    Kayit, Olay, PuanAyari, PuanDefteri, Sonuc, Tutanak, UstaPuan,
+    anomaliler, gozden_gecir, gun_farki, hesapla as puan_hesapla, Anomali, AyarOnerisi, Isaret,
+    IsaretTuru, Kayit, Olay, PuanAyari, PuanDefteri, Sonuc, Tutanak, UstaPuan,
 };
 pub use sure::{oner as teslim_oner, Oneri, SureTablosu, Zor};
 pub use zorluk::Zorluk;
