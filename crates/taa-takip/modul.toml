@@ -3,10 +3,10 @@ ad = "taa-takip"
 surum = "0.1.0"
 arayuz = "1"
 gerektirir = { "taa-ayar" = "1", "taa-fis" = "1" }
-ozellikler = ["fis-takip", "teslim-oneri"]
+ozellikler = ["fis-takip", "teslim-oneri", "qr-uretim", "usta-puan"]
 program = "taafis"  # T0 kararı: TaaFiş ailesi tek program; ayrı program için taa-fis-sunucu Cargo features (T2)
-sunar = ["takip.raporla@1", "teslim.oneri@1"]
+sunar = ["takip.raporla@1", "teslim.oneri@1", "takip.puan@1"]
 ister = []
-veri_sahibi = ["zorluk"]
+veri_sahibi = ["zorluk", "usta-puan"]
 veri_okur = ["fis-defteri"]
 ayar_alani = "programlar.taatakip"

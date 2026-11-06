@@ -5,8 +5,13 @@
 //! TaaSüre (`sure` modülü): fiş yazılırken usta yoğunluğuna göre tahmini teslim tarihi önerisi; özellik anahtarı `teslim-oneri` (varsayılan AÇIK).
 //! Özellik anahtarı `fis-takip`: varsayılan AÇIK. Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-05].
 
+mod puan;
 mod sure;
 mod zorluk;
+pub use puan::{
+    anomaliler, gozden_gecir, hesapla as puan_hesapla, Anomali, AyarOnerisi, Isaret, IsaretTuru,
+    Kayit, Olay, PuanAyari, PuanDefteri, Sonuc, Tutanak, UstaPuan,
+};
 pub use sure::{oner as teslim_oner, Oneri, SureTablosu, Zor};
 pub use zorluk::Zorluk;
 

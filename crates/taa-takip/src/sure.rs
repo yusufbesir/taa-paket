@@ -2,7 +2,7 @@
 //! Sayı uydurulmaz: işlem süreleri ve usta günlük kapasitesi ustadan gelip `sure.json` dosyasına yazılır.
 //! Gömülü varsayılan tablo BOŞTUR; tablo ya da kapasite yoksa sonuç "tahmin yok, elle seç" olur.
 //! Öneri yalnız öneridir: fiş hiçbir zaman otomatik tarihlenmez, personel değiştirebilir.
-//! Usta karşılaştırması/puanı YOKTUR (kapalı). Sahip: Yusuf.
+//! Usta puanı bu modülde YOKTUR; ayrı modül `puan` (varsayılan kapalı, yalnız yönetici). Sahip: Yusuf.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -88,7 +88,7 @@ impl SureTablosu {
         }
     }
 
-    fn kapali_mi(&self, gun: i64) -> bool {
+    pub(crate) fn kapali_mi(&self, gun: i64) -> bool {
         let hafta = GUNLER[(gun + 3).rem_euclid(7) as usize]; // 1970-01-01 perşembe
         self.kapali_gunler.iter().any(|g| g == hafta)
             || self.kapali_tarihler.iter().any(|d| gun_no(d) == Some(gun))
@@ -103,7 +103,7 @@ impl SureTablosu {
     }
 
     /// `zor_evet`: personel zor-durum sorusuna "evet" dedi mi. Ölçü eşiği aşılmışsa da zor sayılır.
-    fn kalem_dk(&self, k: &Kalem, zor_evet: bool) -> Option<u32> {
+    pub fn kalem_dk(&self, k: &Kalem, zor_evet: bool) -> Option<u32> {
         let kod = k.islem_kodu.as_deref()?;
         if let Some(z) = self.zor.get(kod) {
             if zor_evet || k.olcu_mm.is_some_and(|m| m > z.esik_mm) {
@@ -118,7 +118,7 @@ impl SureTablosu {
 }
 
 /// YYYY-AA-GG -> 1970-01-01'den beri gün sayısı (geçersizse None).
-fn gun_no(s: &str) -> Option<i64> {
+pub(crate) fn gun_no(s: &str) -> Option<i64> {
     let p: Vec<&str> = s.split('-').collect();
     if p.len() != 3 || p[0].len() != 4 || p[1].len() != 2 || p[2].len() != 2 {
         return None;
@@ -144,7 +144,7 @@ fn ay_gunu(y: i64, m: i64) -> i64 {
     }
 }
 
-fn gun_tarih(n: i64) -> String {
+pub(crate) fn gun_tarih(n: i64) -> String {
     let z = n + 719468;
     let era = z.div_euclid(146097);
     let doe = z - era * 146097;

@@ -1,6 +1,8 @@
 # TaaSüre: öğrenen süre tahmini (plan)
 Sahip: Yusuf. İstek 2026-11-06: usta belirtilen süreden hızlı/yavaş yaparsa tahmin süreleri usta bazlı zamanla güncellensin. Bu bir TASARIM planıdır; kodlanmadı, onay bekliyor.
 
+> GÜNCELLEME 2026-11-06 22:59 (Yusuf): Başladı/Bitti tuşu yerine usta QR okutur; kazanılan dakika = adet × norm süre (`taa-takip::puan`, docs/USTA-PUAN.md). Gerçek süre ölçümü isteğe bağlı sonraya kaldı. Ağırlık/hedefler veri geldikçe `gozden_gecir` ile sınırlı ayarlanır.
+
 ## Önce veri: şu an gerçek süre ölçülemiyor
 Fiş durum geçmişi yalnız TARİH tutuyor (bekliyor/terzihanede/hazır). Dakika ölçmek için ustanın iş başında iki dokunuşu gerekir: **Başladı** ve **Bitti** (zaman damgalı, kalem başına). Bu olmadan öğrenme olmaz. Dokunuş telefonda ya da ustanın ekranında tek tuş; fişte zaten `imzalar` (usta imzası) mekanizması var, aynı yerden zaman damgası alınabilir.
 

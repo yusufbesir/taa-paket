@@ -32,7 +32,7 @@ Raporların ilk 6'sı tam elde; 7. rapor (dosya-donusturucu / taadon) kesik, 8-1
 | taa-terzi | 0.1.0 = 0.1.0 | taaterzi | Gömülü `src/islemler.json`; geçersiz kılma `<defter dizini>/terzi-kurallari.json` (elle) | varsayilan, json_den, dizinden, bul, kontrol | İki kural kaynağı; özellik anahtarı yok (`islem-katalogu`, `sinir-denetimi` kodda karşılıksız) |
 | taa-kombin | 0.1.0 = 0.1.0 | taakombin | Veri yok | oner, normalize, takim_renkleri | — |
 | taa-bildirim | 0.1.0 = 0.1.0 | taabildirim | `<dizin>/bildirimler.jsonl` (eklemeli), `<dizin>/bildirim-sablonu.txt` (elle) | hazir_bildir, Kuyruk (mesajlar, bekleyenler, isle) | `M-{n}` kimliği kilitsiz → çift kimlik; telefon düz metin, saklama süresi yok (KVKK); bozuk satır tüm okumayı durdurur; gerçek Gonderici yok |
-| taa-takip | 0.1.0 = 0.1.0 | taatakip | Okur `fisler.jsonl`; `<dizin>/zorluk.json` (elle, gömülü varsayılan) | Takip (geciken, kargo, ozet, usta raporu), Zorluk | — |
+| taa-takip | 0.1.0 = 0.1.0 | taatakip | Okur `fisler.jsonl`; `<dizin>/zorluk.json` (elle, gömülü varsayılan); yazar `<dizin>/usta-puan.jsonl` (eklemeli), `<dizin>/puan-ayar.json` | Takip (geciken, kargo, ozet, usta raporu), Zorluk, puan (PuanDefteri, PuanAyari, puan_hesapla, anomaliler, gozden_gecir) | — |
 | taa-telegram | 0.1.0 = 0.1.0 | taatelegram | `<dizin>/telegram.json` (gizli anahtar; elle); `fisler.jsonl`a durum yazar | Ayar::dizinden, Bot::yanit (ağ yok) | modul `gerektirir` eksik: taa-takip, taa-dosya; fiş defterine ikinci yazar; sır dosyası |
 | taa-subesor | 0.1.0 = 0.1.0 | taasubesor | Çağıranın verdiği JSONL defter | sor, yanitla, ozetler | `S-{n}` kilitsiz; dosya adı tanımsız |
 
