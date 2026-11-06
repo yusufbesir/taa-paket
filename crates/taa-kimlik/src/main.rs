@@ -6,7 +6,9 @@
 use std::io::{BufRead, Read};
 use std::path::PathBuf;
 use std::process::ExitCode;
-use taa_kimlik::{giris, kuyrugu_gonder, varsayilan_depo, CurlGonderici, KimlikHata};
+use taa_kimlik::{
+    cihaz_imzalayici, giris, kuyrugu_gonder, varsayilan_depo, CurlGonderici, KimlikHata,
+};
 
 const YARDIM: &str = "\
 taa-kimlik — merkez sunucuya giriş ve oturum saklama (Windows Kimlik Bilgisi Yöneticisi).
@@ -18,6 +20,7 @@ Kullanım:
   --sunucu     Verilmezse TAA_SUNUCU ortam değişkeni.   --kok  Verilmezse TAA_VERI_KOK, yoksa %APPDATA%\\TAA\\veri.
   giris: parola standart girdiden okunur (örnek: echo parola | taa-kimlik giris ...  ya da yazıp Enter).
   gonder: depodaki oturumla <kök>\\kuyruk\\* altındaki tüm program kuyruklarını sunucuya yollar (taa-kuyruk).
+  Cihaz anahtarı (<kök>\\cihaz\\cihaz.key, taa-cihaz uret) varsa her istek onunla imzalanır (X-TAA-* başlıkları).
 Parola ve oturum anahtarı hiçbir dosyaya, depoya ya da ekrana yazılmaz.";
 
 fn veri_kok_ortamdan() -> Option<PathBuf> {
@@ -143,6 +146,14 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
             let mut g = CurlGonderici::yeni(&sunucu).map_err(|e| (2, e.to_string()))?;
             if let Some(c) = &sertifika {
                 g = g.sertifika(c);
+            }
+            // Cihaz anahtarı varsa istek imzalanır (sunucu imzasız girişi reddeder; taa-cihaz uret).
+            match cihaz_imzalayici(&kok).map_err(kh)? {
+                Some(i) => g = g.imzalayici(i),
+                None => eprintln!(
+                    "uyarı: cihaz anahtarı yok ({}); sunucu imzasız isteği reddedebilir. Öneri: taa-cihaz uret",
+                    kok.join("cihaz").display()
+                ),
             }
             let o = giris(&g, &sunucu, &k, parola, kod.as_deref()).map_err(kh)?;
             depo.kaydet(&o).map_err(kh)?;

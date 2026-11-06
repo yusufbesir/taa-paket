@@ -12,6 +12,7 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::Arc;
 
 /// Saniye cinsinden bir isteğin en uzun süresi (curl `--max-time`).
 pub const EN_UZUN_SURE_SN: u64 = 60;
@@ -50,6 +51,18 @@ pub trait Gonderici {
     fn gonder(&self, uc: &str, govde: &Value) -> Result<Value, GonderHata>;
 }
 
+/// İstek imzalayıcı (cihaz kimliği, API-SOZLESMESI "Cihaz kimliği"): her isteğe ek başlıklar üretir.
+/// `yontem` ("POST"), `yol` (sorgu dahil `/v1/...`), `govde` gönderilecek baytlar. Dönen (ad, değer) çiftleri
+/// tek satır ASCII olmalı; aksi halde gönderim yapılandırma hatasıyla durur.
+pub trait Imzalayici: Send + Sync {
+    fn basliklar(
+        &self,
+        yontem: &str,
+        yol: &str,
+        govde: &[u8],
+    ) -> Result<Vec<(String, String)>, String>;
+}
+
 pub fn http_url_mu(s: &str) -> bool {
     let k = s.trim().to_ascii_lowercase();
     k.starts_with("http://") || k.starts_with("https://")
@@ -68,12 +81,24 @@ fn yerel_mi(url: &str) -> bool {
 }
 
 /// `curl` ile HTTP(S) gönderici.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct CurlGonderici {
     taban: String,
     oturum: Option<String>,
     ca: Option<PathBuf>,
     kullanici_ajani: String,
+    imzalayici: Option<Arc<dyn Imzalayici>>,
+}
+
+impl fmt::Debug for CurlGonderici {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CurlGonderici")
+            .field("taban", &self.taban)
+            .field("oturum", &self.oturum.as_ref().map(|_| "<gizli>"))
+            .field("ca", &self.ca)
+            .field("imzalayici", &self.imzalayici.is_some())
+            .finish()
+    }
 }
 
 impl CurlGonderici {
@@ -90,7 +115,18 @@ impl CurlGonderici {
             oturum: None,
             ca: None,
             kullanici_ajani: "taa-kuyruk".into(),
+            imzalayici: None,
         })
+    }
+
+    /// Cihaz imzalayıcısı: her isteğe `X-TAA-*` başlıklarını ekler (taa-cihaz).
+    pub fn imzalayici(mut self, i: Arc<dyn Imzalayici>) -> CurlGonderici {
+        self.imzalayici = Some(i);
+        self
+    }
+
+    pub fn imzali_mi(&self) -> bool {
+        self.imzalayici.is_some()
     }
 
     /// Oturum anahtarı (Bearer). Boş ya da satır sonu içeren değer reddedilir.
@@ -115,7 +151,7 @@ impl CurlGonderici {
         &self.taban
     }
 
-    fn basliklar(&self) -> Result<PathBuf, GonderHata> {
+    fn basliklar(&self, uc: &str, govde: &[u8]) -> Result<PathBuf, GonderHata> {
         let klasor = taa_dosya::gecici_klasor()
             .map_err(|e| GonderHata::Yapilandirma(format!("geçici klasör açılamadı: {e}")))?;
         let yol = klasor.join("basliklar.txt");
@@ -123,6 +159,21 @@ impl CurlGonderici {
             String::from("Content-Type: application/json\r\nAccept: application/json\r\n");
         if let Some(o) = &self.oturum {
             icerik.push_str(&format!("Authorization: Bearer {o}\r\n"));
+        }
+        if let Some(i) = &self.imzalayici {
+            for (ad, deger) in i
+                .basliklar("POST", uc, govde)
+                .map_err(|e| GonderHata::Yapilandirma(format!("istek imzalanamadı: {e}")))?
+            {
+                let tek_satir =
+                    |s: &str| s.is_ascii() && !s.contains(['\n', '\r']) && !s.is_empty();
+                if !tek_satir(&ad) || !tek_satir(&deger) || ad.contains(':') {
+                    return Err(GonderHata::Yapilandirma(format!(
+                        "imza başlığı tek satır ASCII olmalı: {ad}"
+                    )));
+                }
+                icerik.push_str(&format!("{ad}: {deger}\r\n"));
+            }
         }
         let mut f = fs::File::create(&yol)
             .map_err(|e| GonderHata::Yapilandirma(format!("başlık dosyası yazılamadı: {e}")))?;
@@ -204,7 +255,8 @@ impl Gonderici for CurlGonderici {
             return Err(GonderHata::Yapilandirma(format!("geçersiz uç: {uc}")));
         }
         let url = format!("{}{}", self.taban, uc);
-        let basliklar = self.basliklar()?;
+        let govde_bayt = govde.to_string().into_bytes();
+        let basliklar = self.basliklar(uc, &govde_bayt)?;
         #[cfg(test)]
         {
             *SON_BASLIK_DOSYASI.lock().unwrap() = Some(basliklar.clone());
@@ -222,7 +274,7 @@ impl Gonderici for CurlGonderici {
                     ))
                 })?;
             if let Some(mut g) = cocuk.stdin.take() {
-                let _ = g.write_all(govde.to_string().as_bytes());
+                let _ = g.write_all(&govde_bayt);
             }
             let c = cocuk
                 .wait_with_output()

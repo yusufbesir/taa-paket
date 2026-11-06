@@ -4,7 +4,7 @@
 ad = "taa-kimlik"
 surum = "0.1.0"
 arayuz = "1"
-gerektirir = { "taa-dosya" = "1", "taa-kuyruk" = "1" }
+gerektirir = { "taa-cihaz" = "1", "taa-dosya" = "1", "taa-kuyruk" = "1" }
 ozellikler = ["kimlik"]
 program = "ortak"
 sunar = ["kimlik.giris@1", "kimlik.kuyruk-gonder@1"]

@@ -718,6 +718,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "taa-cihaz"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "taa-dosya",
+ "taa-imza",
+ "taa-kuyruk",
+]
+
+[[package]]
 name = "taa-donustur"
 version = "1.6.0"
 dependencies = [
@@ -821,6 +831,7 @@ name = "taa-kimlik"
 version = "0.1.0"
 dependencies = [
  "serde_json",
+ "taa-cihaz",
  "taa-dosya",
  "taa-kuyruk",
  "windows-sys",

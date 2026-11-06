@@ -16,11 +16,12 @@
 #[cfg(test)]
 mod testler;
 
-pub use taa_kuyruk::{CurlGonderici, GonderHata, Gonderici};
+pub use taa_kuyruk::{CurlGonderici, GonderHata, Gonderici, Imzalayici};
 
 use serde_json::{json, Value};
 use std::fmt;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 pub const OZELLIK: &str = "kimlik";
 /// Giriş ucu.
@@ -68,6 +69,12 @@ pub struct Oturum {
     pub kullanici: String,
     pub sube_id: Value,
     pub roller: Vec<String>,
+    /// Sunucunun verdiği izin adları (`program.islem`); eski sunucu yanıtında boş.
+    pub izinler: Vec<String>,
+    /// Bu kullanıcı/şubeye açık programlar; boşsa sınırlama bilgisi yok.
+    pub programlar: Vec<String>,
+    /// İzin listesinin çevrimdışı geçerlilik sonu (ISO); boşsa sınırsız.
+    pub gecerlilik: String,
     pub zaman: String,
     oturum: String,
 }
@@ -79,6 +86,9 @@ impl fmt::Debug for Oturum {
             .field("kullanici", &self.kullanici)
             .field("sube_id", &self.sube_id)
             .field("roller", &self.roller)
+            .field("izinler", &self.izinler)
+            .field("programlar", &self.programlar)
+            .field("gecerlilik", &self.gecerlilik)
             .field("zaman", &self.zaman)
             .field("oturum", &"<gizli>")
             .finish()
@@ -98,6 +108,9 @@ impl Oturum {
             "kullanici": self.kullanici,
             "sube_id": self.sube_id,
             "roller": self.roller,
+            "izinler": self.izinler,
+            "programlar": self.programlar,
+            "gecerlilik": self.gecerlilik,
             "zaman": self.zaman,
         })
     }
@@ -123,21 +136,57 @@ impl Oturum {
             kullanici: al("kullanici")?,
             sube_id: v.get("sube_id").cloned().unwrap_or(Value::Null),
             roller: roller_coz(v.get("roller")),
+            izinler: roller_coz(v.get("izinler")),
+            programlar: roller_coz(v.get("programlar")),
+            gecerlilik: al("gecerlilik").unwrap_or_default(),
             zaman: al("zaman").unwrap_or_default(),
             oturum: al("oturum")?,
         })
     }
 
-    /// Bu oturumla kuyruk göndericisi kurar.
+    /// Bu izin var mı? (`yonetici` rolü her izni taşır: K4 rol hiyerarşisi; sunucu yine her istekte denetler.)
+    pub fn izinli(&self, izin: &str) -> bool {
+        self.roller.iter().any(|r| r == "yonetici") || self.izinler.iter().any(|i| i == izin)
+    }
+
+    /// Program bu oturuma açık mı? Liste boşsa (eski sunucu) açık sayılır.
+    pub fn program_acik(&self, program: &str) -> bool {
+        self.programlar.is_empty() || self.programlar.iter().any(|p| p == program)
+    }
+
+    /// Bu oturumla kuyruk göndericisi kurar (cihaz imzası yok; bkz. `gonderici_ile`).
     pub fn gonderici(&self, sertifika: Option<&Path>) -> Result<CurlGonderici, KimlikHata> {
+        self.gonderici_ile(sertifika, None)
+    }
+
+    /// Oturum + isteğe bağlı cihaz imzalayıcısı (`taa_cihaz::CihazAnahtari`). VPN yok kararıyla sunucu
+    /// cihaz imzası olmayan isteği reddeder; `cihaz_imzalayici(kok)` ile yüklenir.
+    pub fn gonderici_ile(
+        &self,
+        sertifika: Option<&Path>,
+        cihaz: Option<Arc<dyn Imzalayici>>,
+    ) -> Result<CurlGonderici, KimlikHata> {
         let mut g = CurlGonderici::yeni(&self.sunucu)
             .and_then(|g| g.oturum(&self.oturum))
             .map_err(|e| KimlikHata::Baglanti(e.to_string()))?;
         if let Some(c) = sertifika {
             g = g.sertifika(c);
         }
+        if let Some(i) = cihaz {
+            g = g.imzalayici(i);
+        }
         Ok(g)
     }
+}
+
+/// `<kök>/cihaz/` altında cihaz anahtarı varsa imzalayıcı olarak yükler; yoksa None (sunucu reddedebilir),
+/// bozuksa hata.
+pub fn cihaz_imzalayici(kok: &Path) -> Result<Option<Arc<dyn Imzalayici>>, KimlikHata> {
+    if !taa_cihaz::CihazAnahtari::var_mi(kok) {
+        return Ok(None);
+    }
+    let c = taa_cihaz::CihazAnahtari::yukle(kok).map_err(|e| KimlikHata::Depo(e.to_string()))?;
+    Ok(Some(Arc::new(c)))
 }
 
 fn roller_coz(v: Option<&Value>) -> Vec<String> {
@@ -219,6 +268,13 @@ pub fn giris(
         kullanici: kullanici.to_string(),
         sube_id: yanit.get("sube_id").cloned().unwrap_or(Value::Null),
         roller: roller_coz(yanit.get("roller")),
+        izinler: roller_coz(yanit.get("izinler")),
+        programlar: roller_coz(yanit.get("programlar")),
+        gecerlilik: yanit
+            .get("gecerlilik")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
         zaman: taa_kuyruk::zaman::simdi(),
         oturum,
     })
@@ -419,7 +475,7 @@ pub fn kuyrugu_gonder(
     en_cok: usize,
 ) -> Result<Vec<(String, taa_kuyruk::GonderOzeti)>, KimlikHata> {
     let o = depo.oku(sunucu)?;
-    let g = o.gonderici(sertifika)?;
+    let g = o.gonderici_ile(sertifika, cihaz_imzalayici(kok)?)?;
     let mut sonuc = Vec::new();
     for (ad, k) in taa_kuyruk::Kuyruk::hepsi(kok).map_err(|e| KimlikHata::Depo(e.to_string()))? {
         let oz = k

@@ -1,0 +1,13 @@
+# Sahip: Yusuf. yazan: [Claude#taa-cihaz-S2 2026-11-06]
+# taa-cihaz modül tanımı. Ortak crate: cihaz anahtarı <veri kökü>/cihaz/ (cihaz.key gizli, cihaz.pub, cihaz.json), istek imzası.
+ad = "taa-cihaz"
+surum = "0.1.0"
+arayuz = "1"
+gerektirir = { "taa-dosya" = "1", "taa-imza" = "1", "taa-kuyruk" = "1" }
+ozellikler = ["cihaz"]
+program = "ortak"
+sunar = ["cihaz.imzala@1", "cihaz.kayit@1"]
+ister = []
+veri_sahibi = ["cihaz"]
+veri_okur = []
+ayar_alani = "moduller.taa-cihaz"
