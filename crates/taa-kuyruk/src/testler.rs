@@ -244,6 +244,7 @@ fn curl_gonderici_dogrulama() {
 // ---- curl ile gerçek gönderim: küçük yerel HTTP sunucusu ----
 
 struct Istek {
+    yontem: String,
     yol: String,
     basliklar: Vec<String>,
     govde: String,
@@ -275,13 +276,16 @@ fn http_sunucu(kayit: Arc<Mutex<Vec<Istek>>>) -> String {
             }
             let mut govde = vec![0u8; uzunluk];
             let _ = okuyucu.read_exact(&mut govde);
+            let yontem = satir.split_whitespace().next().unwrap_or("").to_string();
             let yol = satir.split_whitespace().nth(1).unwrap_or("/").to_string();
             let (durum, cevap) = match yol.as_str() {
                 "/v1/olay" => ("201 Created", "{\"id\":42}"),
+                "/v1/kullanici?aktif=1" => ("200 OK", "[{\"id\":1}]"),
                 "/v1/ret" => ("422 Unprocessable Entity", "alan eksik"),
                 _ => ("500 Internal Server Error", ""),
             };
             kayit.lock().unwrap().push(Istek {
+                yontem,
                 yol,
                 basliklar,
                 govde: String::from_utf8_lossy(&govde).into_owned(),
@@ -430,6 +434,60 @@ fn curl_imzali_basliklar() {
         kayit.lock().unwrap().len(),
         1,
         "bozuk başlıkla istek gitmemeli"
+    );
+}
+
+#[test]
+fn curl_get_sorgulu() {
+    if !curl_var() {
+        return;
+    }
+    let _k = CURL_KILIT.lock().unwrap_or_else(|e| e.into_inner());
+    let kayit = Arc::new(Mutex::new(Vec::new()));
+    let adres = http_sunucu(kayit.clone());
+    let g = CurlGonderici::yeni(&adres)
+        .unwrap()
+        .oturum("tok")
+        .unwrap()
+        .imzalayici(Arc::new(SahteImzalayici));
+    let y = g.al("/v1/kullanici?aktif=1").unwrap();
+    assert_eq!(y, json!([{"id": 1}]));
+    let istekler = kayit.lock().unwrap();
+    assert_eq!(istekler[0].yontem, "GET");
+    assert_eq!(istekler[0].yol, "/v1/kullanici?aktif=1");
+    assert!(istekler[0].govde.is_empty());
+    assert!(istekler[0]
+        .basliklar
+        .iter()
+        .any(|b| b == "Authorization: Bearer tok"));
+    assert!(istekler[0]
+        .basliklar
+        .iter()
+        .any(|b| b == "X-TAA-Imza: GET|/v1/kullanici?aktif=1|0"));
+    assert!(!istekler[0]
+        .basliklar
+        .iter()
+        .any(|b| b.to_ascii_lowercase().starts_with("content-type")));
+    drop(istekler);
+    assert!(matches!(
+        g.al("/v1/x?a=b c"),
+        Err(GonderHata::Yapilandirma(_))
+    ));
+    assert!(matches!(g.al("/v1/x?"), Err(GonderHata::Yapilandirma(_))));
+    assert!(uc_sorgulu_gecerli(
+        "/v1/olay?islem=fis.sil&tarih_bas=2026-11-01&limit=50"
+    ));
+    assert!(!uc_sorgulu_gecerli("/v1/olay?a=b#x"));
+    assert!(!uc_sorgulu_gecerli("/v1/../x?a=1"));
+    struct Yalniz;
+    impl Gonderici for Yalniz {
+        fn gonder(&self, _: &str, _: &Value) -> Result<Value, GonderHata> {
+            Ok(Value::Null)
+        }
+    }
+    assert!(
+        matches!(Yalniz.al("/v1/x"), Err(GonderHata::Yapilandirma(_))),
+        "varsayılan GET yok"
     );
 }
 
