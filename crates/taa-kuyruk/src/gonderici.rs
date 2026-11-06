@@ -219,7 +219,8 @@ pub fn cikti_ayir(stdout: &[u8]) -> Option<(Vec<u8>, u16)> {
     Some((stdout[..n].to_vec(), kod))
 }
 
-/// HTTP durum koduna göre sonuç: 2xx kabul; 408/429/5xx ve 0 bekler; diğer 4xx kalıcı ret.
+/// HTTP durum koduna göre sonuç: 2xx kabul; 408/409/429/5xx ve 0 bekler; diğer 4xx kalıcı ret.
+/// 409 (`tekrar`: aynı saniyede aynı imzalı istek) kalıcı değildir; bir sonraki çalıştırmada yeniden imzalanır.
 pub fn kodu_yorumla(kod: u16, govde: &[u8]) -> Result<Value, GonderHata> {
     let metin = || {
         let m = String::from_utf8_lossy(govde);
@@ -237,7 +238,7 @@ pub fn kodu_yorumla(kod: u16, govde: &[u8]) -> Result<Value, GonderHata> {
             }
             Ok(serde_json::from_slice(govde).unwrap_or_else(|_| Value::String(metin())))
         }
-        408 | 429 | 500..=599 => Err(GonderHata::Ulasilamadi(format!(
+        408 | 409 | 429 | 500..=599 => Err(GonderHata::Ulasilamadi(format!(
             "HTTP {kod}: {}. Öneri: sunucu toparlanınca yeniden deneyin.",
             metin()
         ))),

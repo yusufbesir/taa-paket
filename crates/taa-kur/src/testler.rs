@@ -763,3 +763,36 @@ fn guvensiz_ad_surum_yol_reddi() {
     assert_eq!(o.kur.kur(&k, false).unwrap_err().cikis_kodu(), 2);
     assert_eq!(o.kur.kaldir("CON", None).unwrap_err().cikis_kodu(), 2);
 }
+
+#[test]
+fn cihaz_hazirla_uretir_ve_korur() {
+    let kok = taa_dosya::gecici_klasor().unwrap();
+    let kur = Kur::yeni(&kok).unwrap();
+    let veri = taa_dosya::gecici_klasor().unwrap();
+    assert!(
+        kur.cihaz_hazirla_veri_ile(None, None, None, None, None)
+            .is_err(),
+        "veri kökü yoksa hata"
+    );
+    let o = kur
+        .cihaz_hazirla_veri_ile(Some(veri.clone()), Some("Pendik"), None, None, None)
+        .unwrap();
+    assert_eq!(o["uretildi"], true);
+    assert_eq!(o["ad"], "Pendik");
+    assert!(veri.join("cihaz").join("cihaz.key").is_file());
+    let o2 = kur
+        .cihaz_hazirla_veri_ile(Some(veri.clone()), Some("Baska"), None, None, None)
+        .unwrap();
+    assert_eq!(o2["uretildi"], false);
+    assert_eq!(
+        o2["kimlik"], o["kimlik"],
+        "ikinci çağrı aynı anahtarı korur"
+    );
+    assert_eq!(o2["ad"], "Pendik");
+    assert!(o2.get("kayit").is_none());
+    // Geçersiz sunucu adresi doğrulama hatası (anahtar yine korunur).
+    let e = kur
+        .cihaz_hazirla_veri_ile(Some(veri.clone()), None, Some("ftp://x"), None, None)
+        .unwrap_err();
+    assert!(matches!(e, KurHata::Dogrulama(_)));
+}

@@ -1115,6 +1115,55 @@ impl Kur {
         }
     }
 
+    /// Cihaz anahtarı (S3a, VPN yok kararı): veri kökünde `cihaz/cihaz.key` yoksa üretir; `sunucu` verilmişse
+    /// `POST /v1/cihaz/kayit` ile kaydeder (yönetici TAA Çatı'dan onaylar). Dönen özet: {kimlik, ad, uretildi, kayit?}.
+    pub fn cihaz_hazirla(
+        &self,
+        ad: Option<&str>,
+        sunucu: Option<&str>,
+        sube: Option<&str>,
+        sertifika: Option<&Path>,
+    ) -> Sonuc<serde_json::Value> {
+        self.cihaz_hazirla_veri_ile(veri::veri_kok_ortamdan(), ad, sunucu, sube, sertifika)
+    }
+
+    pub fn cihaz_hazirla_veri_ile(
+        &self,
+        veri_kok: Option<PathBuf>,
+        ad: Option<&str>,
+        sunucu: Option<&str>,
+        sube: Option<&str>,
+        sertifika: Option<&Path>,
+    ) -> Sonuc<serde_json::Value> {
+        use taa_cihaz::CihazAnahtari;
+        let kok = veri_kok.ok_or_else(|| {
+            KurHata::Cozum(
+                "Veri kökü bulunamadı (TAA_VERI_KOK ya da APPDATA). Öneri: TAA_VERI_KOK verin."
+                    .into(),
+            )
+        })?;
+        let uretildi = !CihazAnahtari::var_mi(&kok);
+        let c = if uretildi {
+            CihazAnahtari::uret(&kok, ad)
+        } else {
+            CihazAnahtari::yukle(&kok)
+        }
+        .map_err(|e| KurHata::Bozuk(format!("Cihaz anahtarı: {e}")))?;
+        let mut ozet = serde_json::json!({
+            "kimlik": c.kimlik(), "ad": c.ad(), "uretildi": uretildi,
+            "klasor": CihazAnahtari::klasor(&kok).display().to_string(),
+        });
+        if let Some(s) = sunucu {
+            let c = std::sync::Arc::new(c);
+            let g = std::sync::Arc::clone(&c)
+                .gonderici(s, sertifika)
+                .map_err(|e| KurHata::Dogrulama(e.to_string()))?;
+            let y = taa_cihaz::kayit(&g, &c, sube).map_err(|e| KurHata::Diger(e.to_string()))?;
+            ozet["kayit"] = y;
+        }
+        Ok(ozet)
+    }
+
     /// Paket raporu (T5): veri kökündeki tüm alanları tek yerden okur (salt okunur). Veri kökü ortamdan
     /// (`TAA_VERI_KOK`, yoksa `%APPDATA%\TAA\veri`) çözülür; `bugun` verilmezse bugün (UTC).
     pub fn rapor(&self, bugun: Option<&str>) -> Sonuc<taa_rapor::Rapor> {

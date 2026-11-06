@@ -1,13 +1,14 @@
 // Sahip: Yusuf. yazan: [Claude#taa-kimlik-T7 2026-11-06]
 //! `taa-kimlik` komut satırı. Yalnız std::env::args; clap yok.
 //! Parola komut satırına yazılmaz: standart girdiden tek satır okunur. Oturum anahtarı hiç basılmaz.
-//! Çıkış kodları: 0 tamam, 2 kullanım/doğrulama, 3 sunucuya ulaşılamadı, 4 giriş reddedildi, 5 oturum yok, 1 diğer.
+//! Çıkış kodları: 0 tamam, 2 kullanım/doğrulama, 3 sunucuya ulaşılamadı, 4 giriş reddedildi, 5 oturum/yetki yok, 7 yetkisiz, 1 diğer.
 
 use std::io::{BufRead, Read};
 use std::path::PathBuf;
 use std::process::ExitCode;
 use taa_kimlik::{
-    cihaz_imzalayici, giris, kuyrugu_gonder, varsayilan_depo, CurlGonderici, KimlikHata,
+    cihaz_imzalayici, giris_dogrulayarak, kuyrugu_gonder, sunucu_anahtari_oku, varsayilan_depo,
+    yetki_al, yetki_oku, CurlGonderici, KimlikHata,
 };
 
 const YARDIM: &str = "\
@@ -17,6 +18,9 @@ Kullanım:
   taa-kimlik durum  --sunucu <https://adres> [--json]
   taa-kimlik cikis  --sunucu <https://adres>
   taa-kimlik gonder --sunucu <https://adres> [--kok <veri kökü>] [--sertifika <pem>] [--en-cok N] [--json]
+  taa-kimlik yetki  --sunucu <https://adres> [--program <ad>] [--izin <program.islem>] [--kok] [--json]
+               Saklı yetki belgesine göre (internet gerekmez): çıkış 0 izinli, 7 yetkisiz, 5 belge yok/süresi geçmiş.
+  Sunucu genel anahtarı <kök>\\anahtarlar\\sunucu.pub varsa giriş yanıtı ve yetki belgesi imzası doğrulanır.
   --sunucu     Verilmezse TAA_SUNUCU ortam değişkeni.   --kok  Verilmezse TAA_VERI_KOK, yoksa %APPDATA%\\TAA\\veri.
   giris: parola standart girdiden okunur (örnek: echo parola | taa-kimlik giris ...  ya da yazıp Enter).
   gonder: depodaki oturumla <kök>\\kuyruk\\* altındaki tüm program kuyruklarını sunucuya yollar (taa-kuyruk).
@@ -65,7 +69,7 @@ fn hata_kodu(e: &KimlikHata) -> u8 {
         KimlikHata::GecersizGirdi(_) => 2,
         KimlikHata::GirisReddi { .. } => 4,
         KimlikHata::Baglanti(_) => 3,
-        KimlikHata::OturumYok => 5,
+        KimlikHata::OturumYok | KimlikHata::YetkiYok(_) => 5,
         KimlikHata::BozukYanit(_) | KimlikHata::Depo(_) => 1,
     }
 }
@@ -73,6 +77,8 @@ fn hata_kodu(e: &KimlikHata) -> u8 {
 fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
     let mut sunucu: Option<String> = None;
     let mut kullanici: Option<String> = None;
+    let mut program: Option<String> = None;
+    let mut izin: Option<String> = None;
     let mut kod: Option<String> = None;
     let mut sertifika: Option<PathBuf> = None;
     let mut kok: Option<PathBuf> = None;
@@ -94,6 +100,8 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
             "--sunucu" => sunucu = Some(deger(&mut i, "--sunucu")?),
             "--kullanici" => kullanici = Some(deger(&mut i, "--kullanici")?),
             "--kod" => kod = Some(deger(&mut i, "--kod")?),
+            "--program" => program = Some(deger(&mut i, "--program")?),
+            "--izin" => izin = Some(deger(&mut i, "--izin")?),
             "--sertifika" => sertifika = Some(PathBuf::from(deger(&mut i, "--sertifika")?)),
             "--kok" => kok = Some(PathBuf::from(deger(&mut i, "--kok")?)),
             "--en-cok" => {
@@ -155,8 +163,34 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
                     kok.join("cihaz").display()
                 ),
             }
-            let o = giris(&g, &sunucu, &k, parola, kod.as_deref()).map_err(kh)?;
+            let anahtar = sunucu_anahtari_oku(&kok).map_err(kh)?;
+            if anahtar.is_none() {
+                eprintln!(
+                    "uyarı: sunucu genel anahtarı yok ({}); sunucu yanıtının imzası doğrulanmıyor.",
+                    kok.join("anahtarlar").join("sunucu.pub").display()
+                );
+            }
+            let o = giris_dogrulayarak(&g, &sunucu, &k, parola, kod.as_deref(), anahtar.as_ref())
+                .map_err(kh)?;
             depo.kaydet(&o).map_err(kh)?;
+            // Çevrimdışı yetki belgesi (POST /v1/yetki, imzalı, oturumsuz). Başarısızlık girişi bozmaz.
+            match o
+                .gonderici_ile(sertifika.as_deref(), cihaz_imzalayici(&kok).ok().flatten())
+                .and_then(|g| yetki_al(&g, &kok, &sunucu, anahtar.as_ref()))
+            {
+                Ok(y) if !json => println!(
+                    "yetki belgesi alındı: {} izin, geçerlilik {}{}",
+                    y.izinler.len(),
+                    y.gecerlilik,
+                    if y.dogrulandi {
+                        ""
+                    } else {
+                        " (imza doğrulanmadı)"
+                    }
+                ),
+                Ok(_) => {}
+                Err(e) => eprintln!("uyarı: yetki belgesi alınamadı: {e}"),
+            }
             if json {
                 println!("{}", o.ozet());
             } else {
@@ -185,6 +219,43 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
                 );
             }
             Ok(0)
+        }
+        Some("yetki") => {
+            let anahtar = sunucu_anahtari_oku(&kok).map_err(kh)?;
+            let y = yetki_oku(&kok, &sunucu, anahtar.as_ref(), None).map_err(kh)?;
+            let mut red = Vec::new();
+            if let Some(p) = &program {
+                if !y.program_acik(p) {
+                    red.push(format!("program kapalı: {p}"));
+                }
+            }
+            if let Some(i) = &izin {
+                if !y.izinli(i) {
+                    red.push(format!("izin yok: {i}"));
+                }
+            }
+            if json {
+                let mut v = y.ozet();
+                v["sonuc"] = serde_json::json!(if red.is_empty() { "izinli" } else { "yetkisiz" });
+                v["neden"] = serde_json::json!(red);
+                println!("{v}");
+            } else if red.is_empty() {
+                println!(
+                    "izinli: {} (roller {}, {} izin, geçerlilik {}{})",
+                    y.kullanici,
+                    y.roller.join(","),
+                    y.izinler.len(),
+                    y.gecerlilik,
+                    if y.dogrulandi {
+                        ""
+                    } else {
+                        ", imza doğrulanmadı"
+                    }
+                );
+            } else {
+                println!("yetkisiz: {}", red.join("; "));
+            }
+            Ok(if red.is_empty() { 0 } else { 7 })
         }
         Some("cikis") => {
             depo.cikis(&sunucu).map_err(kh)?;

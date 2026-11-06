@@ -25,6 +25,42 @@ pub fn bicimle(saniye: i64) -> String {
     format!("{y:04}-{a:02}-{g:02}T{s:02}:{d:02}:{sn:02}Z")
 }
 
+/// `YYYY-AA-GGTSS:DD:SSZ` metnini UNIX saniyesine çevirir; biçim bozuksa None.
+pub fn coz(iso: &str) -> Option<i64> {
+    let b = iso.as_bytes();
+    if b.len() != 20
+        || b[4] != b'-'
+        || b[7] != b'-'
+        || b[10] != b'T'
+        || b[13] != b':'
+        || b[16] != b':'
+        || b[19] != b'Z'
+    {
+        return None;
+    }
+    let n = |a: usize, u: usize| iso.get(a..a + u)?.parse::<i64>().ok();
+    let (y, a, g, s, d, sn) = (
+        n(0, 4)?,
+        n(5, 2)?,
+        n(8, 2)?,
+        n(11, 2)?,
+        n(14, 2)?,
+        n(17, 2)?,
+    );
+    if !(1..=12).contains(&a) || !(1..=31).contains(&g) || s > 23 || d > 59 || sn > 60 {
+        return None;
+    }
+    // days_from_civil (Howard Hinnant)
+    let y2 = if a <= 2 { y - 1 } else { y };
+    let era = y2.div_euclid(400);
+    let yoe = y2 - era * 400;
+    let mp = if a > 2 { a - 3 } else { a + 9 };
+    let doy = (153 * mp + 2) / 5 + g - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let gun = era * 146_097 + doe - 719_468;
+    Some(gun * 86_400 + s * 3600 + d * 60 + sn)
+}
+
 pub fn simdi() -> String {
     let s = SystemTime::now()
         .duration_since(UNIX_EPOCH)

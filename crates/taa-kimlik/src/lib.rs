@@ -13,6 +13,9 @@
 //!
 //! Özellik anahtarı: "kimlik".
 
+pub mod yetki;
+pub use yetki::{sunucu_anahtari_oku, yetki_al, yetki_oku, Yetki, YETKI_UCU};
+
 #[cfg(test)]
 mod testler;
 
@@ -41,6 +44,8 @@ pub enum KimlikHata {
     BozukYanit(String),
     /// Depoda oturum yok.
     OturumYok,
+    /// Saklı yetki belgesi yok, bozuk ya da süresi geçmiş (varsayılan: reddet).
+    YetkiYok(String),
     /// Depo (Kimlik Bilgisi Yöneticisi / dosya) hatası.
     Depo(String),
 }
@@ -55,6 +60,7 @@ impl fmt::Display for KimlikHata {
             KimlikHata::Baglanti(m) => write!(f, "{m}"),
             KimlikHata::BozukYanit(m) => write!(f, "sunucu yanıtı beklenen biçimde değil: {m}"),
             KimlikHata::OturumYok => write!(f, "kayıtlı oturum yok. Öneri: taa-kimlik giris"),
+            KimlikHata::YetkiYok(m) => write!(f, "yetki yok: {m}"),
             KimlikHata::Depo(m) => write!(f, "oturum deposu hatası: {m}"),
         }
     }
@@ -230,13 +236,27 @@ pub fn sunucu_anahtari(sunucu: &str) -> String {
     }
 }
 
-/// `POST /v1/giris`. `kod`: isteğe bağlı ikinci adım (SMS/uygulama) kodu.
+/// `POST /v1/giris`. `kod`: isteğe bağlı ikinci adım (SMS/uygulama) kodu. Sunucu imzası denetlenmez
+/// (bkz. [`giris_dogrulayarak`]).
 pub fn giris(
     g: &dyn Gonderici,
     sunucu: &str,
     kullanici: &str,
     parola: &str,
     kod: Option<&str>,
+) -> Result<Oturum, KimlikHata> {
+    giris_dogrulayarak(g, sunucu, kullanici, parola, kod, None)
+}
+
+/// [`giris`] + sunucu genel anahtarı verilmişse yanıtın `imza` alanı doğrulanır (kanonik bayt, imza hariç);
+/// imzasız ya da yanlış imzalı yanıt `BozukYanit` ile reddedilir.
+pub fn giris_dogrulayarak(
+    g: &dyn Gonderici,
+    sunucu: &str,
+    kullanici: &str,
+    parola: &str,
+    kod: Option<&str>,
+    sunucu_anahtari: Option<&taa_imza::GenelAnahtar>,
 ) -> Result<Oturum, KimlikHata> {
     if !kullanici_gecerli(kullanici) {
         return Err(KimlikHata::GecersizGirdi(format!(
@@ -257,6 +277,9 @@ pub fn giris(
         }
         Err(e) => return Err(KimlikHata::Baglanti(e.to_string())),
     };
+    if let Some(a) = sunucu_anahtari {
+        yetki::belge_dogrula(&yanit, a)?;
+    }
     let oturum = yanit
         .get("oturum")
         .and_then(Value::as_str)
