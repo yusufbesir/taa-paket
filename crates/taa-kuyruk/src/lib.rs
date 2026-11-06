@@ -183,6 +183,23 @@ pub fn uc_gecerli(uc: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'/' | b'_' | b'-'))
 }
 
+/// Sorgulu uç (`GET /v1/olay?islem=fis&limit=50`): yol kısmı [`uc_gecerli`], sorgu kısmı yalnız
+/// `A-Za-z0-9 _ - . = & % : ,` (boşluk, satır sonu, `#` yok).
+pub fn uc_sorgulu_gecerli(uc: &str) -> bool {
+    match uc.split_once('?') {
+        None => uc_gecerli(uc),
+        Some((yol, sorgu)) => {
+            uc_gecerli(yol)
+                && !sorgu.is_empty()
+                && uc.len() <= 1024
+                && sorgu.bytes().all(|b| {
+                    b.is_ascii_alphanumeric()
+                        || matches!(b, b'_' | b'-' | b'.' | b'=' | b'&' | b'%' | b':' | b',')
+                })
+        }
+    }
+}
+
 pub fn program_gecerli(p: &str) -> bool {
     !p.is_empty()
         && p.len() <= NO_EN_COK

@@ -47,8 +47,16 @@ pub(crate) static SON_BASLIK_DOSYASI: std::sync::Mutex<Option<PathBuf>> =
     std::sync::Mutex::new(None);
 
 pub trait Gonderici {
-    /// `uc` `/v1/...` biçiminde; `govde` JSON nesnesi. Başarıda sunucu yanıtı (JSON ya da Null).
+    /// `POST`: `uc` `/v1/...` biçiminde; `govde` JSON nesnesi. Başarıda sunucu yanıtı (JSON ya da Null).
     fn gonder(&self, uc: &str, govde: &Value) -> Result<Value, GonderHata>;
+
+    /// `GET`: `uc` sorgu içerebilir (`/v1/olay?limit=50`, bkz. `uc_sorgulu_gecerli`). Varsayılan: desteklenmez
+    /// (kuyruk yalnız POST kullanır; yönetim okumaları için `CurlGonderici` gerçekler).
+    fn al(&self, uc: &str) -> Result<Value, GonderHata> {
+        Err(GonderHata::Yapilandirma(format!(
+            "bu gönderici GET desteklemiyor: {uc}"
+        )))
+    }
 }
 
 /// İstek imzalayıcı (cihaz kimliği, API-SOZLESMESI "Cihaz kimliği"): her isteğe ek başlıklar üretir.
@@ -151,18 +159,20 @@ impl CurlGonderici {
         &self.taban
     }
 
-    fn basliklar(&self, uc: &str, govde: &[u8]) -> Result<PathBuf, GonderHata> {
+    fn basliklar(&self, yontem: &str, uc: &str, govde: &[u8]) -> Result<PathBuf, GonderHata> {
         let klasor = taa_dosya::gecici_klasor()
             .map_err(|e| GonderHata::Yapilandirma(format!("geçici klasör açılamadı: {e}")))?;
         let yol = klasor.join("basliklar.txt");
-        let mut icerik =
-            String::from("Content-Type: application/json\r\nAccept: application/json\r\n");
+        let mut icerik = String::from("Accept: application/json\r\n");
+        if yontem == "POST" {
+            icerik.push_str("Content-Type: application/json\r\n");
+        }
         if let Some(o) = &self.oturum {
             icerik.push_str(&format!("Authorization: Bearer {o}\r\n"));
         }
         if let Some(i) = &self.imzalayici {
             for (ad, deger) in i
-                .basliklar("POST", uc, govde)
+                .basliklar(yontem, uc, govde)
                 .map_err(|e| GonderHata::Yapilandirma(format!("istek imzalanamadı: {e}")))?
             {
                 let tek_satir =
@@ -182,15 +192,17 @@ impl CurlGonderici {
         Ok(yol)
     }
 
-    fn komut(&self, url: &str, basliklar: &Path) -> Command {
+    fn komut(&self, yontem: &str, url: &str, basliklar: &Path) -> Command {
         let mut c = Command::new("curl");
-        c.args(["--silent", "--show-error", "--request", "POST"])
+        c.args(["--silent", "--show-error", "--request", yontem])
             .args(["--proto", "=http,https", "--max-redirs", "0"])
             .args(["--max-time", &EN_UZUN_SURE_SN.to_string()])
             .args(["--max-filesize", &YANIT_EN_COK.to_string()])
             .args(["--user-agent", &self.kullanici_ajani])
-            .args(["--data-binary", "@-"])
             .args(["--write-out", "\n%{http_code}"]);
+        if yontem == "POST" {
+            c.args(["--data-binary", "@-"]);
+        }
         c.arg("--header").arg(format!("@{}", basliklar.display()));
         if let Some(ca) = &self.ca {
             c.arg("--cacert").arg(ca);
@@ -250,22 +262,23 @@ pub fn kodu_yorumla(kod: u16, govde: &[u8]) -> Result<Value, GonderHata> {
     }
 }
 
-impl Gonderici for CurlGonderici {
-    fn gonder(&self, uc: &str, govde: &Value) -> Result<Value, GonderHata> {
-        if !super::uc_gecerli(uc) {
-            return Err(GonderHata::Yapilandirma(format!("geçersiz uç: {uc}")));
-        }
+impl CurlGonderici {
+    /// Ortak istek: `yontem` POST (gövdeli) ya da GET (gövdesiz). Başlık dosyası iş bitince kaldırılır.
+    fn istek(&self, yontem: &str, uc: &str, govde_bayt: &[u8]) -> Result<Value, GonderHata> {
         let url = format!("{}{}", self.taban, uc);
-        let govde_bayt = govde.to_string().into_bytes();
-        let basliklar = self.basliklar(uc, &govde_bayt)?;
+        let basliklar = self.basliklar(yontem, uc, govde_bayt)?;
         #[cfg(test)]
         {
             *SON_BASLIK_DOSYASI.lock().unwrap() = Some(basliklar.clone());
         }
         let sonuc = (|| {
             let mut cocuk = self
-                .komut(&url, &basliklar)
-                .stdin(Stdio::piped())
+                .komut(yontem, &url, &basliklar)
+                .stdin(if yontem == "POST" {
+                    Stdio::piped()
+                } else {
+                    Stdio::null()
+                })
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
@@ -275,7 +288,7 @@ impl Gonderici for CurlGonderici {
                     ))
                 })?;
             if let Some(mut g) = cocuk.stdin.take() {
-                let _ = g.write_all(&govde_bayt);
+                let _ = g.write_all(govde_bayt);
             }
             let c = cocuk
                 .wait_with_output()
@@ -302,5 +315,21 @@ impl Gonderici for CurlGonderici {
             let _ = fs::remove_dir(k);
         }
         sonuc
+    }
+}
+
+impl Gonderici for CurlGonderici {
+    fn gonder(&self, uc: &str, govde: &Value) -> Result<Value, GonderHata> {
+        if !super::uc_gecerli(uc) {
+            return Err(GonderHata::Yapilandirma(format!("geçersiz uç: {uc}")));
+        }
+        self.istek("POST", uc, &govde.to_string().into_bytes())
+    }
+
+    fn al(&self, uc: &str) -> Result<Value, GonderHata> {
+        if !super::uc_sorgulu_gecerli(uc) {
+            return Err(GonderHata::Yapilandirma(format!("geçersiz uç: {uc}")));
+        }
+        self.istek("GET", uc, &[])
     }
 }

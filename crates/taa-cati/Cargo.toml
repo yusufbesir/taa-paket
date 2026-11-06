@@ -1,0 +1,22 @@
+# taa-cati: TAA Çatı — yalnız sunucu PC'sinde çalışan yönetim programı (kullanıcı/rol, cihaz onayı, program yetkisi, günlük).
+# Sahip: Yusuf. yazan: [Claude#taa-cati-S3b 2026-11-06]. Yeni dış crate yok: HTTP taa-kuyruk (curl), oturum taa-kimlik.
+[package]
+name = "taa-cati"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "TAA Çatı: merkez sunucunun yönetim uçlarını kullanan yönetici aracı (kullanıcı, rol, cihaz onayı, program yetkisi, günlük)"
+
+[lib]
+name = "taa_cati"
+path = "src/lib.rs"
+
+[[bin]]
+name = "taa-cati"
+path = "src/main.rs"
+
+[dependencies]
+serde_json = "1"
+taa-kimlik = { path = "../taa-kimlik" }
+taa-kuyruk = { path = "../taa-kuyruk" }
