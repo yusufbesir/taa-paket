@@ -122,3 +122,34 @@ pub fn yonetim(
         satirlar = satirlar
     )
 }
+
+/// Yönetici puan ekranı (yalnız sunucu bilgisayarı). Usta ekranına ASLA verilmez. Veri `/api/yonetim/...` uçlarından gelir.
+pub const PUAN_YONETIM: &str = r##"<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Usta puanı (yönetici)</title>
+<style>:root{--a:#1f3a5f;--b:#fff;--k:#e9eef5;--u:#b3261e}@media(prefers-color-scheme:dark){:root{--a:#8ab4f8;--b:#15181d;--k:#222833;--u:#f2b8b5}}
+body{font:16px system-ui;background:var(--b);color:var(--a);margin:20px;max-width:1100px}table{border-collapse:collapse;width:100%;margin:8px 0}td,th{padding:6px 10px;text-align:left;border-bottom:1px solid var(--k);vertical-align:top}
+button,input,select,textarea{font:inherit;padding:6px 10px;margin:2px}.kutu{background:var(--k);padding:10px 14px;border-radius:8px;margin:8px 0}.uyari{color:var(--u)}small{opacity:.8}</style></head><body>
+<h1>Usta puanı (yalnız yönetici)</h1>
+<p><small>Bu ekran yalnızca bu bilgisayarda açılır. Puanlar ustalara gösterilmez.</small></p>
+<div>Başlangıç <input type="date" id="bas"> Bitiş <input type="date" id="bit"> <button id="hesapla">Hesapla</button> <button id="ayar">Ayarları veriye göre gözden geçir</button></div>
+<div id="mesaj" class="uyari"></div>
+<h2>Puanlar</h2><div id="puanlar"></div>
+<h2>Ani değişim uyarıları</h2><div id="anomali"></div>
+<h2>Tutanak bekleyen ve yazılmış işaretler</h2><div id="isaretler"></div>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const iso=d=>d.toISOString().slice(0,10);
+$('#bit').value=iso(new Date());$('#bas').value=iso(new Date(Date.now()-29*864e5));
+async function api(m,y,g){const r=await fetch(y,{method:m,headers:{'Content-Type':'application/json'},body:g?JSON.stringify(g):undefined});const v=await r.json().catch(()=>({}));if(!r.ok)throw new Error(v.hata||v.mesaj||('Hata '+r.status));return v}
+function hata(e){$('#mesaj').textContent=e.message}
+async function puanlar(){$('#mesaj').textContent='';try{const v=await api('GET','/api/yonetim/puan/'+$('#bas').value+'/'+$('#bit').value);
+ const p=v.puanlar;$('#puanlar').innerHTML=p.length?'<table><tr><th>Usta</th><th>Puan</th><th>İş</th><th>Kazanılan / mevcut dk</th><th>Verimlilik</th><th>Bileşenler (V/K/M/Z/D)</th><th>Yorum</th></tr>'+p.map(x=>{const b=x.bilesenler;return '<tr><td>'+esc(x.usta)+'</td><td><b>'+(x.puan==null?'deneme':x.puan.toFixed(2))+'</b></td><td>'+x.is_adedi+'</td><td>'+Math.round(x.kazanilan_dk)+' / '+x.mevcut_dk+'</td><td>%'+Math.round(x.verimlilik_orani*100)+' (hedef %'+Math.round(x.hedef*100)+')</td><td>'+[b.verimlilik,b.kalite,b.musteri,b.zamaninda,b.duzen].map(n=>n.toFixed(2)).join(' / ')+'</td><td>'+x.yorumlar.map(esc).join('<br>')+'</td></tr>'}).join('')+'</table><small>Ağırlıklar: V '+v.ayar.agirlik.verimlilik+', K '+v.ayar.agirlik.kalite+', M '+v.ayar.agirlik.musteri+', Z '+v.ayar.agirlik.zamaninda+', D '+v.ayar.agirlik.duzen+'; hedef oran '+v.ayar.hedef_oran+'</small>':'Bu aralıkta okutma yok.';
+ $('#anomali').innerHTML=v.anomaliler.length?'<ul>'+v.anomaliler.map(a=>'<li>'+esc(a.mesaj)+'</li>').join('')+'</ul>':'Uyarı yok.'}catch(e){hata(e);$('#puanlar').innerHTML='';$('#anomali').innerHTML=''}}
+async function isaretler(){try{const v=await api('GET','/api/yonetim/isaretler');const l=v.isaretler;
+ $('#isaretler').innerHTML=l.length?l.slice().reverse().map(i=>{const t=i.tutanak;return '<div class="kutu"><b>#'+i.id+'</b> '+esc(i.fis_no)+' kalem '+(i.kalem_no+1)+' · usta '+esc(i.usta)+' · '+(i.tur==='sikayet'?'müşteri şikâyeti':'yeniden iş')+' · '+esc(i.tarih)+'<br>Neden: '+esc(i.neden)+' (tezgâh: '+esc(i.tezgah)+')<br>'+(t?'<b>Tutanak:</b> '+esc(t.sonuc.kismen?('kısmen %'+t.sonuc.kismen.yuzde):(t.sonuc==='usta_kaynakli'?'usta kaynaklı':'usta kaynaklı değil'))+(t.agir?' · AĞIR':'')+' · '+esc(t.aciklama)+' ('+esc(t.yonetici)+', '+esc(t.tarih)+')<br>':'<span class="uyari">Tutanak bekliyor (yarım ağırlıkla sayılıyor)</span><br>')+
+ '<select id="s'+i.id+'"><option value="usta_kaynakli">Usta kaynaklı</option><option value="usta_kaynakli_degil">Usta kaynaklı değil</option><option value="kismen">Kısmen</option></select> <input id="y'+i.id+'" type="number" min="1" max="99" placeholder="Usta payı %" style="width:8em"> <label><input type="checkbox" id="g'+i.id+'"> Ağır hata</label><br><textarea id="a'+i.id+'" rows="2" cols="50" placeholder="Açıklama (zorunlu)"></textarea> <input id="n'+i.id+'" placeholder="Yönetici adı"> <button onclick="tutanak('+i.id+')">'+(t?'Tutanağı yenile':'Tutanak yaz')+'</button></div>'}).join(''):'İşaret yok.'}catch(e){hata(e);$('#isaretler').innerHTML=''}}
+async function tutanak(id){const s=$('#s'+id).value;try{await api('POST','/api/yonetim/tutanak',{isaret_id:id,sonuc:s,yuzde:parseInt($('#y'+id).value||'0',10),agir:$('#g'+id).checked,aciklama:$('#a'+id).value,yonetici:$('#n'+id).value});$('#mesaj').textContent='';isaretler();puanlar()}catch(e){hata(e)}}
+$('#hesapla').onclick=()=>{puanlar();isaretler()};
+$('#ayar').onclick=async()=>{try{const v=await api('POST','/api/yonetim/puan/gozden-gecir/'+$('#bas').value+'/'+$('#bit').value);$('#mesaj').textContent=v.degisti?('Ayar değişti: '+v.degisiklikler.join('; ')):'Değişiklik yok (veri ya da süre yetersiz, ya da otomatik ayar kapalı).';puanlar()}catch(e){hata(e)}};
+puanlar();isaretler();
+</script></body></html>"##;

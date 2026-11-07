@@ -32,8 +32,9 @@ Verimlilikte ani düşüş (son 7 gün, önceki 90 güne göre ≥2 sapma), yeni
 - `POST /api/fis/{no}/okut` (telefon belirteci): gövde isteğe bağlı `{kalemler:[0,1], zor:[0], usta:"Ali"}`. Kalem verilmezse hepsi. Usta yoksa telefonun adı. Norm süre `sure.json`'dan okutma anında yazılır. Yanıt `{okutulan, zaten}`; aynı kalem iki kez okutulmaz. `qr-uretim` kapalıysa 503.
 - `POST /api/fis/{no}/isaret` (telefon, tezgâhtar): `{kalem, tur: yeniden_is|sikayet, neden}`. Usta = kalemi okutan usta, yoksa fişteki usta.
 - Yönetici (yalnız sunucu bilgisayarından, `yerel`): `POST /api/yonetim/tutanak` `{isaret_id, sonuc: usta_kaynakli|usta_kaynakli_degil|kismen, yuzde, agir, aciklama, yonetici}`; `GET /api/yonetim/puan/{başlangıç}/{bitiş}` (puanlar + anomaliler); `POST /api/yonetim/puan/gozden-gecir/{başlangıç}/{bitiş}` (koşullar sağlanırsa ayarı günceller, kaydeder, deftere yazar). `usta-puan` kapalıysa 503.
+- Yönetici ekranı: `http://<sunucu>/yonetim/puan` (yalnız sunucu bilgisayarından). Aralık seçilir; puanlar, bileşenler, yorumlar, ani değişim uyarıları, tutanak bekleyen/yazılmış işaretler ve tutanak formu, "ayarları veriye göre gözden geçir" düğmesi. Veri `GET /api/yonetim/isaretler` ve yukarıdaki uçlardan gelir.
 - Telefon belirteci ustaya da verilebildiği için puan uçları telefondan KAPALI; Çatı rolleri (S3) gelince yönetici izni oradan yönetilecek.
 - Fişe ayrıca kalem başı QR basılmadı: fiş QR'ı yeterli, okutmada fişin kalemleri birlikte kapanır; tek kalemlik okutma `kalemler` ile yapılır.
 
 ## Yapılmadı
-Tezgâh işaret/tutanak için ayrı yönetici ekranı (şimdilik uçlar), yönetici rapor ekranı, kalem başı QR etiketi, zor durum sorusunun okutmada sorulması (`zor` dizisi uçta var, ekranda yok), KVKK aydınlatma metni (avukat).
+Kalem başı QR etiketi, zor durum sorusunun okutmada sorulması (`zor` dizisi uçta var, ekranda yok), KVKK aydınlatma metni (avukat).
