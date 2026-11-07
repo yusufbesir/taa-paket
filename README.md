@@ -30,6 +30,7 @@ TAA Paketi çekirdek deposu: TaaDön ve diğer TAA programlarının paylaştığ
 | taa-ayarlar | planlı | Ortak ayar yönetimi (dosya/arayüz) |
 | taa-kimlik | var | Merkez sunucuya giriş (T7), cihaz imzalı istek, imzalı çevrimdışı yetki belgesi (S3a) |
 | taa-cihaz | var | Cihaz kimliği (S2): kurulumda ed25519 anahtar, her isteğe `X-TAA-*` imza başlıkları; VPN yerine |
+| taa-yol | var | Sunucuya ulaşım yolları (S4a): doğrudan IP / VPN / alan adı / Cloudflare sıralı listesi, ilk ulaşılan seçilir; oturum yol değişse de korunur |
 | taa-cati | var | TAA Çatı (S3b): yalnız sunucu PC'sinde; kullanıcı/rol, cihaz onayı, program yetkisi, günlük, şube; silme yok, varsayılan reddet |
 | taa-kur | var | Kurulum yöneticisi (T1): klasör paketi kur/sec/geri-don/kaldir/dogrula, SHA256; `eski\`ye taşır, silmez; veri alanına dokunmaz |
 | taa-ipc | var | Programlar arası iletişim (T1): dosya tabanlı gelen kutusu, yetenek kaydı, zarf ve olay günlüğü; Windows adlandırılmış boru taşıyıcısı (T3, dosyaya yedekli; Windows'ta henüz doğrulanmadı) |

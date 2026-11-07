@@ -33,3 +33,4 @@ test_edildi = false
 "taadon" = "1.12.0"  # kaynak: /home/user/dosya-donusturucu/package.json
 "taarkod" = "1.8.0"  # kaynak: /home/user/taarkod/masaustu/package.json (adı barkod-siralama; README ile uyumlu)
 "fiyat-etiketi" = "1.32.0"  # kaynak: /home/user/fiyat-etiketi/package.json
+"led-ekran-video" = "0.2.0"  # kaynak: /mnt/project-files/led-ekran-video/program.toml (Cargo.toml 0.1.0 → başlık eşitleyecek); tek PC, veri alanı yok

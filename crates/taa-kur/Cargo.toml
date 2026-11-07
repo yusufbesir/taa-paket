@@ -28,6 +28,8 @@ taa-imza = { path = "../taa-imza" }
 taa-rapor = { path = "../taa-rapor" }
 # S3a: kurulumda cihaz anahtarı üretimi ve sunucuya kayıt (`taa-kur cihaz`). Yeni dış bağımlılık yok.
 taa-cihaz = { path = "../taa-cihaz" }
+# S4a: ulaşım yolu listesi ve sunucu CA sertifikası dağıtımı (`taa-kur yol`). Yeni dış bağımlılık yok.
+taa-yol = { path = "../taa-yol" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"

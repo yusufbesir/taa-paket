@@ -43,6 +43,7 @@ Raporların ilk 6'sı tam elde; 7. rapor (dosya-donusturucu / taadon) kesik, 8-1
 | Tutaa / TAARNAK (`/home/user/tutaa`) | masaustu 2.4.5, tutaa-paketi/masaustu 2.5.0, lock 2.0.0 (**uyumsuz**) | `%APPDATA%\TAARNAK\{kayitlar, yedekler\yedek-<no>.json, kayit-kopyasi, yerel-ayar.json, imza-gunlugu.log, imza-anahtari.json, ocr-gecici}`; geri düşüş `Belgelerim\TAARNAK\kayitlar`; ayrıca `Belgelerim\TAARKOD\kayitlar`, `~\TAARKOD\kayitlar`; kurulum `%LOCALAPPDATA%\Programs\Tutaa` | Ad karmaşası (TAARNAK/Tutaa/TAARKOD); aynı tutanak 3 yerde; sabit `D:\Programlar\El-Yazisi-OCR\venv\Scripts\python.exe` (main.js:400, motor/motor.json); motor.json başka iş parçacığına ait; merkez API istemcisi ve `kimlik` kodda yok; modul.toml yok |
 | TaaDön (dosya-donusturucu) | Rust çekirdek 1.6.0 | belirsiz (rapor kesik) | belirsiz |
 | TaaRkod, Argox Fiyat Etiketi | belirsiz | belirsiz (rapor yok) | `etiket-kuyrugu` doğrulanamadı |
+| LED Ekran Video (`/mnt/project-files/led-ekran-video/`, eklendi 2026-11-07) | program.toml 0.2.0 (Cargo 0.1.0, eşitlenecek) | Veri alanı yok; çıktı MP4/HAP kullanıcının seçtiği dosya; kurulum `D:\Programlar\LED-Ekran-Video\` | Tek PC; `ffmpeg` PATH'te gerekli; kendi deposu ve Windows derlemesi henüz yok |
 
 ## 4. Ortam değişkenleri
 `TAA_AYAR`, `TAA_OZELLIK_<AD>` (büyük harf, `-`→`_`; 0/1/acik/kapali/evet/hayir), `TAA_FIS_BASLIK`, `TAA_FIS_NUSHA`, Tutaa'da `TUTANAK_MOTOR_KOMUT`, `TUTANAK_TEST`, `TUTANAK_MOTOR_ONISIT`.

@@ -223,7 +223,7 @@ fn girdi_dogrulama_sunucuya_gitmez() {
 fn varsayilan_reddet_oturum_izinleri() {
     let s = Sahte::yeni(json!([]));
     // yalnız günlük izni: kullanıcı listesi yerelde reddedilir, günlük gider
-    let c = Cati::yeni(&s, &dizi(&["personel"]), &dizi(&["gunluk.gor"]));
+    let c = Cati::yeni(&s, &dizi(&["gunluk.gor"]));
     assert!(matches!(
         c.kullanicilar(),
         Err(CatiHata::Yetkisiz { izin }) if izin == "kullanici.yonet"
@@ -239,11 +239,23 @@ fn varsayilan_reddet_oturum_izinleri() {
     assert!(s.istekler.borrow().is_empty());
     c.olaylar(&OlaySuzgeci::default()).unwrap();
     assert_eq!(s.istekler.borrow().len(), 1);
-    // yönetici rolü her izni taşır (K4 hiyerarşi)
-    let cy = Cati::yeni(&s, &dizi(&["yonetici"]), &[]);
+    // rol adı tek başına izin vermez: izin listesi boş yönetici de reddedilir (K1); liste tam gelince geçer
+    let bos = Cati::yeni(&s, &[]);
+    assert!(matches!(bos.kullanicilar(), Err(CatiHata::Yetkisiz { .. })));
+    assert!(!bos.izinli("yok.islem"));
+    let cy = Cati::yeni(
+        &s,
+        &dizi(&[
+            "kullanici.yonet",
+            "cihaz.yonet",
+            "program.yonet",
+            "gunluk.gor",
+        ]),
+    );
     cy.kullanicilar().unwrap();
     cy.cihazlar(None).unwrap();
     assert!(cy.izinli("program.yonet"));
+    assert!(!cy.izinli("yok.islem"));
     // çıkış kodları
     assert_eq!(hata_kodu(&CatiHata::Yetkisiz { izin: "x".into() }), 7);
     assert_eq!(hata_kodu(&CatiHata::YenidenDogrula), 6);

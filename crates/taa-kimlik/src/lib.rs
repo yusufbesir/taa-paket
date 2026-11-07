@@ -150,9 +150,10 @@ impl Oturum {
         })
     }
 
-    /// Bu izin var mı? (`yonetici` rolü her izni taşır: K4 rol hiyerarşisi; sunucu yine her istekte denetler.)
+    /// Bu izin var mı? Yalnız sunucunun verdiği `izinler` listesine bakılır (K1 varsayılan reddet): rol adı izin vermez,
+    /// `yonetici` dahil (sunucu rol mirasını açarak listeyi tam gönderir). Var olmayan izin adı her zaman reddedilir.
     pub fn izinli(&self, izin: &str) -> bool {
-        self.roller.iter().any(|r| r == "yonetici") || self.izinler.iter().any(|i| i == izin)
+        self.izinler.iter().any(|i| i == izin)
     }
 
     /// Program bu oturuma açık mı? Liste boşsa (eski sunucu) açık sayılır.
@@ -172,7 +173,18 @@ impl Oturum {
         sertifika: Option<&Path>,
         cihaz: Option<Arc<dyn Imzalayici>>,
     ) -> Result<CurlGonderici, KimlikHata> {
-        let mut g = CurlGonderici::yeni(&self.sunucu)
+        self.gonderici_taban(&self.sunucu, sertifika, cihaz)
+    }
+
+    /// Oturum anahtarı mantıksal ad (`merkez`) iken istek adresi yol listesinden gelir (taa-yol, S4a):
+    /// `taban` o adrestir; `self.sunucu` yalnız depo anahtarıdır.
+    pub fn gonderici_taban(
+        &self,
+        taban: &str,
+        sertifika: Option<&Path>,
+        cihaz: Option<Arc<dyn Imzalayici>>,
+    ) -> Result<CurlGonderici, KimlikHata> {
+        let mut g = CurlGonderici::yeni(taban)
             .and_then(|g| g.oturum(&self.oturum))
             .map_err(|e| KimlikHata::Baglanti(e.to_string()))?;
         if let Some(c) = sertifika {
@@ -497,8 +509,20 @@ pub fn kuyrugu_gonder(
     sertifika: Option<&Path>,
     en_cok: usize,
 ) -> Result<Vec<(String, taa_kuyruk::GonderOzeti)>, KimlikHata> {
-    let o = depo.oku(sunucu)?;
-    let g = o.gonderici_ile(sertifika, cihaz_imzalayici(kok)?)?;
+    kuyrugu_gonder_hedef(depo, sunucu, sunucu, kok, sertifika, en_cok)
+}
+
+/// `anahtar` depo anahtarı (mantıksal ad ya da adres), `taban` istek adresi (taa-yol ile seçilen yol).
+pub fn kuyrugu_gonder_hedef(
+    depo: &dyn OturumDeposu,
+    anahtar: &str,
+    taban: &str,
+    kok: &Path,
+    sertifika: Option<&Path>,
+    en_cok: usize,
+) -> Result<Vec<(String, taa_kuyruk::GonderOzeti)>, KimlikHata> {
+    let o = depo.oku(anahtar)?;
+    let g = o.gonderici_taban(taban, sertifika, cihaz_imzalayici(kok)?)?;
     let mut sonuc = Vec::new();
     for (ad, k) in taa_kuyruk::Kuyruk::hepsi(kok).map_err(|e| KimlikHata::Depo(e.to_string()))? {
         let oz = k

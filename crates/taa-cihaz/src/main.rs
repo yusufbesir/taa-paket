@@ -12,8 +12,9 @@ taa-cihaz — bu PC'nin cihaz kimliği (ed25519). Sunucu yalnız kayıtlı ve on
 Kullanım:
   taa-cihaz uret   [--kok <veri kökü>] [--ad <cihaz adı>] [--json]      (var olanın üzerine yazmaz)
   taa-cihaz goster [--kok <veri kökü>] [--json]                           (kimlik ve açık anahtar; özel anahtar basılmaz)
-  taa-cihaz kayit  --sunucu <https://adres> [--sube <kod>] [--sertifika <pem>] [--kok] [--json]
-  taa-cihaz durum  --sunucu <https://adres> [--sertifika <pem>] [--kok] [--json]
+  taa-cihaz kayit  [--sunucu <https://adres>] [--sube <kod>] [--sertifika <pem>] [--kok] [--json]
+  taa-cihaz durum  [--sunucu <https://adres>] [--sertifika <pem>] [--kok] [--json]
+  --sunucu yoksa <kök>\\yol\\sunucu-yollari.json'daki yollar sırayla denenir (taa-yol).
   --kok     Verilmezse TAA_VERI_KOK, yoksa %APPDATA%\\TAA\\veri.   --sunucu  Verilmezse TAA_SUNUCU.
 Dosyalar: <kök>\\cihaz\\cihaz.key (gizli), cihaz.pub, cihaz.json. Kayıt sonrası yönetici TAA Çatı'dan cihazı onaylar.";
 
@@ -108,15 +109,15 @@ fn calistir(args: &[String]) -> Result<(), (u8, String)> {
     let kok = kok
         .or_else(veri_kok_ortamdan)
         .ok_or_else(|| (2, "veri kökü bulunamadı. Öneri: --kok verin.".to_string()))?;
-    let sunucu_al = || {
-        sunucu
-            .clone()
-            .or_else(|| {
-                std::env::var("TAA_SUNUCU")
-                    .ok()
-                    .filter(|s| !s.trim().is_empty())
-            })
-            .ok_or_else(|| (2, "--sunucu (ya da TAA_SUNUCU) gerekli.".to_string()))
+    // --sunucu / TAA_SUNUCU yoksa yol listesinden ilk ulaşılan adres (taa-yol, S4a).
+    let hedef = || {
+        taa_yol::hedef_coz_curl(&kok, sunucu.as_deref(), sertifika.as_deref()).map_err(|e| {
+            let kod = match taa_yol::hata_kodu(&e) {
+                5 => 2,
+                k => k,
+            };
+            (kod, e.to_string())
+        })
     };
     match komut.as_deref() {
         Some("uret") => {
@@ -148,10 +149,10 @@ fn calistir(args: &[String]) -> Result<(), (u8, String)> {
             Ok(())
         }
         Some("kayit") | Some("durum") => {
-            let s = sunucu_al()?;
+            let h = hedef()?;
             let c = Arc::new(CihazAnahtari::yukle(&kok).map_err(hata)?);
             let g = Arc::clone(&c)
-                .gonderici(&s, sertifika.as_deref())
+                .gonderici(&h.taban, h.sertifika.as_deref())
                 .map_err(hata)?;
             let yanit = if komut.as_deref() == Some("kayit") {
                 kayit(&g, &c, sube.as_deref()).map_err(hata)?
