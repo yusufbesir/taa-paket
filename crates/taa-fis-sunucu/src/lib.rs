@@ -375,7 +375,7 @@ impl Uygulama {
     }
 
     /// Usta QR okutur: fişin (belirtilmezse tüm) kalemleri "bitti" olarak kaydedilir. Norm süre okutma anında yazılır.
-    /// Gövde: {"kalemler":[0,1], "zor":[0], "usta":"Ali"}; hepsi isteğe bağlı (usta yoksa fişteki usta, o da yoksa telefonun adı).
+    /// Gövde: {"kalemler":[0,1], "zor":[0]}; hepsi isteğe bağlı. Usta = okutan telefonun adı.
     fn okut(&self, d: &Defter, no: &str, cihaz_ad: &str, i: &Istek) -> Yanit {
         let f = match d.bul(no) {
             Ok(Some(f)) => f,
@@ -392,12 +392,8 @@ impl Uygulama {
         };
         let kalemler = idx("kalemler").unwrap_or_else(|| (0..f.kalemler.len()).collect());
         let zor = idx("zor").unwrap_or_default();
-        // Usta: gövdedeki ad, yoksa fişe atanmış usta, yoksa telefonun adı.
-        let usta = v["usta"]
-            .as_str()
-            .filter(|u| !u.trim().is_empty())
-            .or(Some(f.usta.as_str()).filter(|u| !u.trim().is_empty()))
-            .unwrap_or(cihaz_ad);
+        // Yusuf kararı (2026-11-07): işi yapan usta okutur; puan satırı okutan telefonun adıdır (elle ad ya da fişteki usta kullanılmaz).
+        let usta = cihaz_ad;
         let sure = match taa_takip::SureTablosu::dizinden(&self.dizin) {
             Ok(s) => s,
             Err(e) => return Yanit::hata(409, &e),
@@ -1152,20 +1148,19 @@ mod testler {
         assert_eq!(tel(&format!("/api/fis/{no}/okut"), "{}").kod, 503);
         std::env::set_var("TAA_OZELLIK_QR_URETIM", "1");
         std::env::set_var("TAA_OZELLIK_USTA_PUAN", "1");
-        let y = tel(&format!("/api/fis/{no}/okut"), r#"{"usta":"Ali"}"#);
+        let y = tel(&format!("/api/fis/{no}/okut"), "{}");
         assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
         let v: serde_json::Value = serde_json::from_slice(&y.govde).unwrap();
         assert_eq!(v["okutulan"], serde_json::json!([0]));
         // İkinci okutma reddedilmez ama "zaten" olarak döner.
         let v: serde_json::Value =
-            serde_json::from_slice(&tel(&format!("/api/fis/{no}/okut"), r#"{"usta":"Ali"}"#).govde)
-                .unwrap();
+            serde_json::from_slice(&tel(&format!("/api/fis/{no}/okut"), "{}").govde).unwrap();
         assert_eq!(v["zaten"], serde_json::json!([0]));
         assert_eq!(
             tel(&format!("/api/fis/{no}/okut"), r#"{"kalemler":[7]}"#).kod,
             422
         );
-        // Tezgâh işareti: usta okutan usta (Ali) olur.
+        // Tezgâh işareti: usta, kalemi okutan telefonun adıdır.
         assert_eq!(
             tel(
                 &format!("/api/fis/{no}/isaret"),
@@ -1219,7 +1214,7 @@ mod testler {
         ));
         assert_eq!(r.kod, 200, "{}", String::from_utf8_lossy(&r.govde));
         let v: serde_json::Value = serde_json::from_slice(&r.govde).unwrap();
-        assert_eq!(v["puanlar"][0]["usta"], "Ali");
+        assert_eq!(v["puanlar"][0]["usta"], "Ayşe'nin telefonu");
         assert!(
             v["puanlar"][0]["puan"].is_number(),
             "aralık deneme dönemini aşıyor"
