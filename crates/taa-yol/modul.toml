@@ -1,0 +1,13 @@
+# Sahip: Yusuf. yazan: [Claude#taa-yol-S4a 2026-11-07]
+# taa-yol modül tanımı. Ortak crate: <veri kökü>/yol/ altında ulaşım yolu listesi ve son çalışan yol.
+ad = "taa-yol"
+surum = "0.1.0"
+arayuz = "1"
+gerektirir = { "taa-dosya" = "1", "taa-kuyruk" = "1" }
+ozellikler = ["yol"]
+program = "ortak"
+sunar = ["yol.sec@1"]
+ister = []
+veri_sahibi = ["yol"]
+veri_okur = []
+ayar_alani = "moduller.taa-yol"

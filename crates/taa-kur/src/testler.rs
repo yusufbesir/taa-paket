@@ -796,3 +796,57 @@ fn cihaz_hazirla_uretir_ve_korur() {
         .unwrap_err();
     assert!(matches!(e, KurHata::Dogrulama(_)));
 }
+
+#[test]
+fn yol_kur_dogrular_ve_yazar() {
+    let kok = taa_dosya::gecici_klasor().unwrap();
+    let kur = Kur::yeni(&kok).unwrap();
+    let veri = taa_dosya::gecici_klasor().unwrap();
+    let dosya = kok.join("sunucu-yollari.json");
+    std::fs::write(
+        &dosya,
+        r#"{"sunucu":"merkez","yollar":[{"ad":"dogrudan","taban":"https://85.1.2.3"},{"ad":"vpn","taban":"https://10.8.0.1"}]}"#,
+    )
+    .unwrap();
+    let ca = kok.join("ca.pem");
+    std::fs::write(
+        &ca,
+        "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n",
+    )
+    .unwrap();
+    let o = kur
+        .yol_kur_veri_ile(Some(veri.clone()), &dosya, Some(&ca))
+        .unwrap();
+    assert_eq!(o["sunucu"], "merkez");
+    assert_eq!(o["yol_sayisi"], 2);
+    assert!(veri.join("yol").join("sunucu-yollari.json").is_file());
+    assert!(veri.join("anahtarlar").join("sunucu-ca.pem").is_file());
+    let y = taa_yol::yollar_oku(&veri).unwrap().unwrap();
+    assert_eq!(y.yollar[1].ad, "vpn");
+    // bozuk liste ve PEM olmayan CA reddedilir
+    std::fs::write(&dosya, r#"{"sunucu":"merkez","yollar":[]}"#).unwrap();
+    assert!(kur
+        .yol_kur_veri_ile(Some(veri.clone()), &dosya, None)
+        .is_err());
+    std::fs::write(
+        &dosya,
+        r#"{"sunucu":"Merkez","yollar":[{"ad":"a","taban":"https://x"}]}"#,
+    )
+    .unwrap();
+    assert!(kur
+        .yol_kur_veri_ile(Some(veri.clone()), &dosya, None)
+        .is_err());
+    std::fs::write(
+        &dosya,
+        r#"{"sunucu":"merkez","yollar":[{"ad":"a","taban":"https://x"}]}"#,
+    )
+    .unwrap();
+    std::fs::write(&ca, "bu pem degil").unwrap();
+    assert!(kur
+        .yol_kur_veri_ile(Some(veri.clone()), &dosya, Some(&ca))
+        .is_err());
+    assert!(
+        kur.yol_kur_veri_ile(None, &dosya, None).is_err(),
+        "veri kökü yoksa hata"
+    );
+}

@@ -96,6 +96,7 @@ pub struct CurlGonderici {
     ca: Option<PathBuf>,
     kullanici_ajani: String,
     imzalayici: Option<Arc<dyn Imzalayici>>,
+    baglanti_sn: Option<u64>,
 }
 
 impl fmt::Debug for CurlGonderici {
@@ -124,7 +125,15 @@ impl CurlGonderici {
             ca: None,
             kullanici_ajani: "taa-kuyruk".into(),
             imzalayici: None,
+            baglanti_sn: None,
         })
+    }
+
+    /// Bağlantı kurma süresi sınırı (curl `--connect-timeout`, saniye). Yol denemesi (taa-yol) için kısa tutulur;
+    /// verilmezse yalnız toplam süre (`EN_UZUN_SURE_SN`) geçerlidir.
+    pub fn baglanti_suresi(mut self, sn: u64) -> CurlGonderici {
+        self.baglanti_sn = Some(sn.max(1));
+        self
     }
 
     /// Cihaz imzalayıcısı: her isteğe `X-TAA-*` başlıklarını ekler (taa-cihaz).
@@ -196,8 +205,11 @@ impl CurlGonderici {
         let mut c = Command::new("curl");
         c.args(["--silent", "--show-error", "--request", yontem])
             .args(["--proto", "=http,https", "--max-redirs", "0"])
-            .args(["--max-time", &EN_UZUN_SURE_SN.to_string()])
-            .args(["--max-filesize", &YANIT_EN_COK.to_string()])
+            .args(["--max-time", &EN_UZUN_SURE_SN.to_string()]);
+        if let Some(sn) = self.baglanti_sn {
+            c.args(["--connect-timeout", &sn.to_string()]);
+        }
+        c.args(["--max-filesize", &YANIT_EN_COK.to_string()])
             .args(["--user-agent", &self.kullanici_ajani])
             .args(["--write-out", "\n%{http_code}"]);
         if yontem == "POST" {

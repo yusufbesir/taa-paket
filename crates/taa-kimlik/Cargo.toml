@@ -24,6 +24,8 @@ taa-dosya = { path = "../taa-dosya" }
 taa-imza = { path = "../taa-imza" }
 taa-cihaz = { path = "../taa-cihaz" }
 taa-kuyruk = { path = "../taa-kuyruk" }
+# S4a: sunucuya ulaşım yolu listesi (doğrudan IP / VPN / alan adı / Cloudflare), ilk ulaşılan seçilir.
+taa-yol = { path = "../taa-yol" }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", default-features = false, features = [
