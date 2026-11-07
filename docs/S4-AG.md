@@ -64,4 +64,4 @@ eklenmesi sunucu başlığından istendi; olmasa da seçim çalışır (401 de "
 ## Yapılmadı / sonraki
 - Sunucu PC'de Caddy/WireGuard/cloudflared kurulumu (PC slotu, Yusuf'la birlikte: modem yönlendirme).
 - Çatı'dan WireGuard eş anahtarı üretimi ve şube yapılandırma dosyası (S4c).
-- Windows'ta elle deneme yapılmadı; testler Linux + CI Windows.
+- Windows'ta elle deneme yapılmadı; testler Linux + CI Windows. **S4b PC bulgusu (2026-11-07):** Windows curl (schannel) kendi CA ile imzalı sertifikada CRL bulamayıp `CERT_TRUST_REVOCATION_STATUS_UNKNOWN` veriyordu; `CurlGonderici` artık `--cacert` verildiğinde Windows'ta `--ssl-no-revoke` ekler (yalnız kendi CA'mız; sistem kökleri `"sistem"` seçiminde eklenmez).

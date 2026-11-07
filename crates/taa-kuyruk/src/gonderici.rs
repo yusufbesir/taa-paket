@@ -218,6 +218,12 @@ impl CurlGonderici {
         c.arg("--header").arg(format!("@{}", basliklar.display()));
         if let Some(ca) = &self.ca {
             c.arg("--cacert").arg(ca);
+            // Windows curl (schannel) kendi CA'mızla imzalı sertifikada iptal listesi (CRL) bulamayınca
+            // CERT_TRUST_REVOCATION_STATUS_UNKNOWN ile reddeder (S4b PC denemesi, 2026-11-07). Kendi CA'mızın
+            // CRL'i yoktur; sertifika sabitlemesi (--cacert) zaten tek güven kaynağıdır. Yalnız bu durumda kapatılır.
+            if cfg!(windows) {
+                c.arg("--ssl-no-revoke");
+            }
         }
         if yerel_mi(url) {
             c.args(["--noproxy", "*"]);
