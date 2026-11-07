@@ -550,6 +550,8 @@ fn calisma_gunu(sure: &SureTablosu, g: &Gorunum, usta: &str, gun: i64) -> bool {
     !sure.kapali_mi(gun) && !g.izinler.contains(&(usta.to_string(), gun))
 }
 
+/// Mevcut dakika. Aralığın SON günü, ustanın o gün hiç okutması yoksa sayılmaz (gün henüz bitmemiş olabilir;
+/// bugünü kapsayan raporda yarım gün verimliliği yapay düşürmesin). `son_gun_olay`: o gün okutma var mı.
 fn mevcut_dk(
     sure: &SureTablosu,
     g: &Gorunum,
@@ -557,12 +559,13 @@ fn mevcut_dk(
     bas: i64,
     bit: i64,
     ilk: i64,
+    son_gun_olay: bool,
 ) -> Result<u32, String> {
     let gunluk = sure
         .gunluk_dakika
         .ok_or("sure.json içinde gunluk_dakika tanımsız; puan hesaplanamaz")?;
     let n = (bas.max(ilk)..=bit)
-        .filter(|d| calisma_gunu(sure, g, usta, *d))
+        .filter(|d| (*d != bit || son_gun_olay) && calisma_gunu(sure, g, usta, *d))
         .count() as u32;
     Ok(n * gunluk)
 }
@@ -673,7 +676,8 @@ fn hesapla_cekirdek(
             }
         }
         let net = (brut - ceza).max(0.0);
-        let mevcut = mevcut_dk(sure, &g, usta, b0, b1, *ilk)?;
+        let son_gun_olay = ol.iter().any(|o| gun_no(&o.tarih) == Some(b1));
+        let mevcut = mevcut_dk(sure, &g, usta, b0, b1, *ilk, son_gun_olay)?;
         let oran = if mevcut == 0 {
             0.0
         } else {
@@ -886,8 +890,9 @@ fn anomali_cekirdek(
                 .map(gunluk_kazanc)
                 .collect()
         };
-        let son = seri(bugun_no - 6, bugun_no);
-        let onceki = seri(bugun_no - 96, bugun_no - 7);
+        // Bugün henüz bitmemiş olabilir: seriler dünle biter.
+        let son = seri(bugun_no - 7, bugun_no - 1);
+        let onceki = seri(bugun_no - 97, bugun_no - 8);
         if son.len() >= 3 && onceki.len() >= 10 {
             let (m0, s0) = ort_std(&onceki);
             let (m1, _) = ort_std(&son);
@@ -962,7 +967,7 @@ fn anomali_cekirdek(
             });
         }
         // Norm gözden geçir: 30 gün ortalama %115 üstü.
-        let s30 = seri(bugun_no - 29, bugun_no);
+        let s30 = seri(bugun_no - 30, bugun_no - 1);
         if s30.len() >= 10 && s30.iter().sum::<f64>() / s30.len() as f64 > 1.15 {
             cikti.push(Anomali {
                 usta: usta.into(),
@@ -1351,6 +1356,36 @@ mod testler {
     }
 
     #[test]
+    fn bugun_bitmemis_gun_mevcut_dakikayi_dusurmez() {
+        // Aralık 11-02..11-06 (pzt-cum). Usta 11-06'da henüz okutma yapmamış: o gün sayılmaz (4 gün).
+        let k: Vec<Kayit> = hafta("Ali")
+            .into_iter()
+            .filter(|x| !matches!(x, Kayit::Olay(o) if o.tarih == "2026-11-06"))
+            .collect();
+        let r = hesapla_cekirdek(
+            &ayar0(),
+            &sure(),
+            &k,
+            &BTreeMap::new(),
+            "2026-11-02",
+            "2026-11-06",
+        )
+        .unwrap();
+        assert_eq!(r[0].mevcut_dk, 4 * 510);
+        // Son günde okutma varsa o gün sayılır.
+        let r = hesapla_cekirdek(
+            &ayar0(),
+            &sure(),
+            &hafta("Ali"),
+            &BTreeMap::new(),
+            "2026-11-02",
+            "2026-11-06",
+        )
+        .unwrap();
+        assert_eq!(r[0].mevcut_dk, 5 * 510);
+    }
+
+    #[test]
     fn izin_gunu_mevcut_dakikadan_duser() {
         let mut k = hafta("Ali");
         k.push(Kayit::Izin {
@@ -1469,7 +1504,7 @@ mod testler {
             no += 1;
             k.push(olay("Ali", no, "a", dk, &t, "11:00"));
         }
-        let r = anomali_cekirdek(&PuanAyari::default(), &sure(), &k, "2026-11-10").unwrap();
+        let r = anomali_cekirdek(&PuanAyari::default(), &sure(), &k, "2026-11-11").unwrap();
         assert!(r.iter().any(|a| a.tur == "verimlilik-dusus"), "{r:?}");
     }
 

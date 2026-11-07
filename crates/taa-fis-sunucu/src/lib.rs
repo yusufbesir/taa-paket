@@ -375,7 +375,7 @@ impl Uygulama {
     }
 
     /// Usta QR okutur: fişin (belirtilmezse tüm) kalemleri "bitti" olarak kaydedilir. Norm süre okutma anında yazılır.
-    /// Gövde: {"kalemler":[0,1], "zor":[0], "usta":"Ali"}; hepsi isteğe bağlı (usta yoksa telefonun adı).
+    /// Gövde: {"kalemler":[0,1], "zor":[0], "usta":"Ali"}; hepsi isteğe bağlı (usta yoksa fişteki usta, o da yoksa telefonun adı).
     fn okut(&self, d: &Defter, no: &str, cihaz_ad: &str, i: &Istek) -> Yanit {
         let f = match d.bul(no) {
             Ok(Some(f)) => f,
@@ -392,9 +392,11 @@ impl Uygulama {
         };
         let kalemler = idx("kalemler").unwrap_or_else(|| (0..f.kalemler.len()).collect());
         let zor = idx("zor").unwrap_or_default();
+        // Usta: gövdedeki ad, yoksa fişe atanmış usta, yoksa telefonun adı.
         let usta = v["usta"]
             .as_str()
             .filter(|u| !u.trim().is_empty())
+            .or(Some(f.usta.as_str()).filter(|u| !u.trim().is_empty()))
             .unwrap_or(cihaz_ad);
         let sure = match taa_takip::SureTablosu::dizinden(&self.dizin) {
             Ok(s) => s,
