@@ -3,7 +3,7 @@
 ad = "taa-cati"
 surum = "0.1.0"
 arayuz = "1"
-gerektirir = { "taa-kimlik" = "1", "taa-kuyruk" = "1" }
+gerektirir = { "taa-kimlik" = "1", "taa-kuyruk" = "1", "taa-yol" = "1" }
 ozellikler = ["cati"]
 program = "taa-cati"
 sunar = ["cati.kullanici@1", "cati.cihaz@1", "cati.program-yetki@1", "cati.gunluk@1", "cati.sube@1"]

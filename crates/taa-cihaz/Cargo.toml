@@ -21,3 +21,5 @@ serde_json = "1"
 taa-dosya = { path = "../taa-dosya" }
 taa-imza = { path = "../taa-imza" }
 taa-kuyruk = { path = "../taa-kuyruk" }
+# S4a: ulaşım yolu listesi (taa-yol); yalnız komut satırı kullanır.
+taa-yol = { path = "../taa-yol" }

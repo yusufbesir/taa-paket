@@ -506,14 +506,24 @@ pub fn yonetici_baglantisi(
     sunucu: &str,
     sertifika: Option<&Path>,
 ) -> Result<(Oturum, taa_kuyruk::CurlGonderici), CatiHata> {
+    yonetici_baglantisi_hedef(kok, sunucu, sunucu, sertifika)
+}
+
+/// `anahtar` oturum deposu anahtarı (mantıksal ad ya da adres), `taban` istek adresi (taa-yol seçimi, S4a).
+pub fn yonetici_baglantisi_hedef(
+    kok: &Path,
+    anahtar: &str,
+    taban: &str,
+    sertifika: Option<&Path>,
+) -> Result<(Oturum, taa_kuyruk::CurlGonderici), CatiHata> {
     let depo = taa_kimlik::varsayilan_depo(kok);
-    let o = depo.oku(sunucu)?;
+    let o = depo.oku(anahtar)?;
     let cihaz = taa_kimlik::cihaz_imzalayici(kok)?.ok_or_else(|| {
         CatiHata::Kimlik(KimlikHata::Depo(format!(
             "cihaz anahtarı yok ({}). Öneri: taa-cihaz uret, sonra sunucuda tutaa-sunucu merkez-cihaz",
             kok.join("cihaz").display()
         )))
     })?;
-    let g = o.gonderici_ile(sertifika, Some(cihaz))?;
+    let g = o.gonderici_taban(taban, sertifika, Some(cihaz))?;
     Ok((o, g))
 }

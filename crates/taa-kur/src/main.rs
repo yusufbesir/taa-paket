@@ -8,7 +8,7 @@ use std::path::Path;
 use std::process::ExitCode;
 use taa_kur::{Kur, KurHata, Sorun};
 
-const KULLANIM: &str = "Kullanım: taa-kur <liste|kur|kaldir|sec|geri-don|dogrula|tani|rapor|cihaz> [bağımsız değişkenler] [--json]. Öneri: `taa-kur yardim` komutları açıklar.";
+const KULLANIM: &str = "Kullanım: taa-kur <liste|kur|kaldir|sec|geri-don|dogrula|tani|rapor|cihaz|yol> [bağımsız değişkenler] [--json]. Öneri: `taa-kur yardim` komutları açıklar.";
 
 const YARDIM: &str = "\
 taa-kur — TAA kurulum yöneticisi. Kök: TAA_KOK ortamı ya da ikilinin yanı; `tani` gösterir.
@@ -25,6 +25,9 @@ Komutlar:
   tani                               Kök, kayıt, veri alanları, güvenilir anahtarlar, uyarılar.
   rapor [--kaydet] [--bugun T]        Paket raporu: fiş, kasa, bildirim, katalog, pano, yedek alanlarını tek yerden
                                      okur (salt okunur). --kaydet kök\\raporlar\\rapor-<damga>.csv yazar (Excel açar).
+  yol --dosya sunucu-yollari.json [--ca sunucu-ca.pem]
+                                     Ulaşım yolu listesini (doğrudan IP/VPN/alan adı/Cloudflare) ve sunucu CA
+                                     sertifikasını veri köküne kurar (S4a; taa-yol liste/dene ile görülür).
   cihaz [--ad A] [--sunucu URL] [--sube K] [--sertifika pem]
                                      Bu PC'nin cihaz anahtarını üretir (varsa korur); --sunucu verilirse merkeze
                                      kaydeder (yönetici TAA Çatı'dan onaylar). Veri kökü: TAA_VERI_KOK / %APPDATA%\\TAA\\veri.
@@ -329,6 +332,48 @@ fn calistir(args: &[String], json: bool) -> Result<(), KurHata> {
                 for h in &t.son_hatalar {
                     println!("Son hata: {}", tek_satir(h));
                 }
+            }
+            Ok(())
+        }
+        "yol" => {
+            let mut dosya: Option<std::path::PathBuf> = None;
+            let mut ca: Option<std::path::PathBuf> = None;
+            let mut i = 0;
+            while i < kalan.len() {
+                let deger = |i: &mut usize, a: &str| -> Result<String, KurHata> {
+                    *i += 1;
+                    kalan
+                        .get(*i)
+                        .cloned()
+                        .ok_or_else(|| kullanim(&format!("{a} için değer eksik.")))
+                };
+                match kalan[i].as_str() {
+                    "--dosya" => dosya = Some(deger(&mut i, "--dosya")?.into()),
+                    "--ca" => ca = Some(deger(&mut i, "--ca")?.into()),
+                    x => {
+                        return Err(kullanim(&format!(
+                            "Bilinmeyen bağımsız değişken: {x}. Örnek: taa-kur yol --dosya sunucu-yollari.json [--ca sunucu-ca.pem] [--json]."
+                        )))
+                    }
+                }
+                i += 1;
+            }
+            let dosya = dosya.ok_or_else(|| kullanim("--dosya gerekli."))?;
+            let kur = Kur::ortamdan()?;
+            let o = kur.yol_kur(&dosya, ca.as_deref())?;
+            if json {
+                yaz_json(&o);
+            } else {
+                println!(
+                    "Yol listesi kuruldu: sunucu {} · {} yol · {}{}",
+                    o["sunucu"].as_str().unwrap_or("?"),
+                    o["yol_sayisi"],
+                    o["dosya"].as_str().unwrap_or("?"),
+                    o.get("ca")
+                        .and_then(|c| c.as_str())
+                        .map(|c| format!(" · CA {c}"))
+                        .unwrap_or_default()
+                );
             }
             Ok(())
         }

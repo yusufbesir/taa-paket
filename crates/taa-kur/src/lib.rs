@@ -1164,6 +1164,56 @@ impl Kur {
         Ok(ozet)
     }
 
+    /// Ulaşım yolu listesi dağıtımı (S4a): `dosya` (sunucu-yollari.json) doğrulanıp veri köküne yazılır; `ca`
+    /// verilirse `<veri kökü>/anahtarlar/sunucu-ca.pem` olarak kopyalanır (Caddy iç CA kökü). Silme yok, üzerine yazar.
+    pub fn yol_kur(&self, dosya: &Path, ca: Option<&Path>) -> Sonuc<serde_json::Value> {
+        self.yol_kur_veri_ile(veri::veri_kok_ortamdan(), dosya, ca)
+    }
+
+    pub fn yol_kur_veri_ile(
+        &self,
+        veri_kok: Option<PathBuf>,
+        dosya: &Path,
+        ca: Option<&Path>,
+    ) -> Sonuc<serde_json::Value> {
+        let kok = veri_kok.ok_or_else(|| {
+            KurHata::Cozum(
+                "Veri kökü bulunamadı (TAA_VERI_KOK ya da APPDATA). Öneri: TAA_VERI_KOK verin."
+                    .into(),
+            )
+        })?;
+        let metin = std::fs::read_to_string(dosya).map_err(|e| {
+            KurHata::Diger(format!("Yol dosyası okunamadı ({}): {e}", dosya.display()))
+        })?;
+        let y = taa_yol::Yollar::jsondan(&metin)
+            .map_err(|e| KurHata::Dogrulama(format!("Yol dosyası: {e}")))?;
+        if y.yollar.is_empty() {
+            return Err(KurHata::Dogrulama("Yol dosyasında hiç yol yok.".into()));
+        }
+        let yazilan = taa_yol::yollar_yaz(&kok, &y).map_err(|e| KurHata::Diger(e.to_string()))?;
+        let mut ozet = serde_json::json!({
+            "sunucu": y.sunucu, "yol_sayisi": y.yollar.len(), "dosya": yazilan.display().to_string(),
+        });
+        if let Some(ca) = ca {
+            let icerik = std::fs::read(ca).map_err(|e| {
+                KurHata::Diger(format!("CA dosyası okunamadı ({}): {e}", ca.display()))
+            })?;
+            if !icerik.starts_with(b"-----BEGIN CERTIFICATE-----") {
+                return Err(KurHata::Dogrulama(
+                    "CA dosyası PEM sertifika değil (-----BEGIN CERTIFICATE----- ile başlamalı)."
+                        .into(),
+                ));
+            }
+            let hedef = kok.join("anahtarlar").join(taa_yol::SERTIFIKA_VARSAYILAN);
+            std::fs::create_dir_all(kok.join("anahtarlar"))
+                .map_err(|e| KurHata::Diger(e.to_string()))?;
+            taa_dosya::uzerine_yaz_atomik(&hedef, &icerik)
+                .map_err(|e| KurHata::Diger(e.to_string()))?;
+            ozet["ca"] = serde_json::json!(hedef.display().to_string());
+        }
+        Ok(ozet)
+    }
+
     /// Paket raporu (T5): veri kökündeki tüm alanları tek yerden okur (salt okunur). Veri kökü ortamdan
     /// (`TAA_VERI_KOK`, yoksa `%APPDATA%\TAA\veri`) çözülür; `bugun` verilmezse bugün (UTC).
     pub fn rapor(&self, bugun: Option<&str>) -> Sonuc<taa_rapor::Rapor> {

@@ -7,12 +7,12 @@ use serde_json::{json, Value};
 use std::io::{BufRead, Read};
 use std::path::PathBuf;
 use std::process::ExitCode;
-use taa_cati::{hata_kodu, yonetici_baglantisi, Cati, CatiHata, OlaySuzgeci, RolAtama};
+use taa_cati::{hata_kodu, yonetici_baglantisi_hedef, Cati, CatiHata, OlaySuzgeci, RolAtama};
 
 const YARDIM: &str = "\
 taa-cati — TAA Çatı: merkez sunucunun yönetimi (yalnız sunucu PC'sinde; yönetici oturumu + cihaz imzası gerekir).
 Önce: taa-cihaz uret · sunucuda: tutaa-sunucu merkez-cihaz · sonra: taa-kimlik giris --kullanici <yönetici>
-Kullanım (ortak seçenekler: --sunucu <https://adres> | TAA_SUNUCU, --kok <veri kökü> | TAA_VERI_KOK, --sertifika <pem>, --json):
+Kullanım (ortak seçenekler: --sunucu <https://adres> | TAA_SUNUCU | yol listesi (taa-yol), --kok <veri kökü> | TAA_VERI_KOK, --sertifika <pem>, --json):
   taa-cati dogrula                                  parola stdin'den; yazma komutları için 15 dk pencere açar
   taa-cati kullanici liste
   taa-cati kullanici ekle --ad <ad> --gorunen-ad <Ad Soyad> --rol <rol>[ --sube <id>] [--rol ... ]   (parola stdin'den)
@@ -222,21 +222,16 @@ fn tablo(json: bool, satirlar: &[Value], alanlar: &[&str]) {
 
 fn calistir(args: &[String], json: bool) -> Result<(), Hata> {
     let s = ayristir(args)?;
-    let sunucu = s
-        .sunucu
-        .clone()
-        .or_else(|| {
-            std::env::var("TAA_SUNUCU")
-                .ok()
-                .filter(|x| !x.trim().is_empty())
-        })
-        .ok_or_else(|| (2, "--sunucu (ya da TAA_SUNUCU) gerekli.".to_string()))?;
     let kok = s
         .kok
         .clone()
         .or_else(veri_kok_ortamdan)
         .ok_or_else(|| (2, "veri kökü bulunamadı. Öneri: --kok verin.".to_string()))?;
-    let (oturum, g) = yonetici_baglantisi(&kok, &sunucu, s.sertifika.as_deref()).map_err(ch)?;
+    // --sunucu / TAA_SUNUCU yoksa yol listesinden ilk ulaşılan adres (taa-yol, S4a); oturum anahtarı listenin adı.
+    let h = taa_yol::hedef_coz_curl(&kok, s.sunucu.as_deref(), s.sertifika.as_deref())
+        .map_err(|e| (taa_yol::hata_kodu(&e), e.to_string()))?;
+    let (oturum, g) = yonetici_baglantisi_hedef(&kok, &h.anahtar, &h.taban, h.sertifika.as_deref())
+        .map_err(ch)?;
     let c = Cati::oturumdan(&g, &oturum);
     let gerek = |ad: &str, v: &Option<String>| -> Result<String, Hata> {
         v.clone()
