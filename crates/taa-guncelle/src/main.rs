@@ -8,11 +8,12 @@
 
 use std::process::ExitCode;
 use taa_guncelle::{
-    http_url_mu, kontrol_paket, uygula_paket, HttpKaynak, Kaynak, KontrolSonuc, YerelKaynak,
+    http_url_mu, katalog, kontrol_paket, kur_yayindan, uygula_paket, HttpKaynak, Kaynak,
+    KontrolSonuc, YerelKaynak,
 };
 use taa_kur::{kur_ayari_oku, Kur, KurHata};
 
-const KULLANIM: &str = "Kullanım: taa-guncelle <kontrol|uygula> [--json] [--kaynak <klasor|url>] [--kanal <ad>] [--paket <ad>]. Öneri: ayrıntı için docs/T3-TASARIM.md.";
+const KULLANIM: &str = "Kullanım: taa-guncelle <kontrol|uygula|liste|kur <ad>> [--json] [--duz] [--kaynak <klasor|url>] [--kanal <ad>] [--paket <ad>]. Öneri: ayrıntı için docs/T3-TASARIM.md.";
 
 fn main() -> ExitCode {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
@@ -71,10 +72,12 @@ fn calistir(args: &[String], json: bool) -> Result<u8, KurHata> {
     let Some(komut) = args.first() else {
         return Err(kullanim("Komut verilmedi."));
     };
-    if !matches!(komut.as_str(), "kontrol" | "uygula") {
+    if !matches!(komut.as_str(), "kontrol" | "uygula" | "liste" | "kur") {
         return Err(kullanim(&format!("Bilinmeyen komut: {komut}.")));
     }
     let (mut kaynak_arg, mut kanal_arg, mut paket_arg) = (None, None, None);
+    let mut kur_adi: Option<String> = None;
+    let mut duz = false;
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -89,6 +92,10 @@ fn calistir(args: &[String], json: bool) -> Result<u8, KurHata> {
                     "--kanal" => kanal_arg = Some(d.clone()),
                     _ => paket_arg = Some(d.clone()),
                 }
+            }
+            "--duz" => duz = true,
+            x if komut == "kur" && kur_adi.is_none() && !x.starts_with("--") => {
+                kur_adi = Some(x.to_string())
             }
             x => return Err(kullanim(&format!("Bilinmeyen bağımsız değişken: {x}."))),
         }
@@ -109,6 +116,54 @@ fn calistir(args: &[String], json: bool) -> Result<u8, KurHata> {
         Box::new(YerelKaynak::yeni(deger))
     };
     let paket = paket_arg.as_deref();
+    if komut == "liste" {
+        let k = katalog(&kur, kaynak.as_ref(), &kanal)?;
+        if json {
+            println!("{}", serde_json::to_value(&k).unwrap_or_default());
+        } else if duz {
+            // Betikler için: ad<TAB>yayındaki sürüm<TAB>kurulu sürüm ya da "-"
+            for s in &k {
+                println!(
+                    "{}\t{}\t{}",
+                    s.ad,
+                    s.yayinda,
+                    s.kurulu.as_deref().unwrap_or("-")
+                );
+            }
+        } else {
+            for s in &k {
+                println!(
+                    "{} {} ({})",
+                    s.ad,
+                    s.yayinda,
+                    match &s.kurulu {
+                        Some(v) => format!("kurulu: {v}"),
+                        None => "kurulu değil".to_string(),
+                    }
+                );
+            }
+            if k.is_empty() {
+                println!("Bu kanalda yayında paket yok.");
+            }
+        }
+        return Ok(0);
+    }
+    if komut == "kur" {
+        let Some(ad) = kur_adi else {
+            return Err(kullanim(
+                "Kurulacak paket adı verilmedi: taa-guncelle kur <ad>.",
+            ));
+        };
+        let k = kur_yayindan(&kur, kaynak.as_ref(), &kanal, &ad)?;
+        if json {
+            println!("{}", serde_json::json!({ "kurulanlar": k }));
+        } else {
+            for x in &k {
+                println!("Kuruldu: {x}");
+            }
+        }
+        return Ok(0);
+    }
     if komut == "kontrol" {
         let k = kontrol_paket(&kur, kaynak.as_ref(), &kanal, paket)?;
         if json {

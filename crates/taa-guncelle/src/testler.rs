@@ -698,3 +698,52 @@ fn hatali_indirme_ayri_klasore_ve_cikis_kodu_hatanin_kodu() {
         .any(|e| e.file_name().to_string_lossy().starts_with("indirilen-a-")));
     assert_eq!(fs::read_dir(o.kok.join("indirilen")).unwrap().count(), 0);
 }
+
+#[test]
+fn katalog_ve_yayindan_ilk_kurulum() {
+    let o = Ort::yeni();
+    let fa = o.zip("a", "1.0.0", None);
+    let fa2 = o.zip("a", "1.2.0", None);
+    let fb = o.zip("b", "2.0.0", None);
+    let mut b = girdi("b", "2.0.0", "kararli", fb);
+    b["gerektirir"] = serde_json::json!({"a": "1"});
+    o.yayin(
+        vec![
+            girdi("a", "1.0.0", "kararli", fa),
+            girdi("a", "1.2.0", "kararli", fa2),
+            b,
+        ],
+        None,
+    );
+    let k = katalog(&o.kur(), &kaynak(&o), "kararli").unwrap();
+    assert_eq!(k.len(), 2);
+    assert_eq!((k[0].ad.as_str(), k[0].yayinda.as_str()), ("a", "1.2.0"));
+    assert!(k[0].kurulu.is_none() && k[1].gerektirir == vec!["a".to_string()]);
+    // b kurulunca önce bağımlılığı a (en yüksek sürüm) kurulur.
+    let r = kur_yayindan(&o.kur(), &kaynak(&o), "kararli", "b").unwrap();
+    assert_eq!(r, vec!["a 1.2.0".to_string(), "b 2.0.0".to_string()]);
+    assert_eq!(o.secili("a").as_deref(), Some("1.2.0"));
+    assert_eq!(o.secili("b").as_deref(), Some("2.0.0"));
+    assert!(o.kur().dogrula(None).unwrap().is_empty());
+    // ikinci kez: zaten kurulu → hata; olmayan paket → yok
+    assert!(kur_yayindan(&o.kur(), &kaynak(&o), "kararli", "b")
+        .unwrap_err()
+        .mesaj()
+        .contains("zaten kurulu"));
+    assert!(matches!(
+        kur_yayindan(&o.kur(), &kaynak(&o), "kararli", "yok"),
+        Err(KurHata::Yok(_))
+    ));
+    let k = katalog(&o.kur(), &kaynak(&o), "kararli").unwrap();
+    assert_eq!(k[1].kurulu.as_deref(), Some("2.0.0"));
+}
+
+#[test]
+fn yayindan_kurulum_bozuk_sha_ile_kurmaz() {
+    let o = Ort::yeni();
+    let mut f = o.zip("a", "1.0.0", None);
+    f.1 = "0".repeat(64);
+    o.yayin(vec![girdi("a", "1.0.0", "kararli", f)], None);
+    assert!(kur_yayindan(&o.kur(), &kaynak(&o), "kararli", "a").is_err());
+    assert!(o.secili("a").is_none());
+}
