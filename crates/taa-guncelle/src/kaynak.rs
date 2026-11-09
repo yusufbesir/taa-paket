@@ -252,3 +252,71 @@ impl Kaynak for HttpKaynak {
         Ok(n)
     }
 }
+
+/// Yedekli kaynak: sıradaki kaynaklar (ör. GitHub Releases, sunucu üstü Tailscale/Caddy adresi, yerel klasör)
+/// sırayla denenir; biri düşerse sessizce sıradakine geçilir, çalışan kaynak hatırlanır. İndirilen paket yine
+/// SHA256 + ed25519 ile doğrulandığından hangi kaynaktan geldiği güveni değiştirmez.
+/// Yarım kalan indirme silinmez, `<hedef>.kismi<N>` adıyla yana taşınır.
+pub struct YedekliKaynak {
+    adaylar: Vec<(String, Box<dyn Kaynak>)>,
+    aktif: std::cell::Cell<usize>,
+}
+
+impl YedekliKaynak {
+    pub fn yeni(adaylar: Vec<(String, Box<dyn Kaynak>)>) -> Result<YedekliKaynak, KurHata> {
+        if adaylar.is_empty() {
+            return Err(KurHata::Dogrulama(
+                "Güncelleme kaynağı yok. Öneri: kur.toml'a kaynak_url / kaynak_klasoru yazın."
+                    .into(),
+            ));
+        }
+        Ok(YedekliKaynak {
+            adaylar,
+            aktif: std::cell::Cell::new(0),
+        })
+    }
+
+    pub fn aktif_ad(&self) -> &str {
+        &self.adaylar[self.aktif.get()].0
+    }
+
+    fn dene<T>(&self, mut f: impl FnMut(&dyn Kaynak) -> Result<T, KurHata>) -> Result<T, KurHata> {
+        let n = self.adaylar.len();
+        let bas = self.aktif.get();
+        let mut hatalar = Vec::new();
+        for i in 0..n {
+            let idx = (bas + i) % n;
+            let (ad, k) = &self.adaylar[idx];
+            match f(k.as_ref()) {
+                Ok(v) => {
+                    self.aktif.set(idx);
+                    return Ok(v);
+                }
+                Err(e) => hatalar.push(format!("{ad}: {e}")),
+            }
+        }
+        Err(KurHata::Diger(format!(
+            "Tüm güncelleme kaynakları denendi, hiçbiri çalışmadı ({}). Öneri: ağ bağlantısını denetleyin.",
+            hatalar.join(" | ")
+        )))
+    }
+}
+
+impl Kaynak for YedekliKaynak {
+    fn yayin_oku(&self) -> Result<Vec<u8>, KurHata> {
+        self.dene(|k| k.yayin_oku())
+    }
+
+    fn getir(&self, url: &str, hedef: &Path, beklenen_boyut: u64) -> Result<u64, KurHata> {
+        let mut say = 0u32;
+        self.dene(|k| {
+            if hedef.exists() {
+                say += 1;
+                let mut yan = hedef.as_os_str().to_owned();
+                yan.push(format!(".kismi{say}"));
+                fs::rename(hedef, PathBuf::from(yan))?;
+            }
+            k.getir(url, hedef, beklenen_boyut)
+        })
+    }
+}

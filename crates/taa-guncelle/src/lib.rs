@@ -12,7 +12,7 @@ pub mod yayin;
 #[cfg(test)]
 mod testler;
 
-pub use kaynak::{http_url_mu, HttpKaynak, Kaynak, YerelKaynak};
+pub use kaynak::{http_url_mu, HttpKaynak, Kaynak, YedekliKaynak, YerelKaynak};
 pub use yayin::{Yayin, YayinPaketi};
 
 use serde::Serialize;

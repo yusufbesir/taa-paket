@@ -747,3 +747,32 @@ fn yayindan_kurulum_bozuk_sha_ile_kurmaz() {
     assert!(kur_yayindan(&o.kur(), &kaynak(&o), "kararli", "a").is_err());
     assert!(o.secili("a").is_none());
 }
+
+#[test]
+fn yedekli_kaynak_dusunce_siradakine_gecer() {
+    let k = taa_dosya::gecici_klasor().unwrap();
+    std::fs::write(k.join("yayin.json"), b"{}").unwrap();
+    std::fs::write(k.join("a.zip"), b"abc").unwrap();
+    let yok = taa_dosya::gecici_klasor().unwrap().join("olmayan");
+    let y = YedekliKaynak::yeni(vec![
+        ("bozuk".into(), Box::new(YerelKaynak::yeni(yok))),
+        ("yerel".into(), Box::new(YerelKaynak::yeni(k.clone()))),
+    ])
+    .unwrap();
+    assert_eq!(y.yayin_oku().unwrap(), b"{}");
+    assert_eq!(y.aktif_ad(), "yerel");
+    let hedef = k.join("indi.zip");
+    assert_eq!(y.getir("a.zip", &hedef, 3).unwrap(), 3);
+}
+
+#[test]
+fn yedekli_kaynak_hepsi_dusunce_hata_ve_bos_liste_reddedilir() {
+    let yok = taa_dosya::gecici_klasor().unwrap().join("olmayan");
+    let y = YedekliKaynak::yeni(vec![("a".into(), Box::new(YerelKaynak::yeni(yok)))]).unwrap();
+    assert!(y
+        .yayin_oku()
+        .unwrap_err()
+        .to_string()
+        .contains("Tüm güncelleme kaynakları"));
+    assert!(YedekliKaynak::yeni(vec![]).is_err());
+}

@@ -104,17 +104,28 @@ fn calistir(args: &[String], json: bool) -> Result<u8, KurHata> {
     let kur = Kur::ortamdan()?;
     let ayar = kur_ayari_oku(kur.kok())?;
     let kanal = kanal_arg.unwrap_or_else(|| ayar.kanal().to_string());
-    let deger = kaynak_arg
-        .or(ayar.kaynak_url.clone())
-        .or(ayar.kaynak_klasoru.clone())
-        .ok_or_else(|| {
-            kullanim("Güncelleme kaynağı belirtilmedi: --kaynak verin ya da kur.toml'a kaynak_url / kaynak_klasoru yazın.")
-        })?;
-    let kaynak: Box<dyn Kaynak> = if http_url_mu(&deger) {
-        Box::new(HttpKaynak::yeni(&deger)?)
+    // Kaynak sırası: --kaynak (tek, yedeksiz) ya da kur.toml: kaynak_url, kaynak_url_yedek[..], kaynak_klasoru.
+    let mut degerler: Vec<String> = Vec::new();
+    if let Some(k) = kaynak_arg {
+        degerler.push(k);
     } else {
-        Box::new(YerelKaynak::yeni(deger))
-    };
+        degerler.extend(ayar.kaynak_url.clone());
+        degerler.extend(ayar.kaynak_url_yedek.clone());
+        degerler.extend(ayar.kaynak_klasoru.clone());
+    }
+    if degerler.is_empty() {
+        return Err(kullanim("Güncelleme kaynağı belirtilmedi: --kaynak verin ya da kur.toml'a kaynak_url / kaynak_klasoru yazın."));
+    }
+    let mut adaylar: Vec<(String, Box<dyn Kaynak>)> = Vec::new();
+    for deger in degerler {
+        let k: Box<dyn Kaynak> = if http_url_mu(&deger) {
+            Box::new(HttpKaynak::yeni(&deger)?)
+        } else {
+            Box::new(YerelKaynak::yeni(deger.clone()))
+        };
+        adaylar.push((deger, k));
+    }
+    let kaynak: Box<dyn Kaynak> = Box::new(taa_guncelle::kaynak::YedekliKaynak::yeni(adaylar)?);
     let paket = paket_arg.as_deref();
     if komut == "liste" {
         let k = katalog(&kur, kaynak.as_ref(), &kanal)?;

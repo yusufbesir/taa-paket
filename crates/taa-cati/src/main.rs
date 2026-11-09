@@ -232,7 +232,20 @@ fn calistir(args: &[String], json: bool) -> Result<(), Hata> {
         .map_err(|e| (taa_yol::hata_kodu(&e), e.to_string()))?;
     let (oturum, g) = yonetici_baglantisi_hedef(&kok, &h.anahtar, &h.taban, h.sertifika.as_deref())
         .map_err(ch)?;
-    let c = Cati::oturumdan(&g, &oturum);
+    // Yol listesi varsa her istek yedekli gider (bir yol düşerse iletişim kesilmeden sıradakine geçilir).
+    let sunucu_acik =
+        s.sunucu.is_some() || std::env::var("TAA_SUNUCU").is_ok_and(|v| !v.trim().is_empty());
+    let yedekli = if sunucu_acik {
+        None
+    } else {
+        taa_kimlik::yedekli_gonderici(&kok, Some(&oturum), s.sertifika.as_deref())
+            .map_err(|e| (3, e.to_string()))?
+    };
+    let gonderici: &dyn taa_kimlik::Gonderici = match &yedekli {
+        Some(y) => y,
+        None => &g,
+    };
+    let c = Cati::oturumdan(gonderici, &oturum);
     let gerek = |ad: &str, v: &Option<String>| -> Result<String, Hata> {
         v.clone()
             .ok_or_else(|| (2, format!("{ad} gerekli. Öneri: taa-cati --yardim")))
