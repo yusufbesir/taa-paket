@@ -1,0 +1,14 @@
+# Paketin köküne `harici.toml` adıyla konur ve paket.json dosyalar listesine girer. sha256/url DOLDURULMADAN kullanılmaz.
+sema = 1
+
+[[harici]]
+ad = "tailscale"
+surum = "SURUM"                       # örn. 1.xx.x
+url = "https://pkgs.tailscale.com/stable/tailscale-setup-SURUM.exe"   # sürüme sabit adres
+sha256 = "python tools/harici_sha.py D:/Programlar/Tailscale/tailscale-setup.exe çıktısındaki değer"
+imzalayan = "Tailscale Inc."
+sessiz = ["/quiet"]
+kurulu_yollar = ["%ProgramFiles%\\Tailscale\\tailscale.exe"]
+
+[harici.ayar]
+args = ["up", "--unattended", "--auth-key=file:{anahtar_dosya}"]

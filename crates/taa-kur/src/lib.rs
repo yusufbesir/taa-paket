@@ -8,6 +8,7 @@
 //! Özellik anahtarı: "kur" (varsayılan açık).
 
 pub mod ayar;
+pub mod harici;
 pub mod kayit;
 pub mod paket;
 pub mod pencere_model;
@@ -25,6 +26,7 @@ mod testler_imza;
 mod testler_zip;
 
 pub use ayar::{kur_ayari_oku, KurAyar};
+pub use harici::{HariciDurum, HariciRapor, HariciSonuc};
 pub use kayit::{Kayit, PaketKaydi};
 pub use paket::{paket_dogrula, Paket};
 pub use veri::{sahip_toml_coz, veri_kok_coz, Deger};
