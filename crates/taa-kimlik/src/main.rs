@@ -167,6 +167,12 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
             let _ = stdin.lock().read_to_end(&mut Vec::new());
             let parola = parola.trim_end_matches(['\n', '\r']);
             let h = hedef(sertifika.as_deref())?;
+            // Yol listesi varsa giriş isteği de yedekli gönderilir (bir yol düşerse sıradakine geçer).
+            let yedekli = if sunucu_acik {
+                None
+            } else {
+                taa_kimlik::yedekli_gonderici(&kok, None, sertifika.as_deref()).map_err(kh)?
+            };
             let mut g = CurlGonderici::yeni(&h.taban).map_err(|e| (2, e.to_string()))?;
             if let Some(c) = &h.sertifika {
                 g = g.sertifika(c);
@@ -186,18 +192,41 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
                     kok.join("anahtarlar").join("sunucu.pub").display()
                 );
             }
-            let o = giris_dogrulayarak(&g, &sunucu, &k, parola, kod.as_deref(), anahtar.as_ref())
-                .map_err(kh)?;
+            let gonderici: &dyn taa_kimlik::Gonderici = match &yedekli {
+                Some(y) => y,
+                None => &g,
+            };
+            let o = giris_dogrulayarak(
+                gonderici,
+                &sunucu,
+                &k,
+                parola,
+                kod.as_deref(),
+                anahtar.as_ref(),
+            )
+            .map_err(kh)?;
             depo.kaydet(&o).map_err(kh)?;
             // Çevrimdışı yetki belgesi (POST /v1/yetki, imzalı, oturumsuz). Başarısızlık girişi bozmaz.
-            match o
-                .gonderici_taban(
+            let yetki_sonucu = if sunucu_acik {
+                o.gonderici_taban(
                     &h.taban,
                     h.sertifika.as_deref(),
                     cihaz_imzalayici(&kok).ok().flatten(),
                 )
                 .and_then(|g| yetki_al(&g, &kok, &sunucu, anahtar.as_ref()))
-            {
+            } else {
+                match taa_kimlik::yedekli_gonderici(&kok, Some(&o), sertifika.as_deref()) {
+                    Ok(Some(y)) => yetki_al(&y, &kok, &sunucu, anahtar.as_ref()),
+                    _ => o
+                        .gonderici_taban(
+                            &h.taban,
+                            h.sertifika.as_deref(),
+                            cihaz_imzalayici(&kok).ok().flatten(),
+                        )
+                        .and_then(|g| yetki_al(&g, &kok, &sunucu, anahtar.as_ref())),
+                }
+            };
+            match yetki_sonucu {
                 Ok(y) if !json => println!(
                     "yetki belgesi alındı: {} izin, geçerlilik {}{}",
                     y.izinler.len(),
@@ -288,15 +317,25 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
         }
         Some("gonder") => {
             let h = hedef(sertifika.as_deref())?;
-            let sonuc = kuyrugu_gonder_hedef(
-                depo.as_ref(),
-                &sunucu,
-                &h.taban,
-                &kok,
-                h.sertifika.as_deref(),
-                en_cok,
-            )
-            .map_err(kh)?;
+            let yedekli = if sunucu_acik {
+                None
+            } else {
+                let o = depo.oku(&sunucu).map_err(kh)?;
+                taa_kimlik::yedekli_gonderici(&kok, Some(&o), sertifika.as_deref()).map_err(kh)?
+            };
+            let sonuc = match &yedekli {
+                // Yol listesi: her kayıt yol düşse de sıradaki yoldan gider; aktif yol `son.json`a yazılır.
+                Some(y) => taa_kimlik::kuyrugu_gonder_ile(y, &kok, en_cok).map_err(kh)?,
+                None => kuyrugu_gonder_hedef(
+                    depo.as_ref(),
+                    &sunucu,
+                    &h.taban,
+                    &kok,
+                    h.sertifika.as_deref(),
+                    en_cok,
+                )
+                .map_err(kh)?,
+            };
             let mut toplam = (0usize, 0usize, 0usize);
             let mut durma = None;
             let mut programlar = Vec::new();

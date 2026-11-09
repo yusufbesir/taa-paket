@@ -1,0 +1,15 @@
+# TAA Kur kurulum ve kaldırma programı (tek exe). Bağımlılık yok. Çalışma alanının DIŞINDA: gömülecek dosyalar
+# TAA_KUR_PAKET klasöründen gelir (tools/kur_paketle.sh hazırlar), o yüzden `cargo test --workspace` bunu derlemez.
+[package]
+name = "taa-kur-kurulum"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+publish = false
+
+[workspace]
+
+[profile.release]
+opt-level = "s"
+strip = true
+lto = true

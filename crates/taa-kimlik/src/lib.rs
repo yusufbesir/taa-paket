@@ -513,6 +513,53 @@ pub fn kuyrugu_gonder(
 }
 
 /// `anahtar` depo anahtarı (mantıksal ad ya da adres), `taban` istek adresi (taa-yol ile seçilen yol).
+/// Yol listesi (taa-yol) varsa her yol için oturum, cihaz imzası ve sertifika ile gönderici kurar ve yedekli
+/// (kesintisiz yol geçişli) gönderici döner; liste yoksa `None` (eski tek adres davranışı).
+/// `acik_sertifika` verilirse tüm yollarda o CA kullanılır.
+pub fn yedekli_gonderici(
+    kok: &Path,
+    oturum: Option<&Oturum>,
+    acik_sertifika: Option<&Path>,
+) -> Result<Option<taa_yol::YedekliGonderici>, KimlikHata> {
+    let imza = cihaz_imzalayici(kok)?;
+    let fabrika = |y: &taa_yol::Yol,
+                   ca: Option<std::path::PathBuf>|
+     -> Result<Box<dyn Gonderici>, GonderHata> {
+        let mut g = CurlGonderici::yeni(&y.taban)?;
+        if let Some(o) = oturum {
+            g = g.oturum(&o.oturum)?;
+        }
+        if let Some(c) = acik_sertifika.map(Path::to_path_buf).or(ca) {
+            g = g.sertifika(&c);
+        }
+        if let Some(i) = &imza {
+            g = g.imzalayici(i.clone());
+        }
+        Ok(Box::new(g))
+    };
+    taa_yol::yedekli_kur(kok, &fabrika).map_err(|e| KimlikHata::Baglanti(e.to_string()))
+}
+
+/// Verilen göndericiyle (ör. yedekli) tüm programların kuyruklarını gönderir.
+pub fn kuyrugu_gonder_ile(
+    g: &dyn Gonderici,
+    kok: &Path,
+    en_cok: usize,
+) -> Result<Vec<(String, taa_kuyruk::GonderOzeti)>, KimlikHata> {
+    let mut sonuc = Vec::new();
+    for (ad, k) in taa_kuyruk::Kuyruk::hepsi(kok).map_err(|e| KimlikHata::Depo(e.to_string()))? {
+        let oz = k
+            .gonder(g, en_cok)
+            .map_err(|e| KimlikHata::Depo(e.to_string()))?;
+        let dur = oz.durma_nedeni.is_some();
+        sonuc.push((ad, oz));
+        if dur {
+            break;
+        }
+    }
+    Ok(sonuc)
+}
+
 pub fn kuyrugu_gonder_hedef(
     depo: &dyn OturumDeposu,
     anahtar: &str,

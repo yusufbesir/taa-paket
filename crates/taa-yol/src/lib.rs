@@ -21,6 +21,7 @@
 mod testler;
 
 use serde_json::{json, Value};
+use std::cell::Cell;
 use std::fmt;
 use std::path::{Path, PathBuf};
 use taa_kuyruk::{CurlGonderici, GonderHata, Gonderici};
@@ -318,6 +319,112 @@ pub fn sec(kok: &Path, y: &Yollar, d: &dyn Deneyici) -> Result<Yol, YolHata> {
     Err(YolHata::Ulasilamadi(
         y.yollar.iter().map(|v| v.ad.clone()).collect(),
     ))
+}
+
+/// Yedekli gönderici: her istek için yolları sırayla dener. Bir yol bağlantı hatası verirse (`Ulasilamadi`,
+/// `Yapilandirma`) AYNI istek sıradaki yolla yeniden gönderilir; sunucudan yanıt gelen (başarı ya da 4xx) yol
+/// "aktif" olur ve `son.json`a yazılır, sonraki istekler oradan başlar. Böylece bir yol (ör. Tailscale) düşünce
+/// iletişim kesilmeden başka yola (Caddy/doğrudan/alan adı/Cloudflare) geçilir; yol geri gelince de çalışan yolda
+/// kalınır (gereksiz geçiş yok). Dönüş: ilk anlamlı yanıt; hepsi başarısızsa son hata (hangi yolların denendiği mesajda).
+/// Not: 5xx/zaman aşımı da `Ulasilamadi` sayıldığından aynı kayıt başka yoldan tekrar gelebilir; sunucu tarafında
+/// kayıtlar kimlikle (idempotent) tekilleştirilir (taa-kuyruk).
+pub struct YedekliGonderici {
+    kok: PathBuf,
+    adaylar: Vec<(String, Box<dyn Gonderici>)>,
+    aktif: Cell<usize>,
+}
+
+impl YedekliGonderici {
+    /// `adaylar` önceliğe göre sıralı (ad, gönderici). Boş liste kurulamaz.
+    pub fn yeni(
+        kok: &Path,
+        adaylar: Vec<(String, Box<dyn Gonderici>)>,
+    ) -> Result<YedekliGonderici, YolHata> {
+        if adaylar.is_empty() {
+            return Err(YolHata::HedefYok);
+        }
+        Ok(YedekliGonderici {
+            kok: kok.to_path_buf(),
+            adaylar,
+            aktif: Cell::new(0),
+        })
+    }
+
+    /// Şu an aktif yolun adı.
+    pub fn aktif_yol(&self) -> &str {
+        &self.adaylar[self.aktif.get()].0
+    }
+
+    fn dene(
+        &self,
+        istek: &dyn Fn(&dyn Gonderici) -> Result<Value, GonderHata>,
+    ) -> Result<Value, GonderHata> {
+        let n = self.adaylar.len();
+        let baslangic = self.aktif.get();
+        let mut hatalar: Vec<String> = Vec::new();
+        let mut son_hata = None;
+        for i in 0..n {
+            let idx = (baslangic + i) % n;
+            let (ad, g) = &self.adaylar[idx];
+            match istek(g.as_ref()) {
+                Err(e @ (GonderHata::Ulasilamadi(_) | GonderHata::Yapilandirma(_))) => {
+                    hatalar.push(format!("{ad}: {e}"));
+                    son_hata = Some(e);
+                }
+                sonuc => {
+                    if idx != baslangic {
+                        self.aktif.set(idx);
+                        son_yaz(&self.kok, ad);
+                    }
+                    return sonuc;
+                }
+            }
+        }
+        // Hepsi düştü: aktif yol değişmez; hata türü korunur, mesaja denenen yollar yazılır.
+        let ozet = hatalar.join("; ");
+        Err(match son_hata {
+            Some(GonderHata::Yapilandirma(_)) => GonderHata::Yapilandirma(ozet),
+            _ => GonderHata::Ulasilamadi(format!("tüm yollar denendi ({ozet})")),
+        })
+    }
+}
+
+impl Gonderici for YedekliGonderici {
+    fn gonder(&self, uc: &str, govde: &Value) -> Result<Value, GonderHata> {
+        self.dene(&|g| g.gonder(uc, govde))
+    }
+    fn al(&self, uc: &str) -> Result<Value, GonderHata> {
+        self.dene(&|g| g.al(uc))
+    }
+}
+
+/// Yol başına gönderici üreten fabrika (ikinci bağımsız değişken: yolun CA dosyası).
+pub type GondericiFabrikasi<'a> =
+    &'a dyn Fn(&Yol, Option<PathBuf>) -> Result<Box<dyn Gonderici>, GonderHata>;
+
+/// Yol listesi varsa yedekli göndericiyi kurar (sıra: son çalışan yol, sonra liste); liste yoksa `None`
+/// (çağıran eski tek adres davranışına döner). `fabrika` her yol için göndericiyi (oturum, imza, sertifika dahil) üretir;
+/// ikinci bağımsız değişken yolun CA dosyasıdır (`None` = sistem kökleri).
+pub fn yedekli_kur(
+    kok: &Path,
+    fabrika: GondericiFabrikasi,
+) -> Result<Option<YedekliGonderici>, YolHata> {
+    let Some(y) = yollar_oku(kok)? else {
+        return Ok(None);
+    };
+    let son = son_oku(kok);
+    let mut sira: Vec<&Yol> = Vec::with_capacity(y.yollar.len());
+    if let Some(s) = &son {
+        sira.extend(y.yollar.iter().filter(|v| &v.ad == s));
+    }
+    sira.extend(y.yollar.iter().filter(|v| Some(&v.ad) != son.as_ref()));
+    let mut adaylar = Vec::new();
+    for v in sira {
+        if let Ok(g) = fabrika(v, v.sertifika_yolu(kok)) {
+            adaylar.push((v.ad.clone(), g));
+        }
+    }
+    YedekliGonderici::yeni(kok, adaylar).map(Some)
 }
 
 /// Çözülmüş hedef: `anahtar` oturum deposu/yetki belgesi anahtarı, `taban` istek adresi, `sertifika` CA dosyası.

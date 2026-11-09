@@ -65,3 +65,10 @@ eklenmesi sunucu başlığından istendi; olmasa da seçim çalışır (401 de "
 - Sunucu PC'de Caddy/WireGuard/cloudflared kurulumu (PC slotu, Yusuf'la birlikte: modem yönlendirme).
 - Çatı'dan WireGuard eş anahtarı üretimi ve şube yapılandırma dosyası (S4c).
 - Windows'ta elle deneme yapılmadı; testler Linux + CI Windows. **S4b PC bulgusu (2026-11-07):** Windows curl (schannel) kendi CA ile imzalı sertifikada CRL bulamayıp `CERT_TRUST_REVOCATION_STATUS_UNKNOWN` veriyordu; `CurlGonderici` artık `--cacert` verildiğinde Windows'ta `--ssl-no-revoke` ekler (yalnız kendi CA'mız; sistem kökleri `"sistem"` seçiminde eklenmez).
+
+## Kesintisiz yol geçişi (2026-11-09, Yusuf: "her adım iki alternatifle, otomatik geçsin")
+`taa-yol` artık yalnız açılışta yol seçmez: `YedekliGonderici` her isteği aktif yolla dener; bağlantı hatasında (`Ulasilamadi`/`Yapilandirma`) AYNI isteği sıradaki yolla yeniden gönderir (örn. Tailscale düşerse Caddy/doğrudan, sonra alan adı, Cloudflare). Sunucudan yanıt gelen (başarı ya da 4xx) yol aktif olur ve `son.json`a yazılır; sonraki istekler oradan başlar, yol geri gelince gereksiz geçiş yapılmaz. Hepsi düşerse hata mesajı denenen tüm yolları sayar; kuyruktaki kayıtlar kaybolmaz (sonraki `taa-kimlik gonder`de gider).
+- Kullanan: `taa-kimlik giris` (giriş + yetki belgesi) ve `taa-kimlik gonder` (kuyruk). Yol listesi yoksa ya da `--sunucu`/`TAA_SUNUCU` verilmişse eski tek adres davranışı.
+- Henüz yedekli DEĞİL: `taa-cati` ve `taa-cihaz` (yönetim komutları, her çalıştırmada başta yol seçer ama komut sırasında yol değiştirmez) ve `taa-guncelle` (yayın kaynağı ayrı: `kaynak_url`).
+- Yol ekleme: `sunucu-yollari.json` listesine (sunucu başlığı) tailscale zaten eklendi; cloudflare gelince listeye girer, istemci kodu değişmez.
+- Not: 5xx ve zaman aşımı da "ulaşılamadı" sayıldığı için aynı kayıt başka yoldan tekrar gelebilir; sunucu kayıtları kimlikle tekilleştirir.
