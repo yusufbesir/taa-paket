@@ -336,7 +336,12 @@ fn indir_ve_kur(
     let kurma = kur.kur(dosya, true);
     let hata = match kurma {
         Ok(s) if s.ad == p.ad && s.surum == p.surum && s.secili => match kur.dogrula(Some(&p.ad)) {
-            Ok(sorunlar) if sorunlar.is_empty() => return Ok(()),
+            Ok(sorunlar) if sorunlar.is_empty() => {
+                // Yeni sürümün harici bağımlılıkları (ör. Tailscale) sormadan kurulur; hata güncellemeyi bozmaz,
+                // `taa-kur harici <paket>` ile yeniden denenir.
+                let _ = kur.harici_kur_paketten(&p.ad, Some(&p.surum));
+                return Ok(());
+            }
             Ok(sorunlar) => KurHata::Bozuk(format!(
                 "{} {} kurulumdan sonra doğrulanamadı ({} sorun).",
                 p.ad,
