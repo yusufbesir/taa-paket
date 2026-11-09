@@ -13,9 +13,17 @@ Alanlar: `ad`, `surum`, `url` (yalnız https, sürüme sabit), `sha256` (sabit),
 1. Paket kurulur; pakette `harici.toml` varsa her bağımlılık için: zaten kuruluysa atlanır.
 2. İndirme (curl, https, 512 MiB sınırı) → SHA256 eşleşmesi → Authenticode imzası (PowerShell `Get-AuthenticodeSignature`, imzalayan adı) → sessiz kurulum (0/3010/1641 başarı).
 3. Kurucu her durumda `eski\` altına taşınır (silme yok).
-4. Ayar: `ayar.args` içindeki `{anahtar_dosya}` → `<kök>\gizli\<ad>.anahtar`. Dosya yoksa ayar atlanır ve uyarı verilir.
+4. Ayar: `ayar.args` içindeki `{anahtar_dosya}` → `<kök>\gizli\<ad>.anahtar`. Anahtar sırası: kökteki dosya, yoksa `anahtar_paket_dosyasi` (paket içindeki dosya kopyalanır, `tskey-` biçimi ve 1 KiB sınırı denetlenir); hiçbiri yoksa ayar atlanır ve uyarı verilir.
 
 Sıra bozulursa (özet/imza uyuşmaz) kurucu ÇALIŞTIRILMAZ. `--harici-atla` bu adımı kapatır; `taa-kur harici <harici.toml|paket>` yeniden dener.
+
+## Kullanıcıya iş bırakmayan akış (Yusuf 2026-11-09)
+Hedef: PC'ye TAA paketi kurulunca Tailscale kurulumu ve ağa katılım kimse bir şey yapmadan biter.
+1. Tailscale konsolunda tek anahtar üretin: önceden yetkili, **yeniden kullanılabilir**, etiketli (`tag:taa`), 90 gün süreli. ACL'de `tag:taa` yalnız sunucuya erişsin (sızarsa etkisi sınırlı kalır).
+2. Anahtarı paketi üreten PC'de paketin `gizli/tailscale.anahtar` dosyasına koyun ve `harici.toml` içinde `anahtar_paket_dosyasi` verin (örnek dosyada hazır).
+3. Paketi **özel** dağıtın (USB/ağ paylaşımı). Anahtar içeren paket herkese açık GitHub yayınına (taa-yayin) KONMAZ.
+4. Her PC'de `taa-kur kur paket.zip` yeterli; anahtar kopyalanır, Tailscale kurulur, `tailscale up --unattended` çalışır.
+Anahtar süresi dolunca yeni anahtarlı paket üretilir. Daha temiz gelecek yol: anahtarı sunucudan (onaylı cihaza, tek kullanımlık) vermek; bu Tutaa sunucu işidir, henüz yok.
 
 ## Tailscale otomatik katılım
 Hesap girişi gerekir. Önerilen yol: Tailscale yönetim konsolunda **önceden yetkili, etiketli, süreli** bir auth key üretin,

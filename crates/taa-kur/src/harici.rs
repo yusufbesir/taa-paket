@@ -69,6 +69,10 @@ pub struct HariciAyar {
     pub program: Option<String>,
     /// Bağımsız değişkenler; `{anahtar_dosya}` → `<kök>\gizli\<ad>.anahtar` yolu.
     pub args: Vec<String>,
+    /// İsteğe bağlı: `<kök>\gizli\<ad>.anahtar` yoksa anahtarın alınacağı, PAKET İÇİNDEKİ göreli dosya (ör. `gizli/tailscale.anahtar`).
+    /// Yalnız özel dağıtılan paketler içindir: anahtar paketle birlikte yayılır, herkese açık yayına KONMAZ.
+    #[serde(default)]
+    pub anahtar_paket_dosyasi: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -327,6 +331,10 @@ pub fn manifest_dogrula(m: &HariciManifest) -> Result<(), String> {
             if a.args.is_empty() || a.args.iter().any(|x| x.is_empty() || x.contains('\0')) {
                 return Err(format!("{}: ayar.args boş/geçersiz", h.ad));
             }
+            if let Some(y) = &a.anahtar_paket_dosyasi {
+                crate::paket::yol_dogrula(y)
+                    .map_err(|e| format!("{}: anahtar_paket_dosyasi geçersiz ({e})", h.ad))?;
+            }
         }
     }
     Ok(())
@@ -422,7 +430,7 @@ impl Kur {
         let m = manifest_oku(manifest)?;
         let mut rapor = HariciRapor::default();
         for h in &m.harici {
-            let r = self.harici_bir(h, sistem);
+            let r = self.harici_bir(h, manifest.parent().unwrap_or(Path::new(".")), sistem);
             self.gunluk(
                 if r.is_ok() { "bilgi" } else { "hata" },
                 "harici",
@@ -438,7 +446,12 @@ impl Kur {
         Ok(rapor)
     }
 
-    fn harici_bir(&self, h: &Harici, sistem: &dyn HariciSistem) -> Sonuc<HariciSonuc> {
+    fn harici_bir(
+        &self,
+        h: &Harici,
+        paket_dizin: &Path,
+        sistem: &dyn HariciSistem,
+    ) -> Sonuc<HariciSonuc> {
         let mut uyarilar = Vec::new();
         let mut bulunan = sistem.kurulu_mu(&h.kurulu_yollar);
         let durum = if bulunan.is_some() {
@@ -475,7 +488,8 @@ impl Kur {
             HariciDurum::Kuruldu
         };
 
-        let ayarlandi = self.harici_ayarla(h, bulunan.as_deref(), sistem, &mut uyarilar)?;
+        let ayarlandi =
+            self.harici_ayarla(h, paket_dizin, bulunan.as_deref(), sistem, &mut uyarilar)?;
         Ok(HariciSonuc {
             ad: h.ad.clone(),
             surum: h.surum.clone(),
@@ -506,16 +520,57 @@ impl Kur {
         Ok(())
     }
 
+    /// Paket içindeki anahtar dosyasını `<kök>\gizli\<ad>.anahtar` olarak kopyalar (içerik hiçbir yere yazılmaz/günlüğe girmez).
+    fn anahtari_paketten_al(
+        &self,
+        ad: &str,
+        paket_dizin: &Path,
+        goreli: &str,
+        hedef: &Path,
+        uyarilar: &mut Vec<String>,
+    ) -> Sonuc<()> {
+        let Ok(kaynak) = crate::paket::guvenli_coz(paket_dizin, goreli) else {
+            uyarilar.push(format!(
+                "{ad}: pakette anahtar dosyası ({goreli}) yok; ayar atlanacak."
+            ));
+            return Ok(());
+        };
+        let m = fs::symlink_metadata(&kaynak)?;
+        if !m.is_file() || m.len() == 0 || m.len() > 1024 {
+            return Err(KurHata::Bozuk(format!(
+                "{ad}: paketteki anahtar dosyası geçersiz (boş ya da 1 KiB'tan büyük)."
+            )));
+        }
+        let b = fs::read(&kaynak)?;
+        let metin = String::from_utf8_lossy(&b);
+        if !metin.trim().starts_with("tskey-") {
+            return Err(KurHata::Bozuk(format!(
+                "{ad}: paketteki anahtar dosyası beklenen biçimde değil (tskey- ile başlamalı)."
+            )));
+        }
+        if let Some(d) = hedef.parent() {
+            fs::create_dir_all(d)?;
+        }
+        taa_dosya::uzerine_yaz_atomik(hedef, metin.trim().as_bytes())?;
+        Ok(())
+    }
+
     /// Kurulum sonrası ayar. Anahtar dosyası yoksa ayar atlanır (uyarı); varsa komut çalışır.
     fn harici_ayarla(
         &self,
         h: &Harici,
+        paket_dizin: &Path,
         kurulu: Option<&Path>,
         sistem: &dyn HariciSistem,
         uyarilar: &mut Vec<String>,
     ) -> Sonuc<bool> {
         let Some(a) = &h.ayar else { return Ok(false) };
         let anahtar = self.kok.join("gizli").join(format!("{}.anahtar", h.ad));
+        if !anahtar.is_file() {
+            if let Some(y) = &a.anahtar_paket_dosyasi {
+                self.anahtari_paketten_al(&h.ad, paket_dizin, y, &anahtar, uyarilar)?;
+            }
+        }
         let kullaniyor = a.args.iter().any(|x| x.contains("{anahtar_dosya}"));
         if kullaniyor && !anahtar.is_file() {
             uyarilar.push(format!(
@@ -719,6 +774,41 @@ mod testler {
             c.contains("--auth-key=file:") && !c.contains("tskey-gizli"),
             "{c}"
         );
+        let _ = fs::remove_dir_all(taban);
+    }
+
+    #[test]
+    fn anahtar_paketten_alinir_ve_ayar_calisir() {
+        let (taban, kur, m, s) = ortam(b"kurucu", true);
+        let ic = fs::read_to_string(&m).unwrap().replace(
+            "args = [\"up\"",
+            "anahtar_paket_dosyasi = \"gizli/ts.anahtar\"\nargs = [\"up\"",
+        );
+        fs::write(&m, ic).unwrap();
+        fs::create_dir_all(taban.join("gizli")).unwrap();
+        fs::write(taban.join("gizli/ts.anahtar"), "tskey-auth-abc\n").unwrap();
+        let r = kur.harici_kur(&m, &s).unwrap();
+        assert!(r.sonuclar[0].ayarlandi, "{:?}", r.sonuclar[0].uyarilar);
+        assert_eq!(
+            fs::read_to_string(kur.kok().join("gizli/tailscale.anahtar")).unwrap(),
+            "tskey-auth-abc"
+        );
+        assert!(!s.cagrilar.borrow().join("|").contains("tskey-auth-abc"));
+        let _ = fs::remove_dir_all(taban);
+    }
+
+    #[test]
+    fn paketteki_bozuk_anahtar_reddedilir() {
+        let (taban, kur, m, s) = ortam(b"kurucu", true);
+        let ic = fs::read_to_string(&m).unwrap().replace(
+            "args = [\"up\"",
+            "anahtar_paket_dosyasi = \"gizli/ts.anahtar\"\nargs = [\"up\"",
+        );
+        fs::write(&m, ic).unwrap();
+        fs::create_dir_all(taban.join("gizli")).unwrap();
+        fs::write(taban.join("gizli/ts.anahtar"), "baska-bir-sey").unwrap();
+        assert!(kur.harici_kur(&m, &s).is_err());
+        assert!(!kur.kok().join("gizli/tailscale.anahtar").exists());
         let _ = fs::remove_dir_all(taban);
     }
 

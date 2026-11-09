@@ -12,6 +12,9 @@ imzalayan = "Tailscale Inc."
 sessiz = ["/quiet"]
 kurulu_yollar = ["%ProgramFiles%\\Tailscale\\tailscale.exe"]
 
-# auth key dosyası yoksa bu adım atlanır; ağa giriş kullanıcı adımı olarak kalır (taa-kur uyarı verir).
+# Anahtar sırası: 1) <kök>\gizli\tailscale.anahtar varsa o; 2) yoksa paketteki anahtar_paket_dosyasi kopyalanır;
+# 3) hiçbiri yoksa ayar atlanır ve uyarı verilir (kurulum yine biter).
+# anahtar_paket_dosyasi YALNIZ özel dağıtılan pakette kullanılır; herkese açık yayına (taa-yayin) konmaz.
 [harici.ayar]
+anahtar_paket_dosyasi = "gizli/tailscale.anahtar"
 args = ["up", "--unattended", "--auth-key=file:{anahtar_dosya}"]
