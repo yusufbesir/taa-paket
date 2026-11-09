@@ -25,4 +25,4 @@ Anahtar koda, tanıma ya da günlüğe yazılmaz; komut satırında yalnız dosy
 ## Sınırlar
 - Windows'ta elle denenmedi (imza denetimi, sessiz kurulum, yönetici yetkisi): testler sahte sistemle yazıldı.
 - Kurucu yönetici yetkisi isterse taa-kur'un yönetici çalışması gerekir.
-- Tailscale'in sürüme sabit adresi ve tam SHA256 değeri PC'deki `D:\Programlar\Tailscale\tailscale-setup.exe` dosyasından `harici_sha.py` ile alınmalı.
+- Tailscale 1.104.5 değerleri (adres, SHA256) `docs/harici/tailscale.toml.ornek` içinde; adres kalıbı (`tailscale-setup-<sürüm>.exe`) indirilerek doğrulanmadı, SHA256 sabit olduğundan yanlış dosya kurulmaz.

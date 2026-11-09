@@ -1,14 +1,17 @@
-# Paketin köküne `harici.toml` adıyla konur ve paket.json dosyalar listesine girer. sha256/url DOLDURULMADAN kullanılmaz.
+# Paketin köküne `harici.toml` adıyla konur ve paket.json dosyalar listesine girer.
+# Değerler sunucu PC'deki D:\Programlar\Tailscale\tailscale-setup.exe dosyasından (2026-11-09): 1.104.5, 1407296 bayt,
+# Tailscale Inc. Authenticode geçerli (DigiCert G4). Adres sürüme sabit; "latest" kullanılmaz.
 sema = 1
 
 [[harici]]
 ad = "tailscale"
-surum = "SURUM"                       # örn. 1.xx.x
-url = "https://pkgs.tailscale.com/stable/tailscale-setup-SURUM.exe"   # sürüme sabit adres
-sha256 = "python tools/harici_sha.py D:/Programlar/Tailscale/tailscale-setup.exe çıktısındaki değer"
+surum = "1.104.5"
+url = "https://pkgs.tailscale.com/stable/tailscale-setup-1.104.5.exe"
+sha256 = "99f6f9c94b0624cb4921c2c9c94c35f7fc365a827a9b76d5096e596281730d50"
 imzalayan = "Tailscale Inc."
 sessiz = ["/quiet"]
 kurulu_yollar = ["%ProgramFiles%\\Tailscale\\tailscale.exe"]
 
+# auth key dosyası yoksa bu adım atlanır; ağa giriş kullanıcı adımı olarak kalır (taa-kur uyarı verir).
 [harici.ayar]
 args = ["up", "--unattended", "--auth-key=file:{anahtar_dosya}"]
