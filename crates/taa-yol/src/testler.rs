@@ -171,3 +171,133 @@ fn curl_deneyici_kapali_porta_ulasamaz() {
     // 127.0.0.1:9 (discard) kapalı: bağlantı reddi → ulaşılamadı; curl yoksa da false.
     assert!(!CurlDeneyici.ulasilabilir("http://127.0.0.1:9", None));
 }
+
+// ---- yedekli gönderici
+
+struct SahteG {
+    ad: &'static str,
+    cevap: Cevap,
+    cagri: std::rc::Rc<RefCell<Vec<&'static str>>>,
+}
+
+impl Gonderici for SahteG {
+    fn gonder(&self, _uc: &str, _g: &Value) -> Result<Value, GonderHata> {
+        self.cagri.borrow_mut().push(self.ad);
+        (self.cevap)()
+    }
+}
+
+type Cevap = fn() -> Result<Value, GonderHata>;
+
+fn ok() -> Result<Value, GonderHata> {
+    Ok(json!({"ok": true}))
+}
+fn dusuk() -> Result<Value, GonderHata> {
+    Err(GonderHata::Ulasilamadi("zaman aşımı".into()))
+}
+fn red() -> Result<Value, GonderHata> {
+    Err(GonderHata::Reddedildi {
+        kod: 401,
+        mesaj: "yetki".into(),
+    })
+}
+
+fn yedekli(
+    kok: &Path,
+    liste: Vec<(&'static str, Cevap)>,
+) -> (YedekliGonderici, std::rc::Rc<RefCell<Vec<&'static str>>>) {
+    let cagri = std::rc::Rc::new(RefCell::new(Vec::new()));
+    let adaylar = liste
+        .into_iter()
+        .map(|(ad, cevap)| {
+            (
+                ad.to_string(),
+                Box::new(SahteG {
+                    ad,
+                    cevap,
+                    cagri: cagri.clone(),
+                }) as Box<dyn Gonderici>,
+            )
+        })
+        .collect();
+    (YedekliGonderici::yeni(kok, adaylar).unwrap(), cagri)
+}
+
+#[test]
+fn yedekli_dusen_yoldan_siradakine_gecer_ve_hatirlar() {
+    let kok = taa_dosya::gecici_klasor().unwrap();
+    let (g, c) = yedekli(
+        &kok,
+        vec![("tailscale", dusuk), ("caddy", ok), ("alan", ok)],
+    );
+    assert_eq!(g.gonder("/v1/x", &json!({})).unwrap(), json!({"ok": true}));
+    assert_eq!(*c.borrow(), vec!["tailscale", "caddy"]);
+    assert_eq!(g.aktif_yol(), "caddy");
+    assert_eq!(son_oku(&kok).as_deref(), Some("caddy"));
+    // sonraki istek doğrudan çalışan yoldan başlar
+    c.borrow_mut().clear();
+    g.gonder("/v1/x", &json!({})).unwrap();
+    assert_eq!(*c.borrow(), vec!["caddy"]);
+    let _ = std::fs::remove_dir_all(&kok);
+}
+
+#[test]
+fn yedekli_aktif_dusunce_ilk_yola_donmeden_siradakini_dener() {
+    let kok = taa_dosya::gecici_klasor().unwrap();
+    let (g, c) = yedekli(&kok, vec![("a", ok), ("b", dusuk), ("c", ok)]);
+    // a çalışıyor: aktif a. Sonra a düşerse sıradaki b (düşük) ve c denenir.
+    let (g2, c2) = yedekli(&kok, vec![("a", dusuk), ("b", dusuk), ("c", ok)]);
+    g2.gonder("/v1/x", &json!({})).unwrap();
+    assert_eq!(*c2.borrow(), vec!["a", "b", "c"]);
+    assert_eq!(g2.aktif_yol(), "c");
+    g.gonder("/v1/x", &json!({})).unwrap();
+    assert_eq!(*c.borrow(), vec!["a"]);
+    let _ = std::fs::remove_dir_all(&kok);
+}
+
+#[test]
+fn yedekli_sunucu_reddi_gecis_sayilmaz() {
+    let kok = taa_dosya::gecici_klasor().unwrap();
+    let (g, c) = yedekli(&kok, vec![("a", red), ("b", ok)]);
+    assert!(matches!(
+        g.gonder("/v1/x", &json!({})),
+        Err(GonderHata::Reddedildi { kod: 401, .. })
+    ));
+    assert_eq!(*c.borrow(), vec!["a"]); // sunucuya ulaşıldı; yol değiştirilmez
+    let _ = std::fs::remove_dir_all(&kok);
+}
+
+#[test]
+fn yedekli_hepsi_dusunce_ulasilamadi_ve_tum_yollar_mesajda() {
+    let kok = taa_dosya::gecici_klasor().unwrap();
+    let (g, _) = yedekli(&kok, vec![("a", dusuk), ("b", dusuk)]);
+    let e = g.gonder("/v1/x", &json!({})).unwrap_err();
+    assert!(matches!(e, GonderHata::Ulasilamadi(_)));
+    let m = e.to_string();
+    assert!(m.contains("a:") && m.contains("b:"), "{m}");
+    assert!(son_oku(&kok).is_none());
+    assert!(YedekliGonderici::yeni(&kok, vec![]).is_err());
+    let _ = std::fs::remove_dir_all(&kok);
+}
+
+#[test]
+fn yedekli_kur_listeden_ve_sondan_siralar() {
+    let kok = taa_dosya::gecici_klasor().unwrap();
+    // liste yok → None
+    assert!(
+        yedekli_kur(&kok, &|_, _| Err(GonderHata::Yapilandirma("x".into())))
+            .unwrap()
+            .is_none()
+    );
+    yollar_yaz(&kok, &ornek()).unwrap();
+    son_yaz(&kok, "vpn");
+    let g = yedekli_kur(&kok, &|y, _| {
+        Ok(Box::new(CurlGonderici::yeni(&y.taban)?) as Box<dyn Gonderici>)
+    })
+    .unwrap()
+    .unwrap();
+    assert_eq!(g.aktif_yol(), "vpn");
+    assert_eq!(g.adaylar.len(), 3);
+    assert_eq!(g.adaylar[1].0, "dogrudan");
+    let _ = std::fs::remove_dir_all(&kok);
+}
