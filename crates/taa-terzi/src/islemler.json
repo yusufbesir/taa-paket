@@ -1,180 +1,225 @@
 {
-  "islemler": [
-    {
-      "kod": "pant-paca-kisalt",
-      "grup": "Pantolon",
-      "ad": "Paça kısaltma",
-      "olcu": true,
-      "varyantlar": [
-        "Düz paça",
-        "Duble paça"
-      ],
-      "uyari_mm": 100,
-      "uyari_notu": "Kaynaklara göre paça kısaltmada yaklaşık 10 cm; fazlası riskli olabilir. Usta doğrulamadı, usta kontrol etsin."
-    },
-    {
-      "kod": "pant-bacak-daralt",
-      "grup": "Pantolon",
-      "ad": "Bacak daraltma",
-      "olcu": true,
-      "sinir_mm": 40,
-      "uyari": "Pantolon genelde en fazla 4 cm daraltılır; fazlası beli ve oranı bozabilir.",
-      "dogrulandi": false
-    },
-    {
-      "kod": "pant-bel-daralt",
-      "grup": "Pantolon",
-      "ad": "Bel daraltma",
-      "olcu": true,
-      "sinir_mm": 40,
-      "uyari": "Pantolon genelde en fazla 4 cm daraltılır; fazlası beli ve oranı bozabilir.",
-      "dogrulandi": false
-    },
-    {
-      "kod": "pant-bacak-payi-ac",
-      "grup": "Pantolon",
-      "ad": "Bacak payı açma",
-      "olcu": true,
-      "uyari_mm": 50,
-      "uyari_notu": "Kaynaklara göre pay açmada genelde 3,8–5 cm; fazlası riskli olabilir. Usta doğrulamadı, usta kontrol etsin."
-    },
-    {
-      "kod": "pant-paca-payi-ac",
-      "grup": "Pantolon",
-      "ad": "Paça payı açma",
-      "olcu": true,
-      "uyari_mm": 25,
-      "uyari_notu": "Kaynaklara göre uzatmada genelde yaklaşık 2,5 cm; fazlası riskli olabilir. Usta doğrulamadı, usta kontrol etsin."
-    },
-    {
-      "kod": "pant-bel-payi-ac",
-      "grup": "Pantolon",
-      "ad": "Bel payı açma",
-      "olcu": true,
-      "uyari_mm": 50,
-      "uyari_notu": "Kaynaklara göre pay açmada genelde 3,8–5 cm; fazlası riskli olabilir. Usta doğrulamadı, usta kontrol etsin."
-    },
-    {
-      "kod": "pant-fermuar",
-      "grup": "Pantolon",
-      "ad": "Fermuar değişimi",
-      "olcu": false
-    },
-    {
-      "kod": "pant-salvar-daralt",
-      "grup": "Pantolon",
-      "ad": "Şalvarlık için daraltma",
-      "olcu": true
-    },
-    {
-      "kod": "cek-etek-kisalt",
-      "grup": "Ceket",
-      "ad": "Etek boyu kısaltma",
-      "olcu": true,
-      "uyari_mm": 38,
-      "uyari_notu": "Kaynaklara göre etek kısaltmada genelde 1,3–3,8 cm; fazlası riskli olabilir. Usta doğrulamadı, usta kontrol etsin."
-    },
-    {
-      "kod": "cek-kol-kisalt",
-      "grup": "Ceket",
-      "ad": "Kol boyu kısaltma",
-      "olcu": true,
-      "uyari_mm": 13,
-      "uyari_notu": "Kaynaklara göre kol ucunda genelde ±1,3 cm; fazlası riskli olabilir. Usta doğrulamadı, usta kontrol etsin."
-    },
-    {
-      "kod": "cek-sirt-daralt",
-      "grup": "Ceket",
-      "ad": "Sırt daraltma",
-      "olcu": true,
-      "uyari": "Fazla daraltma önde kasıntı ve potluk yapabilir; sınırı usta belirleyecek.",
-      "dogrulandi": false
-    },
-    {
-      "kod": "cek-kol-daralt",
-      "grup": "Ceket",
-      "ad": "Kol daraltma",
-      "olcu": true
-    },
-    {
-      "kod": "cek-omuz-kol-kisalt",
-      "grup": "Ceket",
-      "ad": "Omuzdan kol kısaltma",
-      "olcu": true,
-      "uyari_mm": 25,
-      "uyari_notu": "Kaynaklara göre omuzdan kol kısaltmada genelde yaklaşık 2,5 cm; fazlası riskli olabilir. Usta doğrulamadı, usta kontrol etsin."
-    },
-    {
-      "kod": "cek-dugme-kaydir",
-      "grup": "Ceket",
-      "ad": "Düğme kaydırma",
-      "olcu": false
-    },
-    {
-      "kod": "cek-dugme-saglam",
-      "grup": "Ceket",
-      "ad": "Düğme sağlamlaştırma",
-      "olcu": false
-    },
-    {
-      "kod": "cek-vatka-kisalt",
-      "grup": "Ceket",
-      "ad": "Omuz vatkası kısaltma",
-      "olcu": true
-    },
-    {
-      "kod": "cek-yirtmac-kapat",
-      "grup": "Ceket",
-      "ad": "Yırtmaç kapama",
-      "olcu": false
-    },
-    {
-      "kod": "gom-kol-kisalt",
-      "grup": "Gömlek",
-      "ad": "Kol kısaltma",
-      "olcu": true
-    },
-    {
-      "kod": "gom-daralt",
-      "grup": "Gömlek",
-      "ad": "Daraltma",
-      "olcu": true
-    },
-    {
-      "kod": "gom-dugme-kaydir",
-      "grup": "Gömlek",
-      "ad": "Düğme kaydırma",
-      "olcu": false
-    },
-    {
-      "kod": "gom-yaka-sabitle",
-      "grup": "Gömlek",
-      "ad": "Yaka sabitleme",
-      "olcu": false
-    },
-    {
-      "kod": "yel-daralt",
-      "grup": "Yelek",
-      "ad": "Daraltma",
-      "olcu": true
-    },
-    {
-      "kod": "yel-omuz-kisalt",
-      "grup": "Yelek",
-      "ad": "Omuzdan kısaltma",
-      "olcu": true
-    },
-    {
-      "kod": "yel-kulak-kapat",
-      "grup": "Yelek",
-      "ad": "Koltuk altı kulak kapama",
-      "olcu": false
-    },
-    {
-      "kod": "takim-beden-daralt",
-      "grup": "Takım",
-      "ad": "Komple bir beden daraltma",
-      "olcu": false
-    }
-  ]
+ "islemler": [
+  {
+   "kod": "pant-paca-kisalt",
+   "grup": "Pantolon",
+   "ad": "Paça kısaltma",
+   "olcu": true,
+   "varyantlar": [
+    "Düz paça",
+    "Duble paça"
+   ],
+   "uyari_mm": 100,
+   "uyari_notu": "Kaynaklara göre paça kısaltmada yaklaşık 10 cm; fazlası riskli olabilir. Usta doğrulamadı, usta kontrol etsin.",
+   "varyant_uyari": {
+    "Duble paça": "Duble paça için yaklaşık 8 cm paça payı kalmalı; pay yoksa duble yapılamaz."
+   }
+  },
+  {
+   "kod": "pant-bacak-daralt",
+   "grup": "Pantolon",
+   "ad": "Bacak daraltma",
+   "olcu": true,
+   "sinir_mm": 40,
+   "uyari": "Pantolon genelde en fazla 4 cm daraltılır; fazlası beli ve oranı bozabilir.",
+   "dogrulandi": false
+  },
+  {
+   "kod": "pant-bel-daralt",
+   "grup": "Pantolon",
+   "ad": "Bel daraltma",
+   "olcu": true,
+   "sinir_mm": 40,
+   "uyari": "Pantolon genelde en fazla 4 cm daraltılır; fazlası beli ve oranı bozabilir.",
+   "dogrulandi": false
+  },
+  {
+   "kod": "pant-bacak-payi-ac",
+   "grup": "Pantolon",
+   "ad": "Bacak payı açma",
+   "olcu": true,
+   "uyari_mm": 50,
+   "uyari_notu": "Kaynaklara göre pay açmada genelde 3,8–5 cm; fazlası riskli olabilir. Usta doğrulamadı, usta kontrol etsin.",
+   "uyari": "İç dikiş payı yoksa açılamaz; önce dikiş payına bakın."
+  },
+  {
+   "kod": "pant-paca-payi-ac",
+   "grup": "Pantolon",
+   "ad": "Paça payı açma",
+   "olcu": true,
+   "uyari_mm": 25,
+   "uyari_notu": "Kaynaklara göre uzatmada genelde yaklaşık 2,5 cm; fazlası riskli olabilir. Usta doğrulamadı, usta kontrol etsin.",
+   "uyari": "Alt kıvrımda kalan pay kadar uzar; pay yoksa uzatma yapılamaz."
+  },
+  {
+   "kod": "pant-bel-payi-ac",
+   "grup": "Pantolon",
+   "ad": "Bel payı açma",
+   "olcu": true,
+   "uyari_mm": 50,
+   "uyari_notu": "Kaynaklara göre pay açmada genelde 3,8–5 cm; fazlası riskli olabilir. Usta doğrulamadı, usta kontrol etsin.",
+   "uyari": "İç dikiş payı yoksa açılamaz; önce dikiş payına bakın."
+  },
+  {
+   "kod": "pant-fermuar",
+   "grup": "Pantolon",
+   "ad": "Fermuar değişimi",
+   "olcu": false
+  },
+  {
+   "kod": "pant-salvar-daralt",
+   "grup": "Pantolon",
+   "ad": "Şalvarlık için daraltma",
+   "olcu": true
+  },
+  {
+   "kod": "cek-etek-kisalt",
+   "grup": "Ceket",
+   "ad": "Etek boyu kısaltma",
+   "olcu": true,
+   "uyari_mm": 38,
+   "uyari_notu": "Kaynaklara göre etek kısaltmada genelde 1,3–3,8 cm; fazlası riskli olabilir. Usta doğrulamadı, usta kontrol etsin.",
+   "uyari": "Torba cepli (yama cepli) ceketlerde etek kısaltma önerilmez; cep ve düğme aralığı bozulur. Ceket torba cepliyse ustaya danışın."
+  },
+  {
+   "kod": "cek-kol-kisalt",
+   "grup": "Ceket",
+   "ad": "Kol boyu kısaltma",
+   "olcu": true,
+   "uyari_mm": 13,
+   "uyari_notu": "Kaynaklara göre kol ucunda genelde ±1,3 cm; fazlası riskli olabilir. Usta doğrulamadı, usta kontrol etsin."
+  },
+  {
+   "kod": "cek-sirt-daralt",
+   "grup": "Ceket",
+   "ad": "Sırt daraltma",
+   "olcu": true,
+   "uyari": "Fazla daraltma önde kasıntı ve potluk yapabilir; sınırı usta belirleyecek.",
+   "dogrulandi": false
+  },
+  {
+   "kod": "cek-kol-daralt",
+   "grup": "Ceket",
+   "ad": "Kol daraltma",
+   "olcu": true
+  },
+  {
+   "kod": "cek-omuz-kol-kisalt",
+   "grup": "Ceket",
+   "ad": "Omuzdan kol kısaltma",
+   "olcu": true,
+   "uyari_mm": 25,
+   "uyari_notu": "Kaynaklara göre omuzdan kol kısaltmada genelde yaklaşık 2,5 cm; fazlası riskli olabilir. Usta doğrulamadı, usta kontrol etsin.",
+   "uyari": "Omuz genişliği değişikliği önerilmez; omuzdan müdahale ürüne bakılarak ustaya danışılır."
+  },
+  {
+   "kod": "cek-dugme-kaydir",
+   "grup": "Ceket",
+   "ad": "Düğme kaydırma",
+   "olcu": false
+  },
+  {
+   "kod": "cek-dugme-saglam",
+   "grup": "Ceket",
+   "ad": "Düğme sağlamlaştırma",
+   "olcu": false
+  },
+  {
+   "kod": "cek-vatka-kisalt",
+   "grup": "Ceket",
+   "ad": "Omuz vatkası kısaltma",
+   "olcu": true,
+   "uyari": "Omuz değişikliği önerilmez; ürüne bakılarak ustaya danışın."
+  },
+  {
+   "kod": "cek-yirtmac-kapat",
+   "grup": "Ceket",
+   "ad": "Yırtmaç kapama",
+   "olcu": false
+  },
+  {
+   "kod": "gom-kol-kisalt",
+   "grup": "Gömlek",
+   "ad": "Kol kısaltma",
+   "olcu": true
+  },
+  {
+   "kod": "gom-daralt",
+   "grup": "Gömlek",
+   "ad": "Daraltma",
+   "olcu": true
+  },
+  {
+   "kod": "gom-dugme-kaydir",
+   "grup": "Gömlek",
+   "ad": "Düğme kaydırma",
+   "olcu": false
+  },
+  {
+   "kod": "gom-yaka-sabitle",
+   "grup": "Gömlek",
+   "ad": "Yaka sabitleme",
+   "olcu": false
+  },
+  {
+   "kod": "yel-daralt",
+   "grup": "Yelek",
+   "ad": "Daraltma",
+   "olcu": true
+  },
+  {
+   "kod": "yel-omuz-kisalt",
+   "grup": "Yelek",
+   "ad": "Omuzdan kısaltma",
+   "olcu": true
+  },
+  {
+   "kod": "yel-kulak-kapat",
+   "grup": "Yelek",
+   "ad": "Koltuk altı kulak kapama",
+   "olcu": false
+  },
+  {
+   "kod": "takim-beden-daralt",
+   "grup": "Takım",
+   "ad": "Komple bir beden daraltma",
+   "olcu": false
+  },
+  {
+   "kod": "pant-beden-daralt",
+   "grup": "Pantolon",
+   "ad": "Komple bir beden daraltma",
+   "olcu": false
+  },
+  {
+   "kod": "cek-beden-daralt",
+   "grup": "Ceket",
+   "ad": "Bir beden daraltma",
+   "olcu": false
+  },
+  {
+   "kod": "yel-beden-daralt",
+   "grup": "Yelek",
+   "ad": "Bir beden daraltma",
+   "olcu": false
+  },
+  {
+   "kod": "yel-genislet-parca",
+   "grup": "Yelek",
+   "ad": "Genişletme (parça ekleyerek)",
+   "olcu": false
+  },
+  {
+   "kod": "gom-etek-kisalt",
+   "grup": "Gömlek",
+   "ad": "Etek kısaltma",
+   "olcu": false
+  },
+  {
+   "kod": "takim-3parca-beden-daralt",
+   "grup": "Takım",
+   "ad": "Takım elbise (ceket+pantolon+yelek) bir beden daraltma",
+   "olcu": false
+  }
+ ]
 }

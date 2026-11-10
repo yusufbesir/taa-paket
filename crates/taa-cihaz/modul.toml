@@ -3,7 +3,7 @@
 ad = "taa-cihaz"
 surum = "0.1.0"
 arayuz = "1"
-gerektirir = { "taa-dosya" = "1", "taa-imza" = "1", "taa-kuyruk" = "1" }
+gerektirir = { "taa-dosya" = "1", "taa-imza" = "1", "taa-kuyruk" = "1", "taa-yol" = "1" }
 ozellikler = ["cihaz"]
 program = "ortak"
 sunar = ["cihaz.imzala@1", "cihaz.kayit@1"]

@@ -6,8 +6,8 @@
 //! Kurallar:
 //! - Her istek cihaz imzası + Bearer taşır (`taa_kimlik::Oturum::gonderici_ile`). Yazan uçlar son 15 dk içinde
 //!   `POST /v1/yeniden-dogrula {parola}` ister; sunucu 401 `yeniden_dogrula` dönerse `CatiHata::YenidenDogrula`.
-//! - Varsayılan reddet (K1): komut, oturumun izin listesinde gerekli izin yoksa sunucuya gitmeden reddedilir;
-//!   sunucu yine her istekte denetler (K6).
+//! - Varsayılan reddet (K1): komut, oturumun izin listesinde gerekli izin yoksa sunucuya gitmeden reddedilir; rol adı
+//!   tek başına izin vermez (yönetici de listeyle gelir); sunucu yine her istekte denetler (K6).
 //! - Silme yok: kullanıcı "kapat", cihaz "iptal"; günlük yalnız okunur (K10).
 //! - Parola hiçbir dosyaya/çıktıya yazılmaz; yalnız istek gövdesinde sunucuya gider.
 //! - Yeni dış crate yok.
@@ -258,18 +258,19 @@ pub struct Cati<'a> {
 }
 
 impl<'a> Cati<'a> {
-    /// Oturumun rol ve izin listesiyle kurar (yerel varsayılan reddet için). `yonetici` rolü her izni taşır.
-    pub fn yeni(g: &'a dyn Gonderici, roller: &[String], izinler: &[String]) -> Cati<'a> {
+    /// Oturumun izin listesiyle kurar (yerel varsayılan reddet, K1): yalnız sunucunun verdiği `izinler` sayılır;
+    /// rol adı (`yonetici` dahil) tek başına izin vermez, var olmayan izin adı her zaman reddedilir.
+    pub fn yeni(g: &'a dyn Gonderici, izinler: &[String]) -> Cati<'a> {
         Cati {
             g,
             izinler: izinler.to_vec(),
-            yonetici: roller.iter().any(|r| r == "yonetici"),
+            yonetici: false,
         }
     }
 
     /// Depodan okunan oturumla kurar.
     pub fn oturumdan(g: &'a dyn Gonderici, oturum: &Oturum) -> Cati<'a> {
-        Cati::yeni(g, &oturum.roller, &oturum.izinler)
+        Cati::yeni(g, &oturum.izinler)
     }
 
     /// Testler / izin denetimi yapılmayan kullanım: her izin var sayılır (sunucu yine denetler).
@@ -505,14 +506,24 @@ pub fn yonetici_baglantisi(
     sunucu: &str,
     sertifika: Option<&Path>,
 ) -> Result<(Oturum, taa_kuyruk::CurlGonderici), CatiHata> {
+    yonetici_baglantisi_hedef(kok, sunucu, sunucu, sertifika)
+}
+
+/// `anahtar` oturum deposu anahtarı (mantıksal ad ya da adres), `taban` istek adresi (taa-yol seçimi, S4a).
+pub fn yonetici_baglantisi_hedef(
+    kok: &Path,
+    anahtar: &str,
+    taban: &str,
+    sertifika: Option<&Path>,
+) -> Result<(Oturum, taa_kuyruk::CurlGonderici), CatiHata> {
     let depo = taa_kimlik::varsayilan_depo(kok);
-    let o = depo.oku(sunucu)?;
+    let o = depo.oku(anahtar)?;
     let cihaz = taa_kimlik::cihaz_imzalayici(kok)?.ok_or_else(|| {
         CatiHata::Kimlik(KimlikHata::Depo(format!(
             "cihaz anahtarı yok ({}). Öneri: taa-cihaz uret, sonra sunucuda tutaa-sunucu merkez-cihaz",
             kok.join("cihaz").display()
         )))
     })?;
-    let g = o.gonderici_ile(sertifika, Some(cihaz))?;
+    let g = o.gonderici_taban(taban, sertifika, Some(cihaz))?;
     Ok((o, g))
 }

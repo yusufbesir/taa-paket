@@ -32,6 +32,9 @@ pub struct Islem {
     /// Sınır usta tarafından doğrulandı mı?
     #[serde(default)]
     pub dogrulandi: bool,
+    /// Yalnız o varyant seçilince gösterilen uyarı (ör. duble paça için paça payı).
+    #[serde(default)]
+    pub varyant_uyari: std::collections::BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -108,6 +111,9 @@ impl Katalog {
             ));
         }
         let mut uyarilar = Vec::new();
+        if let Some(u) = varyant.and_then(|v| i.varyant_uyari.get(v)) {
+            uyarilar.push(format!("{}: {}", i.ad, u));
+        }
         if i.sinir_mm.is_some() && olcu_mm.is_none() {
             uyarilar.push(format!(
                 "{}: cm yazılmadığı için sınır denetlenemedi; iğneli ölçüyü usta kontrol etsin",
@@ -176,17 +182,19 @@ mod testler {
                 false
             )
             .is_err());
-        assert!(k
+        // duble paça: kayıt engellenmez, yalnız paça payı uyarısı gelir
+        let w = k
             .kontrol(
                 "pant-paca-kisalt",
                 Some(30),
                 Some("Duble paça"),
                 false,
                 true,
-                false
+                false,
             )
-            .unwrap()
-            .is_empty());
+            .unwrap();
+        assert_eq!(w.len(), 1);
+        assert!(w[0].contains("8 cm"));
         assert!(k
             .kontrol(
                 "pant-paca-kisalt",
@@ -325,5 +333,40 @@ mod testler {
         assert!(k
             .kontrol("pant-bel-daralt", Some(-5), None, false, false, false)
             .is_err());
+    }
+
+    #[test]
+    fn torba_cep_omuz_ve_duble_paca_uyarilari_yasak_degil_uyari() {
+        let k = Katalog::varsayilan();
+        let w = k
+            .kontrol("cek-etek-kisalt", None, None, false, false, false)
+            .unwrap();
+        assert!(w[0].contains("Torba cepli"));
+        let w = k
+            .kontrol("cek-omuz-kol-kisalt", None, None, false, false, false)
+            .unwrap();
+        assert!(w[0].contains("Omuz"));
+        let duble = k
+            .kontrol(
+                "pant-paca-kisalt",
+                None,
+                Some("Duble paça"),
+                false,
+                false,
+                false,
+            )
+            .unwrap();
+        assert!(duble.iter().any(|u| u.contains("8 cm")));
+        let duz = k
+            .kontrol(
+                "pant-paca-kisalt",
+                None,
+                Some("Düz paça"),
+                false,
+                false,
+                false,
+            )
+            .unwrap();
+        assert!(!duz.iter().any(|u| u.contains("8 cm")));
     }
 }

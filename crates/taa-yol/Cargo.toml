@@ -1,0 +1,22 @@
+# taa-yol: sunucuya ulaşım yolları (doğrudan IP, VPN, alan adı, Cloudflare) — sıralı liste, ilk ulaşılan kullanılır.
+# Sahip: Yusuf. yazan: [Claude#taa-yol-S4a 2026-11-07]. Yeni dış crate yok.
+[package]
+name = "taa-yol"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "TAA sunucu ulaşım yolları: birden çok adres (statik IP, VPN, alan adı, Cloudflare) sıralı denenir; ilk ulaşılan seçilir"
+
+[lib]
+name = "taa_yol"
+path = "src/lib.rs"
+
+[[bin]]
+name = "taa-yol"
+path = "src/main.rs"
+
+[dependencies]
+serde_json = "1"
+taa-dosya = { path = "../taa-dosya" }
+taa-kuyruk = { path = "../taa-kuyruk" }

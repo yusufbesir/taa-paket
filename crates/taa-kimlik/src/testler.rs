@@ -189,7 +189,7 @@ fn izinler_programlar_ve_cihaz() {
     assert_eq!(geri.izinler, o.izinler);
     assert_eq!(geri.programlar, o.programlar);
     assert!(o.ozet().get("oturum").is_none());
-    // Yönetici her izni taşır; eski sunucu (liste yok) her programı açık sayar.
+    // Rol adı izin vermez (K1): izin listesi olmayan yönetici de reddedilir; eski sunucu (liste yok) programı açık sayar.
     let y = giris(
         &Sahte::yeni(Ok(json!({"oturum": "t", "roller": ["yonetici"]}))),
         "https://s",
@@ -198,7 +198,7 @@ fn izinler_programlar_ve_cihaz() {
         None,
     )
     .unwrap();
-    assert!(y.izinli("her.sey") && y.program_acik("x"));
+    assert!(!y.izinli("her.sey") && !y.izinli("yok.islem") && y.program_acik("x"));
     // Cihaz anahtarı yoksa None; üretilince imzalayıcı gelir ve gönderici imzalı olur.
     assert!(cihaz_imzalayici(&kok).unwrap().is_none());
     assert!(!o.gonderici(None).unwrap().imzali_mi());
@@ -327,13 +327,15 @@ fn yetki_belgesi_imza_sure_ve_dosya() {
     let kok2 = taa_dosya::gecici_klasor().unwrap();
     assert!(sunucu_anahtari_oku(&kok2).unwrap().is_none());
     let y2 = yetki_al(
-        &Sahte::yeni(Ok(json!({"kullanici": "veli", "roller": ["yonetici"]}))),
+        &Sahte::yeni(Ok(
+            json!({"kullanici": "veli", "roller": ["yonetici"], "izinler": ["her.sey"]}),
+        )),
         &kok2,
         "https://s",
         None,
     )
     .unwrap();
-    assert!(!y2.dogrulandi && y2.izinli("her.sey"));
+    assert!(!y2.dogrulandi && y2.izinli("her.sey") && !y2.izinli("yok.islem"));
     assert_eq!(y2.gecerlilik, crate::yetki::gun_ekle(&y2.alinma, 7));
     assert!(yetki_oku(&kok2, "https://s", None, None).is_ok());
     // Bozuk sunucu.pub sessizce atlanmaz.

@@ -150,9 +150,10 @@ impl Oturum {
         })
     }
 
-    /// Bu izin var mı? (`yonetici` rolü her izni taşır: K4 rol hiyerarşisi; sunucu yine her istekte denetler.)
+    /// Bu izin var mı? Yalnız sunucunun verdiği `izinler` listesine bakılır (K1 varsayılan reddet): rol adı izin vermez,
+    /// `yonetici` dahil (sunucu rol mirasını açarak listeyi tam gönderir). Var olmayan izin adı her zaman reddedilir.
     pub fn izinli(&self, izin: &str) -> bool {
-        self.roller.iter().any(|r| r == "yonetici") || self.izinler.iter().any(|i| i == izin)
+        self.izinler.iter().any(|i| i == izin)
     }
 
     /// Program bu oturuma açık mı? Liste boşsa (eski sunucu) açık sayılır.
@@ -172,7 +173,18 @@ impl Oturum {
         sertifika: Option<&Path>,
         cihaz: Option<Arc<dyn Imzalayici>>,
     ) -> Result<CurlGonderici, KimlikHata> {
-        let mut g = CurlGonderici::yeni(&self.sunucu)
+        self.gonderici_taban(&self.sunucu, sertifika, cihaz)
+    }
+
+    /// Oturum anahtarı mantıksal ad (`merkez`) iken istek adresi yol listesinden gelir (taa-yol, S4a):
+    /// `taban` o adrestir; `self.sunucu` yalnız depo anahtarıdır.
+    pub fn gonderici_taban(
+        &self,
+        taban: &str,
+        sertifika: Option<&Path>,
+        cihaz: Option<Arc<dyn Imzalayici>>,
+    ) -> Result<CurlGonderici, KimlikHata> {
+        let mut g = CurlGonderici::yeni(taban)
             .and_then(|g| g.oturum(&self.oturum))
             .map_err(|e| KimlikHata::Baglanti(e.to_string()))?;
         if let Some(c) = sertifika {
@@ -497,8 +509,67 @@ pub fn kuyrugu_gonder(
     sertifika: Option<&Path>,
     en_cok: usize,
 ) -> Result<Vec<(String, taa_kuyruk::GonderOzeti)>, KimlikHata> {
-    let o = depo.oku(sunucu)?;
-    let g = o.gonderici_ile(sertifika, cihaz_imzalayici(kok)?)?;
+    kuyrugu_gonder_hedef(depo, sunucu, sunucu, kok, sertifika, en_cok)
+}
+
+/// `anahtar` depo anahtarı (mantıksal ad ya da adres), `taban` istek adresi (taa-yol ile seçilen yol).
+/// Yol listesi (taa-yol) varsa her yol için oturum, cihaz imzası ve sertifika ile gönderici kurar ve yedekli
+/// (kesintisiz yol geçişli) gönderici döner; liste yoksa `None` (eski tek adres davranışı).
+/// `acik_sertifika` verilirse tüm yollarda o CA kullanılır.
+pub fn yedekli_gonderici(
+    kok: &Path,
+    oturum: Option<&Oturum>,
+    acik_sertifika: Option<&Path>,
+) -> Result<Option<taa_yol::YedekliGonderici>, KimlikHata> {
+    let imza = cihaz_imzalayici(kok)?;
+    let fabrika = |y: &taa_yol::Yol,
+                   ca: Option<std::path::PathBuf>|
+     -> Result<Box<dyn Gonderici>, GonderHata> {
+        let mut g = CurlGonderici::yeni(&y.taban)?;
+        if let Some(o) = oturum {
+            g = g.oturum(&o.oturum)?;
+        }
+        if let Some(c) = acik_sertifika.map(Path::to_path_buf).or(ca) {
+            g = g.sertifika(&c);
+        }
+        if let Some(i) = &imza {
+            g = g.imzalayici(i.clone());
+        }
+        Ok(Box::new(g))
+    };
+    taa_yol::yedekli_kur(kok, &fabrika).map_err(|e| KimlikHata::Baglanti(e.to_string()))
+}
+
+/// Verilen göndericiyle (ör. yedekli) tüm programların kuyruklarını gönderir.
+pub fn kuyrugu_gonder_ile(
+    g: &dyn Gonderici,
+    kok: &Path,
+    en_cok: usize,
+) -> Result<Vec<(String, taa_kuyruk::GonderOzeti)>, KimlikHata> {
+    let mut sonuc = Vec::new();
+    for (ad, k) in taa_kuyruk::Kuyruk::hepsi(kok).map_err(|e| KimlikHata::Depo(e.to_string()))? {
+        let oz = k
+            .gonder(g, en_cok)
+            .map_err(|e| KimlikHata::Depo(e.to_string()))?;
+        let dur = oz.durma_nedeni.is_some();
+        sonuc.push((ad, oz));
+        if dur {
+            break;
+        }
+    }
+    Ok(sonuc)
+}
+
+pub fn kuyrugu_gonder_hedef(
+    depo: &dyn OturumDeposu,
+    anahtar: &str,
+    taban: &str,
+    kok: &Path,
+    sertifika: Option<&Path>,
+    en_cok: usize,
+) -> Result<Vec<(String, taa_kuyruk::GonderOzeti)>, KimlikHata> {
+    let o = depo.oku(anahtar)?;
+    let g = o.gonderici_taban(taban, sertifika, cihaz_imzalayici(kok)?)?;
     let mut sonuc = Vec::new();
     for (ad, k) in taa_kuyruk::Kuyruk::hepsi(kok).map_err(|e| KimlikHata::Depo(e.to_string()))? {
         let oz = k

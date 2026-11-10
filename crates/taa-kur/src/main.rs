@@ -8,23 +8,29 @@ use std::path::Path;
 use std::process::ExitCode;
 use taa_kur::{Kur, KurHata, Sorun};
 
-const KULLANIM: &str = "Kullanım: taa-kur <liste|kur|kaldir|sec|geri-don|dogrula|tani|rapor|cihaz> [bağımsız değişkenler] [--json]. Öneri: `taa-kur yardim` komutları açıklar.";
+const KULLANIM: &str = "Kullanım: taa-kur <liste|kur|kaldir|sec|geri-don|dogrula|tani|harici|rapor|cihaz|yol> [bağımsız değişkenler] [--json]. Öneri: `taa-kur yardim` komutları açıklar.";
 
 const YARDIM: &str = "\
 taa-kur — TAA kurulum yöneticisi. Kök: TAA_KOK ortamı ya da ikilinin yanı; `tani` gösterir.
 Komutlar:
   liste                              Kurulu paketler (ad, kurulu sürümler, seçili, sabit).
-  kur <paket.zip|paket-klasörü> [--sec]
+  kur <paket.zip|paket-klasörü> [--sec] [--harici-atla]
                                      Paketi doğrulayıp depo\\<ad>\\<sürüm> altına kurar; --sec seçili yapar.
+                                     Paketteki harici.toml varsa bağımlı programlar (ör. Tailscale) sormadan
+                                     indirilir, SHA256+imza doğrulanır, sessiz kurulur, ayarlanır (--harici-atla yapmaz).
                                      Güvenilir anahtar (anahtarlar\\*.pub) varsa imzasız paket reddedilir.
   kaldir <ad> [--surum S]            Seçili (ya da verilen) sürümü eski\\ altına taşır; veri silinmez.
   sec <ad> <sürüm>                   Seçili sürümü değiştirir.    geri-don <ad>   Önceki seçili sürüme döner.
   dogrula                            Depo + kayıt tutarlılığı (tüm paketler).
   dogrula <ad>                       Yalnız kurulu <ad> paketi.
   dogrula <paket.zip|klasör>         Kurulmamış paketi KURMADAN doğrular (sha256, icerik_sha256, imza).
+  harici <harici.toml|paket-adı>     Bağımlı programları (yeniden) kurar/ayarlar; anahtar kök\\gizli\\<ad>.anahtar.
   tani                               Kök, kayıt, veri alanları, güvenilir anahtarlar, uyarılar.
   rapor [--kaydet] [--bugun T]        Paket raporu: fiş, kasa, bildirim, katalog, pano, yedek alanlarını tek yerden
                                      okur (salt okunur). --kaydet kök\\raporlar\\rapor-<damga>.csv yazar (Excel açar).
+  yol --dosya sunucu-yollari.json [--ca sunucu-ca.pem]
+                                     Ulaşım yolu listesini (doğrudan IP/VPN/alan adı/Cloudflare) ve sunucu CA
+                                     sertifikasını veri köküne kurar (S4a; taa-yol liste/dene ile görülür).
   cihaz [--ad A] [--sunucu URL] [--sube K] [--sertifika pem]
                                      Bu PC'nin cihaz anahtarını üretir (varsa korur); --sunucu verilirse merkeze
                                      kaydeder (yönetici TAA Çatı'dan onaylar). Veri kökü: TAA_VERI_KOK / %APPDATA%\\TAA\\veri.
@@ -72,6 +78,7 @@ struct Ayri {
     konumsal: Vec<String>,
     sec: bool,
     surum: Option<String>,
+    harici_atla: bool,
 }
 
 fn ayir(args: &[String], izinli: &[&str]) -> Result<Ayri, KurHata> {
@@ -79,12 +86,14 @@ fn ayir(args: &[String], izinli: &[&str]) -> Result<Ayri, KurHata> {
         konumsal: vec![],
         sec: false,
         surum: None,
+        harici_atla: false,
     };
     let mut i = 0;
     while i < args.len() {
         let x = args[i].as_str();
         match x {
             "--sec" if izinli.contains(&x) => a.sec = true,
+            "--harici-atla" if izinli.contains(&x) => a.harici_atla = true,
             "--surum" if izinli.contains(&x) => {
                 i += 1;
                 match args.get(i) {
@@ -110,6 +119,24 @@ fn konumsal_say(a: &Ayri, n: usize, ornek: &str) -> Result<(), KurHata> {
         )));
     }
     Ok(())
+}
+
+fn harici_yaz(r: &taa_kur::HariciRapor) {
+    for h in &r.sonuclar {
+        let d = match h.durum {
+            taa_kur::HariciDurum::Kuruldu => "kuruldu",
+            taa_kur::HariciDurum::ZatenKurulu => "zaten kurulu",
+        };
+        println!(
+            "Bağımlı program: {} {} ({d}{}).",
+            h.ad,
+            h.surum,
+            if h.ayarlandi { ", ayarlandı" } else { "" }
+        );
+        for u in &h.uyarilar {
+            println!("Uyarı: {u}");
+        }
+    }
 }
 
 fn yaz_json(v: &Value) {
@@ -145,13 +172,20 @@ fn calistir(args: &[String], json: bool) -> Result<(), KurHata> {
             Ok(())
         }
         "kur" => {
-            let a = ayir(kalan, &["--sec"])?;
-            konumsal_say(&a, 1, "taa-kur kur <paket-klasoru|paket.zip> [--sec]")?;
+            let a = ayir(kalan, &["--sec", "--harici-atla"])?;
+            konumsal_say(
+                &a,
+                1,
+                "taa-kur kur <paket-klasoru|paket.zip> [--sec] [--harici-atla]",
+            )?;
             let kur = Kur::ortamdan()?;
-            let s = kur.kur(Path::new(&a.konumsal[0]), a.sec)?;
+            let (s, harici) = kur.kur_tam(Path::new(&a.konumsal[0]), a.sec, a.harici_atla)?;
             if json {
-                yaz_json(&serde_json::to_value(&s).unwrap_or(Value::Null));
+                let mut v = serde_json::to_value(&s).unwrap_or(Value::Null);
+                v["harici"] = serde_json::to_value(&harici).unwrap_or(Value::Null);
+                yaz_json(&v);
             } else {
+                harici_yaz(&harici);
                 let eski = s
                     .eski
                     .as_ref()
@@ -332,6 +366,48 @@ fn calistir(args: &[String], json: bool) -> Result<(), KurHata> {
             }
             Ok(())
         }
+        "yol" => {
+            let mut dosya: Option<std::path::PathBuf> = None;
+            let mut ca: Option<std::path::PathBuf> = None;
+            let mut i = 0;
+            while i < kalan.len() {
+                let deger = |i: &mut usize, a: &str| -> Result<String, KurHata> {
+                    *i += 1;
+                    kalan
+                        .get(*i)
+                        .cloned()
+                        .ok_or_else(|| kullanim(&format!("{a} için değer eksik.")))
+                };
+                match kalan[i].as_str() {
+                    "--dosya" => dosya = Some(deger(&mut i, "--dosya")?.into()),
+                    "--ca" => ca = Some(deger(&mut i, "--ca")?.into()),
+                    x => {
+                        return Err(kullanim(&format!(
+                            "Bilinmeyen bağımsız değişken: {x}. Örnek: taa-kur yol --dosya sunucu-yollari.json [--ca sunucu-ca.pem] [--json]."
+                        )))
+                    }
+                }
+                i += 1;
+            }
+            let dosya = dosya.ok_or_else(|| kullanim("--dosya gerekli."))?;
+            let kur = Kur::ortamdan()?;
+            let o = kur.yol_kur(&dosya, ca.as_deref())?;
+            if json {
+                yaz_json(&o);
+            } else {
+                println!(
+                    "Yol listesi kuruldu: sunucu {} · {} yol · {}{}",
+                    o["sunucu"].as_str().unwrap_or("?"),
+                    o["yol_sayisi"],
+                    o["dosya"].as_str().unwrap_or("?"),
+                    o.get("ca")
+                        .and_then(|c| c.as_str())
+                        .map(|c| format!(" · CA {c}"))
+                        .unwrap_or_default()
+                );
+            }
+            Ok(())
+        }
         "cihaz" => {
             let mut ad = None;
             let mut sunucu = None;
@@ -389,6 +465,26 @@ fn calistir(args: &[String], json: bool) -> Result<(), KurHata> {
                             ""
                         }
                     );
+                }
+            }
+            Ok(())
+        }
+        "harici" => {
+            let a = ayir(kalan, &[])?;
+            konumsal_say(&a, 1, "taa-kur harici <harici.toml | kurulu paket adı>")?;
+            let kur = Kur::ortamdan()?;
+            let hedef = Path::new(&a.konumsal[0]);
+            let r = if hedef.is_file() {
+                kur.harici_kur(hedef, &taa_kur::harici::GercekSistem)?
+            } else {
+                kur.harici_kur_paketten(&a.konumsal[0], None)?
+            };
+            if json {
+                yaz_json(&serde_json::to_value(&r).unwrap_or(Value::Null));
+            } else {
+                harici_yaz(&r);
+                if r.sonuclar.is_empty() {
+                    println!("Bu pakette harici bağımlılık tanımı yok.");
                 }
             }
             Ok(())

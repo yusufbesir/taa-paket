@@ -117,6 +117,27 @@ veri_okur   = ["urunler"]       # alan doğarsa salt okunur
 ayar_alani  = "programlar.fiyatetiketi"
 ```
 
+### led-ekran-video (LED Ekran Video)
+
+Dış LED ekranlar için yazı/çizim animasyonlu MP4 (ya da HAP) üretir. Tek bilgisayarda kullanılır; şube
+eşitlemesi, sunucu ve veri alanı yoktur (çıktı kullanıcının seçtiği dosyaya yazılır). Kurulum
+`D:\Programlar\LED-Ekran-Video\`, başlatıcı `led-ekran-video.exe`; `ffmpeg` dış çalışma zamanı bağımlılığıdır
+(`D:\Programlar\Araçlar Ve İndirilenler\`). Kaynak: `/mnt/project-files/led-ekran-video/` (kendi deposuna taşınacak).
+Yusuf (2026-11-07 13:11): çiçek ve farklı tasarımda çizimler de yapabilsin; paket listesine eklensin.
+
+```toml
+ad = "led-ekran-video"
+gorunen_ad = "LED Ekran Video"
+surum = "0.2.0"                 # Cargo.toml [package] version ile aynı olmalı
+arayuz = "1"
+gerektirir = {}                 # yalnız ab_glyph; taa-* crate kullanmaz
+sunar  = ["video.uret@1"]
+ister  = []
+veri_sahibi = []                # veri alanı yok; çıktı kullanıcı dosyası
+veri_okur   = []
+ayar_alani  = "programlar.led-ekran-video"
+```
+
 ### taarehber (ayrı başlık, taslak)
 
 E-posta rehberi programı ayrı bir başlıkta ele alınır; aşağıdaki yalnız taslaktır, T2 kapsamında değildir.

@@ -4,11 +4,11 @@
 //! Çıkış kodları: 0 tamam, 2 kullanım/doğrulama, 3 sunucuya ulaşılamadı, 4 giriş reddedildi, 5 oturum/yetki yok, 7 yetkisiz, 1 diğer.
 
 use std::io::{BufRead, Read};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use taa_kimlik::{
-    cihaz_imzalayici, giris_dogrulayarak, kuyrugu_gonder, sunucu_anahtari_oku, varsayilan_depo,
-    yetki_al, yetki_oku, CurlGonderici, KimlikHata,
+    cihaz_imzalayici, giris_dogrulayarak, kuyrugu_gonder_hedef, sunucu_anahtari_oku,
+    varsayilan_depo, yetki_al, yetki_oku, CurlGonderici, KimlikHata,
 };
 
 const YARDIM: &str = "\
@@ -18,6 +18,8 @@ Kullanım:
   taa-kimlik durum  --sunucu <https://adres> [--json]
   taa-kimlik cikis  --sunucu <https://adres>
   taa-kimlik gonder --sunucu <https://adres> [--kok <veri kökü>] [--sertifika <pem>] [--en-cok N] [--json]
+  --sunucu yoksa <kök>\\yol\\sunucu-yollari.json'daki yollar sırayla denenir (taa-yol); oturum anahtarı listenin
+  'sunucu' adıdır; yol değişse de oturum korunur. Çevrimdışı komutlar (durum, yetki, cikis) ağa çıkmaz.
   taa-kimlik yetki  --sunucu <https://adres> [--program <ad>] [--izin <program.islem>] [--kok] [--json]
                Saklı yetki belgesine göre (internet gerekmez): çıkış 0 izinli, 7 yetkisiz, 5 belge yok/süresi geçmiş.
   Sunucu genel anahtarı <kök>\\anahtarlar\\sunucu.pub varsa giriş yanıtı ve yetki belgesi imzası doğrulanır.
@@ -128,16 +130,29 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
         }
         i += 1;
     }
-    let sunucu = sunucu
-        .or_else(|| {
-            std::env::var("TAA_SUNUCU")
-                .ok()
-                .filter(|s| !s.trim().is_empty())
-        })
-        .ok_or_else(|| (2, "--sunucu (ya da TAA_SUNUCU) gerekli.".to_string()))?;
+    let sunucu_acik = sunucu.is_some()
+        || std::env::var("TAA_SUNUCU")
+            .ok()
+            .is_some_and(|s| !s.trim().is_empty());
     let kok = kok
         .or_else(veri_kok_ortamdan)
         .ok_or_else(|| (2, "veri kökü bulunamadı. Öneri: --kok verin.".to_string()))?;
+    let yh = |e: taa_yol::YolHata| (taa_yol::hata_kodu(&e), e.to_string());
+    // Çevrimdışı komutlar (durum, yetki, cikis) yalnız depo anahtarını ister; ağa çıkılmaz.
+    // Ağ komutları (giris, gonder) yol listesinden ilk ulaşılan adresi seçer (taa-yol, S4a).
+    let sunucu = taa_yol::anahtar_coz_ortam(&kok, sunucu.as_deref()).map_err(yh)?;
+    let hedef = |sertifika: Option<&Path>| -> Result<taa_yol::Hedef, (u8, String)> {
+        let h = taa_yol::hedef_coz_curl(
+            &kok,
+            sunucu_acik.then_some(&sunucu).map(String::as_str),
+            sertifika,
+        )
+        .map_err(yh)?;
+        if let Some(y) = &h.yol {
+            eprintln!("yol: {y} → {}", h.taban);
+        }
+        Ok(h)
+    };
     let depo = varsayilan_depo(&kok);
     let kh = |e: KimlikHata| (hata_kodu(&e), e.to_string());
     match komut.as_deref() {
@@ -151,8 +166,15 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
             // Fazlası okunup atılır; parola bellekte yalnız istek süresince kalır.
             let _ = stdin.lock().read_to_end(&mut Vec::new());
             let parola = parola.trim_end_matches(['\n', '\r']);
-            let mut g = CurlGonderici::yeni(&sunucu).map_err(|e| (2, e.to_string()))?;
-            if let Some(c) = &sertifika {
+            let h = hedef(sertifika.as_deref())?;
+            // Yol listesi varsa giriş isteği de yedekli gönderilir (bir yol düşerse sıradakine geçer).
+            let yedekli = if sunucu_acik {
+                None
+            } else {
+                taa_kimlik::yedekli_gonderici(&kok, None, sertifika.as_deref()).map_err(kh)?
+            };
+            let mut g = CurlGonderici::yeni(&h.taban).map_err(|e| (2, e.to_string()))?;
+            if let Some(c) = &h.sertifika {
                 g = g.sertifika(c);
             }
             // Cihaz anahtarı varsa istek imzalanır (sunucu imzasız girişi reddeder; taa-cihaz uret).
@@ -170,14 +192,41 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
                     kok.join("anahtarlar").join("sunucu.pub").display()
                 );
             }
-            let o = giris_dogrulayarak(&g, &sunucu, &k, parola, kod.as_deref(), anahtar.as_ref())
-                .map_err(kh)?;
+            let gonderici: &dyn taa_kimlik::Gonderici = match &yedekli {
+                Some(y) => y,
+                None => &g,
+            };
+            let o = giris_dogrulayarak(
+                gonderici,
+                &sunucu,
+                &k,
+                parola,
+                kod.as_deref(),
+                anahtar.as_ref(),
+            )
+            .map_err(kh)?;
             depo.kaydet(&o).map_err(kh)?;
             // Çevrimdışı yetki belgesi (POST /v1/yetki, imzalı, oturumsuz). Başarısızlık girişi bozmaz.
-            match o
-                .gonderici_ile(sertifika.as_deref(), cihaz_imzalayici(&kok).ok().flatten())
+            let yetki_sonucu = if sunucu_acik {
+                o.gonderici_taban(
+                    &h.taban,
+                    h.sertifika.as_deref(),
+                    cihaz_imzalayici(&kok).ok().flatten(),
+                )
                 .and_then(|g| yetki_al(&g, &kok, &sunucu, anahtar.as_ref()))
-            {
+            } else {
+                match taa_kimlik::yedekli_gonderici(&kok, Some(&o), sertifika.as_deref()) {
+                    Ok(Some(y)) => yetki_al(&y, &kok, &sunucu, anahtar.as_ref()),
+                    _ => o
+                        .gonderici_taban(
+                            &h.taban,
+                            h.sertifika.as_deref(),
+                            cihaz_imzalayici(&kok).ok().flatten(),
+                        )
+                        .and_then(|g| yetki_al(&g, &kok, &sunucu, anahtar.as_ref())),
+                }
+            };
+            match yetki_sonucu {
                 Ok(y) if !json => println!(
                     "yetki belgesi alındı: {} izin, geçerlilik {}{}",
                     y.izinler.len(),
@@ -267,8 +316,26 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
             Ok(0)
         }
         Some("gonder") => {
-            let sonuc = kuyrugu_gonder(depo.as_ref(), &sunucu, &kok, sertifika.as_deref(), en_cok)
-                .map_err(kh)?;
+            let h = hedef(sertifika.as_deref())?;
+            let yedekli = if sunucu_acik {
+                None
+            } else {
+                let o = depo.oku(&sunucu).map_err(kh)?;
+                taa_kimlik::yedekli_gonderici(&kok, Some(&o), sertifika.as_deref()).map_err(kh)?
+            };
+            let sonuc = match &yedekli {
+                // Yol listesi: her kayıt yol düşse de sıradaki yoldan gider; aktif yol `son.json`a yazılır.
+                Some(y) => taa_kimlik::kuyrugu_gonder_ile(y, &kok, en_cok).map_err(kh)?,
+                None => kuyrugu_gonder_hedef(
+                    depo.as_ref(),
+                    &sunucu,
+                    &h.taban,
+                    &kok,
+                    h.sertifika.as_deref(),
+                    en_cok,
+                )
+                .map_err(kh)?,
+            };
             let mut toplam = (0usize, 0usize, 0usize);
             let mut durma = None;
             let mut programlar = Vec::new();

@@ -24,7 +24,7 @@ pub mod zaman;
 #[cfg(test)]
 mod testler;
 
-pub use gonderici::{CurlGonderici, GonderHata, Gonderici, Imzalayici};
+pub use gonderici::{http_url_mu, CurlGonderici, GonderHata, Gonderici, Imzalayici};
 
 use serde_json::{json, Value};
 use std::collections::BTreeMap;

@@ -398,8 +398,15 @@ impl PencereModel {
     /// Kur düğmesi: seçilen dosya/klasör paketi kurulur. Durum metni döner (aynı metin `durum()` olur).
     pub fn kur_paketi(&mut self, secilen: &Path) -> &str {
         let yol = paket_yolu_coz(secilen);
-        let metin = match self.kur.kur(&yol, false) {
-            Ok(s) => kur_metni(&s),
+        let metin = match self.kur.kur_tam(&yol, false, false) {
+            Ok((s, h)) => {
+                let ek: String = h
+                    .sonuclar
+                    .iter()
+                    .map(|x| format!(" Bağımlı program: {} {}.", x.ad, x.surum))
+                    .collect();
+                format!("{}{ek}", kur_metni(&s))
+            }
             Err(h) => format!("Kurulamadı: {}", hata_metni(&h)),
         };
         self.yenile();

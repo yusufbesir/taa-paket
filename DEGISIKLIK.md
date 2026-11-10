@@ -3,6 +3,15 @@
 
 ## Yayınlanmamış
 
+### Usta puanı (QR)
+
+- `taa-takip::puan` (yeni): QR okutma olayları, tezgâhtar işareti + yönetici tutanağı, 0–10 usta puanı (verimlilik, kalite, müşteri, zamanında, düzen), küçük örnek düzeltmesi, deneme dönemi, ani değişim uyarıları (yalnız yönetici), kural tabanlı yorum ve veriye göre sınırlı kendini ayarlama (`gozden_gecir`). Özellik anahtarları `qr-uretim` ve `usta-puan`, ikisi de varsayılan KAPALI. Usta puanı göremez; izin `takip.puan@1` yalnız yöneticiye verilmelidir (çağıran program uygular). 13 birim test. `docs/USTA-PUAN.md`. 
+- `taa-fis-sunucu`: `POST /api/fis/{no}/okut`, `POST /api/fis/{no}/isaret` (telefon), yönetici uçları `POST /api/yonetim/tutanak`, `GET /api/yonetim/puan/{bas}/{bit}`, `POST /api/yonetim/puan/gozden-gecir/{bas}/{bit}` (yalnız sunucu bilgisayarı). Fiş sayfasına "İşi bitirdim (okut)" ve "Yeniden iş / şikâyet işaretle" düğmeleri. Yeni bağımlılık yok. Ayrıntı `docs/USTA-PUAN.md`.
+
+### Usta puanı ekranı
+
+- `taa-fis-sunucu`: yönetici puan ekranı `/yonetim/puan` (yalnız sunucu bilgisayarı): puanlar, yorumlar, ani değişim uyarıları, işaretler ve tutanak formu, ayar gözden geçirme düğmesi; `GET /api/yonetim/isaretler`. Yeni bağımlılık yok.
+
 ### T3-pencere
 
 - `taa-kur-pencere` (yeni bin) ve `taa_kur::pencere_model`: paket listesi (ad, kurulu sürüm, seçili sürüm, durum), Kur / Kaldır / Güncelle düğmeleri ve alt durum satırı. Mantık platformdan bağımsız modelde (7 birim test, gerçek `Kur`, geçici kök); Win32 çizimi `#[cfg(windows)] win.rs` içinde ince katman.
@@ -66,3 +75,6 @@ T0 (tek çatı, veri ve yapı temizliği). Kırıcı değişiklik yok; yalnız e
 - Karar: `taa-terzi` program=ortak; `taa-bildirim`, `taa-takip`, `taa-telegram` program=taafis (TaaFiş ailesi tek program). Ayrı TaaTerziTakip programı T2'de Cargo features ile.
 - Denetim betiğine: gerektirir = Cargo bağımlılıkları birebir; ince çizgi (başka programın crate'ine zorunlu bağımlılık hata). CI'ya `permissions: contents: read`.
 - `docs/modul-sozlesmesi.md` yeni alanlarla güncellendi; README "Modül sözleşmesi" bölümüne bağlantılar eklendi.
+
+## Teslim tarihi önerisi (TaaSüre)
+- taa-takip: `sure` modülü; usta kuyruğuna ve `sure.json` sürelerine göre tahmini teslim tarihi önerir, tablo yoksa "tahmin yok, elle seç". Özellik anahtarı `teslim-oneri`, yeni yetenek `teslim.oneri@1`. Fiş ekranına düğme bağlama ayrı adım.

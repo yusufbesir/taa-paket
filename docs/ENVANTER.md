@@ -32,7 +32,7 @@ Raporların ilk 6'sı tam elde; 7. rapor (dosya-donusturucu / taadon) kesik, 8-1
 | taa-terzi | 0.1.0 = 0.1.0 | taaterzi | Gömülü `src/islemler.json`; geçersiz kılma `<defter dizini>/terzi-kurallari.json` (elle) | varsayilan, json_den, dizinden, bul, kontrol | İki kural kaynağı; özellik anahtarı yok (`islem-katalogu`, `sinir-denetimi` kodda karşılıksız) |
 | taa-kombin | 0.1.0 = 0.1.0 | taakombin | Veri yok | oner, normalize, takim_renkleri | — |
 | taa-bildirim | 0.1.0 = 0.1.0 | taabildirim | `<dizin>/bildirimler.jsonl` (eklemeli), `<dizin>/bildirim-sablonu.txt` (elle) | hazir_bildir, Kuyruk (mesajlar, bekleyenler, isle) | `M-{n}` kimliği kilitsiz → çift kimlik; telefon düz metin, saklama süresi yok (KVKK); bozuk satır tüm okumayı durdurur; gerçek Gonderici yok |
-| taa-takip | 0.1.0 = 0.1.0 | taatakip | Okur `fisler.jsonl`; `<dizin>/zorluk.json` (elle, gömülü varsayılan) | Takip (geciken, kargo, ozet, usta raporu), Zorluk | — |
+| taa-takip | 0.1.0 = 0.1.0 | taatakip | Okur `fisler.jsonl`; `<dizin>/zorluk.json` (elle, gömülü varsayılan); yazar `<dizin>/usta-puan.jsonl` (eklemeli), `<dizin>/puan-ayar.json` | Takip (geciken, kargo, ozet, usta raporu), Zorluk, puan (PuanDefteri, PuanAyari, puan_hesapla, anomaliler, gozden_gecir) | — |
 | taa-telegram | 0.1.0 = 0.1.0 | taatelegram | `<dizin>/telegram.json` (gizli anahtar; elle); `fisler.jsonl`a durum yazar | Ayar::dizinden, Bot::yanit (ağ yok) | modul `gerektirir` eksik: taa-takip, taa-dosya; fiş defterine ikinci yazar; sır dosyası |
 | taa-subesor | 0.1.0 = 0.1.0 | taasubesor | Çağıranın verdiği JSONL defter | sor, yanitla, ozetler | `S-{n}` kilitsiz; dosya adı tanımsız |
 
@@ -43,10 +43,11 @@ Raporların ilk 6'sı tam elde; 7. rapor (dosya-donusturucu / taadon) kesik, 8-1
 | Tutaa / TAARNAK (`/home/user/tutaa`) | masaustu 2.4.5, tutaa-paketi/masaustu 2.5.0, lock 2.0.0 (**uyumsuz**) | `%APPDATA%\TAARNAK\{kayitlar, yedekler\yedek-<no>.json, kayit-kopyasi, yerel-ayar.json, imza-gunlugu.log, imza-anahtari.json, ocr-gecici}`; geri düşüş `Belgelerim\TAARNAK\kayitlar`; ayrıca `Belgelerim\TAARKOD\kayitlar`, `~\TAARKOD\kayitlar`; kurulum `%LOCALAPPDATA%\Programs\Tutaa` | Ad karmaşası (TAARNAK/Tutaa/TAARKOD); aynı tutanak 3 yerde; sabit `D:\Programlar\El-Yazisi-OCR\venv\Scripts\python.exe` (main.js:400, motor/motor.json); motor.json başka iş parçacığına ait; merkez API istemcisi ve `kimlik` kodda yok; modul.toml yok |
 | TaaDön (dosya-donusturucu) | Rust çekirdek 1.6.0 | belirsiz (rapor kesik) | belirsiz |
 | TaaRkod, Argox Fiyat Etiketi | belirsiz | belirsiz (rapor yok) | `etiket-kuyrugu` doğrulanamadı |
+| LED Ekran Video (`/mnt/project-files/led-ekran-video/`, eklendi 2026-11-07) | program.toml 0.2.0 (Cargo 0.1.0, eşitlenecek) | Veri alanı yok; çıktı MP4/HAP kullanıcının seçtiği dosya; kurulum `D:\Programlar\LED-Ekran-Video\` | Tek PC; `ffmpeg` PATH'te gerekli; kendi deposu ve Windows derlemesi henüz yok |
 
 ## 4. Ortam değişkenleri
 `TAA_AYAR`, `TAA_OZELLIK_<AD>` (büyük harf, `-`→`_`; 0/1/acik/kapali/evet/hayir), `TAA_FIS_BASLIK`, `TAA_FIS_NUSHA`, Tutaa'da `TUTANAK_MOTOR_KOMUT`, `TUTANAK_TEST`, `TUTANAK_MOTOR_ONISIT`.
-Koddaki özellik anahtarları: kasa-defteri, fis-raf, fis-imza, serbest-islem, olcu-zorunlu(kapalı), kargo-alani, fis-logo, fis-aydinlatma, foto-eki, telegram-bot(kapalı), nebim-alici, katalog, yedek, pdf-araclari, rehber, yazici-saglik, tara, pano, kombin, bildirim-whatsapp, fis-takip, subesor.
+Koddaki özellik anahtarları: kasa-defteri, fis-raf, fis-imza, serbest-islem, olcu-zorunlu(kapalı), kargo-alani, fis-logo, fis-aydinlatma, foto-eki, telegram-bot(kapalı), nebim-alici, katalog, yedek, pdf-araclari, rehber, yazici-saglik, tara, pano, kombin, bildirim-whatsapp, fis-takip, teslim-oneri, subesor.
 
 ## Temizlik listesi
 

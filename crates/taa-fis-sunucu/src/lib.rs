@@ -101,6 +101,14 @@ fn kapali(ad: &str) -> Option<Yanit> {
     }
 }
 
+/// Puan hesabı girdileri: ayar, süre tablosu, defter kayıtları, fiş no -> teslim tarihi.
+type PuanGirdisi = (
+    taa_takip::PuanAyari,
+    taa_takip::SureTablosu,
+    Vec<taa_takip::Kayit>,
+    std::collections::BTreeMap<String, String>,
+);
+
 impl Uygulama {
     pub fn yeni(dizin: PathBuf, yazici_yolu: Option<PathBuf>, taban_url: String) -> Self {
         Uygulama {
@@ -188,6 +196,18 @@ impl Uygulama {
                     Ok(()) => Yanit::json(200, json!({ "tamam": true })),
                     Err(e) => Yanit::hata(404, &e),
                 }
+            }
+            ("GET", ["yonetim", "puan"]) => {
+                if !i.yerel {
+                    return Yanit::hata(403, "yalnız bu bilgisayardan");
+                }
+                Yanit::html(sayfalar::PUAN_YONETIM.into())
+            }
+            ("GET", ["api", "yonetim", "isaretler"]) => self.puan_isaretleri(i),
+            ("POST", ["api", "yonetim", "tutanak"]) => self.puan_tutanak(i),
+            ("GET", ["api", "yonetim", "puan", bas, bit]) => self.puan_raporu(i, bas, bit),
+            ("POST", ["api", "yonetim", "puan", "gozden-gecir", bas, bit]) => {
+                self.puan_gozden_gecir(i, bas, bit)
             }
             ("GET", ["aydinlatma"]) => Yanit::html(
                 std::fs::read_to_string(self.dizin.join("aydinlatma.html")).unwrap_or_else(|_| {
@@ -343,6 +363,249 @@ impl Uygulama {
                 Err(e) => Yanit::hata(409, &e),
             },
             _ => Yanit::hata(404, "bilinmeyen takip listesi"),
+        }
+    }
+
+    fn puan_hata(e: String) -> Yanit {
+        if e.contains("kapatılmış") {
+            Yanit::hata(503, &e)
+        } else {
+            Yanit::hata(422, &e)
+        }
+    }
+
+    /// Usta QR okutur: fişin (belirtilmezse tüm) kalemleri "bitti" olarak kaydedilir. Norm süre okutma anında yazılır.
+    /// Gövde: {"kalemler":[0,1], "zor":[0]}; hepsi isteğe bağlı. Usta = okutan telefonun adı.
+    fn okut(&self, d: &Defter, no: &str, cihaz_ad: &str, i: &Istek) -> Yanit {
+        let f = match d.bul(no) {
+            Ok(Some(f)) => f,
+            Ok(None) => return Yanit::hata(404, "fiş yok"),
+            Err(e) => return Yanit::hata(500, &e),
+        };
+        let v: serde_json::Value = serde_json::from_slice(&i.govde).unwrap_or_default();
+        let idx = |anahtar: &str| -> Option<Vec<usize>> {
+            v[anahtar].as_array().map(|a| {
+                a.iter()
+                    .filter_map(|x| x.as_u64().map(|n| n as usize))
+                    .collect()
+            })
+        };
+        let kalemler = idx("kalemler").unwrap_or_else(|| (0..f.kalemler.len()).collect());
+        let zor = idx("zor").unwrap_or_default();
+        // Yusuf kararı (2026-11-07): işi yapan usta okutur; puan satırı okutan telefonun adıdır (elle ad ya da fişteki usta kullanılmaz).
+        let usta = cihaz_ad;
+        let sure = match taa_takip::SureTablosu::dizinden(&self.dizin) {
+            Ok(s) => s,
+            Err(e) => return Yanit::hata(409, &e),
+        };
+        let defter = taa_takip::PuanDefteri::dizinden(&self.dizin);
+        let simdi = self.simdi();
+        let tarih = tarih_iso(simdi);
+        let yerel = simdi + 3 * 3600; // tarih_iso ile aynı saat dilimi (UTC+3)
+        let saat = format!("{:02}:{:02}", yerel % 86_400 / 3600, yerel % 3600 / 60);
+        let mut okutulan = Vec::new();
+        let mut zaten = Vec::new();
+        for n in kalemler {
+            let Some(k) = f.kalemler.get(n) else {
+                return Yanit::hata(422, &format!("{} numaralı kalem yok", n + 1));
+            };
+            let olay = taa_takip::Olay {
+                usta: usta.to_string(),
+                fis_no: f.no.clone(),
+                kalem_no: n,
+                islem_kodu: k.islem_kodu.clone(),
+                norm_dk: sure.kalem_dk(k, zor.contains(&n)),
+                tarih: tarih.clone(),
+                saat: saat.clone(),
+            };
+            match defter.olay_ekle(olay) {
+                Ok(()) => okutulan.push(n),
+                Err(e) if e.contains("zaten okutulmuş") => zaten.push(n),
+                Err(e) => return Self::puan_hata(e),
+            }
+        }
+        Yanit::json(200, json!({ "okutulan": okutulan, "zaten": zaten }))
+    }
+
+    /// Tezgâhtar yeniden iş / müşteri şikâyeti işaretler. Usta fişteki ustadır; tutanağı yönetici yazar.
+    fn isaret(&self, d: &Defter, no: &str, cihaz_ad: &str, i: &Istek) -> Yanit {
+        let f = match d.bul(no) {
+            Ok(Some(f)) => f,
+            Ok(None) => return Yanit::hata(404, "fiş yok"),
+            Err(e) => return Yanit::hata(500, &e),
+        };
+        let v: serde_json::Value = serde_json::from_slice(&i.govde).unwrap_or_default();
+        let tur = match v["tur"].as_str() {
+            Some("yeniden_is") => taa_takip::IsaretTuru::YenidenIs,
+            Some("sikayet") => taa_takip::IsaretTuru::Sikayet,
+            _ => return Yanit::hata(422, "tur yeniden_is ya da sikayet olmalı"),
+        };
+        let kalem = v["kalem"].as_u64().unwrap_or(0) as usize;
+        if kalem >= f.kalemler.len() {
+            return Yanit::hata(422, "kalem numarası geçersiz");
+        }
+        // Usta: önce okutan usta (QR kaydı), yoksa fişteki usta.
+        let defter = taa_takip::PuanDefteri::dizinden(&self.dizin);
+        let okutan = defter.oku().ok().and_then(|k| {
+            k.into_iter().find_map(|x| match x {
+                taa_takip::Kayit::Olay(o) if o.fis_no == f.no && o.kalem_no == kalem => {
+                    Some(o.usta)
+                }
+                _ => None,
+            })
+        });
+        let usta = okutan.unwrap_or_else(|| f.usta.clone());
+        if usta.trim().is_empty() {
+            return Yanit::hata(
+                422,
+                "bu kalemde usta bilinmiyor (okutulmamış ve fişte usta yok)",
+            );
+        }
+        let isaret = taa_takip::Isaret {
+            id: 0,
+            fis_no: f.no.clone(),
+            kalem_no: kalem,
+            usta,
+            tur,
+            neden: v["neden"].as_str().unwrap_or("").to_string(),
+            tezgah: cihaz_ad.to_string(),
+            tarih: tarih_iso(self.simdi()),
+            tutanak: None,
+        };
+        match defter.isaretle(isaret) {
+            Ok(id) => Yanit::json(200, json!({ "id": id })),
+            Err(e) => Self::puan_hata(e),
+        }
+    }
+
+    /// Yönetici tutanağı (yalnız bu bilgisayardan). Gövde: {isaret_id, sonuc: usta_kaynakli|usta_kaynakli_degil|kismen, yuzde, agir, aciklama, yonetici}.
+    fn puan_tutanak(&self, i: &Istek) -> Yanit {
+        if !i.yerel {
+            return Yanit::hata(403, "yalnız bu bilgisayardan");
+        }
+        let v: serde_json::Value = match serde_json::from_slice(&i.govde) {
+            Ok(v) => v,
+            Err(e) => return Yanit::hata(400, &format!("geçersiz gövde: {e}")),
+        };
+        let sonuc = match v["sonuc"].as_str() {
+            Some("usta_kaynakli") => taa_takip::Sonuc::UstaKaynakli,
+            Some("usta_kaynakli_degil") => taa_takip::Sonuc::UstaKaynakliDegil,
+            Some("kismen") => taa_takip::Sonuc::Kismen {
+                yuzde: v["yuzde"].as_u64().unwrap_or(0).min(255) as u8,
+            },
+            _ => {
+                return Yanit::hata(
+                    422,
+                    "sonuc usta_kaynakli, usta_kaynakli_degil ya da kismen olmalı",
+                )
+            }
+        };
+        let t = taa_takip::Tutanak {
+            sonuc,
+            agir: v["agir"].as_bool().unwrap_or(false),
+            aciklama: v["aciklama"].as_str().unwrap_or("").to_string(),
+            yonetici: v["yonetici"].as_str().unwrap_or("").to_string(),
+            tarih: tarih_iso(self.simdi()),
+        };
+        let defter = taa_takip::PuanDefteri::dizinden(&self.dizin);
+        match defter.tutanak_yaz(v["isaret_id"].as_u64().unwrap_or(0), t) {
+            Ok(()) => Yanit::json(200, json!({ "tamam": true })),
+            Err(e) => Yanit::hata(422, &e),
+        }
+    }
+
+    /// Tutanak bekleyenler ve yazılmış tutanaklar (yalnız bu bilgisayardan, `usta-puan` açıkken).
+    fn puan_isaretleri(&self, i: &Istek) -> Yanit {
+        if !i.yerel {
+            return Yanit::hata(403, "yalnız bu bilgisayardan");
+        }
+        if !taa_ayar::ozellik_acik("usta-puan", false) {
+            return Yanit::hata(503, &taa_ayar::kapali_mesaji("usta-puan"));
+        }
+        match taa_takip::PuanDefteri::dizinden(&self.dizin).oku() {
+            Ok(k) => Yanit::json(200, json!({ "isaretler": taa_takip::puan_isaretleri(&k) })),
+            Err(e) => Yanit::hata(500, &e),
+        }
+    }
+
+    fn puan_girdisi(&self) -> Result<PuanGirdisi, Yanit> {
+        let ayar = taa_takip::PuanAyari::dizinden(&self.dizin).map_err(|e| Yanit::hata(409, &e))?;
+        let sure =
+            taa_takip::SureTablosu::dizinden(&self.dizin).map_err(|e| Yanit::hata(409, &e))?;
+        let kayitlar = taa_takip::PuanDefteri::dizinden(&self.dizin)
+            .oku()
+            .map_err(|e| Yanit::hata(500, &e))?;
+        let defter_yolu = self.fis_yolu();
+        let d = Defter { yol: &defter_yolu };
+        let teslimler = d
+            .fisler()
+            .map_err(|e| Yanit::hata(500, &e))?
+            .into_iter()
+            .map(|f| (f.no, f.teslim))
+            .collect();
+        Ok((ayar, sure, kayitlar, teslimler))
+    }
+
+    /// Yönetici raporu: puanlar, yorumlar ve anomaliler. Yalnız bu bilgisayardan; usta ekranına ASLA gitmez.
+    fn puan_raporu(&self, i: &Istek, bas: &str, bit: &str) -> Yanit {
+        if !i.yerel {
+            return Yanit::hata(403, "yalnız bu bilgisayardan");
+        }
+        let (ayar, sure, kayitlar, teslimler) = match self.puan_girdisi() {
+            Ok(g) => g,
+            Err(y) => return y,
+        };
+        let puanlar = match taa_takip::puan_hesapla(&ayar, &sure, &kayitlar, &teslimler, bas, bit) {
+            Ok(p) => p,
+            Err(e) => return Self::puan_hata(e),
+        };
+        let bugun = tarih_iso(self.simdi());
+        let anomaliler = taa_takip::anomaliler(&ayar, &sure, &kayitlar, &bugun).unwrap_or_default();
+        Yanit::json(
+            200,
+            json!({ "ayar": ayar, "puanlar": puanlar, "anomaliler": anomaliler }),
+        )
+    }
+
+    /// Veriye göre ayar önerisi; `otomatik` açıksa uygular, kaydeder ve deftere yazar.
+    fn puan_gozden_gecir(&self, i: &Istek, bas: &str, bit: &str) -> Yanit {
+        if !i.yerel {
+            return Yanit::hata(403, "yalnız bu bilgisayardan");
+        }
+        let (ayar, sure, kayitlar, teslimler) = match self.puan_girdisi() {
+            Ok(g) => g,
+            Err(y) => return y,
+        };
+        let puanlar = match taa_takip::puan_hesapla(&ayar, &sure, &kayitlar, &teslimler, bas, bit) {
+            Ok(p) => p,
+            Err(e) => return Self::puan_hata(e),
+        };
+        let olay_sayisi = kayitlar
+            .iter()
+            .filter(|k| matches!(k, taa_takip::Kayit::Olay(_)))
+            .count();
+        let ilk = kayitlar.iter().find_map(|k| match k {
+            taa_takip::Kayit::Olay(o) => Some(o.tarih.clone()),
+            _ => None,
+        });
+        let bugun = tarih_iso(self.simdi());
+        let veri_gun = ilk.map_or(0, |t| taa_takip::gun_farki(&t, &bugun));
+        match taa_takip::gozden_gecir(&ayar, &puanlar, olay_sayisi, veri_gun, &kayitlar, &bugun) {
+            None => Yanit::json(200, json!({ "degisti": false })),
+            Some(o) => {
+                if let Err(e) = o.yeni.kaydet(&self.dizin) {
+                    return Yanit::hata(500, &e);
+                }
+                if let Err(e) = taa_takip::PuanDefteri::dizinden(&self.dizin)
+                    .ayar_degisti(&bugun, o.degisiklikler.clone())
+                {
+                    return Yanit::hata(500, &e);
+                }
+                Yanit::json(
+                    200,
+                    json!({ "degisti": true, "degisiklikler": o.degisiklikler }),
+                )
+            }
         }
     }
 
@@ -506,6 +769,8 @@ impl Uygulama {
                     Err(_) => Yanit::hata(404, "fotoğraf yok"),
                 }
             }
+            ("POST", ["api", "fis", no, "okut"]) => self.okut(&d, no, &cihaz.ad, i),
+            ("POST", ["api", "fis", no, "isaret"]) => self.isaret(&d, no, &cihaz.ad, i),
             ("POST", ["api", "fis", no, "yazdir"]) => {
                 let f = match d.bul(no) {
                     Ok(Some(f)) => f,
@@ -867,6 +1132,113 @@ mod testler {
         assert!(metin.contains("Şükrü Ğüleç İÖ ığöçş"), "{metin}");
         assert!(metin.contains("TERZİHANE NÜSHASI") && metin.contains("MÜŞTERİ NÜSHASI"));
         assert!(!metin.contains('?') || !metin.contains("Müşteri Adı: ?"));
+    }
+
+    #[test]
+    fn qr_okutma_isaret_tutanak_ve_puan_raporu() {
+        let u = uyg();
+        let t = esles(&u);
+        let y = u.isle(&ist("POST", "/api/fis", Some(&t), FIS, false));
+        let no = serde_json::from_slice::<serde_json::Value>(&y.govde).unwrap()["no"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let tel = |yol: &str, g: &str| u.isle(&ist("POST", yol, Some(&t), g, false));
+        // Özellikler varsayılan kapalı.
+        assert_eq!(tel(&format!("/api/fis/{no}/okut"), "{}").kod, 503);
+        std::env::set_var("TAA_OZELLIK_QR_URETIM", "1");
+        std::env::set_var("TAA_OZELLIK_USTA_PUAN", "1");
+        let y = tel(&format!("/api/fis/{no}/okut"), "{}");
+        assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
+        let v: serde_json::Value = serde_json::from_slice(&y.govde).unwrap();
+        assert_eq!(v["okutulan"], serde_json::json!([0]));
+        // İkinci okutma reddedilmez ama "zaten" olarak döner.
+        let v: serde_json::Value =
+            serde_json::from_slice(&tel(&format!("/api/fis/{no}/okut"), "{}").govde).unwrap();
+        assert_eq!(v["zaten"], serde_json::json!([0]));
+        assert_eq!(
+            tel(&format!("/api/fis/{no}/okut"), r#"{"kalemler":[7]}"#).kod,
+            422
+        );
+        // Tezgâh işareti: usta, kalemi okutan telefonun adıdır.
+        assert_eq!(
+            tel(
+                &format!("/api/fis/{no}/isaret"),
+                r#"{"kalem":0,"tur":"x","neden":"a"}"#
+            )
+            .kod,
+            422
+        );
+        let y = tel(
+            &format!("/api/fis/{no}/isaret"),
+            r#"{"kalem":0,"tur":"yeniden_is","neden":"dikiş"}"#,
+        );
+        assert_eq!(y.kod, 200);
+        // Yönetici işlemleri yalnız yerel; telefon yetkisiyle de olmaz.
+        let tut = r#"{"isaret_id":1,"sonuc":"kismen","yuzde":50,"aciklama":"yarı yarıya","yonetici":"Yusuf"}"#;
+        assert_eq!(
+            u.isle(&ist("POST", "/api/yonetim/tutanak", Some(&t), tut, false))
+                .kod,
+            403
+        );
+        assert_eq!(
+            u.isle(&ist(
+                "GET",
+                "/api/yonetim/puan/2026-11-01/2026-11-30",
+                Some(&t),
+                "",
+                false
+            ))
+            .kod,
+            403
+        );
+        assert_eq!(
+            u.isle(&ist("POST", "/api/yonetim/tutanak", None, tut, true))
+                .kod,
+            200
+        );
+        let bos =
+            r#"{"isaret_id":1,"sonuc":"kismen","yuzde":50,"aciklama":" ","yonetici":"Yusuf"}"#;
+        assert_eq!(
+            u.isle(&ist("POST", "/api/yonetim/tutanak", None, bos, true))
+                .kod,
+            422
+        );
+        // Rapor: gömülü sure.json'da gunluk_dakika var; aralık 2099'a uzandığı için deneme dönemi biter, puan sayıdır.
+        let r = u.isle(&ist(
+            "GET",
+            "/api/yonetim/puan/2026-01-01/2099-12-31",
+            None,
+            "",
+            true,
+        ));
+        assert_eq!(r.kod, 200, "{}", String::from_utf8_lossy(&r.govde));
+        let v: serde_json::Value = serde_json::from_slice(&r.govde).unwrap();
+        assert_eq!(v["puanlar"][0]["usta"], "Ayşe'nin telefonu");
+        assert!(
+            v["puanlar"][0]["puan"].is_number(),
+            "aralık deneme dönemini aşıyor"
+        );
+        let l = u.isle(&ist("GET", "/api/yonetim/isaretler", None, "", true));
+        assert_eq!(l.kod, 200);
+        let v: serde_json::Value = serde_json::from_slice(&l.govde).unwrap();
+        assert_eq!(v["isaretler"][0]["tutanak"]["yonetici"], "Yusuf");
+        assert_eq!(
+            u.isle(&ist("GET", "/api/yonetim/isaretler", Some(&t), "", false))
+                .kod,
+            403
+        );
+        assert_eq!(
+            u.isle(&ist("GET", "/yonetim/puan", Some(&t), "", false))
+                .kod,
+            403
+        );
+        assert_eq!(
+            u.isle(&ist("GET", "/yonetim/puan", None, "", true)).kod,
+            200
+        );
+        std::env::remove_var("TAA_OZELLIK_QR_URETIM");
+        std::env::remove_var("TAA_OZELLIK_USTA_PUAN");
     }
 
     #[test]

@@ -724,6 +724,7 @@ dependencies = [
  "serde_json",
  "taa-kimlik",
  "taa-kuyruk",
+ "taa-yol",
 ]
 
 [[package]]
@@ -734,6 +735,7 @@ dependencies = [
  "taa-dosya",
  "taa-imza",
  "taa-kuyruk",
+ "taa-yol",
 ]
 
 [[package]]
@@ -844,6 +846,7 @@ dependencies = [
  "taa-dosya",
  "taa-imza",
  "taa-kuyruk",
+ "taa-yol",
  "windows-sys",
 ]
 
@@ -866,6 +869,7 @@ dependencies = [
  "taa-dosya",
  "taa-imza",
  "taa-rapor",
+ "taa-yol",
  "toml",
  "windows-sys",
  "zip",
@@ -1008,6 +1012,15 @@ dependencies = [
  "sha2",
  "taa-ayar",
  "taa-dosya",
+]
+
+[[package]]
+name = "taa-yol"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "taa-dosya",
+ "taa-kuyruk",
 ]
 
 [[package]]

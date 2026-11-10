@@ -1,0 +1,48 @@
+{
+ "aciklama": "TaaSüre süre tablosu (dakika). Kaynak: usta bilgisi, Yusuf 2026-11-06. gunluk_dakika: Yusuf 2026-11-06: molalar hariç 8,5 saat = 510 dk (usta yalnız tadilat yapıyor, prova yok). Usta sayısı şu an 2, normalde 3-4: usta adlarını 'ustalar' listesine ya da fişlerin usta alanına yazın. 'kod:varyant' anahtarı varyanta özel süredir. zor: ölçü eşiği aşılırsa (ya da personel 'evet' derse) uzun süre kullanılır; soru fiş yazarken sorulur.",
+ "sureler_dk": {
+  "pant-paca-kisalt": 5,
+  "pant-paca-kisalt:Düz paça": 5,
+  "pant-paca-kisalt:Duble paça": 8,
+  "pant-paca-payi-ac": 5,
+  "pant-bel-daralt": 10,
+  "pant-bel-payi-ac": 10,
+  "pant-bacak-daralt": 15,
+  "pant-bacak-payi-ac": 15,
+  "pant-salvar-daralt": 25,
+  "pant-fermuar": 15,
+  "pant-beden-daralt": 30,
+  "cek-kol-kisalt": 30,
+  "cek-omuz-kol-kisalt": 60,
+  "cek-sirt-daralt": 30,
+  "cek-vatka-kisalt": 60,
+  "cek-etek-kisalt": 30,
+  "cek-dugme-kaydir": 15,
+  "cek-dugme-saglam": 10,
+  "cek-yirtmac-kapat": 30,
+  "cek-beden-daralt": 30,
+  "gom-daralt": 30,
+  "gom-kol-kisalt": 30,
+  "gom-dugme-kaydir": 5,
+  "gom-yaka-sabitle": 5,
+  "gom-etek-kisalt": 15,
+  "yel-daralt": 10,
+  "yel-omuz-kisalt": 15,
+  "yel-kulak-kapat": 10,
+  "yel-beden-daralt": 10,
+  "yel-genislet-parca": 45,
+  "takim-beden-daralt": 60,
+  "takim-3parca-beden-daralt": 90
+ },
+ "zor": {
+  "pant-bel-daralt": {
+   "esik_mm": 40,
+   "dk": 60,
+   "soru": "Bel 4 cm'den fazla daraltılacak mı? (fazlası için kemer sökülüp pantolon neredeyse yeniden dikilir)"
+  }
+ },
+ "kapali_gunler": [],
+ "kapali_tarihler": [],
+ "ustalar": [],
+ "gunluk_dakika": 510
+}

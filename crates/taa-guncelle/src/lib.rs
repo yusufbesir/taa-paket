@@ -250,6 +250,119 @@ pub fn uygula_paket(
     })
 }
 
+/// Katalog satırı: yayındaki bir paketin en yüksek sürümü ve bu PC'deki durumu.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct KatalogSatiri {
+    pub ad: String,
+    /// Kanalda yayındaki en yüksek sürüm.
+    pub yayinda: String,
+    /// Bu PC'de seçili sürüm (kurulu değilse yok).
+    pub kurulu: Option<String>,
+    pub boyut: u64,
+    /// Kurulması için önce gereken paketler (yayında olanlar otomatik kurulur).
+    pub gerektirir: Vec<String>,
+}
+
+/// Yayındaki (kanal) paketlerin listesi; yazma yapmaz. Yalnız imza/şema geçen yayın gösterilir.
+pub fn katalog(kur: &Kur, kaynak: &dyn Kaynak, kanal: &str) -> Sonuc<Vec<KatalogSatiri>> {
+    let (yayin, _) = yayin_yukle(kur, kaynak)?;
+    let liste = kur.liste()?;
+    let mut sonuc: Vec<KatalogSatiri> = Vec::new();
+    for p in yayin.paketler.iter().filter(|p| p.kanal == kanal) {
+        if sonuc.iter().any(|k| k.ad == p.ad) {
+            continue;
+        }
+        let en = yayin
+            .paketler
+            .iter()
+            .filter(|q| q.ad == p.ad && q.kanal == kanal)
+            .max_by(|a, b| surum_karsilastir(&a.surum, &b.surum))
+            .unwrap_or(p);
+        sonuc.push(KatalogSatiri {
+            ad: en.ad.clone(),
+            yayinda: en.surum.clone(),
+            kurulu: liste
+                .iter()
+                .find(|l| l.ad == en.ad)
+                .and_then(|l| l.secili.clone()),
+            boyut: en.tam.boyut,
+            gerektirir: en.gerektirir.keys().cloned().collect(),
+        });
+    }
+    sonuc.sort_by(|a, b| a.ad.cmp(&b.ad));
+    Ok(sonuc)
+}
+
+/// `taa-guncelle kur <ad>`: yayından ilk kurulum. Zaten seçili sürüm varsa hata (güncelleme `uygula --paket`).
+/// `gerektirir` listesindeki paketler (yayında varsa, kurulu değilse) önce kurulur; döngü ve 8 derinlik sınırı vardır.
+/// Dönüş: kurulan paketlerin `ad sürüm` satırları (bağımlılıklar önce).
+pub fn kur_yayindan(kur: &Kur, kaynak: &dyn Kaynak, kanal: &str, ad: &str) -> Sonuc<Vec<String>> {
+    let (yayin, _) = yayin_yukle(kur, kaynak)?;
+    let mut kurulanlar = Vec::new();
+    let mut yolda = Vec::new();
+    kur_yayindan_ic(
+        kur,
+        kaynak,
+        &yayin,
+        kanal,
+        ad,
+        &mut yolda,
+        &mut kurulanlar,
+        true,
+    )?;
+    Ok(kurulanlar)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn kur_yayindan_ic(
+    kur: &Kur,
+    kaynak: &dyn Kaynak,
+    yayin: &Yayin,
+    kanal: &str,
+    ad: &str,
+    yolda: &mut Vec<String>,
+    kurulanlar: &mut Vec<String>,
+    istenen: bool,
+) -> Sonuc<()> {
+    if yolda.iter().any(|y| y == ad) || yolda.len() >= 8 {
+        return Err(KurHata::Cozum(format!(
+            "{ad} paketinin gerektirir zinciri döngülü ya da çok derin. Öneri: yayını düzeltin."
+        )));
+    }
+    let secili = kur
+        .liste()?
+        .into_iter()
+        .find(|l| l.ad == ad)
+        .and_then(|l| l.secili);
+    if secili.is_some() {
+        if istenen {
+            return Err(KurHata::Cozum(format!(
+                "{ad} zaten kurulu ({}). Öneri: yeni sürüm için `taa-guncelle uygula --paket {ad}`.",
+                secili.unwrap_or_default()
+            )));
+        }
+        return Ok(());
+    }
+    let Some(p) = yayin
+        .paketler
+        .iter()
+        .filter(|p| p.ad == ad && p.kanal == kanal)
+        .max_by(|a, b| surum_karsilastir(&a.surum, &b.surum))
+    else {
+        return Err(KurHata::Yok(format!(
+            "{ad} yayında ({kanal} kanalı) yok. Öneri: `taa-guncelle liste` ile yayındaki paketlere bakın."
+        )));
+    };
+    yolda.push(ad.to_string());
+    for g in p.gerektirir.keys() {
+        kur_yayindan_ic(kur, kaynak, yayin, kanal, g, yolda, kurulanlar, false)?;
+    }
+    yolda.pop();
+    paketi_uygula(kur, kaynak, p, "").map_err(|(e, _)| e)?;
+    kurulanlar.push(format!("{} {}", p.ad, p.surum));
+    Ok(())
+}
+
 /// Yeni sürüm depoda zaten varsa indirme yapılmaz: seçilir ve doğrulanır; doğrulanamazsa önceki sürüme dönülür.
 fn kuruluyu_sec(kur: &Kur, ad: &str, surum: &str, onceki: &str) -> Result<(), (KurHata, bool)> {
     kur.sec(ad, surum).map_err(|e| (e, false))?;
@@ -336,7 +449,12 @@ fn indir_ve_kur(
     let kurma = kur.kur(dosya, true);
     let hata = match kurma {
         Ok(s) if s.ad == p.ad && s.surum == p.surum && s.secili => match kur.dogrula(Some(&p.ad)) {
-            Ok(sorunlar) if sorunlar.is_empty() => return Ok(()),
+            Ok(sorunlar) if sorunlar.is_empty() => {
+                // Yeni sürümün harici bağımlılıkları (ör. Tailscale) sormadan kurulur; hata güncellemeyi bozmaz,
+                // `taa-kur harici <paket>` ile yeniden denenir.
+                let _ = kur.harici_kur_paketten(&p.ad, Some(&p.surum));
+                return Ok(());
+            }
             Ok(sorunlar) => KurHata::Bozuk(format!(
                 "{} {} kurulumdan sonra doğrulanamadı ({} sorun).",
                 p.ad,
