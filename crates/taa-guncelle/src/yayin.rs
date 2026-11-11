@@ -40,6 +40,18 @@ pub struct YayinPaketi {
     /// Bu sürümün altındaki kurulumlar güncellenmek ZORUNDA (güvenlik düzeltmesi vb.).
     #[serde(default)]
     pub en_az_surum: Option<String>,
+    /// Kurucu listesinde gösterilen grup (örn. "Çatı", "İş programları").
+    #[serde(default)]
+    pub grup: Option<String>,
+    /// Kurucu listesinde gösterilen kısa açıklama.
+    #[serde(default)]
+    pub aciklama: Option<String>,
+    /// Seçim listesinde başta işaretli gelir (zorunlu değildir).
+    #[serde(default)]
+    pub varsayilan_secili: bool,
+    /// Bu roldeki PC'lerde seçilemez, kendiliğinden kurulur (örn. ["sunucu"]; şube PC'sinde boş).
+    #[serde(default)]
+    pub zorunlu_roller: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -108,6 +120,11 @@ impl Yayin {
                 }
                 dosya_dogrula(&p.ad, "yama", &y.url, &y.sha256, y.boyut)?;
             }
+            for r in &p.zorunlu_roller {
+                if !ad_gecerli(r) {
+                    return Err(format!("{} için geçersiz rol {r:?}", p.ad));
+                }
+            }
             if let Some(e) = &p.en_az_surum {
                 if !surum_gecerli(e) {
                     return Err(format!("{} için geçersiz en_az_surum {e:?}", p.ad));
@@ -137,4 +154,29 @@ fn dosya_dogrula(ad: &str, tur: &str, url: &str, sha: &str, boyut: u64) -> Resul
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod rol_testleri {
+    use super::*;
+
+    fn json(ek: &str) -> Vec<u8> {
+        format!(
+            r#"{{"sema":1,"paketler":[{{"ad":"taa-sunucu","surum":"1.0.0","kanal":"kararli","arayuz":"a.b@1",
+            "tam":{{"url":"x.zip","sha256":"{}","boyut":10}}{ek}}}]}}"#,
+            "a".repeat(64)
+        )
+        .into_bytes()
+    }
+
+    #[test]
+    fn secimli_kurucu_alanlari_okunur_ve_eskisi_bozulmaz() {
+        let (y, _) = Yayin::coz(&json("")).unwrap();
+        assert!(y.paketler[0].zorunlu_roller.is_empty() && !y.paketler[0].varsayilan_secili);
+        let ek = r#","grup":"Çatı","aciklama":"Merkez sunucu","varsayilan_secili":true,"zorunlu_roller":["sunucu"]"#;
+        let (y, _) = Yayin::coz(&json(ek)).unwrap();
+        assert_eq!(y.paketler[0].zorunlu_roller, vec!["sunucu".to_string()]);
+        assert_eq!(y.paketler[0].grup.as_deref(), Some("Çatı"));
+        assert!(Yayin::coz(&json(r#","zorunlu_roller":["Büyük Rol"]"#)).is_err());
+    }
 }

@@ -261,6 +261,11 @@ pub struct KatalogSatiri {
     pub boyut: u64,
     /// Kurulması için önce gereken paketler (yayında olanlar otomatik kurulur).
     pub gerektirir: Vec<String>,
+    pub grup: Option<String>,
+    pub aciklama: Option<String>,
+    pub varsayilan_secili: bool,
+    /// Bu roldeki PC'lerde kendiliğinden kurulur (seçilemez).
+    pub zorunlu_roller: Vec<String>,
 }
 
 /// Yayındaki (kanal) paketlerin listesi; yazma yapmaz. Yalnız imza/şema geçen yayın gösterilir.
@@ -287,6 +292,10 @@ pub fn katalog(kur: &Kur, kaynak: &dyn Kaynak, kanal: &str) -> Sonuc<Vec<Katalog
                 .and_then(|l| l.secili.clone()),
             boyut: en.tam.boyut,
             gerektirir: en.gerektirir.keys().cloned().collect(),
+            grup: en.grup.clone(),
+            aciklama: en.aciklama.clone(),
+            varsayilan_secili: en.varsayilan_secili,
+            zorunlu_roller: en.zorunlu_roller.clone(),
         });
     }
     sonuc.sort_by(|a, b| a.ad.cmp(&b.ad));

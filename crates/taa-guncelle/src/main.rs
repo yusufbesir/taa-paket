@@ -134,11 +134,23 @@ fn calistir(args: &[String], json: bool) -> Result<u8, KurHata> {
         } else if duz {
             // Betikler için: ad<TAB>yayındaki sürüm<TAB>kurulu sürüm ya da "-"
             for s in &k {
+                // Sütunlar: ad, yayındaki, kurulu|-, grup|-, zorunlu roller (virgülle)|-, açıklama|-
+                let temiz = |m: &str| m.replace(['\t', '\n', '\r'], " ");
                 println!(
-                    "{}\t{}\t{}",
+                    "{}\t{}\t{}\t{}\t{}\t{}",
                     s.ad,
                     s.yayinda,
-                    s.kurulu.as_deref().unwrap_or("-")
+                    s.kurulu.as_deref().unwrap_or("-"),
+                    s.grup.as_deref().map(temiz).unwrap_or_else(|| "-".into()),
+                    if s.zorunlu_roller.is_empty() {
+                        "-".to_string()
+                    } else {
+                        s.zorunlu_roller.join(",")
+                    },
+                    s.aciklama
+                        .as_deref()
+                        .map(temiz)
+                        .unwrap_or_else(|| "-".into())
                 );
             }
         } else {
