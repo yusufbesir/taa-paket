@@ -17,3 +17,7 @@ serde_json = "1"
 sha2 = "0.10"
 taa-ayar = { path = "../taa-ayar" }
 taa-dosya = { path = "../taa-dosya" }
+
+[[bin]]
+name = "taa-yedek"
+path = "src/main.rs"
