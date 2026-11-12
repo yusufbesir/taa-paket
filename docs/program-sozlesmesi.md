@@ -18,6 +18,7 @@ depolarında yaşar; kesin değerler aşağıdaki "Kesin örnekler" bölümünde
 | `veri_sahibi` | liste | Yalnız bu programın yazdığı veri alanları. |
 | `veri_okur` | liste | Salt okunur alanlar; her birinin paket genelinde tam bir sahibi olmalı. |
 | `ayar_alani` | metin | Ayar alanı, `programlar.<ad>`. |
+| `havuz_okur` / `havuz_ilgi` / `havuz_yazar` | liste | Ortak veri havuzu bildirimleri (isteğe bağlı); bkz. `docs/havuz-sozlesmesi.md`. |
 
 Örnek (§18.3):
 

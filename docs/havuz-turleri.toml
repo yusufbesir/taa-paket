@@ -1,0 +1,123 @@
+# Sahip: Yusuf. yazan: [Claude#ortak-veri-havuzu 2026-11-12]
+# TAA ortak veri havuzu tür kataloğu (docs/havuz-sozlesmesi.md). Kaynak: planlar/PLAN-ORTAK-VERI-HAVUZU-2026-11-12.md §9.
+# Eşleme ÖNERİDİR; yanlışsa yalnız bu dosya düzeltilir. kip: "tablo" (tek yazar) | "dosya" (çok yazar olabilir).
+# okuyanlar: bu türü gösteren programlar. Görünürlük ayrıca Çatı yetkisi ve şube kapsamıyla süzülür.
+
+[programlar]
+# Katalogdaki program adları (program.toml `ad`). Havuz bildirimleri yalnız bu adlara bağlanabilir.
+adlar = [
+  "fiyatetiketi", "taarkod", "taadon", "tutaa", "taavideo", "terzitakip",
+  "taayonetici", "taagiydir", "taarehber", "taaegitim", "taaocr",
+]
+
+[turler."urun.liste"]
+surum = 1
+aile = "urun"
+kip = "tablo"
+yazanlar = ["tutaa"]
+okuyanlar = ["fiyatetiketi", "taarkod", "tutaa", "terzitakip", "taagiydir"]
+kisisel = false
+aciklama = "Ürün kodu, ad, kategori, birim"
+
+[turler."fiyat.liste"]
+surum = 1
+aile = "urun"
+kip = "tablo"
+yazanlar = ["tutaa"]
+okuyanlar = ["fiyatetiketi", "tutaa", "terzitakip", "taagiydir"]
+kisisel = false
+aciklama = "Ürün kodu, fiyat, geçerlilik"
+
+[turler."barkod.liste"]
+surum = 1
+aile = "urun"
+kip = "tablo"
+yazanlar = ["tutaa"]
+okuyanlar = ["fiyatetiketi", "taarkod", "tutaa"]
+kisisel = false
+aciklama = "Barkod, ürün kodu, beden/renk"
+
+[turler."beden.cetveli"]
+surum = 1
+aile = "olcu"
+kip = "tablo"
+yazanlar = ["taayonetici"]
+okuyanlar = ["taagiydir", "terzitakip"]
+kisisel = false
+aciklama = "Beden cetveli (ayakkabı ve aksesuar hariç)"
+
+[turler."egitim.video"]
+surum = 1
+aile = "egitim"
+kip = "dosya"
+yazanlar = ["taayonetici", "taaegitim"]
+okuyanlar = ["taaegitim", "taarehber", "terzitakip"]
+mime = ["video/mp4", "video/webm"]
+kisisel = false
+aciklama = "Eğitim videosu"
+
+[turler."egitim.belge"]
+surum = 1
+aile = "egitim"
+kip = "dosya"
+yazanlar = ["taayonetici", "taaegitim"]
+okuyanlar = ["taaegitim", "taarehber"]
+mime = ["application/pdf"]
+kisisel = false
+aciklama = "Eğitim belgesi, sunum (PDF)"
+
+[turler."video.medya"]
+surum = 1
+aile = "medya"
+kip = "dosya"
+yazanlar = ["taavideo", "taayonetici"]
+okuyanlar = ["taavideo"]
+mime = ["video/mp4", "image/png", "image/jpeg"]
+kisisel = false
+aciklama = "LED ekran görsel ve videoları"
+
+[turler."giydir.manken"]
+surum = 1
+aile = "giydir"
+kip = "dosya"
+yazanlar = ["taagiydir"]
+okuyanlar = ["taagiydir", "taayonetici"]
+kisisel = false
+aciklama = "Standart manken modelleri (yüzsüz)"
+
+[turler."giydir.kumas"]
+surum = 1
+aile = "giydir"
+kip = "dosya"
+yazanlar = ["taagiydir"]
+okuyanlar = ["taagiydir", "taayonetici"]
+kisisel = false
+aciklama = "Kumaş dokuları ve fizik parametreleri"
+
+[turler."giydir.renk-kombin"]
+surum = 1
+aile = "giydir"
+kip = "tablo"
+yazanlar = ["taagiydir"]
+okuyanlar = ["taagiydir", "taayonetici"]
+kisisel = false
+aciklama = "Renk sözlüğü ve kombinasyonlar"
+
+[turler."giydir.urun-gorsel"]
+surum = 1
+aile = "giydir"
+kip = "dosya"
+yazanlar = ["taagiydir"]
+okuyanlar = ["taagiydir", "taayonetici"]
+mime = ["image/png", "image/jpeg", "image/webp"]
+kisisel = false
+aciklama = "Firma ürün görselleri (eğitim ve katalog)"
+
+[turler."ocr.egitim"]
+surum = 1
+aile = "ocr"
+kip = "dosya"
+yazanlar = ["taaocr", "taayonetici"]
+okuyanlar = ["taaocr"]
+kisisel = false
+aciklama = "OCR eğitim verisi"
