@@ -144,9 +144,16 @@ pub fn pdf_oku(b: &[u8]) -> Result<Vec<PdfSayfa>, PdfHata> {
         let mut jpegler = Vec::new();
         if metin.trim().is_empty() {
             if let Ok((kaynak, _)) = doc.get_page_resources(id) {
-                if let Some(Ok(xo)) = kaynak.and_then(|k| k.get(b"XObject").ok()).map(|o| doc.dereference(o).map(|(_, o)| o).and_then(|o| o.as_dict().cloned())) {
+                if let Some(Ok(xo)) = kaynak.and_then(|k| k.get(b"XObject").ok()).map(|o| {
+                    doc.dereference(o)
+                        .map(|(_, o)| o)
+                        .and_then(|o| o.as_dict().cloned())
+                }) {
                     for (_, nesne) in xo.iter() {
-                        let Ok(Object::Stream(s)) = doc.dereference(nesne).map(|(_, o)| o.clone()) else { continue };
+                        let Ok(Object::Stream(s)) = doc.dereference(nesne).map(|(_, o)| o.clone())
+                        else {
+                            continue;
+                        };
                         let alt = s.dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok());
                         let suz = s.dict.get(b"Filter").ok().and_then(|o| o.as_name().ok());
                         if alt == Some(b"Image") && suz == Some(b"DCTDecode") {
@@ -173,7 +180,10 @@ mod testler {
 <w:tr><w:tc><w:p><w:r><w:t>A &amp; B</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>1</w:t></w:r></w:p></w:tc></w:tr></w:tbl>
 <w:p><w:r><w:t>Toplam</w:t></w:r></w:p></w:body></w:document>"#;
         let d = docx_xml(xml);
-        assert_eq!(d.satirlar, vec!["Teslim Tutanağı", "T14525\t2", "A & B\t1", "Toplam"]);
+        assert_eq!(
+            d.satirlar,
+            vec!["Teslim Tutanağı", "T14525\t2", "A & B\t1", "Toplam"]
+        );
         assert_eq!(d.tablolar.len(), 1);
         assert_eq!(d.tablolar[0][1], vec!["A & B", "1"]);
     }
@@ -189,19 +199,30 @@ mod testler {
         use lopdf::{dictionary, Stream};
         let mut doc = Document::with_version("1.5");
         let pages = doc.new_object_id();
-        let font = doc.add_object(dictionary! {"Type" => "Font", "Subtype" => "Type1", "BaseFont" => "Helvetica"});
+        let font = doc.add_object(
+            dictionary! {"Type" => "Font", "Subtype" => "Type1", "BaseFont" => "Helvetica"},
+        );
         let res = doc.add_object(dictionary! {"Font" => dictionary! {"F1" => font}});
-        let icerik = Content { operations: vec![
-            Operation::new("BT", vec![]),
-            Operation::new("Tf", vec!["F1".into(), 12.into()]),
-            Operation::new("Td", vec![50.into(), 700.into()]),
-            Operation::new("Tj", vec![Object::string_literal("T14525 adet 3")]),
-            Operation::new("ET", vec![]),
-        ]};
+        let icerik = Content {
+            operations: vec![
+                Operation::new("BT", vec![]),
+                Operation::new("Tf", vec!["F1".into(), 12.into()]),
+                Operation::new("Td", vec![50.into(), 700.into()]),
+                Operation::new("Tj", vec![Object::string_literal("T14525 adet 3")]),
+                Operation::new("ET", vec![]),
+            ],
+        };
         let ic = doc.add_object(Stream::new(dictionary! {}, icerik.encode().unwrap()));
-        let sayfa = doc.add_object(dictionary! {"Type" => "Page", "Parent" => pages, "Contents" => ic, "Resources" => res,
-            "MediaBox" => vec![0.into(), 0.into(), 595.into(), 842.into()]});
-        doc.objects.insert(pages, Object::Dictionary(dictionary! {"Type" => "Pages", "Kids" => vec![sayfa.into()], "Count" => 1}));
+        let sayfa = doc.add_object(
+            dictionary! {"Type" => "Page", "Parent" => pages, "Contents" => ic, "Resources" => res,
+            "MediaBox" => vec![0.into(), 0.into(), 595.into(), 842.into()]},
+        );
+        doc.objects.insert(
+            pages,
+            Object::Dictionary(
+                dictionary! {"Type" => "Pages", "Kids" => vec![sayfa.into()], "Count" => 1},
+            ),
+        );
         let kok = doc.add_object(dictionary! {"Type" => "Catalog", "Pages" => pages});
         doc.trailer.set("Root", kok);
         let mut b = Vec::new();

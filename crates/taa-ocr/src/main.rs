@@ -40,7 +40,9 @@ fn main() {
             None
         }
     };
-    let kok = deger("--kok", &mut args).map(PathBuf::from).unwrap_or_else(taa_ocr::model::kok);
+    let kok = deger("--kok", &mut args)
+        .map(PathBuf::from)
+        .unwrap_or_else(taa_ocr::model::kok);
     let tur = deger("--tur", &mut args);
     let dil = deger("--dil", &mut args);
     let sozluk_yolu = deger("--sozluk", &mut args);
@@ -62,7 +64,14 @@ fn main() {
     }
     if let Some(y) = sozluk_yolu {
         match std::fs::read_to_string(&y) {
-            Ok(s) => sec.sozluk = s.lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from).collect(),
+            Ok(s) => {
+                sec.sozluk = s
+                    .lines()
+                    .map(str::trim)
+                    .filter(|l| !l.is_empty())
+                    .map(String::from)
+                    .collect()
+            }
             Err(_) => bitir(Err(hata("sozluk-okunamadi"))),
         }
     }
@@ -77,12 +86,18 @@ fn main() {
         "bilgi" => bitir(Ok(okuyucu::bilgi(&kok))),
         "model-liste" => bitir(Ok(taa_ocr::model::liste(&kok))),
         "model-etkinlestir" => {
-            let Some(p) = konum else { bitir(Err(hata("paket klasörü gerekli"))) };
-            let a = anahtar.map(PathBuf::from).unwrap_or_else(|| kok.join("ocr").join("model-imza.pub"));
+            let Some(p) = konum else {
+                bitir(Err(hata("paket klasörü gerekli")))
+            };
+            let a = anahtar
+                .map(PathBuf::from)
+                .unwrap_or_else(|| kok.join("ocr").join("model-imza.pub"));
             bitir(taa_ocr::model::etkinlestir(&kok, &PathBuf::from(p), &a).map_err(|e| hata(&e)))
         }
         "model-geri-al" => {
-            let Some(ad) = konum else { bitir(Err(hata("model adı gerekli"))) };
+            let Some(ad) = konum else {
+                bitir(Err(hata("model adı gerekli")))
+            };
             bitir(taa_ocr::model::geri_al(&kok, &ad).map_err(|e| hata(&e)))
         }
         _ => bitir(Err(hata("bilinmeyen komut"))),

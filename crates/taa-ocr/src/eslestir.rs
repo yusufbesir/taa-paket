@@ -29,7 +29,9 @@ pub fn mesafe(a: &str, b: &str) -> usize {
         let mut simdiki = vec![i; b.len() + 1];
         for j in 1..=b.len() {
             let m = usize::from(a[i - 1] != b[j - 1]);
-            simdiki[j] = (onceki[j] + 1).min(simdiki[j - 1] + 1).min(onceki[j - 1] + m);
+            simdiki[j] = (onceki[j] + 1)
+                .min(simdiki[j - 1] + 1)
+                .min(onceki[j - 1] + m);
         }
         onceki = simdiki;
     }
@@ -38,12 +40,20 @@ pub fn mesafe(a: &str, b: &str) -> usize {
 
 pub fn kisitli(ham: &str, sozluk: &[String], guven: f64) -> Eslesme {
     let t = temizle(ham);
-    let mut m = Eslesme { ham: ham.to_string(), secilen: None, aday: vec![], guven, durum: "bos" };
+    let mut m = Eslesme {
+        ham: ham.to_string(),
+        secilen: None,
+        aday: vec![],
+        guven,
+        durum: "bos",
+    };
     if t.is_empty() || sozluk.is_empty() {
         return m;
     }
-    let mut hepsi: Vec<(String, usize)> =
-        sozluk.iter().map(|k| (k.clone(), mesafe(&t, &temizle(k)))).collect();
+    let mut hepsi: Vec<(String, usize)> = sozluk
+        .iter()
+        .map(|k| (k.clone(), mesafe(&t, &temizle(k))))
+        .collect();
     hepsi.sort_by(|x, y| x.1.cmp(&y.1).then_with(|| x.0.cmp(&y.0)));
     hepsi.truncate(3);
     let d1 = hepsi[0].1;

@@ -22,7 +22,11 @@ pub struct Secenek {
 
 impl Default for Secenek {
     fn default() -> Self {
-        Secenek { tur: "otomatik".into(), dil: "tr".into(), sozluk: vec![] }
+        Secenek {
+            tur: "otomatik".into(),
+            dil: "tr".into(),
+            sozluk: vec![],
+        }
     }
 }
 
@@ -65,7 +69,12 @@ fn metin_katmani_sayfa(no: u32, metin: &str) -> Sayfa {
 
 /// Görüntüyü etkin modele verir. Model yoksa ya da çalışmazsa belirsiz sonuç döner (hata değil).
 fn goruntu_oku(b: &[u8], uzanti: &str, no: u32, sec: &Secenek, modeller: &[Model]) -> Sayfa {
-    let mut s = Sayfa { no, kaynak: "ocr", belirsiz: true, ..Default::default() };
+    let mut s = Sayfa {
+        no,
+        kaynak: "ocr",
+        belirsiz: true,
+        ..Default::default()
+    };
     let Some(m) = model::sec(modeller, &sec.tur) else {
         s.uyari.push("model-yok".into());
         return s;
@@ -78,7 +87,9 @@ fn goruntu_oku(b: &[u8], uzanti: &str, no: u32, sec: &Secenek, modeller: &[Model
             s.satirlar = j["satirlar"].as_array().cloned().unwrap_or_default();
             s.tablolar = j["tablolar"].as_array().cloned().unwrap_or_default();
             s.goruntu = j.get("goruntu").cloned();
-            s.belirsiz = j["belirsiz"].as_bool().unwrap_or(s.metin.is_empty() && s.tablolar.is_empty());
+            s.belirsiz = j["belirsiz"]
+                .as_bool()
+                .unwrap_or(s.metin.is_empty() && s.tablolar.is_empty());
         }
         Err(e) => s.uyari.push(format!("model-calismadi: {e}")),
     }
@@ -88,13 +99,20 @@ fn goruntu_oku(b: &[u8], uzanti: &str, no: u32, sec: &Secenek, modeller: &[Model
 fn model_calistir(m: &Model, b: &[u8], uzanti: &str, sec: &Secenek) -> Result<Value, String> {
     let ilk = m.komut.first().ok_or("model komutu yok")?;
     let tmp = taa_dosya::gecici_klasor().map_err(|e| e.to_string())?;
-    let g = taa_dosya::atomik_yaz(&tmp.join(format!("girdi.{uzanti}")), b).map_err(|e| e.to_string())?;
+    let g = taa_dosya::atomik_yaz(&tmp.join(format!("girdi.{uzanti}")), b)
+        .map_err(|e| e.to_string())?;
     let sozluk = if sec.sozluk.is_empty() {
         None
     } else {
-        Some(taa_dosya::atomik_yaz(&tmp.join("sozluk.txt"), sec.sozluk.join("\n").as_bytes()).map_err(|e| e.to_string())?)
+        Some(
+            taa_dosya::atomik_yaz(&tmp.join("sozluk.txt"), sec.sozluk.join("\n").as_bytes())
+                .map_err(|e| e.to_string())?,
+        )
     };
-    let cozum = |p: &str| match p.strip_prefix("./") { Some(g) => m.dizin.join(g).to_string_lossy().into_owned(), None => p.to_string() };
+    let cozum = |p: &str| match p.strip_prefix("./") {
+        Some(g) => m.dizin.join(g).to_string_lossy().into_owned(),
+        None => p.to_string(),
+    };
     let mut c = Command::new(cozum(ilk));
     c.args(m.komut[1..].iter().map(|a| cozum(a)))
         .arg(&g)
@@ -102,7 +120,9 @@ fn model_calistir(m: &Model, b: &[u8], uzanti: &str, sec: &Secenek) -> Result<Va
     if let Some(sz) = &sozluk {
         c.arg("--sozluk").arg(sz);
     }
-    c.current_dir(&m.dizin).stdout(Stdio::piped()).stderr(Stdio::null());
+    c.current_dir(&m.dizin)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
     let sonuc = (|| {
         let mut cocuk = c.spawn().map_err(|e| e.to_string())?;
         let bas = Instant::now();
@@ -125,7 +145,8 @@ fn model_calistir(m: &Model, b: &[u8], uzanti: &str, sec: &Secenek) -> Result<Va
                 None => std::thread::sleep(Duration::from_millis(20)),
             }
         }
-        serde_json::from_str::<Value>(cikti.trim().lines().last().unwrap_or("")).map_err(|_| "model çıktısı JSON değil".to_string())
+        serde_json::from_str::<Value>(cikti.trim().lines().last().unwrap_or(""))
+            .map_err(|_| "model çıktısı JSON değil".to_string())
     })();
     // Geçici girdi iş bitince temizlenir (gizlilik: görüntü motorda kalmaz).
     let _ = std::fs::remove_file(&g);
@@ -162,7 +183,12 @@ pub fn sayfalari_oku(b: &[u8], sec: &Secenek, kok: &Path) -> Result<Vec<Sayfa>, 
                     v.push(metin_katmani_sayfa(p.no, &p.metin));
                 } else if p.jpegler.is_empty() {
                     // Taranmış ama gömülü JPEG yok: sayfa görüntüye çevrilemedi, uydurma yok.
-                    let mut s = Sayfa { no: p.no, kaynak: "ocr", belirsiz: true, ..Default::default() };
+                    let mut s = Sayfa {
+                        no: p.no,
+                        kaynak: "ocr",
+                        belirsiz: true,
+                        ..Default::default()
+                    };
                     s.uyari.push("sayfa-goruntusu-yok".into());
                     v.push(s);
                 } else {
@@ -170,7 +196,9 @@ pub fn sayfalari_oku(b: &[u8], sec: &Secenek, kok: &Path) -> Result<Vec<Sayfa>, 
                     for j in &p.jpegler[1..] {
                         let ek = goruntu_oku(j, "jpg", p.no, sec, &modeller);
                         if !ek.metin.is_empty() {
-                            birlesik.metin = format!("{}\n{}", birlesik.metin, ek.metin).trim().to_string();
+                            birlesik.metin = format!("{}\n{}", birlesik.metin, ek.metin)
+                                .trim()
+                                .to_string();
                         }
                         birlesik.satirlar.extend(ek.satirlar);
                         birlesik.tablolar.extend(ek.tablolar);
@@ -185,7 +213,10 @@ pub fn sayfalari_oku(b: &[u8], sec: &Secenek, kok: &Path) -> Result<Vec<Sayfa>, 
 }
 
 fn sayi_adet(s: &str) -> Option<i64> {
-    s.trim().parse::<i64>().ok().filter(|n| (1..=99).contains(n))
+    s.trim()
+        .parse::<i64>()
+        .ok()
+        .filter(|n| (1..=99).contains(n))
 }
 
 /// docx tablolarını `ocr.tablo@1` biçimine çevirir; sözlük verilmişse stok ve adet alanları da doldurulur.
@@ -258,9 +289,21 @@ fn sayfa_json(s: &Sayfa) -> Value {
 }
 
 fn temel(sayfalar: &[Sayfa]) -> Value {
-    let model = sayfalar.iter().find_map(|s| s.model.clone()).unwrap_or(Value::Null);
-    let metin = sayfalar.iter().map(|s| s.metin.as_str()).filter(|m| !m.is_empty()).collect::<Vec<_>>().join("\n");
-    let guven = if sayfalar.is_empty() { 0.0 } else { sayfalar.iter().map(|s| s.guven).sum::<f64>() / sayfalar.len() as f64 };
+    let model = sayfalar
+        .iter()
+        .find_map(|s| s.model.clone())
+        .unwrap_or(Value::Null);
+    let metin = sayfalar
+        .iter()
+        .map(|s| s.metin.as_str())
+        .filter(|m| !m.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let guven = if sayfalar.is_empty() {
+        0.0
+    } else {
+        sayfalar.iter().map(|s| s.guven).sum::<f64>() / sayfalar.len() as f64
+    };
     let mut o = json!({
         "arayuz": crate::ARAYUZ, "motor": crate::MOTOR_SURUMU, "model": model,
         "kaynak": kaynak_ozeti(sayfalar), "metin": metin, "guven": guven,
@@ -294,7 +337,15 @@ pub fn kod(b: &[u8], sec: &Secenek, kok: &Path) -> Result<Value, Value> {
         let satirlar: Vec<(String, f64)> = if s.satirlar.is_empty() {
             s.metin.lines().map(|l| (l.to_string(), s.guven)).collect()
         } else {
-            s.satirlar.iter().map(|l| (l["metin"].as_str().unwrap_or("").to_string(), l["guven"].as_f64().unwrap_or(s.guven))).collect()
+            s.satirlar
+                .iter()
+                .map(|l| {
+                    (
+                        l["metin"].as_str().unwrap_or("").to_string(),
+                        l["guven"].as_f64().unwrap_or(s.guven),
+                    )
+                })
+                .collect()
         };
         for (satir, g) in satirlar {
             for sozcuk in satir.split_whitespace() {
@@ -316,7 +367,10 @@ pub fn kod(b: &[u8], sec: &Secenek, kok: &Path) -> Result<Value, Value> {
 pub fn tablo(b: &[u8], sec: &Secenek, kok: &Path) -> Result<Value, Value> {
     let sayfalar = sayfalari_oku(b, sec, kok)?;
     let tablolar: Vec<Value> = sayfalar.iter().flat_map(|s| s.tablolar.clone()).collect();
-    let goruntu = sayfalar.iter().find_map(|s| s.goruntu.clone()).unwrap_or_else(|| json!({"w": 0, "h": 0}));
+    let goruntu = sayfalar
+        .iter()
+        .find_map(|s| s.goruntu.clone())
+        .unwrap_or_else(|| json!({"w": 0, "h": 0}));
     let mut o = json!({"arayuz": crate::ARAYUZ, "motor": crate::MOTOR_SURUMU,
         "model": sayfalar.iter().find_map(|s| s.model.clone()).unwrap_or(Value::Null),
         "kaynak": kaynak_ozeti(&sayfalar), "goruntu": goruntu, "belirsiz": tablolar.is_empty()});

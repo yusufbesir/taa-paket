@@ -52,6 +52,9 @@ mod testler {
     }
     #[test]
     fn eski_office_korumali_sayilir() {
-        assert_eq!(tani(&[0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1, 0]), Tur::Korumali);
+        assert_eq!(
+            tani(&[0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1, 0]),
+            Tur::Korumali
+        );
     }
 }

@@ -21,7 +21,10 @@ fn calistir(kok: &Path, args: &[&str]) -> (i32, Value) {
         .output()
         .unwrap();
     let s = String::from_utf8_lossy(&o.stdout);
-    (o.status.code().unwrap_or(-1), serde_json::from_str(s.trim()).unwrap_or(Value::Null))
+    (
+        o.status.code().unwrap_or(-1),
+        serde_json::from_str(s.trim()).unwrap_or(Value::Null),
+    )
 }
 
 fn docx(yol: &Path) {
@@ -29,7 +32,11 @@ fn docx(yol: &Path) {
 <w:tbl><w:tr><w:tc><w:p><w:r><w:t>T14525</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>3</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>"#;
     let f = fs::File::create(yol).unwrap();
     let mut z = zip::ZipWriter::new(f);
-    z.start_file("word/document.xml", zip::write::SimpleFileOptions::default()).unwrap();
+    z.start_file(
+        "word/document.xml",
+        zip::write::SimpleFileOptions::default(),
+    )
+    .unwrap();
     z.write_all(xml.as_bytes()).unwrap();
     z.finish().unwrap();
 }
@@ -46,12 +53,23 @@ fn docx_oku_tablo_ve_kod() {
     assert_eq!(j["kaynak"], "metin-katmani");
     assert_eq!(j["guven"], 1.0);
     assert!(j["metin"].as_str().unwrap().contains("Teslim"));
-    let (_, t) = calistir(&d, &["tablo", f.to_str().unwrap(), "--sozluk", sz.to_str().unwrap()]);
+    let (_, t) = calistir(
+        &d,
+        &[
+            "tablo",
+            f.to_str().unwrap(),
+            "--sozluk",
+            sz.to_str().unwrap(),
+        ],
+    );
     let satir = &t["tablolar"][0]["satirlar"][0];
     assert_eq!(satir["stok"]["secilen"], "T14525");
     assert_eq!(satir["adet"]["deger"], 3);
     assert_eq!(satir["adet"]["durum"], "kabul");
-    let (_, c) = calistir(&d, &["kod", f.to_str().unwrap(), "--sozluk", sz.to_str().unwrap()]);
+    let (_, c) = calistir(
+        &d,
+        &["kod", f.to_str().unwrap(), "--sozluk", sz.to_str().unwrap()],
+    );
     assert_eq!(c["adaylar"][0]["deger"], "T14525");
     assert_eq!(c["belirsiz"], false);
 }
@@ -72,10 +90,17 @@ fn modelsiz_goruntu_belirsiz_ve_hata_kodlari() {
     assert_eq!((k, j["hata"].as_str()), (2, Some("desteklenmeyen-bicim")));
     let o = d.join("o.doc");
     fs::write(&o, [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1, 0]).unwrap();
-    assert_eq!(calistir(&d, &["oku", o.to_str().unwrap()]).1["hata"], "korumali");
+    assert_eq!(
+        calistir(&d, &["oku", o.to_str().unwrap()]).1["hata"],
+        "korumali"
+    );
     let (k, j) = calistir(&d, &["bilgi"]);
     assert_eq!(k, 0);
-    assert!(j["yetenekler"].as_array().unwrap().iter().any(|y| y == "ocr.tablo@1"));
+    assert!(j["yetenekler"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|y| y == "ocr.tablo@1"));
 }
 
 #[cfg(unix)]
@@ -92,17 +117,38 @@ fn sahte_model_paketiyle_goruntu_okunur() {
     fs::write(p.join("calistir"), betik).unwrap();
     fs::set_permissions(p.join("calistir"), fs::Permissions::from_mode(0o755)).unwrap();
     use sha2::{Digest, Sha256};
-    let ozet: String = Sha256::digest(betik).iter().map(|x| format!("{x:02x}")).collect();
+    let ozet: String = Sha256::digest(betik)
+        .iter()
+        .map(|x| format!("{x:02x}"))
+        .collect();
     let mut j = serde_json::json!({"ad":"elyazisi","surum":"0.1.0","turler":["elyazisi"],"komut":["./calistir"],"dosyalar":{"calistir": ozet}});
     taa_imza::yayin_imzala(&mut j, &o).unwrap();
     fs::write(p.join("model.json"), serde_json::to_vec(&j).unwrap()).unwrap();
-    let (k, e) = calistir(&kok, &["model-etkinlestir", p.to_str().unwrap(), "--genel-anahtar", g_yol.to_str().unwrap()]);
+    let (k, e) = calistir(
+        &kok,
+        &[
+            "model-etkinlestir",
+            p.to_str().unwrap(),
+            "--genel-anahtar",
+            g_yol.to_str().unwrap(),
+        ],
+    );
     assert_eq!((k, e["surum"].as_str()), (0, Some("0.1.0")));
     let g = kok.join("x.png");
     fs::write(&g, b"\x89PNG\r\n\x1a\n....").unwrap();
     let sz = kok.join("s.txt");
     fs::write(&sz, "T14525\n").unwrap();
-    let (k, r) = calistir(&kok, &["kod", g.to_str().unwrap(), "--sozluk", sz.to_str().unwrap(), "--tur", "elyazisi"]);
+    let (k, r) = calistir(
+        &kok,
+        &[
+            "kod",
+            g.to_str().unwrap(),
+            "--sozluk",
+            sz.to_str().unwrap(),
+            "--tur",
+            "elyazisi",
+        ],
+    );
     assert_eq!(k, 0);
     assert_eq!(r["kaynak"], "ocr", "{r}");
     assert_eq!(r["model"]["ad"], "elyazisi");
