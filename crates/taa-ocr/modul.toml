@@ -1,0 +1,11 @@
+# taa-ocr modül tanımı (sözleşme: docs/OCR-MOTORU.md). Sahip: Yusuf. yazan: [İP:Programları ortak OCR motoruna bağla#UtwaLa8s1GGAnhy8QruxJd] 2026-11-13
+ad = "taa-ocr"
+surum = "0.1.0"
+arayuz = "1"
+gerektirir = { "taa-dosya" = "1", "taa-imza" = "1" }
+program = "ortak"
+sunar = ["ocr.oku@1", "ocr.kod@1", "ocr.tablo@1", "ocr.bilgi@1"]
+ister = []
+veri_sahibi = ["ocr-modeller"]
+veri_okur = []
+ayar_alani = "programlar.taaocr"
