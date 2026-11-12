@@ -71,7 +71,7 @@ ayar_alani = "programlar.taaocr"
 - `satirlar` alanları Tutaa'nın mevcut `motor/PROTOKOL.md` yanıtıyla aynıdır (stok.ham/secilen/aday/guven/durum, adet.ham/deger/guven/durum, hucreKutusu, adetKutusu). Başka belge türlerinde `stok`/`adet` yerine `hucreler: [{"sutun","kutu","metin","guven"}]` gelir; ikisi birlikte de olabilir.
 - Kutu koordinatları `goruntu.w/h` piksel boyutuna göredir.
 - Tablo bulunamazsa `tablolar` boş, üst düzeyde `belirsiz: true` döner.
-- `durum` değerlerinin listesi ve anlamları PROTOKOL.md'den aynen alınır; sözleşme onlara yeni anlam yüklemez.
+- `durum` (stok ve adet için) yalnız "kabul", "sor" ya da "bos" olur (Tutaa `paddle_motor.py` ile doğrulandı). "kabul" güven eşiğini geçti, "sor" kullanıcıya sorulmalı, "bos" okunamadı demektir. Ürün durumları (örn. "degismis") OCR durumu değildir, buraya girmez.
 
 ### Sonuç biçimi (JSON, tek satır)
 
