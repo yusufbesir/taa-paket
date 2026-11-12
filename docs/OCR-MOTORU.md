@@ -97,7 +97,8 @@ ayar_alani = "programlar.taaocr"
 
 1. **IPC**: `taa-ipc` üzerinden yetenek adıyla. Motor çalışıyorsa ilk yol budur.
 2. **Komut satırı**: `taa-ocr oku <dosya> --json [--tur elyazisi] [--dil tr]` ve
-   `taa-ocr kod <dosya> --sozluk <dosya> --json`. IPC yoksa çağıran alt süreç olarak çalıştırır.
+   `taa-ocr kod <dosya> --sozluk <dosya> --json`, `taa-ocr tablo <dosya> [--sozluk <dosya>] --json`
+   ve `taa-ocr bilgi --json` (sonuçta `"yetenekler": ["ocr.oku@1", "ocr.tablo@1", …]`). IPC yoksa çağıran alt süreç olarak çalıştırır.
 
 Çağıran program iki yolu da dener, hangisi çalışırsa onu hatırlar. Yetenek hiç yoksa (motor kurulu değilse)
 ilgili düğme gizlenir; program yerelde eski OCR'a düşmez (tek OCR kuralı). İstisna: geçiş döneminde
@@ -141,7 +142,23 @@ Kaynak: depoların main dalı, ayrıntı `/mnt/project-files/ocr/OCR-BAGLANTI-TE
 | TAA Terzi Takip (taa-fis) | yok, "sonraki aşama" notu | fiş ve foto çözümleme için `ocr.oku@1` |
 | TAA Rehber, TAA Eğitim | yeni | gerekirse baştan `ocr.oku@1` |
 
-## 7. Açık
+## 7. Hedef ve yol haritası (Yusuf, 2026-11-12)
+
+Hedef: her türlü yazıyı okuyabilen, çok kapsamlı bir çözümleyici. Motor bunun için sürekli geliştirilir;
+sözleşme (bölüm 5b) bunu çağıran programlara dokunmadan mümkün kılar. Planlanan yetenek alanları, sıra Yusuf kararıyla:
+
+1. Basılı yazı (`ocr.oku@1`, tür "basili").
+2. El yazısı, özellikle stok kodu ve tutanak (`ocr.kod@1`, `ocr.oku@1`, tür "elyazisi"). İlk model mevcut el yazısı OCR çalışmasından gelebilir.
+3. Tablo ve çoklu tablo (`ocr.tablo@1`): tutanak, terzi fişi, fatura.
+4. Form alanları (`ocr.form@1`, planlı).
+5. İmza bölgesi tespiti (`ocr.imza@1`, planlı). Okuma değil, imzanın varlığı ve konumu.
+6. Barkod altı yazı (`ocr.oku@1` ile, kutu verilerek).
+7. Belge türü tanıma (`tur` alanı: tutanak, terzi-fisi, fatura, bilinmiyor, ileride yenileri).
+
+Her yeni yetenek ayrı model ve ayrı ölçümle gelir; sabit sınama kümesinde gelişim görülmezse yayına alınmaz.
+
+## 8. Açık
+
 
 - Motorun uygulaması (Python ve ONNX ya da Rust) bu sözleşmeden bağımsız; dil kuralı (Rust + Python, Rust ağırlıklı) ve ölçüm sonucuna göre seçilecek.
 - El yazısı OCR'ın mevcut Python prototipi ve JS portu (el-yazisi-ocr) motorun ilk "elyazisi" modeli olacak mı, Yusuf kararı.
