@@ -39,11 +39,39 @@ ayar_alani = "programlar.taaocr"
 |---|---|---|
 | `ocr.oku@1` | görüntü (dosya yolu veya bayt), `dil` ("tr"), `tur` ("basili" / "elyazisi" / "otomatik") | metin, güven, satır listesi |
 | `ocr.kod@1` | görüntü, `sozluk` (geçerli kodlar listesi veya dosyası) | sözlükle kısıtlı kod adayları ve güvenleri (stok kodu, barkod altı yazısı) |
-| `ocr.tablo@1` | görüntü (tutanak, fiş, fatura tablosu), `sozluk` (isteğe bağlı kod listesi) | satırlar, hücre kutuları, hücre metinleri ve güvenleri, adet sütunu, kod sütunu uzlaşması (Tutaa'nın mevcut tablo okuması) |
+| `ocr.tablo@1` | görüntü (tutanak, fiş, fatura tablosu), `sozluk` (isteğe bağlı kod listesi) | satırlar, her tablo için tür, kutu, satırlar, hücre kutuları, adet ve kod uzlaşması (Tutaa'nın mevcut tablo okuması, birden fazla tablo) |
 | `ocr.bilgi@1` | yok | motor sürümü, etkin model adı ve sürümü, desteklenen türler |
 
-`ocr.tablo@1` sonucu: `{"satirlar":[{"kutu":[x,y,g,y],"hucreler":[{"sutun":"kod|adet|…","kutu":[…],"metin":"…","guven":0.0}],"belirsiz":false}],"belirsiz":false}`.
-Tablo bulunamazsa `satirlar` boş, `belirsiz: true` döner.
+`ocr.tablo@1` bir görüntüde birden fazla tablo okuyabilir (terzi fişi, tutanak, fatura vb.). Sonuç:
+
+```json
+{
+  "arayuz": 1,
+  "goruntu": {"w": 0, "h": 0},
+  "tablolar": [
+    {
+      "tur": "tutanak",
+      "kutu": [x, y, g, y],
+      "belirsiz": false,
+      "satirlar": [
+        {
+          "kutu": [x, y, g, y],
+          "stok": {"ham": "…", "secilen": "…", "aday": [{"deger": "…", "guven": 0.0}], "guven": 0.0, "durum": "…"},
+          "adet": {"ham": "…", "deger": 0, "guven": 0.0, "durum": "…"},
+          "hucreKutusu": [x, y, g, y],
+          "adetKutusu": [x, y, g, y]
+        }
+      ]
+    }
+  ]
+}
+```
+
+- `tur`: "tutanak", "terzi-fisi", "fatura" ya da "bilinmiyor". Tür tahmini de `guven` ile gelir, düşükse "bilinmiyor".
+- `satirlar` alanları Tutaa'nın mevcut `motor/PROTOKOL.md` yanıtıyla aynıdır (stok.ham/secilen/aday/guven/durum, adet.ham/deger/guven/durum, hucreKutusu, adetKutusu). Başka belge türlerinde `stok`/`adet` yerine `hucreler: [{"sutun","kutu","metin","guven"}]` gelir; ikisi birlikte de olabilir.
+- Kutu koordinatları `goruntu.w/h` piksel boyutuna göredir.
+- Tablo bulunamazsa `tablolar` boş, üst düzeyde `belirsiz: true` döner.
+- `durum` değerlerinin listesi ve anlamları PROTOKOL.md'den aynen alınır; sözleşme onlara yeni anlam yüklemez.
 
 ### Sonuç biçimi (JSON, tek satır)
 
