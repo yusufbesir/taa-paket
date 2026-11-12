@@ -944,6 +944,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "taa-ocr"
+version = "0.1.0"
+dependencies = [
+ "lopdf",
+ "serde_json",
+ "sha2",
+ "taa-dosya",
+ "taa-imza",
+ "zip",
+]
+
+[[package]]
 name = "taa-pano"
 version = "0.1.0"
 dependencies = [

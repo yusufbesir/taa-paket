@@ -1,0 +1,28 @@
+# Sahip: Yusuf. yazan: [İP:Programları ortak OCR motoruna bağla#UtwaLa8s1GGAnhy8QruxJd] 2026-11-13
+# taa-ocr: TAA ortak OCR motoru (sözleşme: docs/OCR-MOTORU.md). Yeni bağımlılık YOK: çalışma alanında zaten kullanılanlar.
+[package]
+name = "taa-ocr"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "TAA ortak OCR motoru: görüntü, PDF, docx girdisi; sürümlü ve imzalı model paketleri"
+
+[lib]
+name = "taa_ocr"
+path = "src/lib.rs"
+
+[[bin]]
+name = "taa-ocr"
+path = "src/main.rs"
+
+[dependencies]
+taa-dosya = { path = "../taa-dosya" }
+taa-imza = { path = "../taa-imza" }
+serde_json = "1"
+sha2 = "0.10"
+zip = { version = "9.3.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+lopdf = { version = "0.42", default-features = false }
+
+[dev-dependencies]
+taa-imza = { path = "../taa-imza" }
