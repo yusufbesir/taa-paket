@@ -119,6 +119,14 @@ programın kendi OCR'ı `--eski-ocr` ayarıyla açıkça seçilebilir, bu ayar y
 - Sonuçlar motorda saklanmaz, günlükte metin tutulmaz (yalnız süre, tür, güven, hata kodu).
 - Geçici dosyalar `taa-dosya` geçici klasöründe, iş bitince temizlenir.
 
+## 5b. Genişletilebilirlik (Yusuf: ileride farklı geliştirmelere açık olmalı)
+
+- Yeni yetenek yeni adla ve sürümle eklenir (örn. `ocr.imza@1`, `ocr.form@1`); var olan yetenek ve alanlar kaldırılmaz, anlamı değişmez.
+- Çağıran sonuç JSON'unda tanımadığı alanları yok sayar. Motor yeni alan ekleyebilir, eski programlar bozulmaz.
+- Yetenekler `ocr.bilgi@1` ile sorgulanır (ad ve sürüm listesi, desteklenen belge türleri, etkin modeller). Program kullanmadan önce sorar; yoksa ilgili düğmeyi gizler.
+- Yeni belge türü (`tur` değeri) ve yeni model, çağıran programa dokunmadan eklenir. Bilinmeyen `tur` "bilinmiyor" gibi ele alınır.
+- Uyumsuz değişim yalnız `arayuz` ana sürümünü artırır; eski ve yeni arayüz bir süre yan yana sunulur (`docs/modul-sozlesmesi.md` uyumluluk kuralı).
+
 ## 6. Bağlanması gereken programlar (tespit, 2026-11-12)
 
 Kaynak: depoların main dalı, ayrıntı `/mnt/project-files/ocr/OCR-BAGLANTI-TESPITI-2026-11-12.md`.
