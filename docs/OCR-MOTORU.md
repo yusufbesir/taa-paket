@@ -24,7 +24,7 @@ surum = "0.1.0"
 arayuz = "1"
 gerektirir = { "taa-dosya" = "1" }
 program = "ortak"
-sunar = ["ocr.oku@1", "ocr.kod@1", "ocr.bilgi@1"]
+sunar = ["ocr.oku@1", "ocr.kod@1", "ocr.tablo@1", "ocr.bilgi@1"]
 ister = []
 veri_sahibi = ["ocr-modeller"]
 veri_okur = []
@@ -39,7 +39,11 @@ ayar_alani = "programlar.taaocr"
 |---|---|---|
 | `ocr.oku@1` | görüntü (dosya yolu veya bayt), `dil` ("tr"), `tur` ("basili" / "elyazisi" / "otomatik") | metin, güven, satır listesi |
 | `ocr.kod@1` | görüntü, `sozluk` (geçerli kodlar listesi veya dosyası) | sözlükle kısıtlı kod adayları ve güvenleri (stok kodu, barkod altı yazısı) |
+| `ocr.tablo@1` | görüntü (tutanak, fiş, fatura tablosu), `sozluk` (isteğe bağlı kod listesi) | satırlar, hücre kutuları, hücre metinleri ve güvenleri, adet sütunu, kod sütunu uzlaşması (Tutaa'nın mevcut tablo okuması) |
 | `ocr.bilgi@1` | yok | motor sürümü, etkin model adı ve sürümü, desteklenen türler |
+
+`ocr.tablo@1` sonucu: `{"satirlar":[{"kutu":[x,y,g,y],"hucreler":[{"sutun":"kod|adet|…","kutu":[…],"metin":"…","guven":0.0}],"belirsiz":false}],"belirsiz":false}`.
+Tablo bulunamazsa `satirlar` boş, `belirsiz: true` döner.
 
 ### Sonuç biçimi (JSON, tek satır)
 
@@ -89,18 +93,17 @@ programın kendi OCR'ı `--eski-ocr` ayarıyla açıkça seçilebilir, bu ayar y
 
 ## 6. Bağlanması gereken programlar (tespit, 2026-11-12)
 
-Proje klasöründeki kopyalardan ve depodaki taa-paket kodundan çıkarıldı. Diğer depoların kodu bu
-oturumda okunamadığı için ilgili satırlar o programların kendi başlığında doğrulanacak.
+Kaynak: depoların main dalı, ayrıntı `/mnt/project-files/ocr/OCR-BAGLANTI-TESPITI-2026-11-12.md`.
 
 | Program | Şimdiki OCR | Yapılacak |
 |---|---|---|
-| Tutaa / tutanak programı | gömülü tesseract.js + sabit `D:\Programlar\El-Yazisi-OCR\venv` yolu | iki OCR'ı kaldır, `ocr.oku@1` / `ocr.kod@1` çağır |
-| Stok kodu programı (fatura-urun-kodlari) | tesseract.js kopyası, el yazısı JS motoru | `ocr.kod@1` (13.127 kodluk sözlükle) |
-| TaaRkod 1.9.0 | OCR geçen kod var, kullanımı doğrulanacak | doğrula, gerekirse `ocr.oku@1` |
+| Tutaa | tesseract.js yok. İki OCR: tarayıcıda ElYazisiOCR (JS CNN, yedek) ve masaüstü Paddle servisi (`main.js:400` sabit `D:\Programlar\El-Yazisi-OCR\venv` yolu) | iki OCR'ı kaldır; tablo okuma `ocr.tablo@1`, tek alan `ocr.kod@1`, genel metin `ocr.oku@1` |
+| Stok kodu programı (fatura-urun-kodlari) | tesseract.js kopyası ve el yazısı JS motoru (proje klasöründeki kopyadan) | depoya erişilince `ocr.kod@1`/`ocr.tablo@1` (13.127 kodluk sözlük) |
+| TaaRkod | depoda OCR kodu yok | bağlama gerekmiyor; "OCR geçen kod" Yusuf'tan teyit |
+| TAA Etiket | yok | gerek yok |
 | taa-tara (bu depo) | `ocr()` "henüz yok" hatası döner | motor çağrısına bağla |
 | TAA Terzi Takip (taa-fis) | yok, "sonraki aşama" notu | fiş ve foto çözümleme için `ocr.oku@1` |
-| TAA Etiket, TaaDön | yok | gerek yok, doğrulanacak |
-| TAA Rehber, TAA Eğitim | yeni | baştan `ocr.oku@1` ile tasarla |
+| TAA Rehber, TAA Eğitim | yeni | gerekirse baştan `ocr.oku@1` |
 
 ## 7. Açık
 
