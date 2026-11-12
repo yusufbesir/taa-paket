@@ -37,7 +37,7 @@ ayar_alani = "programlar.taaocr"
 
 | Yetenek | Girdi | Çıktı |
 |---|---|---|
-| `ocr.oku@1` | görüntü (dosya yolu veya bayt), `dil` ("tr"), `tur` ("basili" / "elyazisi" / "otomatik") | metin, güven, satır listesi |
+| `ocr.oku@1` | görüntü, PDF veya docx (dosya yolu veya bayt; bölüm 2b), `dil` ("tr"), `tur` ("basili" / "elyazisi" / "otomatik") | metin, güven, satır listesi |
 | `ocr.kod@1` | görüntü, `sozluk` (geçerli kodlar listesi veya dosyası) | sözlükle kısıtlı kod adayları ve güvenleri (stok kodu, barkod altı yazısı) |
 | `ocr.tablo@1` | görüntü (tutanak, fiş, fatura tablosu), `sozluk` (isteğe bağlı kod listesi) | satırlar, her tablo için tür, kutu, satırlar, hücre kutuları, adet ve kod uzlaşması (Tutaa'nın mevcut tablo okuması, birden fazla tablo) |
 | `ocr.bilgi@1` | yok | motor sürümü, etkin model adı ve sürümü, desteklenen türler |
@@ -93,6 +93,18 @@ ayar_alani = "programlar.taaocr"
 - Eşik altı sonuçta kullanıcıya sormak çağıran programın işidir (mevcut el yazısı OCR kuralı).
 - Hata (dosya yok, bozuk görüntü, motor yok) çıkış kodu ve `{"hata": "…"}` ile bildirilir.
 
+## 2b. Girdi türleri (Yusuf, 2026-11-12)
+
+OCR girdisi yalnız görüntü değildir. Motor şunları kabul eder: görüntü (JPEG, PNG, TIFF, fotoğraf, tarama),
+PDF (metin katmanlı ve taranmış), Word (docx) ve benzeri belge biçimleri (sonradan eklenir, bölüm 5b).
+
+- Metin katmanı varsa (PDF metni, docx metni) doğrudan çıkarılır, OCR çalıştırılmaz. Yoksa sayfa görüntüye çevrilip OCR'a gider. Karma belgede sayfa ve bölge bazında karar verilir (gömülü görsel varsa o OCR'dan geçer).
+- Her sonuç ve her satır/tablo için kaynağın hangi yoldan okunduğu `kaynak` alanında bildirilir: `"metin-katmani"` ya da `"ocr"`. Metin katmanından gelen sonucun `guven` değeri 1.0, `durum` "kabul" olur.
+- Çok sayfalı girdide sonuçlar `sayfalar: [{"no": 1, "goruntu": {"w":0,"h":0}, "kaynak": "...", ...}]` altında sayfa sayfa gelir; tek görüntü tek sayfa sayılır. Tek sayfalık basit kullanımda üst düzey alanlar korunur (geriye uyumlu).
+- Belge türü (`tur`) listesine "defter" (el yazısı defter sayfası) eklenir; ayrıca "tutanak", "terzi-fisi", "fatura", "fotograf" (belge olmayan görüntü), "bilinmiyor".
+- Girdi tespiti dosya uzantısına değil içeriğe bakar (imza baytları). Desteklenmeyen biçimde `{"hata": "desteklenmeyen-bicim"}` döner, uydurma sonuç dönmez.
+- Şifreli veya parola korumalı PDF/docx açılmaz, `{"hata": "korumali"}` döner.
+
 ## 3. Çağırma yolları (yedekli, bağlantı kuralı)
 
 1. **IPC**: `taa-ipc` üzerinden yetenek adıyla. Motor çalışıyorsa ilk yol budur.
@@ -147,7 +159,7 @@ Kaynak: depoların main dalı, ayrıntı `/mnt/project-files/ocr/OCR-BAGLANTI-TE
 Hedef: her türlü yazıyı okuyabilen, çok kapsamlı bir çözümleyici. Motor bunun için sürekli geliştirilir;
 sözleşme (bölüm 5b) bunu çağıran programlara dokunmadan mümkün kılar. Planlanan yetenek alanları, sıra Yusuf kararıyla:
 
-1. Basılı yazı (`ocr.oku@1`, tür "basili").
+1. Basılı yazı ve belge biçimleri: görüntü, PDF, docx (`ocr.oku@1`, tür "basili", bölüm 2b).
 2. El yazısı, özellikle stok kodu ve tutanak (`ocr.kod@1`, `ocr.oku@1`, tür "elyazisi"). İlk model mevcut el yazısı OCR çalışmasından gelebilir.
 3. Tablo ve çoklu tablo (`ocr.tablo@1`): tutanak, terzi fişi, fatura.
 4. Form alanları (`ocr.form@1`, planlı).
