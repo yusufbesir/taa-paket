@@ -126,6 +126,15 @@ programın kendi OCR'ı `--eski-ocr` ayarıyla açıkça seçilebilir, bu ayar y
   yayına alınmaz (mevcut durdurma kuralı: gelişim ölçülmezse terfi yok).
 - `arayuz` ana sürümü yalnız sonuç biçimi uyumsuz değişirse artar; model güncellemesi arayüzü değiştirmez.
 
+## 4b. Model paketi biçimi ve komutlar (uygulama: `taa-ocr` 0.1.0, PR #50)
+
+- Model paketi `model.json` içerir: `{"ad","surum","turler":["elyazisi"],"komut":["./calistir"],"dosyalar":{"yol":"sha256"},"imza":{...}}`. İmza ed25519, `taa_imza::kanonik_bayt` üzerinde; dosya özetleri ayrıca doğrulanır.
+- Motor modeli `<komut...> <goruntu> --tur T --dil D [--sozluk dosya]` ile çalıştırır. Model stdout'a tek satır JSON yazar (`metin`, `guven`, `satirlar`, `tablolar`, `goruntu`, `belirsiz`, bölüm 2). Model Python ya da yürütülebilir olabilir. 180 sn zaman aşımı; görüntü geçici dosyadan okunur ve iş bitince silinir.
+- Komutlar: `taa-ocr model-liste`, `model-etkinlestir <klasor> [--genel-anahtar]`, `model-geri-al <ad>`. Kurulum `ocr/modeller/<ad>/<surum>/` altına yapılır, eski sürüm klasörleri silinmez.
+- Genel anahtar yolu: `<kök>/ocr/model-imza.pub`. Kök sırası: `--kok`, `TAA_KOK`, exe klasörü.
+- Hata ve uyarı kodları: çıkış kodu 2 ile `{"hata": "korumali" | "desteklenmeyen-bicim" | "bozuk-girdi" | "sozluk-gerekli"}`. Model yoksa hata değil uyarıdır: `belirsiz: true`, boş metin, `"uyari": ["model-yok"]`.
+- Durum: IPC yolu henüz yok (yalnız komut satırı); görüntü OCR modeli yok; PDF sayfasını görüntüye çevirme yok (yalnız gömülü JPEG).
+
 ## 5. Güvenlik ve gizlilik
 
 - Görüntüler yalnız çağıranın verdiği yoldan okunur, motor kendi başına dosya taramaz.
@@ -171,7 +180,7 @@ Her yeni yetenek ayrı model ve ayrı ölçümle gelir; sabit sınama kümesinde
 
 ## 8. Açık
 
-
+- Sözlük kaynağı (Yusuf kararı, 2026-11-13): stok kodları dahil tüm veriyi TAA Veri Tabanı Deposu (Çatı'daki veri programı, `taaveri`) tutar. `ocr.kod@1` ve `ocr.tablo@1` içindeki `sozluk` çağıran programdan gelir ve kaynağı bu veri programı ya da ortak veri havuzudur. Programlar kodları ayrı kopyada tutmaz. Motor sözlük saklamaz, kendi başına okumaz; bu yüzden motor koduna değişiklik gerekmez.
 - Motorun uygulaması (Python ve ONNX ya da Rust) bu sözleşmeden bağımsız; dil kuralı (Rust + Python, Rust ağırlıklı) ve ölçüm sonucuna göre seçilecek.
 - El yazısı OCR'ın mevcut Python prototipi ve JS portu (el-yazisi-ocr) motorun ilk "elyazisi" modeli olacak mı, Yusuf kararı.
 - Türkçe doğruluk düşük (Paddle'da harf %12-15), OCR eğitimi en sona bırakıldı. Motor kurulumu bunu beklemeden hazırlanabilir, model sonra gelir.
