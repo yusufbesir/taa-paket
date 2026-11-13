@@ -1,20 +1,21 @@
 # Sahip: Yusuf. yazan: [Claude#ortak-veri-havuzu 2026-11-12]
 # TAA ortak veri havuzu tür kataloğu (docs/havuz-sozlesmesi.md). Kaynak: planlar/PLAN-ORTAK-VERI-HAVUZU-2026-11-12.md §9.
 # Eşleme ÖNERİDİR; yanlışsa yalnız bu dosya düzeltilir. kip: "tablo" (tek yazar) | "dosya" (çok yazar olabilir).
+# taaveri = TAA Veri, Çatı'nın (sunucu PC) veri tutan programı; ürün, fiyat, barkod ve OCR eğitim verisinin yazarı (Yusuf 2026-11-13).
 # okuyanlar: bu türü gösteren programlar. Görünürlük ayrıca Çatı yetkisi ve şube kapsamıyla süzülür.
 
 [programlar]
 # Katalogdaki program adları (program.toml `ad`). Havuz bildirimleri yalnız bu adlara bağlanabilir.
 adlar = [
   "fiyatetiketi", "taarkod", "taadon", "tutaa", "taavideo", "terzitakip",
-  "taayonetici", "taagiydir", "taarehber", "taaegitim", "taaocr",
+  "taayonetici", "taagiydir", "taarehber", "taaegitim", "taaocr", "taaveri",
 ]
 
 [turler."urun.liste"]
 surum = 1
 aile = "urun"
 kip = "tablo"
-yazanlar = ["tutaa"]
+yazanlar = ["taaveri"]
 okuyanlar = ["fiyatetiketi", "taarkod", "tutaa", "terzitakip", "taagiydir"]
 kisisel = false
 aciklama = "Ürün kodu, ad, kategori, birim"
@@ -23,7 +24,7 @@ aciklama = "Ürün kodu, ad, kategori, birim"
 surum = 1
 aile = "urun"
 kip = "tablo"
-yazanlar = ["tutaa"]
+yazanlar = ["taaveri"]
 okuyanlar = ["fiyatetiketi", "tutaa", "terzitakip", "taagiydir"]
 kisisel = false
 aciklama = "Ürün kodu, fiyat, geçerlilik"
@@ -32,7 +33,7 @@ aciklama = "Ürün kodu, fiyat, geçerlilik"
 surum = 1
 aile = "urun"
 kip = "tablo"
-yazanlar = ["tutaa"]
+yazanlar = ["taaveri"]
 okuyanlar = ["fiyatetiketi", "taarkod", "tutaa"]
 kisisel = false
 aciklama = "Barkod, ürün kodu, beden/renk"
@@ -117,7 +118,7 @@ aciklama = "Firma ürün görselleri (eğitim ve katalog)"
 surum = 1
 aile = "ocr"
 kip = "dosya"
-yazanlar = ["taaocr", "taayonetici"]
+yazanlar = ["taaveri", "taaocr"]
 okuyanlar = ["taaocr"]
 kisisel = false
 aciklama = "OCR eğitim verisi"
