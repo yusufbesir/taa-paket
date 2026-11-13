@@ -1,19 +1,30 @@
-# TAA Paketi CI: biçim, clippy, test, güvenlik denetimi (ubuntu + windows). Sahip: Yusuf.
+# TAA Paketi CI: biçim, clippy, test, güvenlik denetimi. Sahip: Yusuf.
 # yazan: [Claude#taa-paket-A0 2026-11-04]. Değişiklik: Yusuf'un kuralları çerçevesinde. güncelleme: [Claude#taa-paket-T0 2026-11-05] (sozlesme işi, permissions); [Claude#taa-paket-T2 2026-11-05] (js işi)
+# 2026-11-13 dakika tasarrufu: PR'da yalnız ubuntu; Windows yalnız main'e push'ta (2x dakika);
+# eski çalışmalar iptal; belge değişikliği CI çalıştırmaz; cargo-audit haftalık.
 name: ci
 on:
   push:
     branches: [main]
+    paths-ignore: ["**/*.md", "docs/**", "LICENSE"]
   pull_request:
+    paths-ignore: ["**/*.md", "docs/**", "LICENSE"]
+  schedule:
+    - cron: "0 5 * * 1"
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
   test:
+    if: github.event_name != 'schedule'
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: ${{ github.event_name == 'push' && fromJSON('["ubuntu-latest","windows-latest"]') || fromJSON('["ubuntu-latest"]') }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -24,15 +35,23 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
   audit:
+    if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo install cargo-audit --locked
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-audit
+          key: cargo-audit-bin
+      - run: command -v cargo-audit || cargo install cargo-audit --locked
       - run: cargo audit
   sozlesme:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -41,7 +60,9 @@ jobs:
       - run: python3 tools/sozlesme_denetle.py
       - run: python3 -m unittest tools/test_sozlesme_denetle.py tools/test_paket_uret.py tools/test_yayin_uret.py
   js:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
