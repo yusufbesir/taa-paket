@@ -31,3 +31,19 @@ Sessiz kurulum: `TAA-Kur-Kurulum.exe --sessiz --programlar tutaa,taarkod` (soru 
 2. **Yayın:** iş yapan programların imzalı zip paketleri ve `yayin.json` taa-yayin'e henüz konmadı; ondan önce program listesi boş gelir (kurucu "liste alınamadı" der, kurulum yine tamamlanır).
 3. **Electron programlar** (Tutaa, TaaRkod, TAA Etiket, TaaDön) bugün kendi Setup.exe'leriyle kuruluyor; TAA Kur yalnız klasör açar, Setup çalıştırmaz. Önerim: paketin içine program kurucusunu koyup taa-kur'un onu sessiz çalıştırması (hazır `harici` hattıyla: sabit SHA256, paket imzası; NSIS `/S`). Bu henüz yapılmadı.
 4. Windows'ta elle denenmedi (kurucu exe, kısayol, kaldırma, `taa-guncelle kur`); bulutta Linux'ta ve çapraz derleme olarak doğrulandı.
+
+## Yedekli güncelleme kaynağı (2026-11-09)
+
+`kur.toml` içinde `kaynak_url` (ana), `kaynak_url_yedek = ["https://...", ...]` ve `kaynak_klasoru` (son çare) sırayla denenir;
+biri düşerse `taa-guncelle` sessizce sıradakine geçer, çalışan kaynağı hatırlar. Paket yine SHA256 + ed25519 ile doğrulanır.
+Yarım indirme silinmez, `<hedef>.kismiN` olarak yana taşınır. `taa-cati` ve `taa-cihaz` da yol listesi (`sunucu-yollari.json`)
+varsa isteklerini `YedekliGonderici` ile gönderir (`--sunucu`/`TAA_SUNUCU` verilmişse tek adres).
+
+## Seçimli kurulum (2026-11-11)
+- **Rol:** kurucu "Şube PC mi, Sunucu PC mi?" diye sorar (`--rol sube|sunucu`; seçim `<kök>\rol.txt`'ye yazılır, var olan ezilmez).
+- **Zorunlu paketler:** `yayin.json`'daki paketin `zorunlu_roller` alanı (örn. `["sunucu"]`) doluysa paket yalnız o rollerde, seçim sorulmadan kurulur;
+  başka rolde listede görünmez. `gerektirir` zinciri (Tailscale, PostgreSQL vb.) yine otomatiktir.
+- **Seçimli paketler:** gruplu liste (`grup`, `aciklama`); numara yazılır, seçilmeyen kurulmaz. `--programlar a,b` sessiz seçim, `--programsiz` seçimsiz (zorunlular yine kurulur).
+- **Kurulum klasörü:** sorulur (Enter = varsayılan), ya da `--hedef`/`--kok`. Faz 1: tek kök klasör; program başına yol sonraki iş.
+- `taa-guncelle liste --duz` artık 6 sütun verir: ad, yayındaki, kurulu|-, grup|-, zorunlu roller|-, açıklama|-.
+- Plan: `docs/SIFRELEME-PLANI.md`; Win32 seçim penceresi (Adım D) ve Electron sessiz kurulum (Adım E) henüz yok.

@@ -20,6 +20,9 @@ pub struct KurAyar {
     /// HTTP(S) güncelleme kaynağı (`https://sunucu/yol`; altında `yayin.json`).
     #[serde(default)]
     pub kaynak_url: Option<String>,
+    /// Yedek HTTP(S) kaynakları (sırayla denenir; ana `kaynak_url` düşünce geçilir).
+    #[serde(default)]
+    pub kaynak_url_yedek: Vec<String>,
     /// Yayın kanalı; boşsa [`VARSAYILAN_KANAL`].
     #[serde(default)]
     pub kanal: Option<String>,
@@ -75,13 +78,14 @@ pub fn kur_ayari_oku(kok: &Path) -> Result<KurAyar, KurHata> {
             "kaynak_klasoru boş olamaz; yol yazın ya da satırı kaldırın.".into(),
         ));
     }
-    if let Some(u) = a.kaynak_url.as_deref() {
+    for u in a.kaynak_url.iter().chain(a.kaynak_url_yedek.iter()) {
+        let u = u.as_str();
         let k = u.trim().to_ascii_lowercase();
         if !(k.starts_with("http://") || k.starts_with("https://"))
             || u.contains(char::is_whitespace)
         {
             return Err(hata(
-                "kaynak_url http:// ya da https:// ile başlamalı ve boşluk içermemeli; kur.toml'daki kaynak_url değerini düzeltin.".into(),
+                "kaynak_url / kaynak_url_yedek http:// ya da https:// ile başlamalı ve boşluk içermemeli; kur.toml'daki değeri düzeltin.".into(),
             ));
         }
     }
@@ -148,5 +152,23 @@ mod testler {
         assert!(kur_ayari_oku(&kok_ile(Some("kanal = 5\n"))).is_err());
         assert!(kur_ayari_oku(&kok_ile(Some("kanal = \"../x\"\n"))).is_err());
         assert!(kur_ayari_oku(&kok_ile(Some("kaynak_klasoru = \"  \"\n"))).is_err());
+    }
+}
+
+#[cfg(test)]
+mod yedek_testleri {
+    use super::*;
+
+    #[test]
+    fn yedek_url_okunur_ve_denetlenir() {
+        let k = taa_dosya::gecici_klasor().unwrap();
+        fs::write(
+            k.join("kur.toml"),
+            "kaynak_url_yedek = [\"https://a/b\", \"http://c\"]\n",
+        )
+        .unwrap();
+        assert_eq!(kur_ayari_oku(&k).unwrap().kaynak_url_yedek.len(), 2);
+        fs::write(k.join("kur.toml"), "kaynak_url_yedek = [\"ftp://x\"]\n").unwrap();
+        assert!(kur_ayari_oku(&k).is_err());
     }
 }

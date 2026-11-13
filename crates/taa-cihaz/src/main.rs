@@ -154,10 +154,34 @@ fn calistir(args: &[String]) -> Result<(), (u8, String)> {
             let g = Arc::clone(&c)
                 .gonderici(&h.taban, h.sertifika.as_deref())
                 .map_err(hata)?;
-            let yanit = if komut.as_deref() == Some("kayit") {
-                kayit(&g, &c, sube.as_deref()).map_err(hata)?
+            // Yol listesi varsa istek yedekli gider (bir yol düşerse sıradakine geçilir).
+            let sunucu_acik =
+                sunucu.is_some() || std::env::var("TAA_SUNUCU").is_ok_and(|v| !v.trim().is_empty());
+            let yedekli = if sunucu_acik {
+                None
             } else {
-                durum(&g, &c).map_err(hata)?
+                let fabrika = |y: &taa_yol::Yol,
+                               ca: Option<std::path::PathBuf>|
+                 -> Result<
+                    Box<dyn taa_kuyruk::Gonderici>,
+                    taa_kuyruk::GonderHata,
+                > {
+                    let mut cg = taa_kuyruk::CurlGonderici::yeni(&y.taban)?;
+                    if let Some(c2) = sertifika.clone().or(ca) {
+                        cg = cg.sertifika(&c2);
+                    }
+                    Ok(Box::new(cg.imzalayici(c.clone())))
+                };
+                taa_yol::yedekli_kur(&kok, &fabrika).map_err(|e| (3, e.to_string()))?
+            };
+            let g: &dyn taa_kuyruk::Gonderici = match &yedekli {
+                Some(y) => y,
+                None => &g,
+            };
+            let yanit = if komut.as_deref() == Some("kayit") {
+                kayit(g, &c, sube.as_deref()).map_err(hata)?
+            } else {
+                durum(g, &c).map_err(hata)?
             };
             if json {
                 println!("{yanit}");

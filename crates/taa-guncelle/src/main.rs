@@ -104,17 +104,28 @@ fn calistir(args: &[String], json: bool) -> Result<u8, KurHata> {
     let kur = Kur::ortamdan()?;
     let ayar = kur_ayari_oku(kur.kok())?;
     let kanal = kanal_arg.unwrap_or_else(|| ayar.kanal().to_string());
-    let deger = kaynak_arg
-        .or(ayar.kaynak_url.clone())
-        .or(ayar.kaynak_klasoru.clone())
-        .ok_or_else(|| {
-            kullanim("Güncelleme kaynağı belirtilmedi: --kaynak verin ya da kur.toml'a kaynak_url / kaynak_klasoru yazın.")
-        })?;
-    let kaynak: Box<dyn Kaynak> = if http_url_mu(&deger) {
-        Box::new(HttpKaynak::yeni(&deger)?)
+    // Kaynak sırası: --kaynak (tek, yedeksiz) ya da kur.toml: kaynak_url, kaynak_url_yedek[..], kaynak_klasoru.
+    let mut degerler: Vec<String> = Vec::new();
+    if let Some(k) = kaynak_arg {
+        degerler.push(k);
     } else {
-        Box::new(YerelKaynak::yeni(deger))
-    };
+        degerler.extend(ayar.kaynak_url.clone());
+        degerler.extend(ayar.kaynak_url_yedek.clone());
+        degerler.extend(ayar.kaynak_klasoru.clone());
+    }
+    if degerler.is_empty() {
+        return Err(kullanim("Güncelleme kaynağı belirtilmedi: --kaynak verin ya da kur.toml'a kaynak_url / kaynak_klasoru yazın."));
+    }
+    let mut adaylar: Vec<(String, Box<dyn Kaynak>)> = Vec::new();
+    for deger in degerler {
+        let k: Box<dyn Kaynak> = if http_url_mu(&deger) {
+            Box::new(HttpKaynak::yeni(&deger)?)
+        } else {
+            Box::new(YerelKaynak::yeni(deger.clone()))
+        };
+        adaylar.push((deger, k));
+    }
+    let kaynak: Box<dyn Kaynak> = Box::new(taa_guncelle::kaynak::YedekliKaynak::yeni(adaylar)?);
     let paket = paket_arg.as_deref();
     if komut == "liste" {
         let k = katalog(&kur, kaynak.as_ref(), &kanal)?;
@@ -123,11 +134,23 @@ fn calistir(args: &[String], json: bool) -> Result<u8, KurHata> {
         } else if duz {
             // Betikler için: ad<TAB>yayındaki sürüm<TAB>kurulu sürüm ya da "-"
             for s in &k {
+                // Sütunlar: ad, yayındaki, kurulu|-, grup|-, zorunlu roller (virgülle)|-, açıklama|-
+                let temiz = |m: &str| m.replace(['\t', '\n', '\r'], " ");
                 println!(
-                    "{}\t{}\t{}",
+                    "{}\t{}\t{}\t{}\t{}\t{}",
                     s.ad,
                     s.yayinda,
-                    s.kurulu.as_deref().unwrap_or("-")
+                    s.kurulu.as_deref().unwrap_or("-"),
+                    s.grup.as_deref().map(temiz).unwrap_or_else(|| "-".into()),
+                    if s.zorunlu_roller.is_empty() {
+                        "-".to_string()
+                    } else {
+                        s.zorunlu_roller.join(",")
+                    },
+                    s.aciklama
+                        .as_deref()
+                        .map(temiz)
+                        .unwrap_or_else(|| "-".into())
                 );
             }
         } else {

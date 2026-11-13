@@ -15,7 +15,7 @@ const AD: &str = "TAA Kur";
 const KAYIT: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\TAA-Kur";
 const MANIFEST: &str = "kurulum-taa-kur.txt";
 /// Kullanıcıya ait: paketle gelse de var olan dosya ezilmez.
-const KORUNAN: &[&str] = &["kur.toml"];
+const KORUNAN: &[&str] = &["kur.toml", "rol.txt"];
 const KORUNAN_ONEK: &str = "anahtarlar/";
 
 #[cfg(windows)]
@@ -98,18 +98,30 @@ fn kok_ortami(_: &Path) {}
 
 fn yaz(yol: &Path, veri: &[u8]) -> Result<(), String> {
     if let Some(k) = yol.parent() { fs::create_dir_all(k).map_err(|e| format!("{}: {e}", k.display()))?; }
-    fs::write(yol, veri).map_err(|e| format!("{} yazılamadı ({e}). Program açıksa kapatıp yeniden deneyin.", yol.display()))
+    fs::write(yol, veri).map_err(|e| format!("{} yazılamadı ({e}). Program açıksa kapatıp yeniden deneyin.", yol.display()))?;
+    #[cfg(unix)]
+    if yol.extension().is_none() { use std::os::unix::fs::PermissionsExt; let _ = fs::set_permissions(yol, fs::Permissions::from_mode(0o755)); }
+    Ok(())
 }
 
 fn korunan_mi(ad: &str) -> bool { KORUNAN.contains(&ad) || ad.starts_with(KORUNAN_ONEK) }
 
-/// `taa-guncelle liste --duz` çıktısı: ad<TAB>yayındaki<TAB>kurulu ya da "-". Kaynak ulaşılmazsa None.
-fn katalog(hedef: &Path) -> Option<Vec<(String, String, String)>> {
+/// Katalog satırı (`taa-guncelle liste --duz`): ad, yayındaki, kurulu ("-" = kurulu değil), grup, zorunlu roller, açıklama.
+struct Satir { ad: String, surum: String, kurulu: String, grup: String, zorunlu: Vec<String>, aciklama: String }
+
+fn katalog(hedef: &Path) -> Option<Vec<Satir>> {
     let exe = hedef.join(if cfg!(windows) { "taa-guncelle.exe" } else { "taa-guncelle" });
     let o = Command::new(exe).args(["liste", "--duz"]).env("TAA_KOK", hedef).output().ok()?;
     if !o.status.success() { return None; }
     let m = String::from_utf8_lossy(&o.stdout);
-    Some(m.lines().filter_map(|l| { let mut p = l.split('\t'); Some((p.next()?.to_string(), p.next()?.to_string(), p.next()?.to_string())) }).collect())
+    Some(m.lines().filter_map(|l| {
+        let mut p = l.split('\t');
+        let (ad, surum, kurulu) = (p.next()?.to_string(), p.next()?.to_string(), p.next()?.to_string());
+        let grup = p.next().filter(|g| *g != "-").unwrap_or("Diğer").to_string();
+        let zorunlu = p.next().filter(|z| *z != "-").map(|z| z.split(',').map(str::to_string).collect()).unwrap_or_default();
+        let aciklama = p.next().filter(|a| *a != "-").unwrap_or("").to_string();
+        Some(Satir { ad, surum, kurulu, grup, zorunlu, aciklama })
+    }).collect())
 }
 
 fn program_kur(hedef: &Path, ad: &str) -> bool {
@@ -120,29 +132,75 @@ fn program_kur(hedef: &Path, ad: &str) -> bool {
     }
 }
 
-/// Program seçimi: `--programlar a,b` (sessiz), `--programsiz` (atla) ya da numara sorusu.
+/// Bu PC'nin rolü: `--rol sube|sunucu`, yoksa soru (sessizde "sube"). Seçim kökteki rol.txt'ye yazılır (var olan ezilmez).
+fn rol_sec(a: &[String], hedef: &Path, sessiz: bool) -> String {
+    let kayitli = fs::read_to_string(hedef.join("rol.txt")).ok().map(|r| r.trim().to_string()).filter(|r| !r.is_empty());
+    let rol = match arg(a, "--rol") {
+        Some(r) if matches!(r.as_str(), "sube" | "sunucu") => r,
+        Some(r) => { eprintln!("UYARI: bilinmeyen rol '{r}' (sube ya da sunucu olmalı); şube sayıldı."); "sube".into() }
+        None => match (kayitli, sessiz) {
+            (Some(r), _) => r,
+            (None, true) => "sube".into(),
+            (None, false) => {
+                println!("\nBu PC ne olacak?\n  1) Şube PC (varsayılan)\n  2) Sunucu PC (TAA Sunucu, veritabanı vb. kendiliğinden kurulur)");
+                if oku_satir("Seçiminiz (Enter = 1): ") == "2" { "sunucu".into() } else { "sube".into() }
+            }
+        },
+    };
+    if !hedef.join("rol.txt").exists() { let _ = fs::write(hedef.join("rol.txt"), format!("{rol}\n")); }
+    rol
+}
+
+/// Program seçimi: önce bu rolde ZORUNLU olanlar kendiliğinden kurulur; sonra `--programlar a,b` (sessiz),
+/// `--programsiz` (seçim yok) ya da gruplu numara listesi. `zorunlu_roller` dolu paketler rol-özeldir: yalnız o rollerde
+/// (kendiliğinden) kurulur, başka rolde listede görünmez.
 fn programlari_sec(a: &[String], hedef: &Path, sessiz: bool) {
-    if a.iter().any(|x| x == "--programsiz") { return; }
-    if let Some(l) = arg(a, "--programlar") { for ad in l.split(',').map(str::trim).filter(|s| !s.is_empty()) { program_kur(hedef, ad); } return; }
-    if sessiz { return; }
     let Some(k) = katalog(hedef) else {
-        println!("\nProgram listesi şimdi alınamadı (internet ya da yayın kaynağı). Sonra TAA Kur penceresinden kurabilirsiniz.");
+        if let Some(l) = arg(a, "--programlar") { for ad in l.split(',').map(str::trim).filter(|s| !s.is_empty()) { program_kur(hedef, ad); } }
+        else if !sessiz { println!("\nProgram listesi şimdi alınamadı (internet ya da yayın kaynağı). Sonra TAA Kur penceresinden kurabilirsiniz."); }
         return;
     };
-    let kurulacak: Vec<&(String, String, String)> = k.iter().filter(|s| s.2 == "-").collect();
-    if kurulacak.is_empty() { println!("\nYayındaki tüm programlar zaten kurulu."); return; }
-    println!("\nBu PC'ye kurulabilecek programlar:");
-    for (i, s) in kurulacak.iter().enumerate() { println!("  {}) {} {}", i + 1, s.0, s.1); }
+    let rol = rol_sec(a, hedef, sessiz);
+    let zorunlu: Vec<&Satir> = k.iter().filter(|s| s.zorunlu.iter().any(|r| *r == rol)).collect();
+    if !zorunlu.is_empty() {
+        println!("\nBu PC ({rol}) için zorunlu paketler kurulacak:");
+        for s in &zorunlu { println!("  - {} {}{}", s.ad, s.surum, if s.kurulu != "-" { " (zaten kurulu)" } else { "" }); }
+        for s in zorunlu.iter().filter(|s| s.kurulu == "-") { program_kur(hedef, &s.ad); }
+    }
+    if a.iter().any(|x| x == "--programsiz") { return; }
+    if let Some(l) = arg(a, "--programlar") { for ad in l.split(',').map(str::trim).filter(|s| !s.is_empty()) { if !zorunlu.iter().any(|z| z.ad == ad) { if k.iter().any(|s| s.ad == ad && !s.zorunlu.is_empty()) { eprintln!("UYARI: {ad} yalnız {} rolünde kurulur; atlandı.", k.iter().find(|s| s.ad == ad).map(|s| s.zorunlu.join("/")).unwrap_or_default()); } else { program_kur(hedef, ad); } } } return; }
+    if sessiz { return; }
+    let secilebilir: Vec<&Satir> = k.iter().filter(|s| s.kurulu == "-" && s.zorunlu.is_empty()).collect();
+    if secilebilir.is_empty() { println!("\nSeçilebilecek başka program yok (hepsi kurulu ya da zorunlu)."); return; }
+    println!("\nİsteğe bağlı programlar (seçmedikleriniz kurulmaz):");
+    let mut gruplar: Vec<&str> = secilebilir.iter().map(|s| s.grup.as_str()).collect();
+    gruplar.sort(); gruplar.dedup();
+    let mut sira: Vec<&Satir> = vec![];
+    for g in gruplar {
+        println!(" [{g}]");
+        for s in secilebilir.iter().filter(|s| s.grup == g) {
+            sira.push(s);
+            println!("  {}) {} {}{}", sira.len(), s.ad, s.surum, if s.aciklama.is_empty() { String::new() } else { format!(" - {}", s.aciklama) });
+        }
+    }
     let cevap = oku_satir("Kurulacakların numaralarını yazın (örn. 1,3), hepsi için H, atlamak için Enter: ");
-    let secim: Vec<&str> = if cevap.eq_ignore_ascii_case("h") { kurulacak.iter().map(|s| s.0.as_str()).collect() }
-        else { cevap.split([',', ' ']).filter_map(|n| n.trim().parse::<usize>().ok()).filter_map(|n| kurulacak.get(n.wrapping_sub(1)).map(|s| s.0.as_str())).collect() };
+    let secim: Vec<&str> = if cevap.eq_ignore_ascii_case("h") { sira.iter().map(|s| s.ad.as_str()).collect() }
+        else { cevap.split([',', ' ']).filter_map(|n| n.trim().parse::<usize>().ok()).filter_map(|n| sira.get(n.wrapping_sub(1)).map(|s| s.ad.as_str())).collect() };
     for ad in secim { program_kur(hedef, ad); }
 }
 
 fn kur(a: &[String]) -> i32 {
     let sessiz = a.iter().any(|x| x == "--sessiz");
-    let hedef = arg(a, "--hedef").map(PathBuf::from).unwrap_or_else(varsayilan_hedef);
     println!("{AD} {SURUM} kurulumu");
+    let hedef = match arg(a, "--hedef").or_else(|| arg(a, "--kok")) {
+        Some(h) => PathBuf::from(h),
+        None if sessiz => varsayilan_hedef(),
+        None => {
+            let v = varsayilan_hedef();
+            let c = oku_satir(&format!("Kurulum klasörü (Enter = {}): ", v.display()));
+            if c.is_empty() { v } else { PathBuf::from(c.trim_matches('"')) }
+        }
+    };
     println!("Kurulum klasörü: {}", hedef.display());
     if !sor("Kurulsun mu?", sessiz) { println!("Vazgeçildi."); return 0; }
     let mut liste: Vec<String> = vec![];
