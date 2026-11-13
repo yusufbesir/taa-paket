@@ -180,7 +180,7 @@ Her yeni yetenek ayrı model ve ayrı ölçümle gelir; sabit sınama kümesinde
 
 ## 8. Açık
 
-
+- Sözlük kaynağı (Yusuf kararı, 2026-11-13): stok kodları dahil tüm veriyi TAA Veri Tabanı Deposu (Çatı'daki veri programı, `taaveri`) tutar. `ocr.kod@1` ve `ocr.tablo@1` içindeki `sozluk` çağıran programdan gelir ve kaynağı bu veri programı ya da ortak veri havuzudur. Programlar kodları ayrı kopyada tutmaz. Motor sözlük saklamaz, kendi başına okumaz; bu yüzden motor koduna değişiklik gerekmez.
 - Motorun uygulaması (Python ve ONNX ya da Rust) bu sözleşmeden bağımsız; dil kuralı (Rust + Python, Rust ağırlıklı) ve ölçüm sonucuna göre seçilecek.
 - El yazısı OCR'ın mevcut Python prototipi ve JS portu (el-yazisi-ocr) motorun ilk "elyazisi" modeli olacak mı, Yusuf kararı.
 - Türkçe doğruluk düşük (Paddle'da harf %12-15), OCR eğitimi en sona bırakıldı. Motor kurulumu bunu beklemeden hazırlanabilir, model sonra gelir.
