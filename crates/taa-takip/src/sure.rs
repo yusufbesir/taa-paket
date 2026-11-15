@@ -392,6 +392,7 @@ mod testler {
 
     fn fis(usta: &str, kod: &str, durum: Durum) -> Fis {
         Fis {
+            sube: String::new(),
             no: "F".into(),
             tarih: "2026-11-01".into(),
             musteri: "A".into(),

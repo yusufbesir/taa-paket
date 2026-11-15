@@ -106,6 +106,7 @@ fn yurut(b: &[u8]) -> Result<Sonuc, String> {
 
 fn ornek() -> Fis {
     let mut f = Fis {
+        sube: String::new(),
         no: "F-20261105-007".into(),
         tarih: "2026-11-05".into(),
         musteri: "Ayşe Çelik".into(),

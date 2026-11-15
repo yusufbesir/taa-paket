@@ -61,6 +61,11 @@ pub struct Imza {
     pub kim: String,
     pub rol: String,
     pub tarih: String,
+    /// İmza saati (SS:DD:SS) ve cihaz kimliği; eski satırlarda boş.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub saat: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub cihaz: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -109,6 +114,9 @@ pub struct Fis {
     pub raf: String,
     #[serde(default)]
     pub imzalar: Vec<Imza>,
+    /// Fişin yazıldığı şube (kısa ad ya da kod). Eski satırlarda boş; boş = şube bilinmiyor.
+    #[serde(default)]
+    pub sube: String,
 }
 
 fn varsayilan_saat() -> String {
@@ -126,6 +134,9 @@ impl Fis {
 pub struct Girdi {
     #[serde(default)]
     pub tarih: String,
+    /// Fişi yazan şube; boş bırakılırsa fiş şubesiz kaydolur.
+    #[serde(default)]
+    pub sube: String,
     pub musteri: String,
     pub telefon: String,
     pub kalemler: Vec<Kalem>,
@@ -188,6 +199,17 @@ pub fn telefon_duzelt(t: &str) -> Result<String, String> {
     }
 }
 
+/// Şube kodu: 3 büyük harf (şube öneki) + 2 rakam (sıra), ör. `MRK01`, `PND01`, `ANK02`.
+/// Önekler `docs/sube-sozlesmesi.md` §3'teki `onek` sütunudur; sıra numarası aynı şehirde ikinci
+/// şubeye ve taşınmalara yer açar (Yusuf kararı 2026-11-15 21:37).
+pub fn sube_kodu_gecerli(k: &str) -> bool {
+    let b = k.as_bytes();
+    b.len() == 5
+        && b[..3].iter().all(u8::is_ascii_uppercase)
+        && b[3..].iter().all(u8::is_ascii_digit)
+        && &k[3..] != "00"
+}
+
 /// Fiş girdisini denetler; telefonu düzeltilmiş halde ve kalem uyarılarıyla döndürür.
 pub fn dogrula(
     g: &Girdi,
@@ -195,6 +217,9 @@ pub fn dogrula(
     serbest_islem: bool,
     olcu_zorunlu: bool,
 ) -> Result<(String, Vec<String>), String> {
+    if !sube_kodu_gecerli(g.sube.trim()) {
+        return Err("şube kodu olmadan fiş yazılamaz (3 büyük harf + 2 rakam; ör. MRK01)".into());
+    }
     if g.musteri.trim().is_empty() {
         return Err("müşteri adı gerekli".into());
     }
@@ -287,6 +312,7 @@ mod testler {
 
     fn girdi() -> Girdi {
         Girdi {
+            sube: "MRK01".into(),
             tarih: "2026-11-04".into(),
             musteri: " Ayşe Çelik ".into(),
             telefon: "+90 532 123 45 67".into(),
@@ -402,6 +428,76 @@ mod testler {
     }
 
     #[test]
+    fn sube_kodu_olmadan_fis_yazilamaz() {
+        let y = yol();
+        let d = Defter { yol: &y };
+        for kotu in [
+            "", "  ", "X", "Istanbul", "1ankara", "ankara-", "a b", "çankaya",
+        ] {
+            let mut g = girdi();
+            g.sube = kotu.into();
+            let e = d.ekle(g).unwrap_err();
+            assert!(e.contains("şube kodu"), "{kotu:?}: {e}");
+        }
+        assert!(!y.exists(), "reddedilen fiş deftere yazılmamalı");
+        assert!(sube_kodu_gecerli("MRK01") && sube_kodu_gecerli("VAN02"));
+        // Basılı fişte şube kodu görünür.
+        let f = d.ekle(girdi()).unwrap();
+        assert!(duz_metin(&f, 42).contains("Şube: MRK01"));
+    }
+
+    #[test]
+    fn sube_ve_imza_ayrintisi_eski_satirla_uyumlu() {
+        let y = yol();
+        let d = Defter { yol: &y };
+        let mut g = girdi();
+        g.sube = " MRK01 ".into();
+        let f = d.ekle(g).unwrap();
+        assert_eq!(f.sube, "MRK01");
+        d.imzala_ayrintili(&f.no, "tg:1", "usta", "2026-11-15", "17:30:05", "cihaz-a")
+            .unwrap();
+        let k = d.bul(&f.no).unwrap().unwrap();
+        assert_eq!(k.imzalar[0].saat, "17:30:05");
+        assert_eq!(k.imzalar[0].cihaz, "cihaz-a");
+        // Eski biçim (sube, saat, cihaz yok) hâlâ okunur.
+        let eski = r#"{"tur":"imza","v":{"no":"F-1","imza":{"kim":"a","rol":"usta","tarih":"2026-11-01"}}}"#;
+        let k: defter::Kayit = serde_json::from_str(eski).unwrap();
+        assert!(matches!(k, defter::Kayit::Imza { .. }));
+    }
+
+    #[test]
+    fn zincir_kismi_degisikligi_yakalar() {
+        let y = yol();
+        let d = Defter { yol: &y };
+        d.ekle(girdi()).unwrap(); // eski satır: zincire girmez
+        assert!(d.zincir_ucu().unwrap().is_none());
+        d.zincir_baslat("2026-11-15").unwrap();
+        assert!(d.zincir_baslat("2026-11-15").is_err());
+        let f = d.ekle(girdi()).unwrap();
+        let uc1 = d.zincir_ucu().unwrap().unwrap();
+        assert_eq!(uc1.sayi, 2);
+        assert!(d.zincir_dogrula(&uc1).unwrap());
+        d.imzala(&f.no, "tg:1", "usta", "2026-11-15").unwrap();
+        let uc2 = d.zincir_ucu().unwrap().unwrap();
+        assert_ne!(uc1.ozet, uc2.ozet);
+        assert!(
+            d.zincir_dogrula(&uc1).unwrap(),
+            "eski uç yeni zincirde durur"
+        );
+        // Zincirdeki bir satır değiştirilirse eski uç doğrulanamaz.
+        let metin = std::fs::read_to_string(&y).unwrap();
+        std::fs::write(&y, metin.replacen("tg:1", "tg:9", 1)).unwrap();
+        assert!(!d.zincir_dogrula(&uc2).unwrap());
+        // Kısalmış defter de doğrulanmaz.
+        assert!(!d
+            .zincir_dogrula(&ZincirUcu {
+                sayi: 99,
+                ozet: "x".into()
+            })
+            .unwrap());
+    }
+
+    #[test]
     fn telefon() {
         assert_eq!(telefon_duzelt("+90 532 123 45 67").unwrap(), "05321234567");
         assert_eq!(telefon_duzelt("0532 123 4567").unwrap(), "05321234567");
@@ -455,6 +551,7 @@ mod testler {
     #[test]
     fn metin_ve_termal() {
         let f = Fis {
+            sube: String::new(),
             no: "F-20261104-001".into(),
             tarih: "2026-11-04".into(),
             durum: Durum::Bekliyor,

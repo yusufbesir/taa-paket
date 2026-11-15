@@ -99,6 +99,16 @@ impl Kimlik {
     fn magaza_mi(&self) -> bool {
         matches!(self.rol, Rol::Magaza | Rol::Yonetici)
     }
+    /// K5: şube kapsamı. Fişin şubesi yazılıysa hesabın şubesiyle aynı olmalı; yönetici tüm şubeleri görür.
+    /// Şubesi yazılmamış (eski) fişe denetim uygulanamaz, geçer; şubesiz hesap şubeli fişi göremez.
+    fn sube_uygun(&self, f: &Fis) -> bool {
+        self.rol == Rol::Yonetici || f.sube.is_empty() || f.sube.eq_ignore_ascii_case(&self.sube)
+    }
+}
+
+/// Fişi bulur ve şube kapsamını denetler (K5). Başka şubenin fişi için fişin var olduğu bile söylenmez.
+fn kapsamli_bul(d: &Defter, no: &str, k: &Kimlik) -> Result<Option<Fis>, String> {
+    Ok(d.bul(no)?.filter(|f| k.sube_uygun(f)))
 }
 
 /// Fişteki kare kodun içeriği: botu fiş numarasıyla açar. Kodda ad/telefon YOK.
@@ -476,7 +486,7 @@ impl Bot<'_> {
         let yol = self.dizin.join("fisler.jsonl");
         let d = Defter { yol: &yol };
         if kom == "/start" && !a1.is_empty() {
-            return match d.bul(a1) {
+            return match kapsamli_bul(&d, a1, k) {
                 Ok(Some(f)) => gonder(sohbet, &fis_ozeti(&f), self.dugmeler(&f, k)),
                 Ok(None) => gonder(sohbet, &format!("Hata: fiş yok: {a1}"), None),
                 Err(e) => gonder(sohbet, &format!("Hata: {e}"), None),
@@ -484,15 +494,15 @@ impl Bot<'_> {
         }
         let r = match kom.as_str() {
             "/start" | "/yardim" | "/yardım" => Ok(YARDIM.to_string()),
-            "/durum" => d
-                .bul(a1)
+            "/durum" => kapsamli_bul(&d, a1, k)
                 .and_then(|f| f.ok_or_else(|| format!("fiş yok: {a1}")))
                 .map(|f| fis_ozeti(&f)),
             "/bugun" | "/bugün" => d.fisler().map(|v| {
                 let l: Vec<String> = v
                     .iter()
                     .filter(|f| {
-                        f.teslim == self.bugun
+                        k.sube_uygun(f)
+                            && f.teslim == self.bugun
                             && matches!(
                                 f.durum,
                                 Durum::Bekliyor | Durum::Terzihanede | Durum::Hazir
@@ -515,6 +525,7 @@ impl Bot<'_> {
                 }
             }),
             "/geciken" => d.geciken(self.bugun).map(|v| {
+                let v: Vec<_> = v.into_iter().filter(|f| k.sube_uygun(f)).collect();
                 if v.is_empty() {
                     "Geciken fiş yok.".into()
                 } else {
@@ -524,7 +535,7 @@ impl Bot<'_> {
                         .join("\n")
                 }
             }),
-            "/kargo" | "/kuru" | "/ozet" => taa_takip::Takip::defterden(&d).map(|t| match kom.as_str() {
+            "/kargo" | "/kuru" | "/ozet" => taa_takip::Takip::defterden(&d).map(|t| t.sinirla(|f| k.sube_uygun(f))).map(|t| match kom.as_str() {
                 "/ozet" => {
                     let o = t.ozet(self.bugun);
                     format!(
@@ -545,12 +556,16 @@ impl Bot<'_> {
                     }
                 }
             }),
-            "/terzihanede" => d
-                .durum_ata(a1, Durum::Terzihanede, self.bugun)
+            "/terzihanede" => kapsamli_bul(&d, a1, k)
+                .and_then(|f| f.ok_or_else(|| format!("fiş yok: {a1}")))
+                .and_then(|_| d.durum_ata(a1, Durum::Terzihanede, self.bugun))
                 .map(|_| format!("{a1}: terzihanede")),
-            "/hazir" | "/hazır" => self.hazir(&d, a1),
-            "/raf" => d
-                .raf_ata(a1, a2, &k.imza_adi(), self.bugun)
+            "/hazir" | "/hazır" => kapsamli_bul(&d, a1, k)
+                .and_then(|f| f.ok_or_else(|| format!("fiş yok: {a1}")))
+                .and_then(|_| self.hazir(&d, a1)),
+            "/raf" => kapsamli_bul(&d, a1, k)
+                .and_then(|f| f.ok_or_else(|| format!("fiş yok: {a1}")))
+                .and_then(|_| d.raf_ata(a1, a2, &k.imza_adi(), self.bugun))
                 .map(|_| format!("{a1}: raf {}", a2.to_uppercase())),
             // /imza: kalem seçtirip onay isteyen akışı başlatır (K7); doğrudan imza atmaz.
             "/imza" => return self.imza_baslat(sohbet, &d, a1, k),
@@ -563,7 +578,7 @@ impl Bot<'_> {
         if !k.usta_mi() {
             return gonder(sohbet, "Hata: imza yalnız usta hesabıyla atılır.", None);
         }
-        match d.bul(no) {
+        match kapsamli_bul(d, no, k) {
             Ok(Some(f)) => match self.dugmeler(&f, k) {
                 Some(dg) => gonder(sohbet, &fis_ozeti(&f), Some(dg)),
                 None => gonder(sohbet, "İmzalanacak kalem yok.", None),
@@ -586,8 +601,8 @@ impl Bot<'_> {
         if !k.usta_mi() {
             return Err("imza yalnız usta hesabıyla atılır".into());
         }
-        let f = d.bul(no)?.ok_or_else(|| format!("fiş yok: {no}"))?;
-        // K5: şube kapsamı. Fis'te şube alanı gelince (TT1) burada zorunlu denetim eklenir.
+        // K5: şube kapsamı (sunucu tarafında; kare koddaki fiş numarası tahmin edilebilir).
+        let f = kapsamli_bul(d, no, k)?.ok_or_else(|| format!("fiş yok: {no}"))?;
         let kal = f.kalemler.get(kalem).ok_or("kalem yok")?;
         if !matches!(f.durum, Durum::Bekliyor | Durum::Terzihanede | Durum::Hazir) {
             return Err("bu fiş artık imzalanamaz".into());
@@ -681,7 +696,7 @@ impl Bot<'_> {
         if !k.usta_mi() {
             return vec![cevap("İmza yalnız usta hesabıyla atılır.")];
         }
-        let (Ok(Some(f)), Some(i)) = (d.bul(no), kalem) else {
+        let (Ok(Some(f)), Some(i)) = (kapsamli_bul(d, no, k), kalem) else {
             return vec![cevap("Fiş ya da kalem bulunamadı.")];
         };
         let Some(kal) = f.kalemler.get(i) else {
@@ -745,7 +760,7 @@ impl Bot<'_> {
         if !k.magaza_mi() {
             return vec![cevap("Bu düğme yalnız mağaza telefonu içindir.")];
         }
-        let f = match d.bul(no) {
+        let f = match kapsamli_bul(d, no, k) {
             Ok(Some(f)) if f.durum == Durum::Hazir => f,
             _ => return vec![cevap("Fiş hazır değil.")],
         };
@@ -798,7 +813,7 @@ mod testler {
         let d = taa_dosya::gecici_klasor().unwrap();
         let y = d.join("fisler.jsonl");
         let g: Girdi = serde_json::from_str(
-            r#"{"satis_danismani":"Mert","olcu_alan":"K","musteri":"Ayşe Çelik","telefon":"05321234567","kalemler":[{"urun":"Pantolon","islem":"paça kısalt"},{"urun":"Ceket","islem":"kol kısalt"}],"teslim":"2099-01-01","ucret_kurus":100,"bildirim_izni":true,"tarih":"2026-11-05"}"#,
+            r#"{"sube":"MRK01","satis_danismani":"Mert","olcu_alan":"K","musteri":"Ayşe Çelik","telefon":"05321234567","kalemler":[{"urun":"Pantolon","islem":"paça kısalt"},{"urun":"Ceket","islem":"kol kısalt"}],"teslim":"2099-01-01","ucret_kurus":100,"bildirim_izni":true,"tarih":"2026-11-05"}"#,
         )
         .unwrap();
         let f = Defter { yol: &y }.ekle(g).unwrap();
@@ -832,7 +847,7 @@ mod testler {
     fn baglan(b: &Bot, d: &Path, kim: i64, rol: Rol) {
         let h = Hesaplar { dizin: d };
         let (kod, _) = h
-            .kod_uret("", rol, "Esenyurt", "", "Y-1", b.simdi, 600)
+            .kod_uret("", rol, "MRK01", "", "Y-1", b.simdi, 600)
             .unwrap();
         let y = b.eylemler(&msg(kim, &kod));
         assert!(metinler(&y).contains("Bağlandı"), "{y:?}");
@@ -860,7 +875,7 @@ mod testler {
         // usta: kodla bağla, onay beklerken bot çalışmaz
         let h = Hesaplar { dizin: &d };
         let (kod, _) = h
-            .kod_uret("", Rol::Usta, "Esenyurt", "", "Y-1", b.simdi, 600)
+            .kod_uret("", Rol::Usta, "MRK01", "", "Y-1", b.simdi, 600)
             .unwrap();
         assert!(metinler(&b.eylemler(&msg(42, &kod))).contains("Bağlandı"));
         assert!(metinler(&b.eylemler(&msg(42, "/durum x"))).contains("onayı bekleniyor"));
@@ -943,6 +958,39 @@ mod testler {
     }
 
     #[test]
+    fn sube_kapsami_baska_subenin_fisini_gostermez_ve_imzalatmaz() {
+        std::env::set_var("TAA_OZELLIK_TELEGRAM_BOT", "1");
+        let (d, no) = kur();
+        // Fişi Bursa şubesine yaz (kur() şubesiz yazar; satırı değiştirmeden yeni fiş ekle).
+        let y = d.join("fisler.jsonl");
+        let g: Girdi = serde_json::from_str(
+            r#"{"sube":"BRS01","satis_danismani":"Mert","olcu_alan":"K","musteri":"Veli Kaya","telefon":"05321234568","kalemler":[{"urun":"Pantolon","islem":"paça kısalt"}],"teslim":"2099-01-01","ucret_kurus":100,"bildirim_izni":true,"tarih":"2026-11-05"}"#,
+        )
+        .unwrap();
+        let bursa = Defter { yol: &y }.ekle(g).unwrap();
+        assert_eq!(bursa.sube, "BRS01");
+        let a = ayar();
+        let b = Bot {
+            dizin: &d,
+            ayar: &a,
+            bugun: "2026-11-05",
+            simdi: 1_000_000,
+        };
+        baglan(&b, &d, 42, Rol::Usta); // hesap şubesi MRK01
+                                       // Başka şubenin fişi: var olduğu bile söylenmez, düğme çıkmaz, imza atılamaz.
+        let t = metinler(&b.eylemler(&msg(42, &format!("/start {}", bursa.no))));
+        assert!(t.contains("fiş yok") && !t.contains("Veli"), "{t}");
+        let t = metinler(&b.eylemler(&tus(42, &format!("y:{}:0", bursa.no))));
+        assert!(t.contains("fiş yok") || t.contains("bulunamadı"), "{t}");
+        assert!(!d.join("imza-olaylari.jsonl").exists());
+        // Listeler de yalnız kendi şubesini gösterir (şubesiz eski fiş geçer).
+        let l = metinler(&b.eylemler(&msg(42, "/geciken")));
+        assert!(!l.contains(&bursa.no), "{l}");
+        // Şubesiz (eski) fiş denetime takılmaz.
+        assert!(metinler(&b.eylemler(&msg(42, &format!("/start {no}")))).contains("A**e"));
+    }
+
+    #[test]
     fn qr_baglantisi_ile_baglama_personel() {
         std::env::set_var("TAA_OZELLIK_TELEGRAM_BOT", "1");
         let (d, no) = kur();
@@ -955,7 +1003,7 @@ mod testler {
         };
         let h = Hesaplar { dizin: &d };
         let (kod, _) = h
-            .kod_uret("", Rol::Personel, "Esenyurt", "tezgâh", "Y-1", b.simdi, 600)
+            .kod_uret("", Rol::Personel, "MRK01", "tezgâh", "Y-1", b.simdi, 600)
             .unwrap();
         // QR: telefonda Telegram `/start baglan-<kod>` ile açılır
         let y = metinler(&b.eylemler(&msg(55, &format!("/start baglan-{kod}"))));
