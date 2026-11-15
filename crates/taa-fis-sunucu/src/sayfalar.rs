@@ -163,7 +163,7 @@ button,input,select{font:inherit;padding:10px 14px;margin:3px;min-height:44px}.k
 <p><small>Bu ekran yalnızca bu bilgisayarda açılır. QR'ı eklenecek kişi telefonunun kamerasıyla okutur; Telegram açılır ve hesabı bağlanır. Telefonda görünen doğrulama sayısı bu listedeki sayıyla aynıysa buradan onaylarsınız. İmzanın dayanağı Telegram'ın değişmeyen kullanıcı numarasıdır, profil adı da kayda yazılır.</small></p>
 <div class="kutu">
 <label>Rol <select id="rol"><option value="usta">Usta</option><option value="personel">Personel (tezgâh)</option><option value="magaza">Mağaza telefonu</option></select></label>
-<label>Şube <input id="sube" placeholder="ör. Esenyurt"></label>
+<label>Şube <input id="sube" placeholder="şube kodu, ör. istanbul-merkez"></label>
 <label>Not (yalnız siz görürsünüz) <input id="not" maxlength="40" placeholder="ör. kol ustası"></label>
 <label>Siz (yönetici) <input id="yon" placeholder="adınız"></label>
 <button id="uret">QR üret (10 dk geçerli, tek kullanımlık)</button>

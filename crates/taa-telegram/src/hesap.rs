@@ -192,6 +192,11 @@ impl Hesaplar<'_> {
         if yonetici.trim().is_empty() {
             return Err("kodu üreten yönetici kaydı gerekli".into());
         }
+        // Şube kodu zorunlu (fişler şubesiz olamaz); yönetici hesabı tüm şubeleri görür, şubesiz olabilir.
+        let sube = sube.trim();
+        if !(sube.is_empty() && rol == Rol::Yonetici) && !taa_fis::sube_kodu_gecerli(sube) {
+            return Err("şube kodu gerekli (küçük harf, rakam, tire; ör. istanbul-merkez)".into());
+        }
         let usta_id = if usta_id.trim().is_empty() {
             yeni_usta_id()?
         } else {
@@ -312,7 +317,15 @@ mod testler {
         assert!(h.kod_ile_bagla(5, "Yabancı", "12345678", 100, "g").is_err());
         assert!(!d.join("hesaplar.jsonl").exists());
         let (kod, uid) = h
-            .kod_uret("", Rol::Usta, "Esenyurt", "kol ustası", "Y-1", 1000, 600)
+            .kod_uret(
+                "",
+                Rol::Usta,
+                "istanbul-merkez",
+                "kol ustası",
+                "Y-1",
+                1000,
+                600,
+            )
             .unwrap();
         assert!(uid.starts_with("U-") && kod.len() == 8);
         // süresi dolunca olmaz
@@ -341,11 +354,20 @@ mod testler {
         assert!(h.onayla(5, "Y-1", "g").is_err());
         // aynı usta kimliği ikinci etkin hesaba verilemez
         assert!(h
-            .kod_uret(&uid, Rol::Usta, "E", "", "Y-1", 1000, 600)
+            .kod_uret(&uid, Rol::Usta, "van", "", "Y-1", 1000, 600)
             .is_err());
         h.durum_ata(5, HesapDurum::Askida, "Y-1", "g").unwrap();
         assert!(h
-            .kod_uret(&uid, Rol::Usta, "E", "", "Y-1", 1000, 600)
+            .kod_uret(&uid, Rol::Usta, "van", "", "Y-1", 1000, 600)
+            .is_ok());
+        // Şube kodu olmadan kod üretilmez (yönetici hariç).
+        for kotu in ["", "Esenyurt", "x"] {
+            assert!(h
+                .kod_uret("", Rol::Usta, kotu, "", "Y-1", 1000, 600)
+                .is_err());
+        }
+        assert!(h
+            .kod_uret("", Rol::Yonetici, "", "", "Y-1", 1000, 600)
             .is_ok());
     }
 

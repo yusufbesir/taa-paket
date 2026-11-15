@@ -199,6 +199,17 @@ pub fn telefon_duzelt(t: &str) -> Result<String, String> {
     }
 }
 
+/// Şube kodu: küçük harf, rakam ve tire; harfle başlar, 2-40 karakter (ör. `istanbul-merkez`).
+/// Biçim `docs/sube-sozlesmesi.md` §3'teki `subeler.kod` ile aynıdır.
+pub fn sube_kodu_gecerli(k: &str) -> bool {
+    let n = k.chars().count();
+    (2..=40).contains(&n)
+        && k.starts_with(|c: char| c.is_ascii_lowercase())
+        && k.chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        && !k.ends_with('-')
+}
+
 /// Fiş girdisini denetler; telefonu düzeltilmiş halde ve kalem uyarılarıyla döndürür.
 pub fn dogrula(
     g: &Girdi,
@@ -206,6 +217,11 @@ pub fn dogrula(
     serbest_islem: bool,
     olcu_zorunlu: bool,
 ) -> Result<(String, Vec<String>), String> {
+    if !sube_kodu_gecerli(g.sube.trim()) {
+        return Err(
+            "şube kodu olmadan fiş yazılamaz (küçük harf, rakam, tire; ör. istanbul-merkez)".into(),
+        );
+    }
     if g.musteri.trim().is_empty() {
         return Err("müşteri adı gerekli".into());
     }
@@ -298,7 +314,7 @@ mod testler {
 
     fn girdi() -> Girdi {
         Girdi {
-            sube: String::new(),
+            sube: "istanbul-merkez".into(),
             tarih: "2026-11-04".into(),
             musteri: " Ayşe Çelik ".into(),
             telefon: "+90 532 123 45 67".into(),
@@ -414,13 +430,32 @@ mod testler {
     }
 
     #[test]
+    fn sube_kodu_olmadan_fis_yazilamaz() {
+        let y = yol();
+        let d = Defter { yol: &y };
+        for kotu in [
+            "", "  ", "X", "Istanbul", "1ankara", "ankara-", "a b", "çankaya",
+        ] {
+            let mut g = girdi();
+            g.sube = kotu.into();
+            let e = d.ekle(g).unwrap_err();
+            assert!(e.contains("şube kodu"), "{kotu:?}: {e}");
+        }
+        assert!(!y.exists(), "reddedilen fiş deftere yazılmamalı");
+        assert!(sube_kodu_gecerli("istanbul-merkez") && sube_kodu_gecerli("van"));
+        // Basılı fişte şube kodu görünür.
+        let f = d.ekle(girdi()).unwrap();
+        assert!(duz_metin(&f, 42).contains("Şube: istanbul-merkez"));
+    }
+
+    #[test]
     fn sube_ve_imza_ayrintisi_eski_satirla_uyumlu() {
         let y = yol();
         let d = Defter { yol: &y };
         let mut g = girdi();
-        g.sube = " MRK ".into();
+        g.sube = " istanbul-merkez ".into();
         let f = d.ekle(g).unwrap();
-        assert_eq!(f.sube, "MRK");
+        assert_eq!(f.sube, "istanbul-merkez");
         d.imzala_ayrintili(&f.no, "tg:1", "usta", "2026-11-15", "17:30:05", "cihaz-a")
             .unwrap();
         let k = d.bul(&f.no).unwrap().unwrap();
