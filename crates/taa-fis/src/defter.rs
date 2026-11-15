@@ -29,6 +29,28 @@ pub(crate) enum Kayit {
         no: String,
         imza: Imza,
     },
+    /// Zincir başlangıcı (TT1): bu satırdan sonraki satırlar zincire girer. Eski satırlar yeniden yazılmaz.
+    ZincirBasi {
+        tarih: String,
+    },
+}
+
+/// Defterin zincir ucu: kaç satır (başlangıç dahil) ve o satıra kadarki özet (sha-256, onaltılık).
+/// Zincir kısmi değişikliği yakalar; diske erişen birinin dosyanın tamamını yeniden yazmasını tek başına
+/// önlemez, bu yüzden uç eşitlemede (TT3) merkeze gönderilir.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ZincirUcu {
+    pub sayi: usize,
+    pub ozet: String,
+}
+
+fn ozet_ileri(onceki: &str, satir: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(onceki.as_bytes());
+    h.update(b"\n");
+    h.update(satir.as_bytes());
+    h.finalize().iter().map(|b| format!("{b:02x}")).collect()
 }
 
 pub struct Defter<'a> {
@@ -84,6 +106,7 @@ impl Defter<'_> {
                         x.imzalar.push(imza);
                     }
                 }
+                Kayit::ZincirBasi { .. } => {}
             }
         }
         Ok(f)
@@ -120,6 +143,19 @@ impl Defter<'_> {
 
     /// Telefondaki kullanıcı adına imza atar (ör. usta işi bitirince). Aynı kişi aynı rolde bir kez imzalar.
     pub fn imzala(&self, no: &str, kim: &str, rol: &str, tarih: &str) -> Result<(), String> {
+        self.imzala_ayrintili(no, kim, rol, tarih, "", "")
+    }
+
+    /// `imzala` + imza saati ve cihaz kimliği (TT1: olay kimliği). Aynı kural geçerli.
+    pub fn imzala_ayrintili(
+        &self,
+        no: &str,
+        kim: &str,
+        rol: &str,
+        tarih: &str,
+        saat: &str,
+        cihaz: &str,
+    ) -> Result<(), String> {
         kapali()?;
         if !taa_ayar::ozellik_acik("fis-imza", true) {
             return Err(taa_ayar::kapali_mesaji("fis-imza"));
@@ -141,10 +177,64 @@ impl Defter<'_> {
                 kim: kim.into(),
                 rol: rol.into(),
                 tarih: tarih.into(),
+                saat: saat.trim().into(),
+                cihaz: cihaz.trim().into(),
             },
         })
         .map_err(|e| e.to_string())?;
         taa_dosya::satir_ekle(self.yol, &s).map_err(|e| e.to_string())
+    }
+
+    /// Zinciri başlatır (bir kez). Bundan sonra eklenen her satır zincire girer; eskiler yeniden yazılmaz.
+    pub fn zincir_baslat(&self, tarih: &str) -> Result<(), String> {
+        kapali()?;
+        if !tarih_gecerli(tarih) {
+            return Err("tarih YYYY-AA-GG olmalı".into());
+        }
+        if self.zincir_ucu()?.is_some() {
+            return Err("zincir zaten başlatılmış".into());
+        }
+        let s = serde_json::to_string(&Kayit::ZincirBasi {
+            tarih: tarih.into(),
+        })
+        .map_err(|e| e.to_string())?;
+        taa_dosya::satir_ekle(self.yol, &s).map_err(|e| e.to_string())
+    }
+
+    /// Her zincir satırından sonraki özetler (başlangıç satırı dahil); zincir yoksa boş.
+    fn zincir_ozetleri(&self) -> Result<Vec<String>, String> {
+        let satirlar = taa_dosya::satirlari_oku(self.yol).map_err(|e| e.to_string())?;
+        let mut ozetler: Vec<String> = Vec::new();
+        for l in &satirlar {
+            if ozetler.is_empty() {
+                if matches!(
+                    serde_json::from_str::<Kayit>(l),
+                    Ok(Kayit::ZincirBasi { .. })
+                ) {
+                    ozetler.push(ozet_ileri("TAA-ZINCIR-1", l));
+                }
+            } else {
+                let son = ozetler[ozetler.len() - 1].clone();
+                ozetler.push(ozet_ileri(&son, l));
+            }
+        }
+        Ok(ozetler)
+    }
+
+    /// Güncel zincir ucu; zincir başlamadıysa `None`.
+    pub fn zincir_ucu(&self) -> Result<Option<ZincirUcu>, String> {
+        let o = self.zincir_ozetleri()?;
+        Ok(o.last().map(|ozet| ZincirUcu {
+            sayi: o.len(),
+            ozet: ozet.clone(),
+        }))
+    }
+
+    /// Merkeze daha önce gönderilmiş uç hâlâ defterin içinde mi? Zincirin o noktaya kadarki satırları
+    /// değişmediyse `true`; satır değişmiş, silinmiş ya da defter kısalmışsa `false`.
+    pub fn zincir_dogrula(&self, bilinen: &ZincirUcu) -> Result<bool, String> {
+        let o = self.zincir_ozetleri()?;
+        Ok(bilinen.sayi >= 1 && o.get(bilinen.sayi - 1) == Some(&bilinen.ozet))
     }
 
     pub fn bul(&self, no: &str) -> Result<Option<Fis>, String> {
@@ -212,6 +302,7 @@ impl Defter<'_> {
             durum: Durum::Bekliyor,
             raf: String::new(),
             imzalar: Vec::new(),
+            sube: g.sube.trim().into(),
         };
         let s = serde_json::to_string(&Kayit::Fis(fis.clone())).map_err(|e| e.to_string())?;
         taa_dosya::satir_ekle(self.yol, &s).map_err(|e| e.to_string())?;

@@ -216,6 +216,9 @@ pub(crate) fn satirlar(f: &Fis, nusha: &str) -> Vec<(Stil, String)> {
             f.satis_danismani, f.olcu_alan
         ),
     ));
+    if !f.sube.is_empty() {
+        v.push((Normal, format!("Şube: {}", f.sube)));
+    }
     if !f.usta.is_empty() {
         v.push((Normal, format!("Usta: {}", f.usta)));
     }
