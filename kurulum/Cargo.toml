@@ -1,4 +1,4 @@
-# TAA Kur kurulum ve kaldırma programı (tek exe). Bağımlılık yok. Çalışma alanının DIŞINDA: gömülecek dosyalar
+# TAA Kur kurulum ve kaldırma programı (tek exe). Tek bağımlılık: Windows'ta windows-sys (yerel kurulum penceresi). Çalışma alanının DIŞINDA: gömülecek dosyalar
 # TAA_KUR_PAKET klasöründen gelir (tools/kur_paketle.sh hazırlar), o yüzden `cargo test --workspace` bunu derlemez.
 [package]
 name = "taa-kur-kurulum"
@@ -6,6 +6,21 @@ version = "0.1.0"
 edition = "2021"
 build = "build.rs"
 publish = false
+
+# Yerel kurulum penceresi (Win32 + GDI, tarayıcısız). Yusuf'un onaylı bağımlılığı windows-sys 0.61 (taa-kur ve taa-ipc
+# ile aynı sürüm); özellikler taa-kur penceresinin kümesi + tema (Registry), DPI (HiDpi), koyu başlık (Dwm), konsol gizleme.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", default-features = false, features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Gdi",
+    "Win32_System_Console",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Registry",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+] }
 
 [workspace]
 

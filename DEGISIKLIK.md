@@ -3,7 +3,12 @@
 
 ## Yayınlanmamış
 
-### Kurulum ekranı
+### Kurulum ekranı: yerel pencere (tarayıcısız)
+
+- `kurulum/`: tarayıcı + yerel HTTP ekranı KALDIRILDI (`arayuz.rs`, `arayuz.html`, HTTP testleri). Yerine kurucunun kendi Win32 + GDI penceresi (`pencere.rs`, yalnız Windows; `windows-sys` 0.61, Yusuf'un onaylı bağımlılığı, yeni crate yok). Onay, rol, şube (gömülü 15 şube, `kurulum/subeler.txt` → `<kök>\sube.txt`), isteğe bağlı programlar pencerede seçilir; bekleme kartları; sağda adım adım şube ayar direktifleri (`direktif.rs`): kurulum programının yanındaki `sunucu-yollari.json`, `sunucu-ca.pem`, `tailscale.anahtar` var olanı ezmeden yerine kopyalanır, kalanlar numaralı adım. Açık/koyu (sistem teması), yüksek DPI, klavye, kapatma onayı. `--sessiz`/`--arayuzsuz` iken pencere yok; `--sube <kod>` eklendi. Saf mantık platformdan bağımsız ve testli (`secim.rs`, `ekran.rs`, `subeler.rs`, `direktif.rs`; 22 test).
+- Gerçek Windows'ta DENENMEDİ; Linux'ta wine 9 + Xvfb ile sahte `taa-guncelle` üzerinden uçtan uca (klavye, fare, hata + yeniden dene, koyu tema, kapatma onayı) denendi.
+
+### Kurulum ekranı (ilk sürüm, tarayıcılı; yerini yerel pencere aldı)
 
 - `kurulum/` (TAA-Kur-Kurulum.exe): tarayıcıda ilerleme ekranı (std-only yerel HTTP, yalnız 127.0.0.1, Host denetimi, komutlar jetonlu). Aşamalar, program başına İndir/Doğrula/Kur/Ayarla, yüzde, hata + Yeniden dene / Bitir; bekleme kartları (8 TAA programı + rehber notları, `kurulum/kartlar.txt`); tek vurgu rengi, açık/koyu, renk seçici, klavye, `prefers-reduced-motion`. `--arayuzsuz` kapatır, `--sessiz` iken kapalı (`--arayuz` açar). Saf mantık `ilerleme.rs`, `kartlar.rs`, `arayuz.rs` (16 birim test; çalıştırma: `TAA_KUR_PAKET=<boş klasör> cargo test --manifest-path kurulum/Cargo.toml`). Yeni bağımlılık yok. `docs/KURULUM-EKRANI.md`.
 - `taa-guncelle`: `TAA_ILERLEME=1` iken stderr'e `TAA-ILERLEME<TAB>paket<TAB>adım<TAB>basladi|bitti` satırları (`ilerleme_satiri`, 1 test). Ortam yoksa davranış aynı.
