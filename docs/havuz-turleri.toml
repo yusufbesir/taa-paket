@@ -9,6 +9,9 @@
 adlar = [
   "fiyatetiketi", "taarkod", "taadon", "tutaa", "taavideo", "terzitakip",
   "taayonetici", "taagiydir", "taarehber", "taaegitim", "taaocr", "taaveri",
+  # Program değil, sunucu yazma hizmeti: rehber.yaz@1 (ana plan v2 §3.2). Doğrulayıcı nokta/@ kabul etmediği için
+  # "rehber-yaz" biçiminde yazıldı. AÇIK: doğrulayıcıya ayrı [hizmetler] listesi eklenmeli (docs/rehber-sozlesmesi.md §11).
+  "rehber-yaz",
 ]
 
 [turler."urun.liste"]
@@ -131,3 +134,53 @@ yazanlar = ["taaveri", "taaocr"]
 okuyanlar = ["taaocr"]
 kisisel = false
 aciklama = "OCR eğitim verisi"
+
+# --- Rehber (RH0, docs/rehber-sozlesmesi.md). Karar: Yusuf 2026-11-15 14:28 (ekran TAA Rehber); v2: tek yazar sunucudaki
+# rehber yazma hizmeti rehber.yaz@1 (katalogda "rehber-yaz"). Çevrimdışı yazma yok; yerel önbellek salt okunur. ---
+# Görünürlük ayrıca rehber izinleriyle süzülür (şube PC'si: kendi şubesi + merkez/departman + mağaza ortak adresleri + mağaza müdürleri).
+# Rehber türlerinde boş sube_kapsam "yalnız merkez" sayılır (havuzun genel kuralından ayrılır; AÇIK, RH1).
+
+[turler."rehber.kisi"]
+surum = 1
+aile = "rehber"
+kip = "tablo"
+yazanlar = ["rehber-yaz"]
+okuyanlar = ["taarehber", "tutaa", "taaegitim", "terzitakip", "taayonetici"]
+kisisel = true
+aciklama = "Kişi: yalnız kalıcı kimlik, ad, iş e-postası, etkin/pasif, sürüm (görev/rol/amir görevlendirmede; telefon yok)"
+
+[turler."rehber.birim"]
+surum = 1
+aile = "rehber"
+kip = "tablo"
+yazanlar = ["rehber-yaz"]
+okuyanlar = ["taarehber", "tutaa", "taaegitim", "terzitakip", "taayonetici"]
+kisisel = false
+aciklama = "Birim (departman ve mağaza kişi değil birimdir): tür, üst birim, şube kodu, ortak e-posta, durum"
+
+[turler."rehber.gorevlendirme"]
+surum = 1
+aile = "rehber"
+kip = "tablo"
+yazanlar = ["rehber-yaz"]
+okuyanlar = ["taarehber", "tutaa", "taaegitim", "terzitakip", "taayonetici"]
+kisisel = true
+aciklama = "Kim nerede görevli: kişi, birim, rol, görev, amir, tür (asıl/geçici/vekil), durum, başlangıç/bitiş"
+
+[turler."rehber.rol"]
+surum = 1
+aile = "rehber"
+kip = "tablo"
+yazanlar = ["rehber-yaz"]
+okuyanlar = ["taarehber", "tutaa", "taaegitim", "terzitakip", "taayonetici"]
+kisisel = false
+aciklama = "İletişim rolü kodu ve adı (eposta.oneri rolleri bu kodlara bağlanır); erişim yetkisi değildir"
+
+[turler."rehber.belge"]
+surum = 1
+aile = "rehber"
+kip = "tablo"
+yazanlar = ["rehber-yaz"]
+okuyanlar = ["taarehber", "taaegitim", "taayonetici"]
+kisisel = false
+aciklama = "El kitabı içeriği (sürümlü konu metni)"

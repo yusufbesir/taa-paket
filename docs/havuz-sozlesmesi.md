@@ -3,7 +3,9 @@
 
 Plan: `planlar/PLAN-ORTAK-VERI-HAVUZU-2026-11-12.md`. Tür kataloğu: `docs/havuz-turleri.toml`. Denetim: `tools/havuz_denetle.py`.
 
-Havuz, TAA Sunucu PostgreSQL'indeki çok programlı, sürümlü içerik deposudur. Yerel "veri alanları" (`docs/veri-alani.md`: rehber, kimlik, etiket-kuyrugu, cihaz, yol) havuza taşınmaz.
+Havuz, TAA Sunucu PostgreSQL'indeki çok programlı, sürümlü içerik deposudur. Yerel "veri alanları" (`docs/veri-alani.md`: kimlik, etiket-kuyrugu, cihaz, yol) havuza taşınmaz.
+
+**Rehber istisnası (Yusuf 2026-11-15):** e-posta rehberi artık havuz türüdür (`rehber.*`, tek yazar sunucudaki `rehber.yaz@1` hizmeti; boş `sube_kapsam` = yalnız merkez); eski "rehber havuza taşınmaz" kuralı pasif. Yerel `rehber` alanı yalnız imzalı, salt okunur çevrimdışı önbellektir. Ayrıntı: `docs/rehber-sozlesmesi.md`.
 
 ## Görünürlük
 Bir kayıt bir programda şu üç koşul birlikte sağlanırsa görünür (sunucu hesaplar):
