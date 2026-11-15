@@ -11,7 +11,7 @@ Bağlı belgeler: `docs/sube-tehdit-modeli.md`, `docs/sube-izolasyon-testleri.md
 | Şube bilgisayarı (şube PC'si) | Şubeye bağlı onaylı bilgisayarlardan biri (bir şubede 1 ya da daha çok). Aynı şubenin bilgisayarları eştir (`docs/esleme-sozlesmesi.md`). Bu belgede "şube PC'si" her zaman "şubenin bilgisayarlarından herhangi biri" demektir |
 | Sunucu | TAA Sunucu (axum + PostgreSQL) = **Yusuf'un bilgisayarı** (EK 2, B3) |
 | Merkez rolü | Tüm şubeleri gören yetki (yönetici, merkez personeli). Bir şube değildir |
-| Merkez Mağaza | `istanbul-merkez` şubesi; Esenyurt Outlet buna bağlıdır, ayrı şube değildir. Esenyurt'ta sunucudan ayrı 2 kasa bilgisayarı vardır; ikisi de normal şube bilgisayarıdır (ana plan §16.1; AÇIK-S2 kapandı) |
+| Merkez Mağaza | `MRK01` (eski `istanbul-merkez`) şubesi; Esenyurt Outlet buna bağlıdır, ayrı şube değildir. Esenyurt'ta sunucudan ayrı 2 kasa bilgisayarı vardır; ikisi de normal şube bilgisayarıdır (ana plan §16.1; AÇIK-S2 kapandı) |
 | Merkez cihazı | `taa_cihazlar.sube_id = null` olan onaylı cihaz (Çatı, sunucu PC'si) |
 | Cihaz anahtarı | ed25519; her isteği imzalar ("bu PC kayıtlı mı") |
 | Şube imza anahtarı | ed25519; belgeyi imzalar (tutanak, ciro, gün sonu fiş özeti). Cihaz anahtarından **ayrıdır**. Her eş bilgisayarın kendi şube imza anahtarı vardır; hepsi şube adına geçerlidir |
@@ -27,28 +27,29 @@ Bağlı belgeler: `docs/sube-tehdit-modeli.md`, `docs/sube-izolasyon-testleri.md
 
 ## 3. Şube kimliği ve 15 şube
 Kaynak: `Tutaa subeler listesi (terziademaltun.com).json` (sürüm 1, 2026-11-05). Karar kapandı (EK 2, B2).
-- `kod` = listedeki `id` (küçük harf, tire; değişmez, yeniden kullanılmaz). Sunucuda `subeler.kod`, ilişkilerde `sube_id`.
+- `kod` = şube kodu, biçim **3 büyük harf + 2 rakam** (örn. `MRK01`; Yusuf 2026-11-15 kartı, TT PR #60 doğrulaması): ilk 3 harf `onek`, son 2 hane sıra numarası (aynı önekle ikinci şube `…02`). Kod şehir adını açıkça yazmaz, değişmez, yeniden kullanılmaz. Sunucuda `subeler.kod`, ilişkilerde `sube_id`. Kurucu, onaylı cihazın şubesinden `<dizin>/sube.json` dosyasına `{"kod":"MRK01"}` yazar.
+- `slug` = eski okunur kimlik (listedeki `id`: küçük harf, tire). Yalnız eski kayıtlarda ve listede eşleme için durur; yeni kayıt `kod` kullanır. Geçiş: `slug` → `kod` tek yönlü eşleme tablosu aşağıdadır.
 - `onek` = fiş/tutanak numarası öneki (ör. `PND-000123`, plan §2.2). Önekler kesindir (Yusuf 2026-11-15, ana plan §16.1); pilot başladıktan sonra değişmez (AÇIK-S1 kapandı). Çok bilgisayarlı şubede numara sırası `docs/esleme-sozlesmesi.md` §3'e göre tek eşte tutulur.
 
-| # | `kod` | Ad | `onek` |
-|---|---|---|---|
-| 1 | `istanbul-merkez` | İstanbul Merkez Mağaza (Esenyurt, Outlet dahil) | MRK |
-| 2 | `istanbul-pendik` | İstanbul Pendik Mağaza | PND |
-| 3 | `istanbul-umraniye` | İstanbul Ümraniye Mağaza | UMR |
-| 4 | `ankara` | Ankara Mağaza | ANK |
-| 5 | `bursa` | Bursa Mağaza | BRS |
-| 6 | `sakarya` | Sakarya Mağaza | SKR |
-| 7 | `diyarbakir` | Diyarbakır Mağaza | DYB |
-| 8 | `sivas` | Sivas Mağaza | SVS |
-| 9 | `gaziantep` | Gaziantep Mağaza | GZT |
-| 10 | `sanliurfa` | Şanlıurfa Mağaza | URF |
-| 11 | `van` | Van Mağaza | VAN |
-| 12 | `siirt` | Siirt Mağaza | SRT |
-| 13 | `elazig` | Elazığ Mağaza | ELZ |
-| 14 | `izmir` | İzmir Mağaza | IZM |
-| 15 | `mus` | Muş Mağaza | MUS |
+| # | `kod` | `slug` (eski) | Ad | `onek` |
+|---|---|---|---|---|
+| 1 | `MRK01` | `istanbul-merkez` | İstanbul Merkez Mağaza (Esenyurt, Outlet dahil) | MRK |
+| 2 | `PND01` | `istanbul-pendik` | İstanbul Pendik Mağaza | PND |
+| 3 | `UMR01` | `istanbul-umraniye` | İstanbul Ümraniye Mağaza | UMR |
+| 4 | `ANK01` | `ankara` | Ankara Mağaza | ANK |
+| 5 | `BRS01` | `bursa` | Bursa Mağaza | BRS |
+| 6 | `SKR01` | `sakarya` | Sakarya Mağaza | SKR |
+| 7 | `DYB01` | `diyarbakir` | Diyarbakır Mağaza | DYB |
+| 8 | `SVS01` | `sivas` | Sivas Mağaza | SVS |
+| 9 | `GZT01` | `gaziantep` | Gaziantep Mağaza | GZT |
+| 10 | `URF01` | `sanliurfa` | Şanlıurfa Mağaza | URF |
+| 11 | `VAN01` | `van` | Van Mağaza | VAN |
+| 12 | `SRT01` | `siirt` | Siirt Mağaza | SRT |
+| 13 | `ELZ01` | `elazig` | Elazığ Mağaza | ELZ |
+| 14 | `IZM01` | `izmir` | İzmir Mağaza | IZM |
+| 15 | `MUS01` | `mus` | Muş Mağaza | MUS |
 
-Esenyurt Outlet için ayrı `kod` yoktur; kayıtları `istanbul-merkez` altındadır. Yeni şube yalnız Çatı'dan (`taa-cati sube ekle`) eklenir; şube kapatılırsa `pasif` olur, silinmez.
+Esenyurt Outlet için ayrı `kod` yoktur; kayıtları `MRK01` (`istanbul-merkez`) altındadır. Yeni şube yalnız Çatı'dan (`taa-cati sube ekle`) eklenir; şube kapatılırsa `pasif` olur, silinmez.
 
 ## 4. Cihazdan şube türetme
 1. Cihaz başvurusu → Çatı'da onay sırasında şubeye bağlanır (`taa_cihazlar.sube_id`). Cihazın şubesi **yalnız Çatı'dan** değişir. Bir şubeye birden çok cihaz bağlanabilir; Çatı şube başına cihaz listesini gösterir (EB1).

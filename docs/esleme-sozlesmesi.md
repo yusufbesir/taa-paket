@@ -12,7 +12,7 @@ Bu belge Ş0'ın **ekidir**: Ş0'da yazan her kural geçerlidir; yalnız aşağ�
 ### 1.1 Terimler
 | Terim | Anlam |
 |---|---|
-| Mağaza | Bu belgede **şube ile aynı şeydir**: 15 şubeden biri, kimliği `subeler.kod` (Ş0 §3). Esenyurt Outlet ayrı mağaza değildir, `istanbul-merkez` altındadır. E1 kararı: kodda alan adları `sube_*`, ekranda "mağaza" (rehberdeki `tur = magaza` ile karışmasın) |
+| Mağaza | Bu belgede **şube ile aynı şeydir**: 15 şubeden biri, kimliği `subeler.kod` (Ş0 §3). Esenyurt Outlet ayrı mağaza değildir, `MRK01` altındadır. E1 kararı: kodda alan adları `sube_*`, ekranda "mağaza" (rehberdeki `tur = magaza` ile karışmasın) |
 | Mağaza bilgisayarı | Bir mağazaya Çatı'dan bağlanmış onaylı cihaz (`taa_cihazlar.sube_id = <mağaza>`). Bir mağazanın 1..n bilgisayarı olabilir |
 | Eş bilgisayar (eş) | **Aynı mağazaya bağlı, onaylı, iptal edilmemiş** öteki bilgisayar. Eşlik Çatı'daki kayıttan türer; bilgisayar kendini eş ilan edemez. Merkez cihazı (`sube_id = null`) hiçbir mağazanın eşi değildir |
 | Eş listesi | Bir mağazanın onaylı bilgisayarları ve açık cihaz anahtarları; sunucu imzalı, her eşte önbellekte (§5.2) |
@@ -309,7 +309,7 @@ Sıra: EB0 → (Ş2, KM1 genişler) → EB1 → EB2 ve EB3 → EB4 → EB5.
 ## 8. Açık noktalar ve kararlar
 Kararlar: Fable denetimi `DENETIM-EB0-ESLEME-YAZDIR-2026-11-15` ve eki (Yusuf'un kart yanıtları, 2026-11-15 15:34 UTC).
 - **AÇIK-E1 — kapandı (karar):** kodda alan adları `sube_*`, ekranda "mağaza". (Rehberde `tur = magaza` bir şubenin altındaki satış noktasıdır, ör. Esenyurt Outlet.)
-- **AÇIK-E2 — kapandı (karar):** Esenyurt'taki iki bilgisayar `istanbul-merkez` şubesine bağlanır, önek `MRK` (Yusuf 15:19).
+- **AÇIK-E2 — kapandı (karar):** Esenyurt'taki iki bilgisayar `MRK01` şubesine bağlanır, önek `MRK` (Yusuf 15:19).
 - **AÇIK-E3 — AÇIK (Yusuf'a soruldu):** Esenyurt'ta hangi yazıcının (etiket, fiş, A4) hangi bilgisayara bağlı olduğu; yazıcıların USB mi ağ yazıcısı mı (ör. `tcp://IP:9100`) olduğu; iki bilgisayarın aynı modemde, kabloyla mı kablosuz mu bağlı olduğu. EB4 yine kurulumda sorar; yanıt gelirse EB5 senaryoları daraltılır.
 - **AÇIK-E4 — kapandı (karar):** ağ yazıcısında da tek sahip; sahibi kapalıyken ötekinin doğrudan basması yalnız Çatı'dan sahip değiştirilerek yapılır.
 - **AÇIK-E5 — kapandı (öneri kabul):** numara biçimi önerisi geçerli; sayılar (bölge sınırı, blok boyu, güvenlik payı) ve Tutaa numaralandırmasıyla uyum Ş4'te kesinleşir. Fişte ve ekranda küçük "yedek numara" işareti kalır.

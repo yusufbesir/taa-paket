@@ -213,22 +213,40 @@ fn rol_sec(a: &[String], hedef: &Path, sessiz: bool, ekran: &Ekran) -> String {
     rol
 }
 
-/// Şube PC'sinde şube: `--sube <kod>`, kayıtlı sube.txt, yoksa gömülü 15 şubeden seçim (sessizde sorulmaz).
-/// Seçilen kod sube.txt'ye yazılır (var olan ezilmez). "Sonra" denirse adım direktif olarak kalır.
+/// Şube PC'sinde şube: `--sube <kod>` (MRK01 biçimi; eski slug de kabul), kayıtlı sube.txt, yoksa gömülü 15 şubeden seçim
+/// (sessizde sorulmaz). Kayıtlı eski slug koda çevrilir. Kod `sube.txt`'ye ve fiş sunucusunun okuduğu
+/// `<veri kökü>/sube.json`'a ({"kod":"MRK01"}) yazılır. "Sonra" denirse adım direktif olarak kalır.
 fn sube_sec(a: &[String], hedef: &Path, sessiz: bool, ekran: &Ekran) {
-    if satir_oku(&hedef.join("sube.txt")).is_some() { return; }
     let liste = subeler::gomulu();
-    let kod = match arg(a, "--sube") {
-        Some(k) if subeler::kod_gecerli(&k) => Some(k),
-        Some(k) => { eprintln!("UYARI: geçersiz şube kodu '{k}' (küçük harf, rakam, '-'); şube seçilmedi."); None }
-        None if sessiz || liste.is_empty() => None,
-        None => {
-            let s = Secim::tek("Hangi şube?", "Bu PC'nin bulunduğu şubeyi seçin. Listede yoksa Sonra deyin; adım aşağıda kalır.",
-                liste.iter().map(|x| Secenek::yeni(x.ad.trim_end_matches(" Mağaza").replace(" Mağaza ", " ").trim(), &x.il)).collect(), 0).dugmeler("Devam", "Sonra");
-            ekran.sec(s).and_then(|v| v.first().and_then(|i| liste.get(*i)).map(|x| x.kod.clone()))
+    let kod = if let Some(kayit) = satir_oku(&hedef.join("sube.txt")) {
+        match subeler::koda_cevir(&liste, &kayit) {
+            Some(k) => Some(k),
+            None => { eprintln!("UYARI: kayıtlı şube '{kayit}' tanınmadı; şube yeniden seçilecek."); None }
         }
+    } else { None };
+    let kod = match kod {
+        Some(k) => Some(k),
+        None => match arg(a, "--sube") {
+            Some(k) => match subeler::koda_cevir(&liste, &k) {
+                Some(c) => Some(c),
+                None => { eprintln!("UYARI: geçersiz şube kodu '{k}' (3 büyük harf + 2 rakam, örn. MRK01); şube seçilmedi."); None }
+            },
+            None if sessiz || liste.is_empty() => None,
+            None => {
+                let s = Secim::tek("Hangi şube?", "Bu PC'nin bulunduğu şubeyi seçin. Listede yoksa Sonra deyin; adım aşağıda kalır.",
+                    liste.iter().map(|x| Secenek::yeni(x.ad.trim_end_matches(" Mağaza").replace(" Mağaza ", " ").trim(), &x.il)).collect(), 0).dugmeler("Devam", "Sonra");
+                ekran.sec(s).and_then(|v| v.first().and_then(|i| liste.get(*i)).map(|x| x.kod.clone()))
+            }
+        },
     };
-    if let Some(k) = kod { let _ = fs::write(hedef.join("sube.txt"), format!("{k}\n")); }
+    if let Some(k) = kod {
+        let _ = fs::write(hedef.join("sube.txt"), format!("{k}\n"));
+        if let Some(j) = subeler::sube_json(&k) {
+            let kok = veri_koku(hedef);
+            let _ = fs::create_dir_all(&kok);
+            let _ = fs::write(kok.join("sube.json"), j);
+        }
+    }
 }
 
 /// Program seçimi: önce bu rolde ZORUNLU olanlar kendiliğinden kurulur; sonra `--programlar a,b` (sessiz),
