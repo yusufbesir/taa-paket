@@ -45,7 +45,7 @@ Kimlik değerleri (`id`) kararlıdır, yeniden kullanılmaz; biçim `[a-z0-9][a-
 |---|---|---|---|
 | `id` | metin | evet | |
 | `ad` | metin (1–120) | evet | |
-| `tur` | `sube` \| `magaza` \| `departman` \| `merkez` | evet | `sube` = 15 şubeden biri (`subeler.kod`, `docs/sube-sozlesmesi.md` §3); `magaza` = bir şubenin altındaki satış noktası (örn. Outlet, `sube_kodu` bağlı olduğu şubedir, Esenyurt Outlet için `istanbul-merkez`); `departman` ve `merkez` şube değildir |
+| `tur` | `sube` \| `magaza` \| `departman` \| `merkez` | evet | `sube` = 15 şubeden biri (`subeler.kod`, `docs/sube-sozlesmesi.md` §3); `magaza` = bir şubenin altındaki satış noktası (örn. Outlet, `sube_kodu` bağlı olduğu şubedir, Esenyurt Outlet için `MRK01`); `departman` ve `merkez` şube değildir |
 | `ust_birim_id` | metin | hayır | Başka birim; döngü yasak |
 | `sube_kodu` | metin | `tur=sube` ya da `magaza` ise evet | `docs/sube-sozlesmesi.md` §3 şube kodu |
 | `ortak_eposta` | metin | hayır | Birimin ortak adresi (mağaza, departman, merkez) |
