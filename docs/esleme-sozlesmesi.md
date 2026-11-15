@@ -50,37 +50,37 @@ Durum: D1–D23 Fable denetimiyle onaylandı (Yusuf 15:19 kararının işlenmesi
 **`docs/sube-sozlesmesi.md`**
 | # | Yer | Bugünkü varsayım | DEĞİŞİKLİK ÖNERİSİ | Durum |
 |---|---|---|---|---|
-| D1 | §1 "Şube PC'si" | "Şubedeki tek kayıtlı bilgisayar (15 şube × 1 PC)" | "Şube bilgisayarı: şubeye bağlı onaylı bilgisayarlardan biri (1 ya da daha çok). Aynı şubenin bilgisayarları eştir (`docs/esleme-sozlesmesi.md`)." | UYGULANDI (commit @@SHA@@) |
-| D2 | §1 "Merkez Mağaza" | Sunucu PC'siyle ilişkisi belirsiz | "… Esenyurt'ta sunucudan ayrı 2 kasa bilgisayarı vardır (ana plan §16.1)." AÇIK-S2 kapanır | UYGULANDI (commit @@SHA@@) |
-| D3 | §1 "Şube imza anahtarı" | Tek anahtar | "… her eş bilgisayarın kendi şube imza anahtarı vardır; hepsi şube adına geçerlidir." | UYGULANDI (commit @@SHA@@) |
-| D4 | §2 kural 3 | "şube PC'si sunucu olmadan çalışır" | "her şube bilgisayarı sunucu ve eşi olmadan çalışır" | UYGULANDI (commit @@SHA@@) |
-| D5 | §3 önek tablosu | "Aşağıdaki önekler öneridir (AÇIK-S1)", sütun "(öneri)" | "Önekler kesindir (Yusuf 2026-11-15, ana plan §16.1); pilot başladıktan sonra değişmez." Sütun başlığı `onek`. AÇIK-S1 kapanır | UYGULANDI (commit @@SHA@@) |
-| D6 | §4 madde 1 | Tek cihaz varsayılır | Ek cümle: "Bir şubeye birden çok cihaz bağlanabilir; Çatı şube başına cihaz listesini gösterir (EB1)." | UYGULANDI (commit @@SHA@@) |
-| D7 | §4 madde 7 (PC devri) | Tek PC | Ek: "Devredilen PC eski şubenin eş listesinden düşer; elindeki yedek numara aralığının kullanılmamış kısmı atlandı notuyla kapanır (`esleme-sozlesmesi` §3)." | UYGULANDI (commit @@SHA@@) |
-| D8 | §5 tablo "Fiş, fiş olayı" | "Sahibi şube PC'si … merkeze yalnız şube PC'si yazar" | "Sahibi şube; şubenin onaylı bilgisayarlarından herhangi biri yazar, kayıtta `kaynak_cihaz` durur. Telefonlar yalnız kayıtlı telefon sunucusu eşe bağlanır (AÇIK-E8)." | UYGULANDI (commit @@SHA@@) |
-| D9 | §5 tablo "Şube imza anahtarı kaydı" | "Şube PC'si başvurur" | "Her şube bilgisayarı kendi anahtarıyla başvurur" | UYGULANDI (commit @@SHA@@) |
-| D10 | §6 | İki kanal | Ek satır: "Eş kanalı (aynı şubenin bilgisayarları arası, yerel ağ) yalnız o şubenin işlem kayıtlarını, yazdırma işlerini ve numara isteklerini taşır; havuz içeriği taşımaz." | UYGULANDI (commit @@SHA@@) |
-| D11 | §7.1 "Saklama" | "Şube PC'sinde üretilir" | "Her şube bilgisayarında ayrı üretilir; …" (geri kalanı aynen) | UYGULANDI (commit @@SHA@@) |
-| D12 | §7.3 madde 2 | "o şubenin geçerli şube imza anahtarıyla" | "o şubenin geçerli şube imza anahtarlarından biriyle" | UYGULANDI (commit @@SHA@@) |
-| D13 | §7.5 iptal | Tek anahtar | Ek: "Bir bilgisayarın anahtarının iptali şubenin öteki anahtarlarını etkilemez." | UYGULANDI (commit @@SHA@@) |
-| D14 | §8 son madde | "o cihaza aittir" | Ek: "Aynı şubenin işlem kayıtları eşlemeyle her eşte de bulunur; her kopya DPAPI ile sarılıdır." | UYGULANDI (commit @@SHA@@) |
-| D15 | §9.4 | Eş ve yazıcı uçları yok | EB1 uçları (öneri) eklenir: §7.1 tablosu | UYGULANDI (commit @@SHA@@) |
-| D16 | §10 | "Sıra: … cihaz sıra numarası" | Ek: "Cihaz sıra numarası her cihaz için ayrıdır; eşten gelen çakışma da aynı kuralla iki hal olarak saklanır (`esleme-sozlesmesi` §4.3)." | UYGULANDI (commit @@SHA@@) |
+| D1 | §1 "Şube PC'si" | "Şubedeki tek kayıtlı bilgisayar (15 şube × 1 PC)" | "Şube bilgisayarı: şubeye bağlı onaylı bilgisayarlardan biri (1 ya da daha çok). Aynı şubenin bilgisayarları eştir (`docs/esleme-sozlesmesi.md`)." | UYGULANDI (commit 744e2aa) |
+| D2 | §1 "Merkez Mağaza" | Sunucu PC'siyle ilişkisi belirsiz | "… Esenyurt'ta sunucudan ayrı 2 kasa bilgisayarı vardır (ana plan §16.1)." AÇIK-S2 kapanır | UYGULANDI (commit 744e2aa) |
+| D3 | §1 "Şube imza anahtarı" | Tek anahtar | "… her eş bilgisayarın kendi şube imza anahtarı vardır; hepsi şube adına geçerlidir." | UYGULANDI (commit 744e2aa) |
+| D4 | §2 kural 3 | "şube PC'si sunucu olmadan çalışır" | "her şube bilgisayarı sunucu ve eşi olmadan çalışır" | UYGULANDI (commit 744e2aa) |
+| D5 | §3 önek tablosu | "Aşağıdaki önekler öneridir (AÇIK-S1)", sütun "(öneri)" | "Önekler kesindir (Yusuf 2026-11-15, ana plan §16.1); pilot başladıktan sonra değişmez." Sütun başlığı `onek`. AÇIK-S1 kapanır | UYGULANDI (commit 744e2aa) |
+| D6 | §4 madde 1 | Tek cihaz varsayılır | Ek cümle: "Bir şubeye birden çok cihaz bağlanabilir; Çatı şube başına cihaz listesini gösterir (EB1)." | UYGULANDI (commit 744e2aa) |
+| D7 | §4 madde 7 (PC devri) | Tek PC | Ek: "Devredilen PC eski şubenin eş listesinden düşer; elindeki yedek numara aralığının kullanılmamış kısmı atlandı notuyla kapanır (`esleme-sozlesmesi` §3)." | UYGULANDI (commit 744e2aa) |
+| D8 | §5 tablo "Fiş, fiş olayı" | "Sahibi şube PC'si … merkeze yalnız şube PC'si yazar" | "Sahibi şube; şubenin onaylı bilgisayarlarından herhangi biri yazar, kayıtta `kaynak_cihaz` durur. Telefonlar yalnız kayıtlı telefon sunucusu eşe bağlanır (AÇIK-E8)." | UYGULANDI (commit 744e2aa) |
+| D9 | §5 tablo "Şube imza anahtarı kaydı" | "Şube PC'si başvurur" | "Her şube bilgisayarı kendi anahtarıyla başvurur" | UYGULANDI (commit 744e2aa) |
+| D10 | §6 | İki kanal | Ek satır: "Eş kanalı (aynı şubenin bilgisayarları arası, yerel ağ) yalnız o şubenin işlem kayıtlarını, yazdırma işlerini ve numara isteklerini taşır; havuz içeriği taşımaz." | UYGULANDI (commit 744e2aa) |
+| D11 | §7.1 "Saklama" | "Şube PC'sinde üretilir" | "Her şube bilgisayarında ayrı üretilir; …" (geri kalanı aynen) | UYGULANDI (commit 744e2aa) |
+| D12 | §7.3 madde 2 | "o şubenin geçerli şube imza anahtarıyla" | "o şubenin geçerli şube imza anahtarlarından biriyle" | UYGULANDI (commit 744e2aa) |
+| D13 | §7.5 iptal | Tek anahtar | Ek: "Bir bilgisayarın anahtarının iptali şubenin öteki anahtarlarını etkilemez." | UYGULANDI (commit 744e2aa) |
+| D14 | §8 son madde | "o cihaza aittir" | Ek: "Aynı şubenin işlem kayıtları eşlemeyle her eşte de bulunur; her kopya DPAPI ile sarılıdır." | UYGULANDI (commit 744e2aa) |
+| D15 | §9.4 | Eş ve yazıcı uçları yok | EB1 uçları (öneri) eklenir: §7.1 tablosu | UYGULANDI (commit 744e2aa) |
+| D16 | §10 | "Sıra: … cihaz sıra numarası" | Ek: "Cihaz sıra numarası her cihaz için ayrıdır; eşten gelen çakışma da aynı kuralla iki hal olarak saklanır (`esleme-sozlesmesi` §4.3)." | UYGULANDI (commit 744e2aa) |
 
 **`docs/sube-tehdit-modeli.md`**
 | # | Yer | DEĞİŞİKLİK ÖNERİSİ | Durum |
 |---|---|---|---|
-| D17 | §1 Varlıklar | V12 eş listesi (sunucu imzalı), V13 yazdırma kuyruğu, V14 numara sırası ve yedek aralıklar eklenir | UYGULANDI (commit @@SHA@@) |
-| D18 | §3 Saldırı yüzeyi | "Şube PC'si" maddesine "eş kapısı (yalnız çok bilgisayarlı mağazada, yalnız yerel ağ)" eklenir | UYGULANDI (commit @@SHA@@) |
-| D19 | §4 | T23–T30 eklenir (bu belge §5.4); denetim koşullarıyla T31–T34 de eklendi (K2, K3, K8, K6) | UYGULANDI (commit @@SHA@@) |
-| D20 | §8 | AÇIK-S1 ve AÇIK-S2 "kapandı (ana plan §16.1)" diye işaretlenir | UYGULANDI (commit @@SHA@@) |
+| D17 | §1 Varlıklar | V12 eş listesi (sunucu imzalı), V13 yazdırma kuyruğu, V14 numara sırası ve yedek aralıklar eklenir | UYGULANDI (commit 744e2aa) |
+| D18 | §3 Saldırı yüzeyi | "Şube PC'si" maddesine "eş kapısı (yalnız çok bilgisayarlı mağazada, yalnız yerel ağ)" eklenir | UYGULANDI (commit 744e2aa) |
+| D19 | §4 | T23–T30 eklenir (bu belge §5.4); denetim koşullarıyla T31–T34 de eklendi (K2, K3, K8, K6) | UYGULANDI (commit 744e2aa) |
+| D20 | §8 | AÇIK-S1 ve AÇIK-S2 "kapandı (ana plan §16.1)" diye işaretlenir | UYGULANDI (commit 744e2aa) |
 
 **`docs/sube-izolasyon-testleri.md`**
 | # | Yer | DEĞİŞİKLİK ÖNERİSİ | Durum |
 |---|---|---|---|
-| D21 | §1 Düzenek | A şubesinde **iki** onaylı cihaz (A1, A2) olur; B'de bir cihaz kalır (tek bilgisayarlı durum da sınanır) | UYGULANDI (commit @@SHA@@) |
-| D22 | §4 Matris | Yeni satırlar: `sube_yazicilari`, `numara_araliklari`, eş listesi ucu (okuma, yazma, liste, sayım, günlük, hata) | UYGULANDI (commit @@SHA@@) |
-| D23 | §5 | Ek senaryolar 13–16: `izolasyon_es_baska_magaza`, `izolasyon_es_listesi_capraz`, `izolasyon_yazici_capraz`, `izolasyon_numara_capraz` (bu belge §6.1) | UYGULANDI (commit @@SHA@@) |
+| D21 | §1 Düzenek | A şubesinde **iki** onaylı cihaz (A1, A2) olur; B'de bir cihaz kalır (tek bilgisayarlı durum da sınanır) | UYGULANDI (commit 744e2aa) |
+| D22 | §4 Matris | Yeni satırlar: `sube_yazicilari`, `numara_araliklari`, eş listesi ucu (okuma, yazma, liste, sayım, günlük, hata) | UYGULANDI (commit 744e2aa) |
+| D23 | §5 | Ek senaryolar 13–16: `izolasyon_es_baska_magaza`, `izolasyon_es_listesi_capraz`, `izolasyon_yazici_capraz`, `izolasyon_numara_capraz` (bu belge §6.1) | UYGULANDI (commit 744e2aa) |
 
 ## 2. Ortak yazıcı ve `yazdir.sun@1`
 Ayrıntılı sözleşme: `docs/sozlesmeler/yazdir.sun.md`. Özet:
