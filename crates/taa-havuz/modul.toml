@@ -1,0 +1,14 @@
+# taa-havuz modül tanımı (bkz. docs/modul-sozlesmesi.md). Sahip: Yusuf.
+# Ortak crate: her program kendi önbelleğini <veri kökü>/havuz-onbellek/<program>/ altında tutar; sunucu görünürlüğü
+# (program ilgisi ∩ kullanıcı izni ∩ şube kapsamı) sunucuda hesaplanır, istemci yalnız `program` ilgisini bildirir.
+ad = "taa-havuz"
+surum = "0.1.0"
+arayuz = "1"
+gerektirir = { "taa-dosya" = "1", "taa-kuyruk" = "1" }
+ozellikler = ["havuz-okuma", "onbellek", "cevrimdisi"]
+program = "ortak"
+sunar = ["havuz.oku@1"]
+ister = []
+veri_sahibi = []
+veri_okur = []
+ayar_alani = "moduller.taa-havuz"

@@ -57,6 +57,14 @@ pub trait Gonderici {
             "bu gönderici GET desteklemiyor: {uc}"
         )))
     }
+
+    /// `GET` ile ham bayt (JSON olmayan yanıt: havuz dosyaları). `aralik` verilirse `Range: bytes=a-b` (b dahil)
+    /// gönderilir; tek yanıt en çok `YANIT_EN_COK` bayt olmalıdır. Varsayılan: desteklenmez.
+    fn al_ham(&self, uc: &str, _aralik: Option<(u64, u64)>) -> Result<Vec<u8>, GonderHata> {
+        Err(GonderHata::Yapilandirma(format!(
+            "bu gönderici ham GET desteklemiyor: {uc}"
+        )))
+    }
 }
 
 /// İstek imzalayıcı (cihaz kimliği, API-SOZLESMESI "Cihaz kimliği"): her isteğe ek başlıklar üretir.
@@ -168,11 +176,24 @@ impl CurlGonderici {
         &self.taban
     }
 
-    fn basliklar(&self, yontem: &str, uc: &str, govde: &[u8]) -> Result<PathBuf, GonderHata> {
+    fn basliklar(
+        &self,
+        yontem: &str,
+        uc: &str,
+        govde: &[u8],
+        aralik: Option<(u64, u64)>,
+    ) -> Result<PathBuf, GonderHata> {
         let klasor = taa_dosya::gecici_klasor()
             .map_err(|e| GonderHata::Yapilandirma(format!("geçici klasör açılamadı: {e}")))?;
         let yol = klasor.join("basliklar.txt");
-        let mut icerik = String::from("Accept: application/json\r\n");
+        let mut icerik = String::from(if aralik.is_some() {
+            "Accept: */*\r\n"
+        } else {
+            "Accept: application/json\r\n"
+        });
+        if let Some((a, b)) = aralik {
+            icerik.push_str(&format!("Range: bytes={a}-{b}\r\n"));
+        }
         if yontem == "POST" {
             icerik.push_str("Content-Type: application/json\r\n");
         }
@@ -283,8 +304,32 @@ pub fn kodu_yorumla(kod: u16, govde: &[u8]) -> Result<Value, GonderHata> {
 impl CurlGonderici {
     /// Ortak istek: `yontem` POST (gövdeli) ya da GET (gövdesiz). Başlık dosyası iş bitince kaldırılır.
     fn istek(&self, yontem: &str, uc: &str, govde_bayt: &[u8]) -> Result<Value, GonderHata> {
+        let (g, kod) = self.istek_cekirdek(yontem, uc, govde_bayt, None)?;
+        kodu_yorumla(kod, &g)
+    }
+
+    /// Ham yanıt: 2xx ise gövde baytları; aksi halde `kodu_yorumla` ile aynı sınıflandırma.
+    fn istek_ham(&self, uc: &str, aralik: Option<(u64, u64)>) -> Result<Vec<u8>, GonderHata> {
+        let (g, kod) = self.istek_cekirdek("GET", uc, &[], aralik)?;
+        if (200..=299).contains(&kod) {
+            return Ok(g);
+        }
+        match kodu_yorumla(kod, &g) {
+            Err(e) => Err(e),
+            Ok(_) => Ok(g),
+        }
+    }
+
+    /// curl çalıştırır; (gövde, HTTP kodu) döndürür. Başlık dosyası iş bitince kaldırılır.
+    fn istek_cekirdek(
+        &self,
+        yontem: &str,
+        uc: &str,
+        govde_bayt: &[u8],
+        aralik: Option<(u64, u64)>,
+    ) -> Result<(Vec<u8>, u16), GonderHata> {
         let url = format!("{}{}", self.taban, uc);
-        let basliklar = self.basliklar(yontem, uc, govde_bayt)?;
+        let basliklar = self.basliklar(yontem, uc, govde_bayt, aralik)?;
         #[cfg(test)]
         {
             *SON_BASLIK_DOSYASI.lock().unwrap() = Some(basliklar.clone());
@@ -322,10 +367,8 @@ impl CurlGonderici {
                     if m.is_empty() { "ayrıntı yok" } else { &m }
                 )));
             }
-            let (g, kod) = cikti_ayir(&c.stdout).ok_or_else(|| {
-                GonderHata::Ulasilamadi(format!("{url}: curl çıktısı çözülemedi"))
-            })?;
-            kodu_yorumla(kod, &g)
+            cikti_ayir(&c.stdout)
+                .ok_or_else(|| GonderHata::Ulasilamadi(format!("{url}: curl çıktısı çözülemedi")))
         })();
         // Anahtar içeren geçici başlık dosyası kalıcı olmasın (kişi verisi değil, bu crate'in kendi geçici dosyası).
         let _ = fs::remove_file(&basliklar);
@@ -349,5 +392,15 @@ impl Gonderici for CurlGonderici {
             return Err(GonderHata::Yapilandirma(format!("geçersiz uç: {uc}")));
         }
         self.istek("GET", uc, &[])
+    }
+
+    fn al_ham(&self, uc: &str, aralik: Option<(u64, u64)>) -> Result<Vec<u8>, GonderHata> {
+        if !super::uc_sorgulu_gecerli(uc) {
+            return Err(GonderHata::Yapilandirma(format!("geçersiz uç: {uc}")));
+        }
+        if matches!(aralik, Some((a, b)) if a > b) {
+            return Err(GonderHata::Yapilandirma("geçersiz bayt aralığı".into()));
+        }
+        self.istek_ham(uc, aralik)
     }
 }

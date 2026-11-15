@@ -1,0 +1,20 @@
+# taa-havuz: ortak veri havuzu istemcisi (önbellek + imleçle eşitleme + çevrimdışı okuma). Sahip: Yusuf.
+# Plan: planlar/PLAN-ORTAK-VERI-HAVUZU-2026-11-12.md (H3); sözleşme: docs/havuz-sozlesmesi.md.
+# Bağımlılık: yalnız çalışma alanında zaten kullanılan sha2 (içerik doğrulama); HTTP için yeni crate yok (taa-kuyruk/curl).
+[package]
+name = "taa-havuz"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "TAA ortak veri havuzu istemcisi: program ilgisine göre eşitler, yerelde önbellekler, çevrimdışı okur"
+
+[lib]
+name = "taa_havuz"
+path = "src/lib.rs"
+
+[dependencies]
+serde_json = "1"
+sha2 = "0.10"
+taa-dosya = { path = "../taa-dosya" }
+taa-kuyruk = { path = "../taa-kuyruk" }

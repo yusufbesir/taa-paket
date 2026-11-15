@@ -27,5 +27,13 @@ Bir kayıt bir programda şu üç koşul birlikte sağlanırsa görünür (sunuc
 - Tür adı `aile.ad` (küçük harf, tire serbest); tür sürümü katalogda, `@N` ile istenir. Eski sürüm en az bir sürüm daha yaşar.
 - Yeni tür eklemek: `docs/havuz-turleri.toml`'a yazılır, `python3 tools/havuz_denetle.py` temiz çıkmalıdır.
 
+## İstemci (`taa-havuz`)
+- Önbellek: `<veri kökü>/havuz-onbellek/<program>/` (program başına ayrı; sunucu görünürlüğü program ilgisiyle süzdüğü için başka programın verisi buraya girmez).
+- `Havuz::ac(kök, program)` → `esitle(&Gonderici)`: önce yeni etkin öğeler (`/ogeler?since=`), sonra arşivlenenler (`/olaylar?since=`). İmleç her öğeden sonra diske yazılır; kesintide kaldığı yerden sürer.
+- Okuma ağsızdır: `ogeler`, `bul`, `satirlar`, `satir`, `dosya_yolu`. Sunucu yokken önbellek okunur; `esitle` ağ hatasında önbelleği bozmaz (`HavuzHata::cevrimdisi_mi`).
+- Dosyalar isteğe bağlı iner (`indir`): 1 MiB `Range` parçaları, yarım kalırsa sürer, bitince sha256 + boyut doğrulanır; uyuşmazsa sıfırlanır ve dosya sunulmaz.
+- Arşivlenen öğe dizinden çıkar; dosyaları silinmez (`yetimler` yalnız listeler).
+- Ulaşım yolu (taa-yol) seçimi çağıranındır; HTTP `taa-kuyruk::CurlGonderici` ile (`al`, `al_ham`).
+
 ## Denetim
 `python3 tools/havuz_denetle.py` kataloğu doğrular; `--program program.toml modul.toml ...` ile programın havuz bildirimlerini katalogla karşılaştırır. Hata varsa çıkış 1.
