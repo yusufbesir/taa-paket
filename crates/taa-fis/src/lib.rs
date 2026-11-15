@@ -66,6 +66,13 @@ pub struct Imza {
     pub saat: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub cihaz: String,
+    /// "dogrulanmis" (Telegram kimliği) ya da "beyan" (listeden seçilen kişi); eski satırlarda boş.
+    /// Beyan usta performansına ve puana sayılmaz.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub kimlik_duzeyi: String,
+    /// Kayıtta ad değil kişi kimliği tutulur (havuz kişi kaydı); eski satırlarda boş.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub okutan_kisi_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -425,6 +432,64 @@ mod testler {
         }
         let f2 = d.ekle(girdi()).unwrap();
         assert!(!duz_metin(&f2, 42).contains("KARGO"));
+    }
+
+    #[test]
+    fn beyan_imzasi_kisi_ister_ve_usta_olamaz() {
+        let dir = taa_dosya::gecici_klasor().unwrap();
+        let y = dir.join("d.jsonl");
+        let d = Defter { yol: &y };
+        let f = d.ekle(girdi()).unwrap();
+        assert!(d
+            .imzala_kisili(
+                &f.no,
+                "magaza",
+                "teslim-eden",
+                "2026-11-15",
+                "10:00:00",
+                "tel-1",
+                "beyan",
+                ""
+            )
+            .is_err());
+        assert!(d
+            .imzala_kisili(
+                &f.no,
+                "magaza",
+                "usta",
+                "2026-11-15",
+                "10:00:00",
+                "tel-1",
+                "beyan",
+                "k-7"
+            )
+            .is_err());
+        assert!(d
+            .imzala_kisili(
+                &f.no,
+                "magaza",
+                "teslim-eden",
+                "2026-11-15",
+                "10:00:00",
+                "tel-1",
+                "x",
+                "k-7"
+            )
+            .is_err());
+        d.imzala_kisili(
+            &f.no,
+            "magaza",
+            "teslim-eden",
+            "2026-11-15",
+            "10:00:00",
+            "tel-1",
+            "beyan",
+            "k-7",
+        )
+        .unwrap();
+        let im = &d.bul(&f.no).unwrap().unwrap().imzalar;
+        assert_eq!(im[0].kimlik_duzeyi, "beyan");
+        assert_eq!(im[0].okutan_kisi_id, "k-7");
     }
 
     #[test]
