@@ -1,7 +1,7 @@
 # Sahip: Yusuf. yazan: [Claude#ortak-veri-havuzu 2026-11-12]
 # TAA ortak veri havuzu tür kataloğu (docs/havuz-sozlesmesi.md). Kaynak: planlar/PLAN-ORTAK-VERI-HAVUZU-2026-11-12.md §9.
 # Eşleme ÖNERİDİR; yanlışsa yalnız bu dosya düzeltilir. kip: "tablo" (tek yazar) | "dosya" (çok yazar olabilir).
-# taaveri = TAA Veri, Çatı'nın (sunucu PC) veri tutan programı; ürün, fiyat, barkod ve OCR eğitim verisinin yazarı (Yusuf 2026-11-13).
+# taaveri = TAA Veri Tabanı Deposu (Yusuf 2026-11-13: tüm veriler bu programın altında tutulur), Çatı'nın (sunucu PC) veri tutan programı; ürün, fiyat, barkod ve OCR eğitim verisinin yazarı (Yusuf 2026-11-13).
 # okuyanlar: bu türü gösteren programlar. Görünürlük ayrıca Çatı yetkisi ve şube kapsamıyla süzülür.
 
 [programlar]
@@ -37,6 +37,15 @@ yazanlar = ["taaveri"]
 okuyanlar = ["fiyatetiketi", "taarkod", "tutaa"]
 kisisel = false
 aciklama = "Barkod, ürün kodu, beden/renk"
+
+[turler."stok.kod"]
+surum = 1
+aile = "urun"
+kip = "tablo"
+yazanlar = ["taaveri"]
+okuyanlar = ["taaocr", "tutaa", "fiyatetiketi"]
+kisisel = false
+aciklama = "Stok kodları (OCR kısıtlı çözümleme ve fiş/etiket doğrulaması)"
 
 [turler."beden.cetveli"]
 surum = 1
