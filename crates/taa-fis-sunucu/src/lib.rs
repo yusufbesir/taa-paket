@@ -5,6 +5,7 @@
 //! Özellik anahtarları: "fis-sunucu", "telefon-eslestirme" (varsayılan açık). Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-04].
 
 pub mod cihaz;
+mod hesap_uclari;
 pub mod sayfalar;
 
 use serde_json::json;
@@ -215,6 +216,10 @@ impl Uygulama {
                 }),
             ),
             ("POST", ["telegram", gizli]) => self.telegram(gizli, i),
+            ("GET", ["wa", belirtec]) => self.wa_sayfasi(belirtec),
+            ("POST", ["api", "yonetim", "baglama-kodu"]) => self.baglama_kodu(i),
+            ("GET", ["api", "yonetim", "hesaplar"]) => self.hesap_listesi(i),
+            ("POST", ["api", "yonetim", "hesap", tg, islem]) => self.hesap_islemi(i, tg, islem),
             ("GET" | "POST", ["api", ..]) => self.yetkili(i, &parca),
             _ => Yanit::hata(404, "bulunamadı"),
         }
@@ -268,6 +273,7 @@ impl Uygulama {
             dizin: &self.dizin,
             ayar: &ayar,
             bugun: &bugun,
+            simdi: self.simdi(),
         };
         match bot.yanit(&g) {
             Some(y) => Yanit::json(200, y),
@@ -1298,6 +1304,76 @@ mod testler {
         let metin = m[0]["metin"].as_str().unwrap();
         assert!(metin.contains(a.as_str()) && !metin.contains("Ayşe") && !metin.contains("0532"));
         assert_eq!(m[0]["telefon"], "905321234567");
+    }
+
+    #[test]
+    fn hesap_baglama_uclari_ve_wa_sayfasi() {
+        let u = uyg();
+        let kod = r#"{"rol":"usta","sube":"Esenyurt","yonetici":"Y-1"}"#;
+        // telefon yetkisiyle ya da yerel olmayan istekle olmaz
+        assert_eq!(
+            u.isle(&ist("POST", "/api/yonetim/baglama-kodu", None, kod, false))
+                .kod,
+            403
+        );
+        assert_eq!(
+            u.isle(&ist("GET", "/api/yonetim/hesaplar", None, "", false))
+                .kod,
+            403
+        );
+        assert_eq!(
+            u.isle(&ist(
+                "POST",
+                "/api/yonetim/baglama-kodu",
+                None,
+                r#"{"rol":"x","yonetici":"Y"}"#,
+                true
+            ))
+            .kod,
+            422
+        );
+        assert_eq!(
+            u.isle(&ist(
+                "POST",
+                "/api/yonetim/baglama-kodu",
+                None,
+                r#"{"rol":"usta"}"#,
+                true
+            ))
+            .kod,
+            422
+        );
+        let y = u.isle(&ist("POST", "/api/yonetim/baglama-kodu", None, kod, true));
+        assert_eq!(y.kod, 200);
+        let v: serde_json::Value = serde_json::from_slice(&y.govde).unwrap();
+        assert_eq!(v["kod"].as_str().unwrap().len(), 8);
+        assert!(v["usta_id"].as_str().unwrap().starts_with("U-"));
+        // onay bekleyen hesap yokken onay 422
+        assert_eq!(
+            u.isle(&ist(
+                "POST",
+                "/api/yonetim/hesap/5/onayla",
+                None,
+                r#"{"yonetici":"Y"}"#,
+                true
+            ))
+            .kod,
+            422
+        );
+        assert_eq!(
+            u.isle(&ist(
+                "POST",
+                "/api/yonetim/hesap/5/onayla",
+                None,
+                r#"{"yonetici":"Y"}"#,
+                false
+            ))
+            .kod,
+            403
+        );
+        // geçersiz WhatsApp belirteci
+        let w = u.isle(&ist("GET", "/wa/yok", None, "", false));
+        assert_eq!(w.kod, 410);
     }
 
     #[test]

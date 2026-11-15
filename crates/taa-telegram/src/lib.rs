@@ -1,25 +1,47 @@
 //! taa-telegram: terzihane iç işlemleri için Telegram botu çekirdeği.
-//! Bot yalnız izinli Telegram kullanıcılarına yanıt verir (`telegram.json` içindeki liste, anahtar bilgisi repoda durmaz).
-//! Ağ kodu YOK: Telegram'ın webhook çağrısına yanıt gövdesi olarak `sendMessage` JSON'u üretir; dışarı istek atmaz.
-//! Müşteri adı/telefonu bot mesajlarında yalnız MASKELİ görünür (ad: ilk/son harf; telefon: ilk 4 ve son 2 hane).
-//! Özellik anahtarı `telegram-bot`: varsayılan KAPALI. Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-05].
+//! Bot yalnız ONAYLI Telegram hesaplarına yanıt verir (`hesaplar.jsonl`; onayı yalnız yönetici ekranı verir, bkz. `hesap`).
+//! Eski `telegram.json` `kullanicilar` listesi geriye uyum için usta sayılır.
+//! Çekirdekte ağ kodu YOK: güncelleme gelir, Telegram yöntem çağrıları (JSON) üretilir. Webhook yanıtı ya da
+//! `yoklama` modülündeki uzun yoklama bunları taşır (dışarıdan kapı açılmaz).
+//! Usta imzası: dayanak değişmeyen sayısal Telegram kimliğidir; kayda profil adı da yazılır (ad girmek gerekmez).
+//! Müşteri adı/telefonu bot mesajlarında yalnız MASKELİ görünür; müşteri numarası Telegram'dan GEÇMEZ:
+//! "Müşteriye WhatsApp'tan haber ver" düğmesi yerel sunucudaki tek kullanımlık adrese gider, o `wa.me`ye yönlendirir,
+//! Gönder'e insan basar. Bu düğmeyi yalnız `magaza` rolündeki (mağaza telefonu) hesap görür.
+//! Özellik anahtarı `telegram-bot`: varsayılan KAPALI. Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-05], TT12c: [Claude Sonnet 5.5, TT başlığı 2026-11-15].
 
-use serde::Deserialize;
+pub mod hesap;
+pub mod yoklama;
+
+use hesap::{HesapDurum, Hesaplar, Rol};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::path::Path;
-use taa_fis::{Defter, Durum};
+use taa_fis::{Defter, Durum, Fis};
 
 const OZELLIK: &str = "telegram-bot";
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize)]
 pub struct Ayar {
-    /// Webhook adresindeki gizli parça: `/telegram/<gizli>`.
+    /// Webhook adresindeki gizli parça: `/telegram/<gizli>` (uzun yoklamada kullanılmaz).
     #[serde(default)]
     pub gizli: String,
-    /// Telegram kullanıcı kimliği -> görünen ad (imzada bu ad yazılır).
+    /// ESKİ: Telegram kullanıcı kimliği -> görünen ad. Geriye uyum: bu hesaplar usta sayılır.
     #[serde(default)]
     pub kullanicilar: BTreeMap<String, String>,
+    /// Botun kullanıcı adı (`t.me/<bot_adi>?start=<fiş no>` kare kodu için; anahtar DEĞİL).
+    #[serde(default)]
+    pub bot_adi: String,
+    /// Yerel sunucunun telefona görünen taban adresi (ör. https://sunucu.ts.net); WhatsApp yönlendirme düğmesi için.
+    #[serde(default)]
+    pub yonlendirme: String,
+    /// Hesap başına dakikada en çok komut (Fable tasarım kararı, ölçüm değil; pilotta gözden geçirilir).
+    #[serde(default = "varsayilan_hiz")]
+    pub hiz_siniri: u32,
+}
+
+fn varsayilan_hiz() -> u32 {
+    20
 }
 
 impl Ayar {
@@ -51,6 +73,52 @@ pub struct Bot<'a> {
     pub ayar: &'a Ayar,
     /// Bugünün tarihi (ISO).
     pub bugun: &'a str,
+    /// Şimdi, unix saniye (kod ömrü, hız sınırı, imza saati). Saat dilimi: Türkiye UTC+3.
+    pub simdi: u64,
+}
+
+/// Onaylı kullanıcının bu işlemdeki kimliği.
+#[derive(Debug, Clone)]
+pub struct Kimlik {
+    pub tg_id: i64,
+    pub profil_adi: String,
+    pub usta_id: String,
+    pub rol: Rol,
+    pub sube: String,
+}
+
+impl Kimlik {
+    /// Fiş defterindeki imza adı: sayısal kimlik + o anki profil adı.
+    pub fn imza_adi(&self) -> String {
+        format!("tg:{} {}", self.tg_id, self.profil_adi)
+    }
+    /// Kişisel usta imzasını yalnız `usta` rolü atar; mağaza telefonu ve yönetici atamaz (K8, K9).
+    fn usta_mi(&self) -> bool {
+        self.rol == Rol::Usta
+    }
+    fn magaza_mi(&self) -> bool {
+        matches!(self.rol, Rol::Magaza | Rol::Yonetici)
+    }
+}
+
+/// Fişteki kare kodun içeriği: botu fiş numarasıyla açar. Kodda ad/telefon YOK.
+pub fn fis_baglantisi(bot_adi: &str, fis_no: &str) -> String {
+    format!("https://t.me/{bot_adi}?start={fis_no}")
+}
+
+/// Kasa okuyucusu için: kare kod metninden (bağlantı ya da düz numara) fiş numarasını ayıklar.
+pub fn baslangic_kodu(metin: &str) -> Option<String> {
+    let m = metin.trim();
+    let no = match m.split_once("start=") {
+        Some((_, k)) => k.split(['&', '#', ' ']).next().unwrap_or(""),
+        None => m,
+    };
+    (!no.is_empty()
+        && no.len() <= 40
+        && no
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'))
+    .then(|| no.to_string())
 }
 
 /// "Ayşe Çelik" -> "A**e Ç***k": her sözcüğün ilk ve son harfi görünür, ortası yıldız.
@@ -84,31 +152,314 @@ pub fn maske_tel(t: &str) -> String {
     )
 }
 
-const YARDIM: &str = "Komutlar:\n/durum FİŞNO\n/terzihanede FİŞNO\n/hazir FİŞNO\n/raf FİŞNO A-12\n/imza FİŞNO\n/bugun (bugün teslim)\n/geciken\n/kargo (kargo bekleyenler)\n/kuru (kuru temizleme)\n/ozet\n/yardim";
+fn url_kodla(s: &str) -> String {
+    s.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (b as char).to_string()
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
+
+#[derive(Serialize, Deserialize)]
+struct WaKayit {
+    belirtec: String,
+    mesaj_id: String,
+    tg_id: i64,
+    gun: String,
+    kullanildi: bool,
+}
+
+fn wa_kayitlari(dizin: &Path) -> Result<Vec<WaKayit>, String> {
+    taa_dosya::satirlari_oku(&dizin.join("wa-belirtecler.jsonl"))
+        .map_err(|e| e.to_string())?
+        .iter()
+        .map(|l| serde_json::from_str(l).map_err(|e| format!("wa satırı bozuk: {e}")))
+        .collect()
+}
+
+fn wa_belirtec_uret(dizin: &Path, mesaj_id: &str, tg_id: i64, gun: &str) -> Result<String, String> {
+    let mut b = [0u8; 16];
+    getrandom::fill(&mut b).map_err(|e| format!("rastgele sayı alınamadı: {e}"))?;
+    let belirtec: String = b.iter().map(|x| format!("{x:02x}")).collect();
+    let k = WaKayit {
+        belirtec: belirtec.clone(),
+        mesaj_id: mesaj_id.into(),
+        tg_id,
+        gun: gun.into(),
+        kullanildi: false,
+    };
+    let s = serde_json::to_string(&k).map_err(|e| e.to_string())?;
+    taa_dosya::satir_ekle(&dizin.join("wa-belirtecler.jsonl"), &s).map_err(|e| e.to_string())?;
+    Ok(belirtec)
+}
+
+/// Yerel sunucudaki `/wa/<belirtec>` adresi bunu çağırır: belirteç tek kullanımlık ve yalnız o gün geçerlidir.
+/// Döndürdüğü `wa.me` bağlantısı hazır metni ve müşteri numarasını taşır; numara Telegram'dan hiç geçmez.
+pub fn wa_yonlendir(dizin: &Path, belirtec: &str, bugun: &str) -> Result<String, String> {
+    let kayitlar = wa_kayitlari(dizin)?;
+    let k = kayitlar
+        .iter()
+        .rev()
+        .find(|k| k.belirtec == belirtec)
+        .ok_or("bağlantı geçersiz")?;
+    if k.kullanildi {
+        return Err("bu bağlantı daha önce kullanıldı; Telegram'dan yeniden isteyin".into());
+    }
+    if k.gun != bugun {
+        return Err("bağlantının süresi doldu; Telegram'dan yeniden isteyin".into());
+    }
+    let q = taa_bildirim::Kuyruk {
+        yol: &dizin.join("bildirimler.jsonl"),
+    };
+    let m = q
+        .mesajlar()?
+        .into_iter()
+        .find(|m| m.id == k.mesaj_id)
+        .ok_or("mesaj bulunamadı")?;
+    let yeni = WaKayit {
+        belirtec: belirtec.into(),
+        mesaj_id: k.mesaj_id.clone(),
+        tg_id: k.tg_id,
+        gun: k.gun.clone(),
+        kullanildi: true,
+    };
+    let s = serde_json::to_string(&yeni).map_err(|e| e.to_string())?;
+    taa_dosya::satir_ekle(&dizin.join("wa-belirtecler.jsonl"), &s).map_err(|e| e.to_string())?;
+    Ok(format!(
+        "https://wa.me/{}?text={}",
+        m.telefon,
+        url_kodla(&m.metin)
+    ))
+}
+
+const YARDIM: &str = "Komutlar:\n/durum FİŞNO\n/terzihanede FİŞNO\n/hazir FİŞNO\n/raf FİŞNO A-12\n/imza FİŞNO\n/bugun (bugün teslim)\n/geciken\n/kargo (kargo bekleyenler)\n/kuru (kuru temizleme)\n/ozet\n/yardim\nFişin kare kodunu okutursanız fiş açılır.";
+
+fn gonder(sohbet: i64, metin: &str, dugmeler: Option<Value>) -> Value {
+    let metin: String = metin.chars().take(3500).collect();
+    match dugmeler {
+        Some(d) => {
+            json!({"method": "sendMessage", "chat_id": sohbet, "text": metin, "reply_markup": {"inline_keyboard": d}})
+        }
+        None => json!({"method": "sendMessage", "chat_id": sohbet, "text": metin}),
+    }
+}
+
+fn ad_goster(from: &Value) -> String {
+    let ad = [from["first_name"].as_str(), from["last_name"].as_str()]
+        .iter()
+        .flatten()
+        .copied()
+        .collect::<Vec<_>>()
+        .join(" ");
+    if !ad.trim().is_empty() {
+        ad
+    } else {
+        from["username"].as_str().unwrap_or("?").to_string()
+    }
+}
+
+fn fis_ozeti(f: &Fis) -> String {
+    format!(
+        "{}: {:?}\nMüşteri: {} Tel: {}\n{}\nTeslim: {} {}\nRaf: {}\nİmza: {}",
+        f.no,
+        f.durum,
+        maske_ad(&f.musteri),
+        maske_tel(&f.telefon),
+        f.kalemler
+            .iter()
+            .map(|k| format!("{} - {}", k.urun, k.islem))
+            .collect::<Vec<_>>()
+            .join("; "),
+        f.teslim,
+        f.teslim_saati,
+        if f.raf.is_empty() { "—" } else { &f.raf },
+        if f.imzalar.is_empty() {
+            "—".to_string()
+        } else {
+            f.imzalar
+                .iter()
+                .map(|i| format!("{} ({})", i.kim, i.rol))
+                .collect::<Vec<_>>()
+                .join(", ")
+        },
+    )
+}
+
+/// Bellekte tutulan sayaçlar (kalıcı DEĞİL, kayıt yazmaz): hız sınırı ve yanlış kod denemesi.
+fn sayac(tur: &str, tg: i64, pencere: u64, sinir: u32) -> bool {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    type Sayac = Mutex<HashMap<(String, i64), (u64, u32)>>;
+    static S: OnceLock<Sayac> = OnceLock::new();
+    let mut m = S
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let e = m.entry((tur.to_string(), tg)).or_insert((pencere, 0));
+    if e.0 != pencere {
+        *e = (pencere, 0);
+    }
+    e.1 += 1;
+    e.1 <= sinir
+}
+
+/// Kalem başına imza (K2): anahtar (fiş, kalem, tur). Alan adları `taa-takip` Olay ile aynıdır; ek alanlar tg_id, profil_adi, tur, kaynak.
+fn imza_olaylari(dizin: &Path) -> Vec<Value> {
+    taa_dosya::satirlari_oku(&dizin.join("imza-olaylari.jsonl"))
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|l| serde_json::from_str(l).ok())
+        .collect()
+}
+
+/// Yeniden iş (tezgâhtar işareti) kalem için yeni tur açar.
+fn acilan_tur(dizin: &Path, no: &str, kalem: usize) -> usize {
+    1 + taa_takip::PuanDefteri::dizinden(dizin)
+        .oku()
+        .unwrap_or_default()
+        .iter()
+        .filter(|k| matches!(k, taa_takip::Kayit::Isaret(i) if i.fis_no == no && i.kalem_no == kalem && i.tur == taa_takip::IsaretTuru::YenidenIs))
+        .count()
+}
+
+fn imzali_tur(dizin: &Path, no: &str, kalem: usize) -> usize {
+    imza_olaylari(dizin)
+        .iter()
+        .filter(|o| o["fis_no"] == no && o["kalem_no"].as_u64() == Some(kalem as u64))
+        .count()
+}
+
+fn bekleyen_kalemler(dizin: &Path, f: &Fis) -> Vec<usize> {
+    (0..f.kalemler.len())
+        .filter(|&i| imzali_tur(dizin, &f.no, i) < acilan_tur(dizin, &f.no, i))
+        .collect()
+}
+
+fn saat_metni(simdi: u64) -> String {
+    let dk = ((simdi + 3 * 3600) / 60) % 1440;
+    format!("{:02}:{:02}", dk / 60, dk % 60)
+}
 
 impl Bot<'_> {
-    /// Telegram güncellemesine webhook yanıtı üretir; yanıtlanacak bir şey yoksa `None`.
+    /// Webhook için tek yanıt: eylemlerin sonuncusu (düğme basışında `answerCallbackQuery` düşer, ileti kalır).
     pub fn yanit(&self, guncelleme: &Value) -> Option<Value> {
-        if !taa_ayar::ozellik_acik(OZELLIK, false) {
-            return None;
-        }
-        let m = guncelleme.get("message")?;
-        let sohbet = m["chat"]["id"].as_i64()?;
-        let metin = m["text"].as_str()?;
-        let kim = m["from"]["id"].as_i64()?;
-        let cevap = match self.ayar.kullanicilar.get(&kim.to_string()) {
-            Some(ad) => self.komut(metin, ad),
-            None => format!(
-                "Bu botu kullanma izniniz yok. Telegram kimliğiniz: {kim}. Yönetici sizi telegram.json listesine eklemeli."
-            ),
-        };
-        let cevap: String = cevap.chars().take(3500).collect();
-        Some(json!({"method": "sendMessage", "chat_id": sohbet, "text": cevap}))
+        self.eylemler(guncelleme).into_iter().last()
     }
 
-    fn komut(&self, metin: &str, ad: &str) -> String {
+    /// Bir güncellemenin doğurduğu Telegram yöntem çağrıları (sırayla gönderilir).
+    pub fn eylemler(&self, g: &Value) -> Vec<Value> {
+        if !taa_ayar::ozellik_acik(OZELLIK, false) {
+            return vec![];
+        }
+        if let Some(m) = g.get("message") {
+            return self.mesaj(m).into_iter().collect();
+        }
+        if let Some(c) = g.get("callback_query") {
+            return self.dugme(c, g["update_id"].as_i64());
+        }
+        vec![]
+    }
+
+    /// Kimliği çözer; Err içindeki metin kullanıcıya gösterilir. Bilinmeyen hesap için HİÇBİR ŞEY kaydedilmez (K1).
+    fn kimlik(&self, from: &Value) -> Result<Kimlik, String> {
+        let tg_id = from["id"].as_i64().ok_or("kimlik yok")?;
+        let profil = hesap::profil_temizle(&ad_goster(from));
+        let h = Hesaplar { dizin: self.dizin };
+        let kimlik = match h.bul(tg_id)? {
+            Some(x) if x.durum == HesapDurum::Onayli => Kimlik {
+                tg_id,
+                profil_adi: profil,
+                usta_id: x.usta_id,
+                rol: x.rol,
+                sube: x.sube,
+            },
+            Some(x) if x.durum == HesapDurum::OnayBekliyor => {
+                return Err("Hesabınız bağlandı, yönetici onayı bekleniyor.".into())
+            }
+            Some(_) => return Err("Bu hesap kapalı. Yöneticiye başvurun.".into()),
+            None if self.ayar.kullanicilar.contains_key(&tg_id.to_string()) => Kimlik {
+                tg_id,
+                profil_adi: profil,
+                usta_id: format!("L-{tg_id}"),
+                rol: Rol::Usta,
+                sube: String::new(),
+            },
+            None => {
+                return Err("Bu bot yalnız onaylı çalışanlar içindir. Yöneticinizden bağlama kodu isteyin ve buraya yazın.".into())
+            }
+        };
+        if !sayac("hiz", tg_id, self.simdi / 60, self.ayar.hiz_siniri) {
+            return Err("Çok hızlı komut gönderdiniz, bir dakika bekleyin.".into());
+        }
+        Ok(kimlik)
+    }
+
+    /// Henüz bağlanmamış hesap bir kod yazarsa bağlamayı dener. Yanlış denemeler hesap başına saatte 5 ile sınırlıdır.
+    fn baglama_denemesi(&self, from: &Value, metin: &str) -> Option<String> {
+        let tg_id = from["id"].as_i64()?;
+        let kod = hesap::kod_ayikla(metin)?;
+        if !sayac("kod", tg_id, self.simdi / 3600, 5) {
+            return Some(
+                "Çok fazla deneme. Yöneticinizle konuşun, bir saat sonra tekrar deneyin.".into(),
+            );
+        }
+        let h = Hesaplar { dizin: self.dizin };
+        match h.kod_ile_bagla(tg_id, &ad_goster(from), &kod, self.simdi, self.bugun) {
+            Ok(x) => Some(format!(
+                "Bağlandı: {}. Yönetici onayından sonra bot çalışır. (Yöneticiye \"bağlandı: {}\" görünür.)",
+                x.usta_id, x.profil_adi
+            )),
+            Err(e) => Some(format!("Kod kabul edilmedi: {e}")),
+        }
+    }
+
+    fn mesaj(&self, m: &Value) -> Option<Value> {
+        let sohbet = m["chat"]["id"].as_i64()?;
+        let metin = m["text"].as_str()?;
+        m["from"]["id"].as_i64()?;
+        // Kayıtlı olmayan hesap yalnız bağlama kodu yazabilir.
+        let h = Hesaplar { dizin: self.dizin };
+        let tg = m["from"]["id"].as_i64()?;
+        if h.bul(tg).ok().flatten().is_none()
+            && !self.ayar.kullanicilar.contains_key(&tg.to_string())
+        {
+            if let Some(c) =
+                self.baglama_denemesi(&m["from"], metin.trim_start_matches("/baglan").trim())
+            {
+                return Some(gonder(sohbet, &c, None));
+            }
+        }
+        match self.kimlik(&m["from"]) {
+            Ok(k) => Some(self.komut(sohbet, metin, &k)),
+            Err(e) => Some(gonder(sohbet, &e, None)),
+        }
+    }
+
+    /// Fiş kartının düğmeleri: usta için bekleyen her kalem, mağaza için WhatsApp.
+    fn dugmeler(&self, f: &Fis, k: &Kimlik) -> Option<Value> {
+        let mut satirlar = vec![];
+        if k.usta_mi() && matches!(f.durum, Durum::Bekliyor | Durum::Terzihanede | Durum::Hazir) {
+            for i in bekleyen_kalemler(self.dizin, f) {
+                let kalem = &f.kalemler[i];
+                let ad: String = format!("{} - {}", kalem.urun, kalem.islem)
+                    .chars()
+                    .take(40)
+                    .collect();
+                satirlar.push(json!([{"text": format!("Bitti: {ad}"), "callback_data": format!("k:{}:{i}", f.no)}]));
+            }
+        }
+        if k.magaza_mi() && f.durum == Durum::Hazir {
+            satirlar.push(json!([{"text": "Müşteriye WhatsApp'tan haber ver", "callback_data": format!("w:{}", f.no)}]));
+        }
+        (!satirlar.is_empty()).then_some(Value::Array(satirlar))
+    }
+
+    fn komut(&self, sohbet: i64, metin: &str, k: &Kimlik) -> Value {
         let mut p = metin.split_whitespace();
-        let k = p
+        let kom = p
             .next()
             .unwrap_or("")
             .split('@')
@@ -118,37 +469,19 @@ impl Bot<'_> {
         let (a1, a2) = (p.next().unwrap_or(""), p.next().unwrap_or(""));
         let yol = self.dizin.join("fisler.jsonl");
         let d = Defter { yol: &yol };
-        let r = match k.as_str() {
+        if kom == "/start" && !a1.is_empty() {
+            return match d.bul(a1) {
+                Ok(Some(f)) => gonder(sohbet, &fis_ozeti(&f), self.dugmeler(&f, k)),
+                Ok(None) => gonder(sohbet, &format!("Hata: fiş yok: {a1}"), None),
+                Err(e) => gonder(sohbet, &format!("Hata: {e}"), None),
+            };
+        }
+        let r = match kom.as_str() {
             "/start" | "/yardim" | "/yardım" => Ok(YARDIM.to_string()),
             "/durum" => d
                 .bul(a1)
                 .and_then(|f| f.ok_or_else(|| format!("fiş yok: {a1}")))
-                .map(|f| {
-                    format!(
-                        "{}: {:?}\nMüşteri: {} Tel: {}\n{}\nTeslim: {} {}\nRaf: {}\nİmza: {}",
-                        f.no,
-                        f.durum,
-                        maske_ad(&f.musteri),
-                        maske_tel(&f.telefon),
-                        f.kalemler
-                            .iter()
-                            .map(|k| format!("{} - {}", k.urun, k.islem))
-                            .collect::<Vec<_>>()
-                            .join("; "),
-                        f.teslim,
-                        f.teslim_saati,
-                        if f.raf.is_empty() { "—" } else { &f.raf },
-                        if f.imzalar.is_empty() {
-                            "—".to_string()
-                        } else {
-                            f.imzalar
-                                .iter()
-                                .map(|i| format!("{} ({})", i.kim, i.rol))
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        },
-                    )
-                }),
+                .map(|f| fis_ozeti(&f)),
             "/bugun" | "/bugün" => d.fisler().map(|v| {
                 let l: Vec<String> = v
                     .iter()
@@ -185,7 +518,7 @@ impl Bot<'_> {
                         .join("\n")
                 }
             }),
-            "/kargo" | "/kuru" | "/ozet" => taa_takip::Takip::defterden(&d).map(|t| match k.as_str() {
+            "/kargo" | "/kuru" | "/ozet" => taa_takip::Takip::defterden(&d).map(|t| match kom.as_str() {
                 "/ozet" => {
                     let o = t.ozet(self.bugun);
                     format!(
@@ -211,14 +544,60 @@ impl Bot<'_> {
                 .map(|_| format!("{a1}: terzihanede")),
             "/hazir" | "/hazır" => self.hazir(&d, a1),
             "/raf" => d
-                .raf_ata(a1, a2, ad, self.bugun)
+                .raf_ata(a1, a2, &k.imza_adi(), self.bugun)
                 .map(|_| format!("{a1}: raf {}", a2.to_uppercase())),
-            "/imza" => d
-                .imzala(a1, ad, "usta", self.bugun)
-                .map(|_| format!("{a1}: {ad} imzaladı")),
+            // /imza: kalem seçtirip onay isteyen akışı başlatır (K7); doğrudan imza atmaz.
+            "/imza" => return self.imza_baslat(sohbet, &d, a1, k),
             _ => Ok(format!("Anlamadım. {YARDIM}")),
         };
-        r.unwrap_or_else(|e| format!("Hata: {e}"))
+        gonder(sohbet, &r.unwrap_or_else(|e| format!("Hata: {e}")), None)
+    }
+
+    fn imza_baslat(&self, sohbet: i64, d: &Defter, no: &str, k: &Kimlik) -> Value {
+        if !k.usta_mi() {
+            return gonder(sohbet, "Hata: imza yalnız usta hesabıyla atılır.", None);
+        }
+        match d.bul(no) {
+            Ok(Some(f)) => match self.dugmeler(&f, k) {
+                Some(dg) => gonder(sohbet, &fis_ozeti(&f), Some(dg)),
+                None => gonder(sohbet, "İmzalanacak kalem yok.", None),
+            },
+            Ok(None) => gonder(sohbet, &format!("Hata: fiş yok: {no}"), None),
+            Err(e) => gonder(sohbet, &format!("Hata: {e}"), None),
+        }
+    }
+
+    /// Kalem imzası (K2): anahtar (fiş, kalem, tur). Olay `imza-olaylari.jsonl`'e Olay alan adlarıyla yazılır.
+    /// Fiş defterine imza satırı da düşer (kim = sayısal kimlik + profil adı; çift satır hatası yok sayılır).
+    fn kalem_imzala(
+        &self,
+        d: &Defter,
+        no: &str,
+        kalem: usize,
+        k: &Kimlik,
+        guncelleme: Option<i64>,
+    ) -> Result<(), String> {
+        if !k.usta_mi() {
+            return Err("imza yalnız usta hesabıyla atılır".into());
+        }
+        let f = d.bul(no)?.ok_or_else(|| format!("fiş yok: {no}"))?;
+        // K5: şube kapsamı. Fis'te şube alanı gelince (TT1) burada zorunlu denetim eklenir.
+        let kal = f.kalemler.get(kalem).ok_or("kalem yok")?;
+        if !matches!(f.durum, Durum::Bekliyor | Durum::Terzihanede | Durum::Hazir) {
+            return Err("bu fiş artık imzalanamaz".into());
+        }
+        let tur = imzali_tur(self.dizin, no, kalem);
+        if tur >= acilan_tur(self.dizin, no, kalem) {
+            return Err("bu kalem zaten imzalanmış".into());
+        }
+        let olay = json!({"usta": k.usta_id, "fis_no": no, "kalem_no": kalem, "islem_kodu": kal.islem_kodu,
+            "norm_dk": null, "tarih": self.bugun, "saat": saat_metni(self.simdi),
+            "tur": tur + 1, "tg_id": k.tg_id, "profil_adi": k.profil_adi, "sube": k.sube,
+            "kaynak": "telegram", "guncelleme_id": guncelleme});
+        taa_dosya::satir_ekle(&self.dizin.join("imza-olaylari.jsonl"), &olay.to_string())
+            .map_err(|e| e.to_string())?;
+        let _ = d.imzala(no, &k.imza_adi(), "usta", self.bugun);
+        Ok(())
     }
 
     fn hazir(&self, d: &Defter, no: &str) -> Result<String, String> {
@@ -229,6 +608,178 @@ impl Bot<'_> {
         d.durum_ata(no, Durum::Hazir, self.bugun)?;
         let b = taa_bildirim::hazir_bildir(self.dizin, no, &f.telefon, f.bildirim_izni, self.bugun);
         Ok(format!("{no}: hazır. Müşteri bildirimi: {b}"))
+    }
+
+    fn dugme(&self, c: &Value, guncelleme: Option<i64>) -> Vec<Value> {
+        let (Some(cid), Some(sohbet), Some(veri)) = (
+            c["id"].as_str(),
+            c["message"]["chat"]["id"].as_i64(),
+            c["data"].as_str(),
+        ) else {
+            return vec![];
+        };
+        let cevap =
+            |t: &str| json!({"method": "answerCallbackQuery", "callback_query_id": cid, "text": t});
+        let k = match self.kimlik(&c["from"]) {
+            Ok(k) => k,
+            Err(e) => {
+                return vec![
+                    json!({"method": "answerCallbackQuery", "callback_query_id": cid, "text": e, "show_alert": true}),
+                ]
+            }
+        };
+        let yol = self.dizin.join("fisler.jsonl");
+        let d = Defter { yol: &yol };
+        let mut p = veri.split(':');
+        let tur = p.next().unwrap_or("");
+        let (a1, a2) = (p.next().unwrap_or(""), p.next().unwrap_or(""));
+        match tur {
+            // k: kalem seçildi -> "Bitti mi?" onayı (K7)
+            "k" => self.onay_iste(&d, a1, a2.parse().ok(), &k, sohbet, cevap),
+            // y: onaylandı -> imza
+            "y" => self.imza_onaylandi(&d, a1, a2.parse().ok(), &k, sohbet, guncelleme, cevap),
+            "v" => vec![cevap("Vazgeçildi.")],
+            "w" => self.wa_dugmesi(&d, a1, &k, sohbet, cevap),
+            "g" => {
+                if !k.magaza_mi() {
+                    return vec![cevap("Bu düğme yalnız mağaza telefonu içindir.")];
+                }
+                let kuyruk = taa_bildirim::Kuyruk {
+                    yol: &self.dizin.join("bildirimler.jsonl"),
+                };
+                match kuyruk.sonuc(a1, taa_bildirim::Durum::Gonderildi, self.bugun) {
+                    Ok(()) => vec![
+                        cevap("Kaydedildi: gönderildi."),
+                        gonder(
+                            sohbet,
+                            &format!("{a1}: müşteriye WhatsApp'tan gönderildi olarak işaretlendi."),
+                            None,
+                        ),
+                    ],
+                    Err(e) => vec![cevap(&format!("Hata: {e}"))],
+                }
+            }
+            _ => vec![cevap("Bilinmeyen düğme.")],
+        }
+    }
+
+    fn onay_iste(
+        &self,
+        d: &Defter,
+        no: &str,
+        kalem: Option<usize>,
+        k: &Kimlik,
+        sohbet: i64,
+        cevap: impl Fn(&str) -> Value,
+    ) -> Vec<Value> {
+        if !k.usta_mi() {
+            return vec![cevap("İmza yalnız usta hesabıyla atılır.")];
+        }
+        let (Ok(Some(f)), Some(i)) = (d.bul(no), kalem) else {
+            return vec![cevap("Fiş ya da kalem bulunamadı.")];
+        };
+        let Some(kal) = f.kalemler.get(i) else {
+            return vec![cevap("Kalem bulunamadı.")];
+        };
+        let dg = json!([[
+            {"text": "Evet, bitti", "callback_data": format!("y:{no}:{i}")},
+            {"text": "Vazgeç", "callback_data": "v"}
+        ]]);
+        vec![
+            cevap("Onay bekleniyor."),
+            gonder(
+                sohbet,
+                &format!(
+                    "{no}: {} - {}\nBitti mi? Onaylarsanız bu iş sizin adınıza imzalanır.",
+                    kal.urun, kal.islem
+                ),
+                Some(dg),
+            ),
+        ]
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn imza_onaylandi(
+        &self,
+        d: &Defter,
+        no: &str,
+        kalem: Option<usize>,
+        k: &Kimlik,
+        sohbet: i64,
+        guncelleme: Option<i64>,
+        cevap: impl Fn(&str) -> Value,
+    ) -> Vec<Value> {
+        let Some(i) = kalem else {
+            return vec![cevap("Kalem bulunamadı.")];
+        };
+        if let Err(e) = self.kalem_imzala(d, no, i, k, guncelleme) {
+            return vec![cevap(&format!("Hata: {e}"))];
+        }
+        let mut metin = format!("{no}: kalem {} bitti, {} imzaladı.", i + 1, k.profil_adi);
+        // Tüm kalemler imzalanınca fiş "hazır" olur ve müşteri bildirimi kuyruğa yazılır.
+        if let Ok(Some(f)) = d.bul(no) {
+            if f.durum != Durum::Hazir && bekleyen_kalemler(self.dizin, &f).is_empty() {
+                match self.hazir(d, no) {
+                    Ok(s) => metin.push_str(&format!("\nTüm kalemler bitti. {s}")),
+                    Err(e) => metin.push_str(&format!("\nDurum güncellenemedi: {e}")),
+                }
+            }
+        }
+        vec![cevap("İmzalandı."), gonder(sohbet, &metin, None)]
+    }
+
+    fn wa_dugmesi(
+        &self,
+        d: &Defter,
+        no: &str,
+        k: &Kimlik,
+        sohbet: i64,
+        cevap: impl Fn(&str) -> Value,
+    ) -> Vec<Value> {
+        if !k.magaza_mi() {
+            return vec![cevap("Bu düğme yalnız mağaza telefonu içindir.")];
+        }
+        let f = match d.bul(no) {
+            Ok(Some(f)) if f.durum == Durum::Hazir => f,
+            _ => return vec![cevap("Fiş hazır değil.")],
+        };
+        if !f.bildirim_izni {
+            return vec![cevap(
+                "Müşteri bilgilendirme izni vermemiş: aranacaklar listesine alın.",
+            )];
+        }
+        if self.ayar.yonlendirme.trim().is_empty() {
+            return vec![cevap("Yönlendirme adresi ayarlanmamış; kasadaki \"Gönderilecek mesajlar\" listesinden gönderin.")];
+        }
+        taa_bildirim::hazir_bildir(self.dizin, no, &f.telefon, true, self.bugun);
+        let kuyruk = taa_bildirim::Kuyruk {
+            yol: &self.dizin.join("bildirimler.jsonl"),
+        };
+        let m = match kuyruk.mesajlar() {
+            Ok(v) => v.into_iter().find(|m| m.fis_no == no),
+            Err(_) => None,
+        };
+        let Some(m) = m else {
+            return vec![cevap(
+                "Mesaj kuyrukta yok (telefon geçersiz olabilir): aranacaklar listesine alın.",
+            )];
+        };
+        let belirtec = match wa_belirtec_uret(self.dizin, &m.id, k.tg_id, self.bugun) {
+            Ok(b) => b,
+            Err(e) => return vec![cevap(&format!("Hata: {e}"))],
+        };
+        let adres = format!(
+            "{}/wa/{belirtec}",
+            self.ayar.yonlendirme.trim_end_matches('/')
+        );
+        let dugme = json!([
+            [{"text": "WhatsApp'ı aç", "url": adres}],
+            [{"text": "Gönderdim", "callback_data": format!("g:{}", m.id)}]
+        ]);
+        vec![
+            cevap("Bağlantı hazır."),
+            gonder(sohbet, &format!("{no}: WhatsApp'ı açın, mesaj hazır gelir, Gönder'e siz basın; sonra \"Gönderdim\"e dokunun. Bağlantı tek kullanımlıktır ve bugün geçerlidir."), Some(dugme)),
+        ]
     }
 }
 
@@ -241,7 +792,7 @@ mod testler {
         let d = taa_dosya::gecici_klasor().unwrap();
         let y = d.join("fisler.jsonl");
         let g: Girdi = serde_json::from_str(
-            r#"{"satis_danismani":"Mert","olcu_alan":"K","musteri":"Ayşe Çelik","telefon":"05321234567","kalemler":[{"urun":"Pantolon","islem":"paça kısalt"}],"teslim":"2099-01-01","ucret_kurus":100,"bildirim_izni":true,"tarih":"2026-11-05"}"#,
+            r#"{"satis_danismani":"Mert","olcu_alan":"K","musteri":"Ayşe Çelik","telefon":"05321234567","kalemler":[{"urun":"Pantolon","islem":"paça kısalt"},{"urun":"Ceket","islem":"kol kısalt"}],"teslim":"2099-01-01","ucret_kurus":100,"bildirim_izni":true,"tarih":"2026-11-05"}"#,
         )
         .unwrap();
         let f = Defter { yol: &y }.ekle(g).unwrap();
@@ -251,16 +802,39 @@ mod testler {
     fn ayar() -> Ayar {
         Ayar {
             gizli: "0123456789abcdef".into(),
-            kullanicilar: [("42".to_string(), "Usta Ahmet".to_string())].into(),
+            kullanicilar: Default::default(),
+            bot_adi: "taa_terzi_bot".into(),
+            yonlendirme: "https://sunucu.example/".into(),
+            hiz_siniri: 100_000,
         }
     }
 
-    fn mesaj(kim: i64, metin: &str) -> Value {
-        json!({"message": {"chat": {"id": 7}, "from": {"id": kim}, "text": metin}})
+    fn msg(kim: i64, metin: &str) -> Value {
+        json!({"message": {"chat": {"id": 7}, "from": {"id": kim, "first_name": "Ahmet", "username": "ahmet_x"}, "text": metin}})
+    }
+    fn tus(kim: i64, veri: &str) -> Value {
+        json!({"update_id": 9, "callback_query": {"id": "c1", "from": {"id": kim, "first_name": "Ahmet"}, "message": {"chat": {"id": 7}}, "data": veri}})
+    }
+    fn metinler(v: &[Value]) -> String {
+        v.iter()
+            .map(|x| format!("{}{}", x["text"].as_str().unwrap_or(""), x["reply_markup"]))
+            .collect::<Vec<_>>()
+            .join("|")
+    }
+
+    /// Hesabı yönetici koduyla bağlayıp onaylar.
+    fn baglan(b: &Bot, d: &Path, kim: i64, rol: Rol) {
+        let h = Hesaplar { dizin: d };
+        let (kod, _) = h
+            .kod_uret("", rol, "Esenyurt", "Y-1", b.simdi, 600)
+            .unwrap();
+        let y = b.eylemler(&msg(kim, &kod));
+        assert!(metinler(&y).contains("Bağlandı"), "{y:?}");
+        h.onayla(kim, "Y-1", b.bugun).unwrap();
     }
 
     #[test]
-    fn akis() {
+    fn tam_akis() {
         std::env::set_var("TAA_OZELLIK_TELEGRAM_BOT", "1");
         let (d, no) = kur();
         let a = ayar();
@@ -268,40 +842,165 @@ mod testler {
             dizin: &d,
             ayar: &a,
             bugun: "2026-11-05",
+            simdi: 1_000_000,
         };
-        let y = |kim, m: &str| {
-            b.yanit(&mesaj(kim, m)).unwrap()["text"]
-                .as_str()
-                .unwrap()
-                .to_string()
-        };
-        // yetkisiz
-        assert!(y(99, "/durum x").contains("izniniz yok") && y(99, "/durum x").contains("99"));
-        // durum: müşteri adı/telefonu görünmez
-        let t = y(42, &format!("/durum {no}"));
-        assert!(t.contains("paça kısalt") && !t.contains("Ayşe") && !t.contains("1234"));
-        assert!(t.contains("A**e Ç***k") && t.contains("0532*****67"), "{t}");
-        assert!(y(42, &format!("/raf {no} a-12")).contains("A-12"));
-        assert!(y(42, &format!("/imza {no}")).contains("Usta Ahmet"));
-        assert!(y(42, &format!("/imza {no}")).starts_with("Hata"));
-        let h = y(42, &format!("/hazir {no}"));
-        assert!(h.contains("kuyruğa yazıldı"), "{h}");
-        assert!(y(42, &format!("/durum {no}")).contains("Hazir"));
-        assert!(y(42, "/hazir F-yok").starts_with("Hata"));
-        assert!(y(42, "/bugun").contains("yok"));
-        // takip komutları: kargo/kuru listesi boş, özet sayıları var, ad maskeli
-        assert_eq!(y(42, "/kargo"), "Liste boş.");
-        assert_eq!(y(42, "/kuru"), "Liste boş.");
-        assert!(y(42, "/ozet").contains("Hazır 1"));
-        assert!(y(42, "/xyz").contains("Komutlar"));
-        // yanıt biçimi
-        let r = b.yanit(&mesaj(42, "/yardim")).unwrap();
-        assert_eq!(
-            (r["method"].as_str(), r["chat_id"].as_i64()),
-            (Some("sendMessage"), Some(7))
+        // K1: bağlanmamış hesap sabit metin alır, hiçbir şey kaydedilmez
+        let y = b.eylemler(&msg(99, "/durum x"));
+        assert!(metinler(&y).contains("onaylı çalışanlar") && !metinler(&y).contains("99"));
+        assert!(!d.join("hesaplar.jsonl").exists());
+        // yanlış kod yine kayıt yazmaz
+        assert!(metinler(&b.eylemler(&msg(99, "00000000"))).contains("kabul edilmedi"));
+        assert!(!d.join("hesaplar.jsonl").exists());
+        // usta: kodla bağla, onay beklerken bot çalışmaz
+        let h = Hesaplar { dizin: &d };
+        let (kod, _) = h
+            .kod_uret("", Rol::Usta, "Esenyurt", "Y-1", b.simdi, 600)
+            .unwrap();
+        assert!(metinler(&b.eylemler(&msg(42, &kod))).contains("Bağlandı"));
+        assert!(metinler(&b.eylemler(&msg(42, "/durum x"))).contains("onayı bekleniyor"));
+        h.onayla(42, "Y-1", "2026-11-05").unwrap();
+        // fiş kare koduyla açılır: maskeli özet + her kalem için düğme
+        let t = metinler(&b.eylemler(&msg(42, &format!("/start {no}"))));
+        assert!(t.contains("A**e Ç***k") && t.contains("0532*****67") && !t.contains("Ayşe"));
+        assert!(t.contains(&format!("k:{no}:0")) && t.contains(&format!("k:{no}:1")));
+        // K7: kalem seçince onay istenir, imza henüz yok
+        let o = metinler(&b.eylemler(&tus(42, &format!("k:{no}:0"))));
+        assert!(o.contains("Bitti mi?") && o.contains(&format!("y:{no}:0")));
+        assert!(!d.join("imza-olaylari.jsonl").exists());
+        // onay: 1. kalem imzalanır, fiş hâlâ hazır değil
+        let s = metinler(&b.eylemler(&tus(42, &format!("y:{no}:0"))));
+        assert!(
+            s.contains("kalem 1 bitti") && !s.contains("Tüm kalemler"),
+            "{s}"
         );
+        // K2: aynı kalem ikinci kez imzalanamaz; ikinci kalem imzalanabilir
+        assert!(metinler(&b.eylemler(&tus(42, &format!("y:{no}:0")))).contains("zaten imzalanmış"));
+        let s = metinler(&b.eylemler(&tus(42, &format!("y:{no}:1"))));
+        assert!(
+            s.contains("Tüm kalemler bitti") && s.contains("kuyruğa yazıldı"),
+            "{s}"
+        );
+        let ol: Vec<Value> = taa_dosya::satirlari_oku(&d.join("imza-olaylari.jsonl"))
+            .unwrap()
+            .iter()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        assert_eq!(ol.len(), 2);
+        assert_eq!(ol[0]["tg_id"], 42);
+        assert_eq!(ol[0]["fis_no"], no.as_str());
+        assert!(ol[0]["usta"].as_str().unwrap().starts_with("U-"));
+        assert!(ol[0].get("kullanici_adi").is_none() && !ol[0].to_string().contains("ahmet_x"));
+        // usta WhatsApp düğmesini göremez/kullanamaz
+        assert!(metinler(&b.eylemler(&tus(42, &format!("w:{no}")))).contains("yalnız mağaza"));
+        // mağaza telefonu: usta imzası atamaz, WhatsApp akışı çalışır
+        baglan(&b, &d, 77, Rol::Magaza);
+        let t = metinler(&b.eylemler(&msg(77, &format!("/start {no}"))));
+        assert!(t.contains(&format!("w:{no}")) && !t.contains("Bitti:"));
+        assert!(metinler(&b.eylemler(&tus(77, &format!("y:{no}:0")))).contains("yalnız usta"));
+        let w = b.eylemler(&tus(77, &format!("w:{no}")));
+        let wm = metinler(&w);
+        assert!(
+            wm.contains("https://sunucu.example/wa/") && wm.contains("g:M-1"),
+            "{wm}"
+        );
+        // müşteri numarası Telegram'a giden hiçbir yöntemde yok
+        assert!(!serde_json::to_string(&w).unwrap().contains("905321234567"));
+        let belirtec = wm
+            .split("/wa/")
+            .nth(1)
+            .unwrap()
+            .split('"')
+            .next()
+            .unwrap()
+            .to_string();
+        let url = wa_yonlendir(&d, &belirtec, "2026-11-05").unwrap();
+        assert!(url.starts_with("https://wa.me/905321234567?text=") && url.contains("F-"));
+        // tek kullanımlık, yalnız o gün
+        assert!(wa_yonlendir(&d, &belirtec, "2026-11-05")
+            .unwrap_err()
+            .contains("kullanıldı"));
+        assert!(wa_yonlendir(&d, "yok", "2026-11-05").is_err());
+        // "gönderdim"
+        assert!(metinler(&b.eylemler(&tus(77, "g:M-1"))).contains("gönderildi"));
+        let q = taa_bildirim::Kuyruk {
+            yol: &d.join("bildirimler.jsonl"),
+        };
+        assert_eq!(
+            q.mesajlar().unwrap()[0].durum,
+            taa_bildirim::Durum::Gonderildi
+        );
+        // yabancı hesap düğmeye basamaz
+        let y = b.eylemler(&tus(1234, &format!("y:{no}:0")));
+        assert_eq!(y[0]["show_alert"], true);
         // metin olmayan güncelleme yanıtsız
         assert!(b.yanit(&json!({"edited_message": {}})).is_none());
+    }
+
+    #[test]
+    fn wa_belirteci_gun_degisince_gecersiz() {
+        std::env::set_var("TAA_OZELLIK_TELEGRAM_BOT", "1");
+        let (d, no) = kur();
+        let a = ayar();
+        let b = Bot {
+            dizin: &d,
+            ayar: &a,
+            bugun: "2026-11-05",
+            simdi: 2_000_000,
+        };
+        let f = Defter {
+            yol: &d.join("fisler.jsonl"),
+        };
+        f.durum_ata(&no, Durum::Hazir, "2026-11-05").unwrap();
+        baglan(&b, &d, 78, Rol::Magaza);
+        let w = metinler(&b.eylemler(&tus(78, &format!("w:{no}"))));
+        let bel = w
+            .split("/wa/")
+            .nth(1)
+            .unwrap()
+            .split('"')
+            .next()
+            .unwrap()
+            .to_string();
+        assert!(wa_yonlendir(&d, &bel, "2026-11-06")
+            .unwrap_err()
+            .contains("süresi"));
+    }
+
+    #[test]
+    fn hiz_siniri_ve_kod_deneme_siniri() {
+        std::env::set_var("TAA_OZELLIK_TELEGRAM_BOT", "1");
+        let (d, _) = kur();
+        let mut a = ayar();
+        a.hiz_siniri = 2;
+        let b = Bot {
+            dizin: &d,
+            ayar: &a,
+            bugun: "2026-11-05",
+            simdi: 3_000_000,
+        };
+        baglan(&b, &d, 88, Rol::Usta);
+        let mut son = String::new();
+        for _ in 0..5 {
+            son = metinler(&b.eylemler(&msg(88, "/yardim")));
+        }
+        assert!(son.contains("Çok hızlı"), "{son}");
+        // yanlış kod: saatte en çok 5 deneme
+        let mut sonuc = String::new();
+        for _ in 0..7 {
+            sonuc = metinler(&b.eylemler(&msg(89, "11112222")));
+        }
+        assert!(sonuc.contains("Çok fazla deneme"), "{sonuc}");
+    }
+
+    #[test]
+    fn baslangic_kodu_ayiklama() {
+        assert_eq!(fis_baglantisi("bot", "F-1"), "https://t.me/bot?start=F-1");
+        assert_eq!(
+            baslangic_kodu("https://t.me/bot?start=F-20261115-0001").as_deref(),
+            Some("F-20261115-0001")
+        );
+        assert_eq!(baslangic_kodu("F-5").as_deref(), Some("F-5"));
+        assert!(baslangic_kodu("../../x").is_none() && baslangic_kodu("").is_none());
     }
 
     #[test]
@@ -325,6 +1024,7 @@ mod testler {
         )
         .unwrap();
         let a = Ayar::dizinden(&d).unwrap();
+        assert_eq!(a.hiz_siniri, 20);
         assert!(
             a.gizli_dogru("0123456789abcdef")
                 && !a.gizli_dogru("0123456789abcdee")

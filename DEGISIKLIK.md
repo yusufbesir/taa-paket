@@ -3,6 +3,15 @@
 
 ## Yayınlanmamış
 
+### Terzi Takip: Telegram botu (TT12c)
+
+- `taa-telegram`: fiş kare koduyla bot açılır (`t.me/<bot>?start=<fiş no>`, kodda ad/telefon yok); fiş maskeli gösterilir, usta her KALEM için "Bitti" der, "Bitti mi? Evet/Vazgeç" onayından sonra imzalanır (anahtar: fiş, kalem, tur; yeniden iş yeni tur). Tüm kalemler imzalanınca fiş hazır olur ve müşteri bildirimi kuyruğa yazılır. İmza olayı `imza-olaylari.jsonl`'e `taa-takip` Olay alan adlarıyla yazılır (usta = rastgele `U-` kimliği, tg_id, o anki profil adı; @kullanıcı adı alınmaz).
+- Hesap bağlama (Fable denetimi K1): yönetici kısa ömürlü tek kullanımlık 8 haneli kod üretir, usta bota yazar, hesap bağlanır, yönetici son onayı verir; kodsuz hesap için hiçbir şey kaydedilmez. Hesap başına dakikada 20 komut (ayar), saatte 5 yanlış kod.
+- "Müşteriye WhatsApp'tan haber ver" ve "Gönderdim" düğmeleri yalnız `magaza` rolünde; mağaza hesabı usta imzası atamaz. Düğme yerel sunucudaki tek kullanımlık, o güne ait `/wa/<belirtec>` adresine gider; `wa.me` bağlantısı (numara + hazır metin) yalnız yerel ağda üretilir, Telegram'dan müşteri numarası geçmez.
+- `yoklama` (uzun yoklama): `Aktarim` arayüzü, kalıcı ofset, tek süreç kilidi, `curl -K -` ile bot anahtarı komut satırında/hata metninde yok. Gerçek Telegram'da DENENMEDİ, `CurlAktarim` yalnız birim testlerle (sahte aktarım) sınandı. Webhook yolu korunur.
+- `taa-fis-sunucu`: `GET /wa/<belirtec>`, yalnız bu bilgisayardan `POST /api/yonetim/baglama-kodu`, `GET /api/yonetim/hesaplar`, `POST /api/yonetim/hesap/<tg_id>/onayla|askiya|kaldir`. Yeni bağımlılık yok (`getrandom` zaten çalışma alanında).
+- Henüz YOK: şube kapsamı denetimi (K5, `Fis.sube` TT1'de gelince), yönetici ekranı düğmeleri, fişe bot kare kodu basımı (TT12d), yönetici adına işaretleme (K9), zincir özeti (TT1).
+
 ### Kurulum ekranı: yerel pencere (tarayıcısız)
 
 - `kurulum/`: tarayıcı + yerel HTTP ekranı KALDIRILDI (`arayuz.rs`, `arayuz.html`, HTTP testleri). Yerine kurucunun kendi Win32 + GDI penceresi (`pencere.rs`, yalnız Windows; `windows-sys` 0.61, Yusuf'un onaylı bağımlılığı, yeni crate yok). Onay, rol, şube (gömülü 15 şube, `kurulum/subeler.txt` → `<kök>\sube.txt`), isteğe bağlı programlar pencerede seçilir; bekleme kartları; sağda adım adım şube ayar direktifleri (`direktif.rs`): kurulum programının yanındaki `sunucu-yollari.json`, `sunucu-ca.pem`, `tailscale.anahtar` var olanı ezmeden yerine kopyalanır, kalanlar numaralı adım. Açık/koyu (sistem teması), yüksek DPI, klavye, kapatma onayı. `--sessiz`/`--arayuzsuz` iken pencere yok; `--sube <kod>` eklendi. Saf mantık platformdan bağımsız ve testli (`secim.rs`, `ekran.rs`, `subeler.rs`, `direktif.rs`; 22 test).
