@@ -522,3 +522,68 @@ fn zaman_coz_ve_bicimle() {
     assert_eq!(zaman::coz("2026-11-06 21:40:12"), None);
     assert_eq!(zaman::coz("kısa"), None);
 }
+
+#[test]
+fn curl_ham_get_aralik_ve_ikili_govde() {
+    if !curl_var() {
+        return;
+    }
+    let _k = CURL_KILIT.lock().unwrap_or_else(|e| e.into_inner());
+    // İkili gövde (satır sonları ve sıfır baytı içerir): curl çıktısındaki durum kodu ayrımını bozmamalı.
+    let icerik: Vec<u8> = vec![0, 10, 13, 10, 255, 10, 7, 10];
+    let dinle = TcpListener::bind("127.0.0.1:0").unwrap();
+    let adres = format!("http://{}", dinle.local_addr().unwrap());
+    let alinan = Arc::new(Mutex::new(Vec::<String>::new()));
+    let (a2, ic) = (alinan.clone(), icerik.clone());
+    std::thread::spawn(move || {
+        for baglanti in dinle.incoming() {
+            let Ok(mut b) = baglanti else { continue };
+            let mut okuyucu = BufReader::new(b.try_clone().unwrap());
+            let mut ilk = String::new();
+            let _ = okuyucu.read_line(&mut ilk);
+            loop {
+                let mut s = String::new();
+                if okuyucu.read_line(&mut s).unwrap_or(0) == 0 || s == "\r\n" {
+                    break;
+                }
+                a2.lock().unwrap().push(s.trim_end().to_string());
+            }
+            let (durum, govde): (&str, &[u8]) = if ilk.contains("/yok") {
+                ("404 Not Found", b"{\"hata\":\"yok\"}")
+            } else {
+                ("206 Partial Content", &ic)
+            };
+            let mut y = format!(
+                "HTTP/1.1 {durum}\r\nContent-Type: video/mp4\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                govde.len()
+            )
+            .into_bytes();
+            y.extend_from_slice(govde);
+            let _ = b.write_all(&y);
+            let _ = b.flush();
+        }
+    });
+    let g = CurlGonderici::yeni(&adres).unwrap().oturum("tok").unwrap();
+    let y = g
+        .al_ham("/v1/havuz/icerik/ab?program=taaegitim", Some((0, 7)))
+        .unwrap();
+    assert_eq!(y, icerik);
+    assert!(alinan
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|b| b == "Range: bytes=0-7"));
+    assert!(alinan.lock().unwrap().iter().any(|b| b == "Accept: */*"));
+    assert!(matches!(
+        g.al_ham("/v1/yok", None),
+        Err(GonderHata::Reddedildi { kod: 404, .. })
+    ));
+    assert!(matches!(
+        g.al_ham("/v1/x?a=b c", None),
+        Err(GonderHata::Yapilandirma(_))
+    ));
+    assert!(matches!(
+        g.al_ham("/v1/x", Some((5, 2))),
+        Err(GonderHata::Yapilandirma(_))
+    ));
+}

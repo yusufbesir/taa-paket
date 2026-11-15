@@ -848,6 +848,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "taa-havuz"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "sha2",
+ "taa-dosya",
+ "taa-kuyruk",
+]
+
+[[package]]
 name = "taa-imza"
 version = "0.1.0"
 dependencies = [
@@ -929,7 +939,7 @@ dependencies = [
 
 [[package]]
 name = "taa-kuyruk"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde_json",
  "taa-dosya",
