@@ -137,7 +137,7 @@ impl Uygulama {
         self.dizin.join("fisler.jsonl")
     }
 
-    /// Bu sunucunun şube kodu (`sube.json`: {"kod":"istanbul-merkez"}). Şube kimliği sunucuda belirlenir;
+    /// Bu sunucunun şube kodu (`sube.json`: {"kod":"MRK01"}). Şube kimliği sunucuda belirlenir;
     /// istemcinin beyanına güvenilmez (docs/sube-sozlesmesi.md §2 kural 1). TAA Kur bu dosyayı yazar.
     fn sube_kodu(&self) -> Result<String, String> {
         let m = std::fs::read_to_string(self.dizin.join("sube.json"))
@@ -872,7 +872,7 @@ mod testler {
 
     fn uyg() -> Uygulama {
         let d = taa_dosya::gecici_klasor().unwrap();
-        std::fs::write(d.join("sube.json"), r#"{"kod":"istanbul-merkez"}"#).unwrap();
+        std::fs::write(d.join("sube.json"), r#"{"kod":"MRK01"}"#).unwrap();
         Uygulama::yeni(d, None, "http://192.168.1.20:8787".into())
     }
 
@@ -933,19 +933,19 @@ mod testler {
         let u = uyg();
         let t = esles(&u);
         // İstemci başka şube beyan ederse 409 ve hiçbir şey yazılmaz.
-        let baska = FIS.replacen('{', r#"{"sube":"bursa","#, 1);
+        let baska = FIS.replacen('{', r#"{"sube":"BRS01","#, 1);
         let y = u.isle(&ist("POST", "/api/fis", Some(&t), &baska, false));
         assert_eq!(y.kod, 409, "{}", String::from_utf8_lossy(&y.govde));
         assert!(!u.dizin.join("fisler.jsonl").exists());
         // Aynı şubeyi beyan etmek serbest; kayıt sunucunun şube koduyla yazılır.
-        let ayni = FIS.replacen('{', r#"{"sube":"istanbul-merkez","#, 1);
+        let ayni = FIS.replacen('{', r#"{"sube":"MRK01","#, 1);
         assert_eq!(
             u.isle(&ist("POST", "/api/fis", Some(&t), &ayni, false)).kod,
             200
         );
         let l = u.isle(&ist("GET", "/api/fisler", Some(&t), "", false));
         let v: serde_json::Value = serde_json::from_slice(&l.govde).unwrap();
-        assert_eq!(v["fisler"][0]["sube"], "istanbul-merkez");
+        assert_eq!(v["fisler"][0]["sube"], "MRK01");
         // sube.json yoksa fiş yazılamaz (503).
         std::fs::remove_file(u.dizin.join("sube.json")).unwrap();
         let y = u.isle(&ist("POST", "/api/fis", Some(&t), FIS, false));
@@ -1356,7 +1356,7 @@ mod testler {
     #[test]
     fn hesap_baglama_uclari_ve_wa_sayfasi() {
         let u = uyg();
-        let kod = r#"{"rol":"personel","sube":"istanbul-merkez","not":"tezgâh","yonetici":"Y-1"}"#;
+        let kod = r#"{"rol":"personel","sube":"MRK01","not":"tezgâh","yonetici":"Y-1"}"#;
         // telefon yetkisiyle ya da yerel olmayan istekle olmaz
         assert_eq!(
             u.isle(&ist("POST", "/api/yonetim/baglama-kodu", None, kod, false))

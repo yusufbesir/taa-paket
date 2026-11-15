@@ -813,7 +813,7 @@ mod testler {
         let d = taa_dosya::gecici_klasor().unwrap();
         let y = d.join("fisler.jsonl");
         let g: Girdi = serde_json::from_str(
-            r#"{"sube":"istanbul-merkez","satis_danismani":"Mert","olcu_alan":"K","musteri":"Ayşe Çelik","telefon":"05321234567","kalemler":[{"urun":"Pantolon","islem":"paça kısalt"},{"urun":"Ceket","islem":"kol kısalt"}],"teslim":"2099-01-01","ucret_kurus":100,"bildirim_izni":true,"tarih":"2026-11-05"}"#,
+            r#"{"sube":"MRK01","satis_danismani":"Mert","olcu_alan":"K","musteri":"Ayşe Çelik","telefon":"05321234567","kalemler":[{"urun":"Pantolon","islem":"paça kısalt"},{"urun":"Ceket","islem":"kol kısalt"}],"teslim":"2099-01-01","ucret_kurus":100,"bildirim_izni":true,"tarih":"2026-11-05"}"#,
         )
         .unwrap();
         let f = Defter { yol: &y }.ekle(g).unwrap();
@@ -847,7 +847,7 @@ mod testler {
     fn baglan(b: &Bot, d: &Path, kim: i64, rol: Rol) {
         let h = Hesaplar { dizin: d };
         let (kod, _) = h
-            .kod_uret("", rol, "istanbul-merkez", "", "Y-1", b.simdi, 600)
+            .kod_uret("", rol, "MRK01", "", "Y-1", b.simdi, 600)
             .unwrap();
         let y = b.eylemler(&msg(kim, &kod));
         assert!(metinler(&y).contains("Bağlandı"), "{y:?}");
@@ -875,7 +875,7 @@ mod testler {
         // usta: kodla bağla, onay beklerken bot çalışmaz
         let h = Hesaplar { dizin: &d };
         let (kod, _) = h
-            .kod_uret("", Rol::Usta, "istanbul-merkez", "", "Y-1", b.simdi, 600)
+            .kod_uret("", Rol::Usta, "MRK01", "", "Y-1", b.simdi, 600)
             .unwrap();
         assert!(metinler(&b.eylemler(&msg(42, &kod))).contains("Bağlandı"));
         assert!(metinler(&b.eylemler(&msg(42, "/durum x"))).contains("onayı bekleniyor"));
@@ -964,11 +964,11 @@ mod testler {
         // Fişi Bursa şubesine yaz (kur() şubesiz yazar; satırı değiştirmeden yeni fiş ekle).
         let y = d.join("fisler.jsonl");
         let g: Girdi = serde_json::from_str(
-            r#"{"sube":"bursa","satis_danismani":"Mert","olcu_alan":"K","musteri":"Veli Kaya","telefon":"05321234568","kalemler":[{"urun":"Pantolon","islem":"paça kısalt"}],"teslim":"2099-01-01","ucret_kurus":100,"bildirim_izni":true,"tarih":"2026-11-05"}"#,
+            r#"{"sube":"BRS01","satis_danismani":"Mert","olcu_alan":"K","musteri":"Veli Kaya","telefon":"05321234568","kalemler":[{"urun":"Pantolon","islem":"paça kısalt"}],"teslim":"2099-01-01","ucret_kurus":100,"bildirim_izni":true,"tarih":"2026-11-05"}"#,
         )
         .unwrap();
         let bursa = Defter { yol: &y }.ekle(g).unwrap();
-        assert_eq!(bursa.sube, "bursa");
+        assert_eq!(bursa.sube, "BRS01");
         let a = ayar();
         let b = Bot {
             dizin: &d,
@@ -976,7 +976,7 @@ mod testler {
             bugun: "2026-11-05",
             simdi: 1_000_000,
         };
-        baglan(&b, &d, 42, Rol::Usta); // hesap şubesi istanbul-merkez
+        baglan(&b, &d, 42, Rol::Usta); // hesap şubesi MRK01
                                        // Başka şubenin fişi: var olduğu bile söylenmez, düğme çıkmaz, imza atılamaz.
         let t = metinler(&b.eylemler(&msg(42, &format!("/start {}", bursa.no))));
         assert!(t.contains("fiş yok") && !t.contains("Veli"), "{t}");
@@ -1003,15 +1003,7 @@ mod testler {
         };
         let h = Hesaplar { dizin: &d };
         let (kod, _) = h
-            .kod_uret(
-                "",
-                Rol::Personel,
-                "istanbul-merkez",
-                "tezgâh",
-                "Y-1",
-                b.simdi,
-                600,
-            )
+            .kod_uret("", Rol::Personel, "MRK01", "tezgâh", "Y-1", b.simdi, 600)
             .unwrap();
         // QR: telefonda Telegram `/start baglan-<kod>` ile açılır
         let y = metinler(&b.eylemler(&msg(55, &format!("/start baglan-{kod}"))));

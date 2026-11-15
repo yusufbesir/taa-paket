@@ -259,7 +259,7 @@ mod testler {
 
     fn girdi(musteri: &str, teslim: &str, usta: &str, kalemler: Vec<Kalem>, kargo: bool) -> Girdi {
         Girdi {
-            sube: "istanbul-merkez".into(),
+            sube: "MRK01".into(),
             tarih: "2026-11-01".into(),
             musteri: musteri.into(),
             telefon: "05321234567".into(),

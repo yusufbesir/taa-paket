@@ -199,15 +199,15 @@ pub fn telefon_duzelt(t: &str) -> Result<String, String> {
     }
 }
 
-/// Şube kodu: küçük harf, rakam ve tire; harfle başlar, 2-40 karakter (ör. `istanbul-merkez`).
-/// Biçim `docs/sube-sozlesmesi.md` §3'teki `subeler.kod` ile aynıdır.
+/// Şube kodu: 3 büyük harf (şube öneki) + 2 rakam (sıra), ör. `MRK01`, `PND01`, `ANK02`.
+/// Önekler `docs/sube-sozlesmesi.md` §3'teki `onek` sütunudur; sıra numarası aynı şehirde ikinci
+/// şubeye ve taşınmalara yer açar (Yusuf kararı 2026-11-15 21:37).
 pub fn sube_kodu_gecerli(k: &str) -> bool {
-    let n = k.chars().count();
-    (2..=40).contains(&n)
-        && k.starts_with(|c: char| c.is_ascii_lowercase())
-        && k.chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
-        && !k.ends_with('-')
+    let b = k.as_bytes();
+    b.len() == 5
+        && b[..3].iter().all(u8::is_ascii_uppercase)
+        && b[3..].iter().all(u8::is_ascii_digit)
+        && &k[3..] != "00"
 }
 
 /// Fiş girdisini denetler; telefonu düzeltilmiş halde ve kalem uyarılarıyla döndürür.
@@ -218,9 +218,7 @@ pub fn dogrula(
     olcu_zorunlu: bool,
 ) -> Result<(String, Vec<String>), String> {
     if !sube_kodu_gecerli(g.sube.trim()) {
-        return Err(
-            "şube kodu olmadan fiş yazılamaz (küçük harf, rakam, tire; ör. istanbul-merkez)".into(),
-        );
+        return Err("şube kodu olmadan fiş yazılamaz (3 büyük harf + 2 rakam; ör. MRK01)".into());
     }
     if g.musteri.trim().is_empty() {
         return Err("müşteri adı gerekli".into());
@@ -314,7 +312,7 @@ mod testler {
 
     fn girdi() -> Girdi {
         Girdi {
-            sube: "istanbul-merkez".into(),
+            sube: "MRK01".into(),
             tarih: "2026-11-04".into(),
             musteri: " Ayşe Çelik ".into(),
             telefon: "+90 532 123 45 67".into(),
@@ -442,10 +440,10 @@ mod testler {
             assert!(e.contains("şube kodu"), "{kotu:?}: {e}");
         }
         assert!(!y.exists(), "reddedilen fiş deftere yazılmamalı");
-        assert!(sube_kodu_gecerli("istanbul-merkez") && sube_kodu_gecerli("van"));
+        assert!(sube_kodu_gecerli("MRK01") && sube_kodu_gecerli("VAN02"));
         // Basılı fişte şube kodu görünür.
         let f = d.ekle(girdi()).unwrap();
-        assert!(duz_metin(&f, 42).contains("Şube: istanbul-merkez"));
+        assert!(duz_metin(&f, 42).contains("Şube: MRK01"));
     }
 
     #[test]
@@ -453,9 +451,9 @@ mod testler {
         let y = yol();
         let d = Defter { yol: &y };
         let mut g = girdi();
-        g.sube = " istanbul-merkez ".into();
+        g.sube = " MRK01 ".into();
         let f = d.ekle(g).unwrap();
-        assert_eq!(f.sube, "istanbul-merkez");
+        assert_eq!(f.sube, "MRK01");
         d.imzala_ayrintili(&f.no, "tg:1", "usta", "2026-11-15", "17:30:05", "cihaz-a")
             .unwrap();
         let k = d.bul(&f.no).unwrap().unwrap();
