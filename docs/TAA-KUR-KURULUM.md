@@ -48,9 +48,12 @@ varsa isteklerini `YedekliGonderici` ile gönderir (`--sunucu`/`TAA_SUNUCU` veri
 - `taa-guncelle liste --duz` artık 6 sütun verir: ad, yayındaki, kurulu|-, grup|-, zorunlu roller|-, açıklama|-.
 - Plan: `docs/SIFRELEME-PLANI.md`; Win32 seçim penceresi (Adım D) ve Electron sessiz kurulum (Adım E) henüz yok.
 
-## Kurulum ekranı (2026-11-15)
-Etkileşimli kurulumda tarayıcıda ilerleme ekranı açılır (std-only yerel HTTP, yalnız `127.0.0.1`): aşamalar, program başına
-İndir / Doğrula / Kur / Ayarla adımları, yüzde, hata ve **Yeniden dene**; beklerken program tanıtım kartları (not + örnek şablon).
-`--arayuzsuz` kapatır; `--sessiz` iken kapalıdır (`--arayuz` ile açılır). Kartlar `kurulum/kartlar.txt`. Ayrıntı: `KURULUM-EKRANI.md`.
+## Kurulum ekranı (2026-11-15; yerel pencere)
+Yusuf: "kurucu brave üzerinde çalışmasın, kendi ekranı olsun. Herhangi bir tarayıcıda çalışmasını istemiyorum."
+Etkileşimli kurulum Windows'ta kurucunun **kendi yerel penceresinde** yürür (Win32 + GDI, `windows-sys`; tarayıcı ve yerel
+HTTP YOK): onay (Kur / Vazgeç), rol (Şube PC / Sunucu PC), şube (gömülü 15 şube; `<kök>\sube.txt`), isteğe bağlı programlar,
+program başına İndir / Doğrula / Kur / Ayarla, yüzde, hata ve **Yeniden dene**; beklerken program kartları (not + örnek şablon);
+sağda kurulumdan sonra yapılacak ayarların numaralı adımları (yapılabilenler kendiliğinden yapılır). `--arayuzsuz` ve `--sessiz`
+iken pencere yok (konsol; sessizde soru yok, `--rol`, `--sube`, `--programlar` ile). Ayrıntı: `KURULUM-EKRANI.md`.
 `taa-guncelle` yalnız `TAA_ILERLEME=1` ortamında stderr'e `TAA-ILERLEME` satırları yazar (başka davranış değişmez).
-Windows'ta çalıştırılmadı (tarayıcı açma, konsol + tarayıcı birlikte); Linux'ta sahte `taa-guncelle` ile uçtan uca denendi.
+Gerçek Windows'ta çalıştırılmadı; Linux'ta wine 9 + Xvfb altında sahte `taa-guncelle` ile uçtan uca denendi.

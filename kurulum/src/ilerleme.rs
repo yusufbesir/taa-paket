@@ -1,6 +1,6 @@
 // Sahip: Yusuf. yazan: [Claude#kur-ekrani 2026-11-15]
 //! Kurulum ilerlemesi: aşama, program adımları (indir, doğrula, kur, ayarla), yüzde ve olay günlüğü. Saf mantık;
-//! G/Ç yok. `taa-guncelle` (TAA_ILERLEME=1) satırlarını çözer, arayüz için JSON üretir. Bkz. docs/KURULUM-EKRANI.md.
+//! G/Ç yok. `taa-guncelle` (TAA_ILERLEME=1) satırlarını çözer; yerel kurulum penceresi bu durumu çizer. Bkz. docs/KURULUM-EKRANI.md.
 
 /// `taa-guncelle` makine satırı öneki.
 pub const ONEK: &str = "TAA-ILERLEME";
@@ -19,14 +19,19 @@ pub enum Asama {
 }
 
 impl Asama {
-    pub fn kod(self) -> &'static str {
+    pub const HEPSI: [Asama; 5] = [Asama::Hazirlik, Asama::Cekirdek, Asama::Secim, Asama::Programlar, Asama::Bitti];
+    /// Ekranda aşama şeridinde görünen kısa ad.
+    pub fn etiket(self) -> &'static str {
         match self {
-            Asama::Hazirlik => "hazirlik",
-            Asama::Cekirdek => "cekirdek",
-            Asama::Secim => "secim",
-            Asama::Programlar => "programlar",
-            Asama::Bitti => "bitti",
+            Asama::Hazirlik => "Hazırlık",
+            Asama::Cekirdek => "Dosyalar",
+            Asama::Secim => "Seçim",
+            Asama::Programlar => "Programlar",
+            Asama::Bitti => "Bitti",
         }
+    }
+    pub fn sira(self) -> usize {
+        Asama::HEPSI.iter().position(|a| *a == self).unwrap_or(0)
     }
 }
 
@@ -81,17 +86,6 @@ pub enum Durum {
     Hata,
 }
 
-impl Durum {
-    pub fn kod(self) -> &'static str {
-        match self {
-            Durum::Bekliyor => "bekliyor",
-            Durum::Suruyor => "suruyor",
-            Durum::Tamam => "tamam",
-            Durum::Hata => "hata",
-        }
-    }
-}
-
 /// `TAA-ILERLEME\t<paket>\t<adım>\t<basladi|bitti>` satırının çözülmüş hali.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Isaret {
@@ -119,7 +113,7 @@ pub fn isaret_coz(satir: &str) -> Option<Isaret> {
     Some(Isaret { paket: paket.to_string(), adim, bitti })
 }
 
-/// Arayüze giden ilerleme olayı: hangi program, hangi adım, genel yüzde ve okunur mesaj.
+/// Ekrana giden ilerleme olayı: hangi program, hangi adım, genel yüzde ve okunur mesaj.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Olay {
     pub sira: u64,
@@ -299,6 +293,11 @@ impl Ilerleme {
         self.programlar.iter().filter(|p| p.durum() == Durum::Hata).map(|p| p.ad.clone()).collect()
     }
 
+    /// Durum satırı için son olayın iletisi.
+    pub fn son_mesaj(&self) -> &str {
+        self.olaylar.last().map(|o| o.mesaj.as_str()).unwrap_or("")
+    }
+
     /// Genel yüzde (0-100).
     pub fn yuzde(&self) -> u8 {
         if self.asama == Asama::Bitti && self.hatalilar().is_empty() {
@@ -318,85 +317,6 @@ impl Ilerleme {
         };
         (cekirdek + programlar).min(100) as u8
     }
-
-    /// Arayüz için JSON. `sonra`: bu sıradan sonraki olaylar (0 = hepsi).
-    pub fn json(&self, sonra: u64) -> String {
-        let mut s = String::with_capacity(512);
-        s.push('{');
-        s.push_str(&format!(
-            "\"surum\":{},\"asama\":\"{}\",\"yuzde\":{},\"komut_bekleniyor\":{},\"cekirdek\":{{\"toplam\":{},\"yazilan\":{}}},",
-            metin(&self.surum),
-            self.asama.kod(),
-            self.yuzde(),
-            self.komut_bekleniyor,
-            self.cekirdek_toplam,
-            self.cekirdek_yazilan
-        ));
-        s.push_str("\"adimlar\":[");
-        for (i, a) in Adim::HEPSI.iter().enumerate() {
-            if i > 0 {
-                s.push(',');
-            }
-            s.push_str(&format!("{{\"kod\":\"{}\",\"etiket\":{}}}", a.kod(), metin(a.etiket())));
-        }
-        s.push_str("],\"programlar\":[");
-        for (i, p) in self.programlar.iter().enumerate() {
-            if i > 0 {
-                s.push(',');
-            }
-            let adimlar: Vec<String> = p.adimlar.iter().map(|d| format!("\"{}\"", d.kod())).collect();
-            s.push_str(&format!(
-                "{{\"ad\":{},\"durum\":\"{}\",\"yuzde\":{},\"adimlar\":[{}],\"hata\":{},\"deneme\":{},\"bagimlilik\":{}}}",
-                metin(&p.ad),
-                p.durum().kod(),
-                p.yuzde(),
-                adimlar.join(","),
-                p.hata.as_deref().map(metin).unwrap_or_else(|| "null".into()),
-                p.deneme,
-                p.bagimlilik
-            ));
-        }
-        s.push_str("],\"olaylar\":[");
-        let mut ilk = true;
-        for o in self.olaylar.iter().filter(|o| o.sira > sonra) {
-            if !ilk {
-                s.push(',');
-            }
-            ilk = false;
-            s.push_str(&format!(
-                "{{\"sira\":{},\"program\":{},\"adim\":{},\"yuzde\":{},\"mesaj\":{}}}",
-                o.sira,
-                metin(&o.program),
-                o.adim.map(|a| format!("\"{}\"", a.kod())).unwrap_or_else(|| "null".into()),
-                o.yuzde,
-                metin(&o.mesaj)
-            ));
-        }
-        s.push_str("]}");
-        s
-    }
-}
-
-/// JSON metin değeri (tırnaklı, kaçışlı). `<` da kaçılır: çıktı HTML içine gömülse bile güvenli.
-pub fn metin(s: &str) -> String {
-    let mut o = String::with_capacity(s.len() + 2);
-    o.push('"');
-    for c in s.chars() {
-        match c {
-            '"' => o.push_str("\\\""),
-            '\\' => o.push_str("\\\\"),
-            '\n' => o.push_str("\\n"),
-            '\r' => o.push_str("\\r"),
-            '\t' => o.push_str("\\t"),
-            '<' => o.push_str("\\u003c"),
-            '>' => o.push_str("\\u003e"),
-            '&' => o.push_str("\\u0026"),
-            c if (c as u32) < 0x20 || c == '\u{2028}' || c == '\u{2029}' => o.push_str(&format!("\\u{:04x}", c as u32)),
-            c => o.push(c),
-        }
-    }
-    o.push('"');
-    o
 }
 
 #[cfg(test)]
@@ -514,24 +434,6 @@ mod testler {
         }
         assert_eq!(i.olaylar.len(), OLAY_SINIRI);
         assert_eq!(i.olaylar.last().unwrap().sira, (OLAY_SINIRI + 25) as u64);
-        let j = i.json((OLAY_SINIRI + 23) as u64);
-        assert_eq!(j.matches("\"sira\":").count(), 2);
-    }
-
-    #[test]
-    fn json_bicimi_ve_kacis() {
-        let mut i = Ilerleme::yeni("0.1\"x");
-        i.program_ekle("a<b>", false);
-        i.program_hata("a<b>", "yol \"C:\\x\"\tbitti");
-        let j = i.json(0);
-        assert!(j.starts_with("{\"surum\":\"0.1\\\"x\",\"asama\":\"hazirlik\""));
-        assert!(j.contains("\"ad\":\"a\\u003cb\\u003e\""));
-        assert!(j.contains("\"hata\":\"yol \\\"C:\\\\x\\\"\\tbitti\""));
-        assert!(j.contains("\"adimlar\":[\"hata\",\"bekliyor\",\"bekliyor\",\"bekliyor\"]"));
-        assert!(!j.contains('<'));
-        assert_eq!(metin("\u{1}\u{2028}"), "\"\\u0001\\u2028\"");
-        // Ayraçlar dengeli (kaba yapı denetimi).
-        assert_eq!(j.matches('{').count(), j.matches('}').count());
-        assert_eq!(j.matches('[').count(), j.matches(']').count());
+        assert_eq!(i.son_mesaj(), "x");
     }
 }

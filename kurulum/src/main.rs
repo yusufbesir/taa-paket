@@ -3,18 +3,30 @@
 //! Kurar: taa-kur.exe, taa-kur-pencere.exe, taa-guncelle.exe, kur.toml (YOKSA), anahtarlar\*.pub (YOKSA), kaldir.exe.
 //! Var olan kur.toml/anahtar dosyasına, depo\, eski\, kayit.json ve veri alanlarına DOKUNMAZ. Kaldırma yalnız kendi
 //! yazdığı dosyaları siler; kurulu TAA programları (depo\) kalır. Sonra yayından program seçtirir (taa-guncelle kur).
-//! Etkileşimli kurulumda tarayıcıda ilerleme ekranı açılır (std-only yerel HTTP; docs/KURULUM-EKRANI.md).
-mod arayuz;
+//! Etkileşimli kurulum Windows'ta kendi yerel penceresinde yürür (Win32 + GDI; tarayıcı ya da HTTP YOK):
+//! aşamalar, program adımları, bekleme kartları ve şube için adım adım ayar direktifleri (docs/KURULUM-EKRANI.md).
+//! `--sessiz` ve `--arayuzsuz` iken pencere açılmaz; seçimler konsolda sorulur (sessizde hiç sorulmaz).
+mod direktif;
+// Ekran modellerinin bir kısmını yalnız yerel pencere (Windows) kullanır; Linux'ta testli saf mantık olarak derlenir.
+#[cfg_attr(not(windows), allow(dead_code))]
+mod ekran;
+#[cfg_attr(not(windows), allow(dead_code))]
 mod ilerleme;
+#[cfg_attr(not(windows), allow(dead_code))]
 mod kartlar;
+#[cfg(windows)]
+mod pencere;
+#[cfg_attr(not(windows), allow(dead_code))]
+mod secim;
+mod subeler;
 
-use arayuz::Komut;
-use ilerleme::{Asama, Ilerleme};
+use ekran::{Ekran, Komut};
+use ilerleme::Asama;
+use secim::{Secenek, Secim};
 use std::fs;
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::{mpsc, Arc, Mutex};
 
 include!(concat!(env!("OUT_DIR"), "/dosyalar.rs"));
 
@@ -23,7 +35,7 @@ const AD: &str = "TAA Kur";
 const KAYIT: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\TAA-Kur";
 const MANIFEST: &str = "kurulum-taa-kur.txt";
 /// Kullanıcıya ait: paketle gelse de var olan dosya ezilmez.
-const KORUNAN: &[&str] = &["kur.toml", "rol.txt"];
+const KORUNAN: &[&str] = &["kur.toml", "rol.txt", "sube.txt"];
 const KORUNAN_ONEK: &str = "anahtarlar/";
 
 #[cfg(windows)]
@@ -114,28 +126,6 @@ fn yaz(yol: &Path, veri: &[u8]) -> Result<(), String> {
 
 fn korunan_mi(ad: &str) -> bool { KORUNAN.contains(&ad) || ad.starts_with(KORUNAN_ONEK) }
 
-/// İlerleme durumu (arayüz kapalıyken de tutulur; ucuz) ve arayüzden gelen komutlar.
-struct Ekran { durum: Arc<Mutex<Ilerleme>>, komut_tx: mpsc::Sender<Komut>, komut_rx: mpsc::Receiver<Komut>, acik: bool }
-
-impl Ekran {
-    fn yeni() -> Self {
-        let (komut_tx, komut_rx) = mpsc::channel();
-        Ekran { durum: Arc::new(Mutex::new(Ilerleme::yeni(SURUM))), komut_tx, komut_rx, acik: false }
-    }
-    fn g<R>(&self, f: impl FnOnce(&mut Ilerleme) -> R) -> Option<R> { self.durum.lock().ok().map(|mut d| f(&mut d)) }
-    /// Yerel sunucuyu başlatıp tarayıcıyı açar. Hata kurulumu durdurmaz.
-    fn ac(&mut self) {
-        match arayuz::baslat(Arc::clone(&self.durum), self.komut_tx.clone()) {
-            Ok(adres) => {
-                self.acik = true;
-                if arayuz::tarayicida_ac(&adres) { println!("Kurulum ekranı tarayıcıda açıldı: {adres}"); }
-                else { println!("Kurulum ekranı için tarayıcıda açın: {adres}"); }
-            }
-            Err(e) => eprintln!("UYARI: kurulum ekranı açılamadı ({e}); kurulum konsolda sürüyor."),
-        }
-    }
-}
-
 /// Katalog satırı (`taa-guncelle liste --duz`): ad, yayındaki, kurulu ("-" = kurulu değil), grup, zorunlu roller, açıklama.
 struct Satir { ad: String, surum: String, kurulu: String, grup: String, zorunlu: Vec<String>, aciklama: String }
 
@@ -197,42 +187,25 @@ fn programlari_kur(hedef: &Path, adlar: &[String], ekran: &Ekran) {
     for a in adlar { program_kur(hedef, a, ekran); }
 }
 
-/// Başarısız kurulum varsa arayüzden "Yeniden dene" ya da "Bitir" (veya konsolda Enter) beklenir.
-/// Dönüş: stdin okuyan iş parçacığı başlatıldı mı (o zaman konsoldan başka soru sorulmaz).
-fn yeniden_dene_dongusu(hedef: &Path, ekran: &Ekran) -> bool {
-    if ekran.g(|d| d.hatalilar().is_empty()).unwrap_or(true) { return false; }
-    let tx = ekran.komut_tx.clone();
-    std::thread::spawn(move || { let mut s = String::new(); let _ = io::stdin().read_line(&mut s); let _ = tx.send(Komut::Bitir); });
-    loop {
-        let hatali = ekran.g(|d| { d.komut_bekleniyor = true; d.hatalilar() }).unwrap_or_default();
-        if hatali.is_empty() { break; }
-        println!("\nKurulamayanlar: {}. Kurulum ekranında 'Yeniden dene'ye basın ya da bitirmek için Enter'a basın.", hatali.join(", "));
-        match ekran.komut_rx.recv() {
-            Ok(Komut::YenidenDene(ad)) => {
-                if ekran.g(|d| { let t = d.yeniden_dene(&ad); if t { d.komut_bekleniyor = false; d.asama(Asama::Programlar, "Yeniden deneniyor"); } t }).unwrap_or(false) {
-                    program_kur(hedef, &ad, ekran);
-                    ekran.g(|d| d.asama(Asama::Bitti, "Kurulum bitti"));
-                }
-            }
-            Ok(Komut::Bitir) | Err(_) => break,
-        }
-    }
-    ekran.g(|d| d.komut_bekleniyor = false);
-    true
+fn satir_oku(yol: &Path) -> Option<String> {
+    fs::read_to_string(yol).ok().map(|r| r.trim().to_string()).filter(|r| !r.is_empty())
 }
 
-/// Bu PC'nin rolü: `--rol sube|sunucu`, yoksa soru (sessizde "sube"). Seçim kökteki rol.txt'ye yazılır (var olan ezilmez).
-fn rol_sec(a: &[String], hedef: &Path, sessiz: bool) -> String {
-    let kayitli = fs::read_to_string(hedef.join("rol.txt")).ok().map(|r| r.trim().to_string()).filter(|r| !r.is_empty());
+/// Bu PC'nin rolü: `--rol sube|sunucu`, kayıtlı rol.txt, yoksa seçim (pencerede ya da konsolda; sessizde "sube").
+/// Seçim kökteki rol.txt'ye yazılır (var olan ezilmez).
+fn rol_sec(a: &[String], hedef: &Path, sessiz: bool, ekran: &Ekran) -> String {
     let rol = match arg(a, "--rol") {
         Some(r) if matches!(r.as_str(), "sube" | "sunucu") => r,
         Some(r) => { eprintln!("UYARI: bilinmeyen rol '{r}' (sube ya da sunucu olmalı); şube sayıldı."); "sube".into() }
-        None => match (kayitli, sessiz) {
+        None => match (satir_oku(&hedef.join("rol.txt")), sessiz) {
             (Some(r), _) => r,
             (None, true) => "sube".into(),
             (None, false) => {
-                println!("\nBu PC ne olacak?\n  1) Şube PC (varsayılan)\n  2) Sunucu PC (TAA Sunucu, veritabanı vb. kendiliğinden kurulur)");
-                if oku_satir("Seçiminiz (Enter = 1): ") == "2" { "sunucu".into() } else { "sube".into() }
+                let s = Secim::tek("Bu PC ne olacak?", "Şube PC'lerinde mağaza programları, Sunucu PC'de TAA Sunucu ve veritabanı paketleri kurulur.", vec![
+                    Secenek::yeni("Şube PC", "Mağazada kullanılan bilgisayar (çoğu kurulum)."),
+                    Secenek::yeni("Sunucu PC", "Merkezdeki sunucu; sunucu paketleri kendiliğinden kurulur."),
+                ], 0).dugmeler("Devam", "Şube PC");
+                if ekran.sec(s) == Some(vec![1]) { "sunucu".into() } else { "sube".into() }
             }
         },
     };
@@ -240,23 +213,41 @@ fn rol_sec(a: &[String], hedef: &Path, sessiz: bool) -> String {
     rol
 }
 
+/// Şube PC'sinde şube: `--sube <kod>`, kayıtlı sube.txt, yoksa gömülü 15 şubeden seçim (sessizde sorulmaz).
+/// Seçilen kod sube.txt'ye yazılır (var olan ezilmez). "Sonra" denirse adım direktif olarak kalır.
+fn sube_sec(a: &[String], hedef: &Path, sessiz: bool, ekran: &Ekran) {
+    if satir_oku(&hedef.join("sube.txt")).is_some() { return; }
+    let liste = subeler::gomulu();
+    let kod = match arg(a, "--sube") {
+        Some(k) if subeler::kod_gecerli(&k) => Some(k),
+        Some(k) => { eprintln!("UYARI: geçersiz şube kodu '{k}' (küçük harf, rakam, '-'); şube seçilmedi."); None }
+        None if sessiz || liste.is_empty() => None,
+        None => {
+            let s = Secim::tek("Hangi şube?", "Bu PC'nin bulunduğu şubeyi seçin. Listede yoksa Sonra deyin; adım aşağıda kalır.",
+                liste.iter().map(|x| Secenek::yeni(x.ad.trim_end_matches(" Mağaza").replace(" Mağaza ", " ").trim(), &x.il)).collect(), 0).dugmeler("Devam", "Sonra");
+            ekran.sec(s).and_then(|v| v.first().and_then(|i| liste.get(*i)).map(|x| x.kod.clone()))
+        }
+    };
+    if let Some(k) = kod { let _ = fs::write(hedef.join("sube.txt"), format!("{k}\n")); }
+}
+
 /// Program seçimi: önce bu rolde ZORUNLU olanlar kendiliğinden kurulur; sonra `--programlar a,b` (sessiz),
-/// `--programsiz` (seçim yok) ya da gruplu numara listesi. `zorunlu_roller` dolu paketler rol-özeldir: yalnız o rollerde
-/// (kendiliğinden) kurulur, başka rolde listede görünmez.
-fn programlari_sec(a: &[String], hedef: &Path, sessiz: bool, ekran: &Ekran) {
+/// `--programsiz` (seçim yok) ya da gruplu çoklu seçim (pencerede ya da konsolda). `zorunlu_roller` dolu paketler
+/// rol-özeldir: yalnız o rollerde (kendiliğinden) kurulur, başka rolde listede görünmez.
+fn programlari_sec(a: &[String], hedef: &Path, rol: &str, sessiz: bool, ekran: &Ekran) {
     let Some(k) = katalog(hedef) else {
         if let Some(l) = arg(a, "--programlar") { programlari_kur(hedef, &l.split(',').map(str::trim).filter(|s| !s.is_empty()).map(str::to_string).collect::<Vec<_>>(), ekran); }
-        else if !sessiz { println!("\nProgram listesi şimdi alınamadı (internet ya da yayın kaynağı). Sonra TAA Kur penceresinden kurabilirsiniz."); }
+        else if !sessiz {
+            println!("\nProgram listesi şimdi alınamadı (internet ya da yayın kaynağı). Sonra TAA Kur penceresinden kurabilirsiniz.");
+            ekran.g(|d| d.asama(Asama::Secim, "Program listesi alınamadı; programları sonra TAA Kur'dan kurabilirsiniz"));
+        }
         return;
     };
-    ekran.g(|d| d.asama(Asama::Secim, "Konsolda seçim bekleniyor"));
-    let rol = rol_sec(a, hedef, sessiz);
-    let zorunlu: Vec<&Satir> = k.iter().filter(|s| s.zorunlu.contains(&rol)).collect();
+    let zorunlu: Vec<&Satir> = k.iter().filter(|s| s.zorunlu.iter().any(|z| z == rol)).collect();
     if !zorunlu.is_empty() {
         println!("\nBu PC ({rol}) için zorunlu paketler kurulacak:");
         for s in &zorunlu { println!("  - {} {}{}", s.ad, s.surum, if s.kurulu != "-" { " (zaten kurulu)" } else { "" }); }
         programlari_kur(hedef, &zorunlu.iter().filter(|s| s.kurulu == "-").map(|s| s.ad.clone()).collect::<Vec<_>>(), ekran);
-        ekran.g(|d| d.asama(Asama::Secim, "Konsolda seçim bekleniyor"));
     }
     if a.iter().any(|x| x == "--programsiz") { return; }
     if let Some(l) = arg(a, "--programlar") {
@@ -266,83 +257,198 @@ fn programlari_sec(a: &[String], hedef: &Path, sessiz: bool, ekran: &Ekran) {
         return;
     }
     if sessiz { return; }
-    let secilebilir: Vec<&Satir> = k.iter().filter(|s| s.kurulu == "-" && s.zorunlu.is_empty()).collect();
+    let mut secilebilir: Vec<&Satir> = k.iter().filter(|s| s.kurulu == "-" && s.zorunlu.is_empty()).collect();
     if secilebilir.is_empty() { println!("\nSeçilebilecek başka program yok (hepsi kurulu ya da zorunlu)."); return; }
-    println!("\nİsteğe bağlı programlar (seçmedikleriniz kurulmaz):");
-    let mut gruplar: Vec<&str> = secilebilir.iter().map(|s| s.grup.as_str()).collect();
-    gruplar.sort(); gruplar.dedup();
-    let mut sira: Vec<&Satir> = vec![];
-    for g in gruplar {
-        println!(" [{g}]");
-        for s in secilebilir.iter().filter(|s| s.grup == g) {
-            sira.push(s);
-            println!("  {}) {} {}{}", sira.len(), s.ad, s.surum, if s.aciklama.is_empty() { String::new() } else { format!(" - {}", s.aciklama) });
-        }
-    }
-    let cevap = oku_satir("Kurulacakların numaralarını yazın (örn. 1,3), hepsi için H, atlamak için Enter: ");
-    let secim: Vec<&str> = if cevap.eq_ignore_ascii_case("h") { sira.iter().map(|s| s.ad.as_str()).collect() }
-        else { cevap.split([',', ' ']).filter_map(|n| n.trim().parse::<usize>().ok()).filter_map(|n| sira.get(n.wrapping_sub(1)).map(|s| s.ad.as_str())).collect() };
-    programlari_kur(hedef, &secim.into_iter().map(str::to_string).collect::<Vec<_>>(), ekran);
+    secilebilir.sort_by(|x, y| x.grup.cmp(&y.grup));
+    ekran.g(|d| d.asama(Asama::Secim, "Program seçimi bekleniyor"));
+    let secenekler = secilebilir.iter().map(|s| Secenek {
+        etiket: format!("{} {}", s.ad, s.surum), aciklama: s.aciklama.clone(), grup: s.grup.clone(),
+    }).collect();
+    let s = Secim::coklu("İsteğe bağlı programlar", "Kurulacakları işaretleyin (Boşluk ya da tıklama). Seçmedikleriniz kurulmaz; sonra TAA Kur'dan da kurabilirsiniz.", secenekler)
+        .dugmeler("Kur", "Hiçbiri");
+    let secim: Vec<String> = ekran.sec(s).unwrap_or_default().into_iter().filter_map(|i| secilebilir.get(i).map(|s| s.ad.clone())).collect();
+    programlari_kur(hedef, &secim, ekran);
 }
 
-fn kur(a: &[String]) -> i32 {
-    let sessiz = a.iter().any(|x| x == "--sessiz");
-    println!("{AD} {SURUM} kurulumu");
-    let hedef = match arg(a, "--hedef").or_else(|| arg(a, "--kok")) {
+/// Kurulum programının bulunduğu klasör (yanına konan sunucu-yollari.json vb. buradan alınır).
+fn yan_klasor() -> Option<PathBuf> {
+    std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf))
+}
+
+fn veri_koku(hedef: &Path) -> PathBuf {
+    direktif::veri_kok(|k| std::env::var(k).ok(), cfg!(windows)).unwrap_or_else(|| hedef.join("veri"))
+}
+
+fn tailscale_kurulu(ekran: &Ekran) -> bool {
+    let pakette = ekran.g(|d| d.programlar.iter().any(|p| p.ad.eq_ignore_ascii_case("tailscale") && p.durum() == ilerleme::Durum::Tamam)).unwrap_or(false);
+    let sistemde = cfg!(windows) && std::env::var("ProgramFiles").map(|p| Path::new(&p).join("Tailscale").join("tailscale.exe").exists()).unwrap_or(false);
+    pakette || sistemde
+}
+
+/// Bilinenleri (rol.txt, sube.txt, kur.toml, kopyalanan yan dosyalar, kurulanlar) toplayıp adımları ekrana yazar.
+fn direktifleri_guncelle(hedef: &Path, oto: &direktif::Otomatik, ekran: &Ekran) {
+    let sube = satir_oku(&hedef.join("sube.txt")).map(|k| {
+        let ad = subeler::bul(&subeler::gomulu(), &k).map(|s| s.ad.clone()).unwrap_or_else(|| k.clone());
+        (k, ad)
+    });
+    let g = direktif::Girdi {
+        rol: satir_oku(&hedef.join("rol.txt")),
+        sube,
+        kaynak_url: fs::read_to_string(hedef.join("kur.toml")).ok().and_then(|t| direktif::kaynak_url_oku(&t)),
+        yollar: oto.yollar,
+        ca: oto.ca,
+        tailscale_anahtar: oto.tailscale_anahtar,
+        tailscale_kurulu: tailscale_kurulu(ekran),
+        hatali: ekran.g(|d| d.hatalilar()).unwrap_or_default(),
+        kuruluyor: ekran.g(|d| d.asama != Asama::Bitti).unwrap_or(false),
+    };
+    let v = direktif::uret(&g);
+    ekran.p(|d| d.direktifler = v);
+}
+
+fn direktifleri_yaz(ekran: &Ekran) {
+    let v = ekran.p(|d| d.direktifler.clone()).unwrap_or_default();
+    if v.is_empty() { return; }
+    println!("\nKurulumdan sonra bu PC'de:");
+    for (i, x) in v.iter().enumerate() {
+        let d = match x.durum { direktif::Durum::Yapildi => "tamam", direktif::Durum::Yapilacak => "yapılacak", direktif::Durum::Bilgi => "bilgi" };
+        println!("  {}. [{d}] {}: {}", i + 1, x.baslik, x.ayrinti);
+    }
+}
+
+/// Kurulumu durduran hata: konsola yazar; pencerede hata kutusu gösterilir ve Bitir beklenir.
+fn hata_bitir(ekran: &Ekran, mesaj: &str, sessiz: bool) -> i32 {
+    eprintln!("HATA: {mesaj}");
+    if ekran.pencere {
+        ekran.p(|d| { d.hata = Some(mesaj.to_string()); d.ilerleme.komut_bekleniyor = true; });
+        while !matches!(ekran.komut_bekle(), Komut::Bitir | Komut::TaaKurAc) {}
+    } else {
+        bekle(sessiz);
+    }
+    1
+}
+
+fn taa_kur_ac(hedef: &Path) {
+    let _ = Command::new(hedef.join(if cfg!(windows) { "taa-kur-pencere.exe" } else { "taa-kur-pencere" })).env("TAA_KOK", hedef).spawn();
+}
+
+/// Kurulum klasörü: `--hedef`/`--kok`, yoksa varsayılan; yalnız konsol kurulumunda (pencere yok, sessiz değil) sorulur.
+fn hedef_belirle(a: &[String], sor_konsolda: bool) -> PathBuf {
+    match arg(a, "--hedef").or_else(|| arg(a, "--kok")) {
         Some(h) => PathBuf::from(h),
-        None if sessiz => varsayilan_hedef(),
+        None if !sor_konsolda => varsayilan_hedef(),
         None => {
             let v = varsayilan_hedef();
             let c = oku_satir(&format!("Kurulum klasörü (Enter = {}): ", v.display()));
             if c.is_empty() { v } else { PathBuf::from(c.trim_matches('"')) }
         }
-    };
+    }
+}
+
+/// Kurulum akışı (pencerede ayrı iş parçacığında çalışır).
+fn kur(a: &[String], hedef: &Path, ekran: &Ekran) -> i32 {
+    let sessiz = a.iter().any(|x| x == "--sessiz");
     println!("Kurulum klasörü: {}", hedef.display());
-    if !sor("Kurulsun mu?", sessiz) { println!("Vazgeçildi."); return 0; }
-    // Kurulum ekranı: etkileşimli kurulumda açık; --sessiz iken yalnız --arayuz ile; --arayuzsuz kapatır.
-    let mut ekran = Ekran::yeni();
-    if !a.iter().any(|x| x == "--arayuzsuz") && (!sessiz || a.iter().any(|x| x == "--arayuz")) { ekran.ac(); }
+    if ekran.pencere {
+        let s = Secim::tek("TAA Kur kurulsun mu?", &format!(
+            "Kurulum klasörü: {}\n\nTAA Kur, güncelleyici ve kaldırma programı kurulur; sonra bu PC'nin rolü ve şubesi sorulur. \
+             Var olan ayar, anahtar ve verilere dokunulmaz.", hedef.display()), vec![], 0).dugmeler("Kur", "Vazgeç");
+        if ekran.sec(s).is_none() { println!("Vazgeçildi."); return 0; }
+    } else if !sor("Kurulsun mu?", sessiz) { println!("Vazgeçildi."); return 0; }
     ekran.g(|d| d.cekirdek_basla(DOSYALAR.len() as u32 + 1));
     let mut liste: Vec<String> = vec![];
     let mut atlanan = 0;
     for (ad, veri) in DOSYALAR {
-        let yol = ad.split('/').fold(hedef.clone(), |p, x| p.join(x));
+        let yol = ad.split('/').fold(hedef.to_path_buf(), |p, x| p.join(x));
         ekran.g(|d| d.cekirdek_dosya());
         if korunan_mi(ad) && yol.exists() { atlanan += 1; continue; }
-        if let Err(e) = yaz(&yol, veri) { eprintln!("HATA: {e}"); bekle(sessiz); return 1; }
+        if let Err(e) = yaz(&yol, veri) { return hata_bitir(ekran, &e, sessiz); }
         liste.push(ad.to_string());
     }
     match std::env::current_exe().and_then(fs::read) {
-        Ok(v) => { if let Err(e) = yaz(&hedef.join("kaldir.exe"), &v) { eprintln!("HATA: {e}"); bekle(sessiz); return 1; } liste.push("kaldir.exe".into()); ekran.g(|d| d.cekirdek_dosya()); }
-        Err(e) => { eprintln!("HATA: kaldırma programı yazılamadı: {e}"); bekle(sessiz); return 1; }
+        Ok(v) => { if let Err(e) = yaz(&hedef.join("kaldir.exe"), &v) { return hata_bitir(ekran, &e, sessiz); } liste.push("kaldir.exe".into()); ekran.g(|d| d.cekirdek_dosya()); }
+        Err(e) => return hata_bitir(ekran, &format!("kaldırma programı yazılamadı: {e}"), sessiz),
     }
     let kisayolsuz = a.iter().any(|x| x == "--kisayolsuz");
-    let kisayollar = if kisayolsuz { vec![] } else { kisayol_olustur(&hedef) };
-    if !kisayolsuz { kayit_yaz(&hedef); kok_ortami(&hedef); }
+    let kisayollar = if kisayolsuz { vec![] } else { kisayol_olustur(hedef) };
+    if !kisayolsuz { kayit_yaz(hedef); kok_ortami(hedef); }
     let mut m = liste.join("\n");
     for k in &kisayollar { m.push_str(&format!("\n@{k}")); }
     m.push('\n');
-    if let Err(e) = yaz(&hedef.join(MANIFEST), m.as_bytes()) { eprintln!("HATA: {e}"); bekle(sessiz); return 1; }
+    if let Err(e) = yaz(&hedef.join(MANIFEST), m.as_bytes()) { return hata_bitir(ekran, &e, sessiz); }
     println!("Kurulum tamam: {} dosya yazıldı{}.", liste.len(), if atlanan > 0 { format!(", {atlanan} mevcut ayar/anahtar dosyasına dokunulmadı") } else { String::new() });
-    if !kisayollar.is_empty() { println!("Masaüstü ve Başlat menüsü kısayolları oluşturuldu."); }
-    programlari_sec(a, &hedef, sessiz, &ekran);
-    ekran.g(|d| d.asama(Asama::Bitti, "Kurulum bitti"));
-    let mut stdin_mesgul = ekran.acik && !sessiz && yeniden_dene_dongusu(&hedef, &ekran);
-    // Hata yokken de "Kurulum bitti" ekranı görünür kalsın: Bitir'e ya da Enter'a basılana kadar (en çok 5 dk) açık tut.
-    if ekran.acik && !sessiz && !stdin_mesgul {
-        ekran.g(|d| d.komut_bekleniyor = true);
-        let tx = ekran.komut_tx.clone();
-        std::thread::spawn(move || { let mut s = String::new(); let _ = io::stdin().read_line(&mut s); let _ = tx.send(Komut::Bitir); });
-        println!("\nKurulum bitti. Kurulum ekranındaki 'Bitir'e ya da Enter'a basınca kapanır (en çok 5 dakika açık kalır).");
-        let _ = ekran.komut_rx.recv_timeout(std::time::Duration::from_secs(300));
-        ekran.g(|d| d.komut_bekleniyor = false);
-        stdin_mesgul = true;
+    if !kisayollar.is_empty() {
+        println!("Masaüstü ve Başlat menüsü kısayolları oluşturuldu.");
+        ekran.g(|d| d.asama(Asama::Cekirdek, "Masaüstü ve Başlat menüsüne TAA Kur kısayolu eklendi"));
     }
-    if stdin_mesgul { if !kisayolsuz { println!("TAA Kur'u masaüstü kısayolundan açabilirsiniz."); } }
-    else if cfg!(windows) && !sessiz && sor("TAA Kur şimdi açılsın mı?", false) { let _ = Command::new(hedef.join("taa-kur-pencere.exe")).env("TAA_KOK", &hedef).spawn(); }
-    // Sayfa son durumu alabilsin diye kısa bekleme (sayfa 0,7 sn'de bir yoklar).
-    if ekran.acik { std::thread::sleep(std::time::Duration::from_millis(1600)); }
+    // Otomatik ayarlar: kurulum programının yanındaki yardımcı dosyalar (var olan ezilmez).
+    let veri = veri_koku(hedef);
+    let oto = direktif::yan_dosyalari_kopyala(yan_klasor().as_deref(), hedef, &veri);
+    direktifleri_guncelle(hedef, &oto, ekran);
+    ekran.g(|d| d.asama(Asama::Secim, "Rol ve şube seçimi"));
+    let rol = rol_sec(a, hedef, sessiz, ekran);
+    direktifleri_guncelle(hedef, &oto, ekran);
+    if rol == "sube" { sube_sec(a, hedef, sessiz, ekran); }
+    direktifleri_guncelle(hedef, &oto, ekran);
+    programlari_sec(a, hedef, &rol, sessiz, ekran);
+    ekran.g(|d| d.asama(Asama::Bitti, "Kurulum bitti"));
+    direktifleri_guncelle(hedef, &oto, ekran);
+    direktifleri_yaz(ekran);
+    if ekran.pencere {
+        // Bitti ekranı: hata varsa Yeniden dene; Bitir ya da "TAA Kur'u aç" ile kapanır.
+        loop {
+            ekran.g(|d| d.komut_bekleniyor = true);
+            match ekran.komut_bekle() {
+                Komut::YenidenDene(ad) => {
+                    if ekran.g(|d| { let t = d.yeniden_dene(&ad); if t { d.komut_bekleniyor = false; d.asama(Asama::Programlar, "Yeniden deneniyor"); } t }).unwrap_or(false) {
+                        program_kur(hedef, &ad, ekran);
+                        ekran.g(|d| d.asama(Asama::Bitti, "Kurulum bitti"));
+                        direktifleri_guncelle(hedef, &oto, ekran);
+                    }
+                }
+                Komut::TaaKurAc => { taa_kur_ac(hedef); break; }
+                Komut::Bitir => break,
+                Komut::Secim(_) | Komut::Vazgec => {}
+            }
+        }
+        ekran.g(|d| d.komut_bekleniyor = false);
+    } else if cfg!(windows) && !sessiz && sor("TAA Kur şimdi açılsın mı?", false) {
+        taa_kur_ac(hedef);
+    }
     0
+}
+
+/// Kurulum girişi: Windows'ta etkileşimli kurulum yerel pencerede (kurulum ayrı iş parçacığında), aksi halde konsolda.
+fn kur_baslat(a: &[String]) -> i32 {
+    let sessiz = a.iter().any(|x| x == "--sessiz");
+    let pencere_iste = cfg!(windows) && !sessiz && !a.iter().any(|x| x == "--arayuzsuz");
+    println!("{AD} {SURUM} kurulumu");
+    let hedef = hedef_belirle(a, !sessiz && !pencere_iste);
+    #[allow(unused_mut)]
+    let (mut ekran, uc) = Ekran::yeni(SURUM, &hedef.display().to_string(), pencere_iste);
+    #[cfg(windows)]
+    if pencere_iste {
+        match pencere::Pencere::ac(uc.clone()) {
+            Ok(p) => {
+                let (a2, h2) = (a.to_vec(), hedef.clone());
+                let is = std::thread::spawn(move || {
+                    let k = kur(&a2, &h2, &ekran);
+                    ekran.p(|d| d.cikis = Some(k));
+                    k
+                });
+                p.dongu();
+                // Pencere kurulum bitmeden kapatıldıysa (kullanıcı onayladı) kurulum yarıda bırakılır.
+                if uc.durum.lock().map(|d| d.cikis.is_none()).unwrap_or(true) { println!("Kurulum yarıda bırakıldı."); return 1; }
+                return is.join().unwrap_or(1);
+            }
+            Err(e) => {
+                eprintln!("UYARI: kurulum penceresi açılamadı ({e}); kurulum konsolda sürüyor.");
+                ekran.pencere = false;
+            }
+        }
+    }
+    drop(uc);
+    kur(a, &hedef, &ekran)
 }
 
 fn kaldir(a: &[String]) -> i32 {
@@ -392,6 +498,6 @@ fn main() {
     konsol_utf8();
     let a: Vec<String> = std::env::args().collect();
     let ad = a.first().map(|p| Path::new(p).file_stem().map(|s| s.to_string_lossy().to_lowercase()).unwrap_or_default()).unwrap_or_default();
-    let kod = if a.iter().any(|x| x == "--kaldir") || ad.starts_with("kaldir") { kaldir(&a) } else { kur(&a) };
+    let kod = if a.iter().any(|x| x == "--kaldir") || ad.starts_with("kaldir") { kaldir(&a) } else { kur_baslat(&a) };
     std::process::exit(kod);
 }

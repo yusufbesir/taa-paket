@@ -1,0 +1,19 @@
+# Sahip: Yusuf. yazan: [Claude#kur-yerel-pencere 2026-11-15]
+# Şube listesi (kurulum ekranında şube seçimi). Kaynak: Tutaa şube listesi (terziademaltun.com iletişim sayfası,
+# 2026-11-05; kamuya açık işletme bilgisi, kişisel/müşteri verisi yok). Biçim: kod<TAB>ad<TAB>il. Kod küçük harf,
+# rakam ve '-'; kurucu seçilen kodu <kök>\sube.txt'ye yazar. Yeni şube: satır ekleyin (kod değişmeden).
+istanbul-merkez	İstanbul Merkez Mağaza (Esenyurt, Outlet dahil)	İstanbul
+istanbul-pendik	İstanbul Pendik Mağaza	İstanbul
+istanbul-umraniye	İstanbul Ümraniye Mağaza	İstanbul
+ankara	Ankara Mağaza	Ankara
+bursa	Bursa Mağaza	Bursa
+sakarya	Sakarya Mağaza	Sakarya
+diyarbakir	Diyarbakır Mağaza	Diyarbakır
+sivas	Sivas Mağaza	Sivas
+gaziantep	Gaziantep Mağaza	Gaziantep
+sanliurfa	Şanlıurfa Mağaza	Şanlıurfa
+van	Van Mağaza	Van
+siirt	Siirt Mağaza	Siirt
+elazig	Elazığ Mağaza	Elazığ
+izmir	İzmir Mağaza	İzmir
+mus	Muş Mağaza	Muş

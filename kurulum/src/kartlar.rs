@@ -1,7 +1,5 @@
 // Sahip: Yusuf. yazan: [Claude#kur-ekrani 2026-11-15]
-//! Bekleme kartları: `kurulum/kartlar.txt` verisini çözer, arayüz için JSON üretir. Saf mantık.
-
-use crate::ilerleme::metin;
+//! Bekleme kartları: `kurulum/kartlar.txt` verisini çözer; yerel kurulum penceresi bekleme sırasında döndürür. Saf mantık.
 
 /// Exe'ye gömülen kart verisi.
 pub const VERI: &str = include_str!("../kartlar.txt");
@@ -64,22 +62,21 @@ pub fn gomulu() -> Vec<Kart> {
     coz(VERI).unwrap_or_default()
 }
 
-pub fn json(kartlar: &[Kart]) -> String {
-    let parcalar: Vec<String> = kartlar
-        .iter()
-        .map(|k| {
-            format!(
-                "{{\"kimlik\":{},\"tur\":{},\"ad\":{},\"ozet\":{},\"not\":{},\"sablon\":{}}}",
-                metin(&k.kimlik),
-                metin(&k.tur),
-                metin(&k.ad),
-                metin(&k.ozet),
-                metin(&k.not),
-                metin(&k.sablon)
-            )
-        })
-        .collect();
-    format!("[{}]", parcalar.join(","))
+/// Kartların dönme aralığı (ms).
+pub const DONUS_MS: u64 = 9000;
+
+/// Kart sırası: ileri/geri bir adım, başa/sona sarar. Kart yoksa 0.
+pub fn sonraki(simdiki: usize, adet: usize, ileri: bool) -> usize {
+    if adet == 0 {
+        return 0;
+    }
+    let s = simdiki % adet;
+    if ileri { (s + 1) % adet } else { (s + adet - 1) % adet }
+}
+
+/// Kart türünün ekrandaki küçük başlığı.
+pub fn tur_etiketi(tur: &str) -> &'static str {
+    if tur == "rehber" { "NOT" } else { "PROGRAM" }
 }
 
 #[cfg(test)]
@@ -127,12 +124,12 @@ mod testler {
     }
 
     #[test]
-    fn json_cikti() {
-        let k = coz("[a]\nad = A<\nozet = \"o\"\n").unwrap();
-        assert_eq!(
-            json(&k),
-            "[{\"kimlik\":\"a\",\"tur\":\"program\",\"ad\":\"A\\u003c\",\"ozet\":\"\\\"o\\\"\",\"not\":\"\",\"sablon\":\"\"}]"
-        );
-        assert_eq!(json(&[]), "[]");
+    fn kart_donusu() {
+        assert_eq!(sonraki(0, 3, true), 1);
+        assert_eq!(sonraki(2, 3, true), 0);
+        assert_eq!(sonraki(0, 3, false), 2);
+        assert_eq!(sonraki(7, 3, false), 0);
+        assert_eq!(sonraki(5, 0, true), 0);
+        assert_eq!((tur_etiketi("rehber"), tur_etiketi("program")), ("NOT", "PROGRAM"));
     }
 }
