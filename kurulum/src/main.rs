@@ -327,8 +327,18 @@ fn kur(a: &[String]) -> i32 {
     if !kisayollar.is_empty() { println!("Masaüstü ve Başlat menüsü kısayolları oluşturuldu."); }
     programlari_sec(a, &hedef, sessiz, &ekran);
     ekran.g(|d| d.asama(Asama::Bitti, "Kurulum bitti"));
-    let stdin_mesgul = ekran.acik && !sessiz && yeniden_dene_dongusu(&hedef, &ekran);
-    if stdin_mesgul { println!("TAA Kur'u masaüstü kısayolundan açabilirsiniz."); }
+    let mut stdin_mesgul = ekran.acik && !sessiz && yeniden_dene_dongusu(&hedef, &ekran);
+    // Hata yokken de "Kurulum bitti" ekranı görünür kalsın: Bitir'e ya da Enter'a basılana kadar (en çok 5 dk) açık tut.
+    if ekran.acik && !sessiz && !stdin_mesgul {
+        ekran.g(|d| d.komut_bekleniyor = true);
+        let tx = ekran.komut_tx.clone();
+        std::thread::spawn(move || { let mut s = String::new(); let _ = io::stdin().read_line(&mut s); let _ = tx.send(Komut::Bitir); });
+        println!("\nKurulum bitti. Kurulum ekranındaki 'Bitir'e ya da Enter'a basınca kapanır (en çok 5 dakika açık kalır).");
+        let _ = ekran.komut_rx.recv_timeout(std::time::Duration::from_secs(300));
+        ekran.g(|d| d.komut_bekleniyor = false);
+        stdin_mesgul = true;
+    }
+    if stdin_mesgul { if !kisayolsuz { println!("TAA Kur'u masaüstü kısayolundan açabilirsiniz."); } }
     else if cfg!(windows) && !sessiz && sor("TAA Kur şimdi açılsın mı?", false) { let _ = Command::new(hedef.join("taa-kur-pencere.exe")).env("TAA_KOK", &hedef).spawn(); }
     // Sayfa son durumu alabilsin diye kısa bekleme (sayfa 0,7 sn'de bir yoklar).
     if ekran.acik { std::thread::sleep(std::time::Duration::from_millis(1600)); }
