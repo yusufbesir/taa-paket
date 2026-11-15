@@ -153,3 +153,29 @@ $('#hesapla').onclick=()=>{puanlar();isaretler()};
 $('#ayar').onclick=async()=>{try{const v=await api('POST','/api/yonetim/puan/gozden-gecir/'+$('#bas').value+'/'+$('#bit').value);$('#mesaj').textContent=v.degisti?('Ayar değişti: '+v.degisiklikler.join('; ')):'Değişiklik yok (veri ya da süre yetersiz, ya da otomatik ayar kapalı).';puanlar()}catch(e){hata(e)}};
 puanlar();isaretler();
 </script></body></html>"##;
+
+/// Yönetici personel/usta ekleme ekranı (yalnız sunucu bilgisayarı): QR üretir, bağlanan hesapları onaylatır.
+pub const PERSONEL_YONETIM: &str = r##"<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Personel ve usta ekle (yönetici)</title>
+<style>:root{--a:#1f3a5f;--b:#fff;--k:#e9eef5;--u:#b3261e}@media(prefers-color-scheme:dark){:root{--a:#8ab4f8;--b:#15181d;--k:#222833;--u:#f2b8b5}}
+body{font:16px system-ui;background:var(--b);color:var(--a);margin:16px;max-width:900px}table{border-collapse:collapse;width:100%}td,th{padding:8px;text-align:left;border-bottom:1px solid var(--k)}
+button,input,select{font:inherit;padding:10px 14px;margin:3px;min-height:44px}.kutu{background:var(--k);padding:12px 16px;border-radius:8px;margin:10px 0}.uyari{color:var(--u)}svg{background:#fff;padding:8px;border-radius:8px;max-width:100%;height:auto}</style></head><body>
+<h1>Personel ve usta ekle</h1>
+<p><small>Bu ekran yalnızca bu bilgisayarda açılır. QR'ı eklenecek kişi telefonunun kamerasıyla okutur; Telegram açılır ve hesabı bağlanır. Telefonda görünen doğrulama sayısı bu listedeki sayıyla aynıysa buradan onaylarsınız. İmzanın dayanağı Telegram'ın değişmeyen kullanıcı numarasıdır, profil adı da kayda yazılır.</small></p>
+<div class="kutu">
+<label>Rol <select id="rol"><option value="usta">Usta</option><option value="personel">Personel (tezgâh)</option><option value="magaza">Mağaza telefonu</option></select></label>
+<label>Şube <input id="sube" placeholder="ör. Esenyurt"></label>
+<label>Not (yalnız siz görürsünüz) <input id="not" maxlength="40" placeholder="ör. kol ustası"></label>
+<label>Siz (yönetici) <input id="yon" placeholder="adınız"></label>
+<button id="uret">QR üret (10 dk geçerli, tek kullanımlık)</button>
+<div id="mesaj" class="uyari"></div><div id="qr"></div><div id="kod"></div></div>
+<h2>Hesaplar</h2><div id="liste"></div>
+<script>
+const $=s=>document.querySelector(s);
+const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function api(m,u,b){const r=await fetch(u,{method:m,headers:{'content-type':'application/json'},body:b?JSON.stringify(b):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.hata||r.status);return j}
+$('#uret').onclick=async()=>{$('#mesaj').textContent='';try{const j=await api('POST','/api/yonetim/baglama-kodu',{rol:$('#rol').value,sube:$('#sube').value,not:$('#not').value,yonetici:$('#yon').value});
+$('#qr').innerHTML=j.qr_svg||'';$('#kod').innerHTML=j.baglanti?'':'Bot adı ayarlı değil (telegram.json bot_adi). Kodu kişiye bildirin, bota yazsın: <b>'+esc(j.kod)+'</b>'}catch(e){$('#mesaj').textContent=e.message}};
+async function yukle(){try{const j=await api('GET','/api/yonetim/hesaplar');$('#liste').innerHTML=j.hesaplar.length?'<table><tr><th>Profil adı</th><th>Not</th><th>Rol</th><th>Şube</th><th>Durum</th><th>Doğrulama sayısı</th><th></th></tr>'+j.hesaplar.map(h=>'<tr><td>'+esc(h.profil_adi)+'<br><small>tg:'+h.tg_id+'</small></td><td>'+esc(h.not||'')+'</td><td>'+esc(h.rol)+'</td><td>'+esc(h.sube)+'</td><td>'+esc(h.durum)+'</td><td><b>'+esc(h.dogrulama||'')+'</b></td><td>'+(h.durum==='onay-bekliyor'?'<button data-i="'+h.tg_id+'" data-k="onayla">Onayla</button>':'')+(h.durum==='onayli'?'<button data-i="'+h.tg_id+'" data-k="askiya">Askıya al</button>':'')+'</td></tr>').join('')+'</table>':'Henüz bağlanan hesap yok.'}catch(e){$('#liste').textContent=e.message}}
+$('#liste').onclick=async e=>{const b=e.target.closest('button');if(!b)return;try{await api('POST','/api/yonetim/hesap/'+b.dataset.i+'/'+b.dataset.k,{yonetici:$('#yon').value});yukle()}catch(x){$('#mesaj').textContent=x.message}};
+yukle();setInterval(yukle,5000);
+</script></body></html>"##;

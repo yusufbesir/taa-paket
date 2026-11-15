@@ -3,6 +3,10 @@
 
 ## Yayınlanmamış
 
+### Terzi Takip: personel ve usta QR ile eklenir (TT12c devamı)
+
+- Yönetici `GET /yonetim/personel` ekranında (yalnız sunucu bilgisayarı) rol (usta, personel, mağaza telefonu), şube ve kendine özel not seçip kişiye özel, tek kullanımlık, 10 dk geçerli QR üretir. Kişi QR'ı telefon kamerasıyla okutunca Telegram `t.me/<bot>?start=baglan-<kod>` ile açılır ve hesap bağlanır; telefonda ve yönetici ekranında AYNI 4 haneli doğrulama sayısı görünür, yönetici sayıyı karşılaştırıp son onayı verir. İmzanın dayanağı Telegram'ın değişmeyen kullanıcı numarası, profil adı da kayda yazılır. Kodu elle yazmak yedek yol olarak kalır. Yeni rol `personel` (fiş görür, raf yazar; usta imzası ve WhatsApp düğmesi yok).
+
 ### Terzi Takip: Telegram botu (TT12c)
 
 - `taa-telegram`: fiş kare koduyla bot açılır (`t.me/<bot>?start=<fiş no>`, kodda ad/telefon yok); fiş maskeli gösterilir, usta her KALEM için "Bitti" der, "Bitti mi? Evet/Vazgeç" onayından sonra imzalanır (anahtar: fiş, kalem, tur; yeniden iş yeni tur). Tüm kalemler imzalanınca fiş hazır olur ve müşteri bildirimi kuyruğa yazılır. İmza olayı `imza-olaylari.jsonl`'e `taa-takip` Olay alan adlarıyla yazılır (usta = rastgele `U-` kimliği, tg_id, o anki profil adı; @kullanıcı adı alınmaz).
