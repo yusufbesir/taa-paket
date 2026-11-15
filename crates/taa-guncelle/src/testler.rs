@@ -776,3 +776,16 @@ fn yedekli_kaynak_hepsi_dusunce_hata_ve_bos_liste_reddedilir() {
         .contains("Tüm güncelleme kaynakları"));
     assert!(YedekliKaynak::yeni(vec![]).is_err());
 }
+
+/// Kurucu (kurulum/src/ilerleme.rs `isaret_coz`) bu biçimi bekler; değişirse ikisi birlikte değişmeli.
+#[test]
+fn ilerleme_satiri_bicimi() {
+    assert_eq!(
+        ilerleme_satiri("tutaa", "indir", false),
+        "TAA-ILERLEME\ttutaa\tindir\tbasladi"
+    );
+    assert_eq!(
+        ilerleme_satiri("tailscale", "ayarla", true),
+        "TAA-ILERLEME\ttailscale\tayarla\tbitti"
+    );
+}

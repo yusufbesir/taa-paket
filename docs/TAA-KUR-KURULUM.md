@@ -47,3 +47,10 @@ varsa isteklerini `YedekliGonderici` ile gönderir (`--sunucu`/`TAA_SUNUCU` veri
 - **Kurulum klasörü:** sorulur (Enter = varsayılan), ya da `--hedef`/`--kok`. Faz 1: tek kök klasör; program başına yol sonraki iş.
 - `taa-guncelle liste --duz` artık 6 sütun verir: ad, yayındaki, kurulu|-, grup|-, zorunlu roller|-, açıklama|-.
 - Plan: `docs/SIFRELEME-PLANI.md`; Win32 seçim penceresi (Adım D) ve Electron sessiz kurulum (Adım E) henüz yok.
+
+## Kurulum ekranı (2026-11-15)
+Etkileşimli kurulumda tarayıcıda ilerleme ekranı açılır (std-only yerel HTTP, yalnız `127.0.0.1`): aşamalar, program başına
+İndir / Doğrula / Kur / Ayarla adımları, yüzde, hata ve **Yeniden dene**; beklerken program tanıtım kartları (not + örnek şablon).
+`--arayuzsuz` kapatır; `--sessiz` iken kapalıdır (`--arayuz` ile açılır). Kartlar `kurulum/kartlar.txt`. Ayrıntı: `KURULUM-EKRANI.md`.
+`taa-guncelle` yalnız `TAA_ILERLEME=1` ortamında stderr'e `TAA-ILERLEME` satırları yazar (başka davranış değişmez).
+Windows'ta çalıştırılmadı (tarayıcı açma, konsol + tarayıcı birlikte); Linux'ta sahte `taa-guncelle` ile uçtan uca denendi.
