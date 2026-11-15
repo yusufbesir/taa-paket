@@ -7,6 +7,7 @@
 - Özet: sayım toplamı
 - İsteyenler: yok (modul.toml / verilen listeye göre)
 - Çağrı: `taa-ipc` (T1'de gelecek; şimdilik crate içi çağrı). Kaynak: PLAN-TAA-PAKET §18.3
+- Yazdırma yolu (EB0 K7): yazdırmaz; çıktı gerekirse `fis.yazdir@1` → `yazdir.sun@1`. Nakit sayımı çekmece başına (E6, `docs/esleme-sozlesmesi.md` §4.5).
 
 ## İstek alanları
 belirsiz (kod okunup şema çıkarılmadı; uydurulmadı)

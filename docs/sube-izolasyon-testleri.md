@@ -1,12 +1,12 @@
-<!-- Sahip: Yusuf. yazan: [Claude#sozlesme-S0 2026-11-15]. Durum: SÖZLEŞME (Ş0). Değişiklik: Yusuf'un onayıyla. -->
+<!-- Sahip: Yusuf. yazan: [Claude#sozlesme-S0 2026-11-15]. Durum: SÖZLEŞME (Ş0). Değişiklik: Yusuf'un onayıyla. EB0 eki işlendi: [Claude#sozlesme-EB0 2026-11-15], `docs/esleme-sozlesmesi.md` §1.5 D21–D23. -->
 # Şube izolasyon testleri: "A şubesi B'yi göremez" (Ş0)
 
-Kaynak: `planlar/PLAN-SUBE-ORTAK-SUNUCU-2026-11-15.md` §2.5 ("Kanıt"), §3.5. **Bu matris geçmeden hiçbir şubeli uç birleşmez** (kapı ölçütü). Bağlı: `docs/sube-sozlesmesi.md`, `docs/sube-tehdit-modeli.md` §6, `docs/rehber-sozlesmesi.md` §10.
+Kaynak: `planlar/PLAN-SUBE-ORTAK-SUNUCU-2026-11-15.md` §2.5 ("Kanıt"), §3.5. **Bu matris geçmeden hiçbir şubeli uç birleşmez** (kapı ölçütü). Bağlı: `docs/sube-sozlesmesi.md`, `docs/sube-tehdit-modeli.md` §6, `docs/rehber-sozlesmesi.md` §10, `docs/esleme-sozlesmesi.md` §6.1.
 
 ## 1. Düzenek
 - Gerçek PostgreSQL 16 (sunucu entegrasyon katmanı); `ci_yerel` ile koşar, çıktı PR'a kanıt olarak eklenir.
 - Test verisi uydurmadır (gerçek müşteri, çalışan ya da şube personeli verisi yok). Şubeler: **A**, **B** (iki test şubesi), **M** merkez cihazı (`sube_id = null`).
-- Her şube için: onaylı cihaz + şube personeli + şube müdürü; ayrıca A şubesinin iptal edilmiş cihazı. Merkezde yönetici (TOTP) ve merkez personeli.
+- A şubesinde **iki** onaylı cihaz (A1, A2; eş), B şubesinde **bir** onaylı cihaz (tek bilgisayarlı durum da sınanır). Her şube için şube personeli + şube müdürü; ayrıca A şubesinin iptal edilmiş cihazı. A'ya ait her hücre A1 ve A2 ile ayrı koşar; A1'in yazdığı kayıt A2'ye açık, B'ye kapalı olmalıdır. Merkezde yönetici (TOTP) ve merkez personeli.
 - Her tabloya B'ye ait en az bir kayıt, A'ya ait en az bir kayıt tohumlanır.
 - Test adı biçimi: `izolasyon_<tablo>_<boyut>` (ör. `izolasyon_fisler_okuma`).
 
@@ -48,6 +48,12 @@ Kaynak: `planlar/PLAN-SUBE-ORTAK-SUNUCU-2026-11-15.md` §2.5 ("Kanıt"), §3.5. 
 | `rehber` öneri kuyruğu | ✓ | ✓ | ✓ | ✓ | — | ✓ | ✓ | Öneri yalnız `rehber.yaz` sahibine görünür |
 | Kuyruk (istemci, A PC'si) | — | ✓ | — | — | — | — | — | B damgalı öğe gönderilmez |
 | Havuz/rehber önbelleği (istemci) | ✓ | ✓ | — | — | ✓ | — | — | Önbellekte B verisi yok; okuyan program yazamaz |
+| `sube_yazicilari` | ✓ | ✓ | ✓ | ✓ | — | ✓ | ✓ | A, B'nin yazıcı kaydını göremez, değiştiremez, sahibini A cihazı yapamaz (EB1) |
+| `numara_araliklari` | ✓ | ✓ | ✓ | ✓ | — | ✓ | ✓ | A, B'nin aralık ve blok kaydını göremez, B için blok isteyemez (EB1) |
+| `numara_olaylari` | ✓ | ✓ | ✓ | ✓ | — | ✓ | ✓ | Verildi/atlandı olayı yalnız kendi şubesine yazılır |
+| `varsayilan_yazicilar` | ✓ | ✓ | ✓ | ✓ | — | ✓ | ✓ | A cihazı yalnız kendi varsayılanını değiştirir; B yazıcısını varsayılan yapamaz (K9) |
+| `sube_cekmeceleri` / `kasa_noktalari` | ✓ | ✓ | ✓ | ✓ | — | ✓ | ✓ | A, B'nin çekmece ve kasa noktası kaydını göremez, sayımını giremez (E6) |
+| Eş listesi ucu (`GET /v1/sube/esler`) | ✓ | ✓ | ✓ | ✓ | — | ✓ | ✓ | A yalnız kendi listesini alır; B cihazları A listesinde yoktur; merkez cihazı hiçbir listede yoktur; liste yazma yalnız Çatı (`POST /v1/sube/rol`) |
 
 ## 5. Ek zorunlu senaryolar
 1. `izolasyon_beyan_uyusmaz`: A cihazı `X-TAA-Sube: B` gönderir → 409 + `yetki.red.sube`.
@@ -62,6 +68,12 @@ Kaynak: `planlar/PLAN-SUBE-ORTAK-SUNUCU-2026-11-15.md` §2.5 ("Kanıt"), §3.5. 
 10. `izolasyon_haftalik_ozet`: reddedilen çapraz şube denemeleri haftalık özette görünür.
 11. `izolasyon_imza_capraz`: A cihazından B şube imza anahtarıyla imzalı belge → 422 `imza_gecersiz`.
 12. `izolasyon_yuk_15`: 15 şube eşzamanlı yükte (Ş9) rastgele örneklenen yanıtlarda başka şube kaydı yok.
+13. `izolasyon_es_baska_magaza`: B cihazı A'nın eş kapısına bağlanamaz (el sıkışma reddedilir, `es.red` deftere yazılır); B'de eş kapısı hiç açılmaz (tek bilgisayar).
+14. `izolasyon_es_listesi_capraz`: A cihazı B'nin eş listesini alamaz (404); `X-TAA-Sube: B` ile 409 + `yetki.red.sube`.
+15. `izolasyon_yazici_capraz`: A cihazı B'nin yazıcı kaydını göremez, değiştiremez; B yazıcısına iş gönderemez.
+16. `izolasyon_numara_capraz`: A cihazı B'nin numara defterini ve aralıklarını göremez; B önekiyle numara alamaz.
+
+Senaryo 8 (`izolasyon_pc_devri`) çok bilgisayarlı şubede ek olarak şunu doğrular: devredilen A2 eski şubenin eş listesinden düşer, A1 onunla bağlantıyı keser, A2'nin yedek numara bloğunun kullanılmamış kısmı `numara.atlandi` ile kapanır.
 
 ## 6. Kapı
 - Her yeni şubeli uç ya da tablo bu matrise satır ekler; satırsız uç birleşmez.

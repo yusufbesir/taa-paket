@@ -7,6 +7,7 @@
 - Özet: düz metin ve ESC/POS çıktı
 - İsteyenler: yok (modul.toml / verilen listeye göre)
 - Çağrı: `taa-ipc` (T1'de gelecek; şimdilik crate içi çağrı). Kaynak: PLAN-TAA-PAKET §18.3
+- Yazdırma yolu (EB0 K7, `docs/sozlesmeler/yazdir.sun.md` Kural 16): bu yetenek fiş içeriğini (`escpos`/`metin`) üretir, yazıcıya kendisi basmaz; içerik `yazdir.sun@1` ile basılır. Çekmece açma komutu üretmez (K2).
 
 ## İstek alanları
 belirsiz (kod okunup şema çıkarılmadı; uydurulmadı)

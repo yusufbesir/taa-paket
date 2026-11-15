@@ -7,6 +7,7 @@
 - Özet: Etiket yazdırma
 - İsteyenler: yok (modul.toml / verilen listeye göre)
 - Çağrı: `taa-ipc` (T1'de gelecek; şimdilik crate içi çağrı). Kaynak: PLAN-TAA-PAKET §18.3
+- Yazdırma yolu (EB0 K7, `docs/sozlesmeler/yazdir.sun.md` Kural 16): bu yetenek etiket içeriğini (`etiket-ham`, Argox) üretir, yazıcıya kendisi basmaz; içerik `yazdir.sun@1` ile basılır.
 
 ## İstek alanları
 belirsiz (kod okunup şema çıkarılmadı; uydurulmadı)
