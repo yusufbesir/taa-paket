@@ -218,6 +218,7 @@ impl Uygulama {
             ("POST", ["telegram", gizli]) => self.telegram(gizli, i),
             ("GET", ["wa", belirtec]) => self.wa_sayfasi(belirtec),
             ("POST", ["api", "yonetim", "baglama-kodu"]) => self.baglama_kodu(i),
+            ("GET", ["yonetim", "personel"]) => self.personel_sayfasi(i),
             ("GET", ["api", "yonetim", "hesaplar"]) => self.hesap_listesi(i),
             ("POST", ["api", "yonetim", "hesap", tg, islem]) => self.hesap_islemi(i, tg, islem),
             ("GET" | "POST", ["api", ..]) => self.yetkili(i, &parca),
@@ -1309,7 +1310,7 @@ mod testler {
     #[test]
     fn hesap_baglama_uclari_ve_wa_sayfasi() {
         let u = uyg();
-        let kod = r#"{"rol":"usta","sube":"Esenyurt","yonetici":"Y-1"}"#;
+        let kod = r#"{"rol":"personel","sube":"Esenyurt","not":"tezgâh","yonetici":"Y-1"}"#;
         // telefon yetkisiyle ya da yerel olmayan istekle olmaz
         assert_eq!(
             u.isle(&ist("POST", "/api/yonetim/baglama-kodu", None, kod, false))
@@ -1348,6 +1349,28 @@ mod testler {
         let v: serde_json::Value = serde_json::from_slice(&y.govde).unwrap();
         assert_eq!(v["kod"].as_str().unwrap().len(), 8);
         assert!(v["usta_id"].as_str().unwrap().starts_with("U-"));
+        assert_eq!(v["baglanti"], ""); // telegram.json yok: QR üretilmez
+        std::fs::write(
+            u.dizin.join("telegram.json"),
+            r#"{"gizli":"0123456789abcdef","bot_adi":"taa_bot"}"#,
+        )
+        .unwrap();
+        let y = u.isle(&ist("POST", "/api/yonetim/baglama-kodu", None, kod, true));
+        let v: serde_json::Value = serde_json::from_slice(&y.govde).unwrap();
+        assert!(v["baglanti"]
+            .as_str()
+            .unwrap()
+            .starts_with("https://t.me/taa_bot?start=baglan-"));
+        assert!(v["qr_svg"].as_str().unwrap().contains("<svg"));
+        assert_eq!(
+            u.isle(&ist("GET", "/yonetim/personel", None, "", false))
+                .kod,
+            403
+        );
+        assert_eq!(
+            u.isle(&ist("GET", "/yonetim/personel", None, "", true)).kod,
+            200
+        );
         // onay bekleyen hesap yokken onay 422
         assert_eq!(
             u.isle(&ist(

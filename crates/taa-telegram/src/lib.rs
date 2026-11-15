@@ -409,8 +409,8 @@ impl Bot<'_> {
         let h = Hesaplar { dizin: self.dizin };
         match h.kod_ile_bagla(tg_id, &ad_goster(from), &kod, self.simdi, self.bugun) {
             Ok(x) => Some(format!(
-                "Bağlandı: {}. Yönetici onayından sonra bot çalışır. (Yöneticiye \"bağlandı: {}\" görünür.)",
-                x.usta_id, x.profil_adi
+                "Bağlandı. Doğrulama sayınız: {}. Yöneticinin ekranındaki sayıyla aynı olmalı; yönetici onayından sonra bot çalışır.",
+                x.dogrulama
             )),
             Err(e) => Some(format!("Kod kabul edilmedi: {e}")),
         }
@@ -426,9 +426,15 @@ impl Bot<'_> {
         if h.bul(tg).ok().flatten().is_none()
             && !self.ayar.kullanicilar.contains_key(&tg.to_string())
         {
-            if let Some(c) =
-                self.baglama_denemesi(&m["from"], metin.trim_start_matches("/baglan").trim())
-            {
+            if let Some(c) = self.baglama_denemesi(
+                &m["from"],
+                metin
+                    .trim_start_matches("/start")
+                    .trim()
+                    .trim_start_matches("baglan-")
+                    .trim_start_matches("/baglan")
+                    .trim(),
+            ) {
                 return Some(gonder(sohbet, &c, None));
             }
         }
@@ -826,7 +832,7 @@ mod testler {
     fn baglan(b: &Bot, d: &Path, kim: i64, rol: Rol) {
         let h = Hesaplar { dizin: d };
         let (kod, _) = h
-            .kod_uret("", rol, "Esenyurt", "Y-1", b.simdi, 600)
+            .kod_uret("", rol, "Esenyurt", "", "Y-1", b.simdi, 600)
             .unwrap();
         let y = b.eylemler(&msg(kim, &kod));
         assert!(metinler(&y).contains("Bağlandı"), "{y:?}");
@@ -854,7 +860,7 @@ mod testler {
         // usta: kodla bağla, onay beklerken bot çalışmaz
         let h = Hesaplar { dizin: &d };
         let (kod, _) = h
-            .kod_uret("", Rol::Usta, "Esenyurt", "Y-1", b.simdi, 600)
+            .kod_uret("", Rol::Usta, "Esenyurt", "", "Y-1", b.simdi, 600)
             .unwrap();
         assert!(metinler(&b.eylemler(&msg(42, &kod))).contains("Bağlandı"));
         assert!(metinler(&b.eylemler(&msg(42, "/durum x"))).contains("onayı bekleniyor"));
@@ -934,6 +940,37 @@ mod testler {
         assert_eq!(y[0]["show_alert"], true);
         // metin olmayan güncelleme yanıtsız
         assert!(b.yanit(&json!({"edited_message": {}})).is_none());
+    }
+
+    #[test]
+    fn qr_baglantisi_ile_baglama_personel() {
+        std::env::set_var("TAA_OZELLIK_TELEGRAM_BOT", "1");
+        let (d, no) = kur();
+        let a = ayar();
+        let b = Bot {
+            dizin: &d,
+            ayar: &a,
+            bugun: "2026-11-05",
+            simdi: 4_000_000,
+        };
+        let h = Hesaplar { dizin: &d };
+        let (kod, _) = h
+            .kod_uret("", Rol::Personel, "Esenyurt", "tezgâh", "Y-1", b.simdi, 600)
+            .unwrap();
+        // QR: telefonda Telegram `/start baglan-<kod>` ile açılır
+        let y = metinler(&b.eylemler(&msg(55, &format!("/start baglan-{kod}"))));
+        let hs = h.bul(55).unwrap().unwrap();
+        assert!(
+            y.contains(&format!("Doğrulama sayınız: {}", hs.dogrulama)),
+            "{y}"
+        );
+        assert_eq!(hs.durum, HesapDurum::OnayBekliyor);
+        h.onayla(55, "Y-1", "2026-11-05").unwrap();
+        // personel fişi görür ama usta imzası ve WhatsApp düğmesi yok
+        let t = metinler(&b.eylemler(&msg(55, &format!("/start {no}"))));
+        assert!(t.contains("Pantolon") && !t.contains("Bitti:") && !t.contains("w:"));
+        assert!(metinler(&b.eylemler(&tus(55, &format!("y:{no}:0")))).contains("yalnız usta"));
+        assert!(metinler(&b.eylemler(&tus(55, &format!("w:{no}")))).contains("yalnız mağaza"));
     }
 
     #[test]

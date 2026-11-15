@@ -45,9 +45,10 @@ impl Uygulama {
         };
         let rol = match v["rol"].as_str().unwrap_or("usta") {
             "usta" => Rol::Usta,
+            "personel" => Rol::Personel,
             "magaza" => Rol::Magaza,
             "yonetici" => Rol::Yonetici,
-            _ => return Yanit::hata(422, "rol: usta, magaza ya da yonetici"),
+            _ => return Yanit::hata(422, "rol: usta, personel, magaza ya da yonetici"),
         };
         let omur = v["omur_dk"].as_u64().unwrap_or(10).clamp(1, 60) * 60;
         let simdi = self.simdi();
@@ -56,16 +57,44 @@ impl Uygulama {
             v["usta_id"].as_str().unwrap_or(""),
             rol,
             v["sube"].as_str().unwrap_or(""),
+            v["not"].as_str().unwrap_or(""),
             v["yonetici"].as_str().unwrap_or(""),
             simdi,
             omur,
         ) {
-            Ok((kod, usta_id)) => Yanit::json(
-                200,
-                json!({"kod": kod, "usta_id": usta_id, "gecerli_sn": omur}),
-            ),
+            Ok((kod, usta_id)) => {
+                // Yönetici QR'ı: telefonda Telegram botu `start=baglan-<kod>` ile açılır. Bot adı telegram.json'dadır.
+                let bot_adi = taa_telegram::Ayar::dizinden(&self.dizin)
+                    .map(|a| a.bot_adi)
+                    .unwrap_or_default();
+                let (baglanti, qr) = if bot_adi.is_empty() {
+                    (String::new(), String::new())
+                } else {
+                    let b = taa_telegram::hesap::baglama_baglantisi(&bot_adi, &kod);
+                    let svg = qrcode::QrCode::new(b.as_bytes())
+                        .map(|q| {
+                            q.render::<qrcode::render::svg::Color>()
+                                .min_dimensions(260, 260)
+                                .build()
+                        })
+                        .unwrap_or_default();
+                    (b, svg)
+                };
+                Yanit::json(
+                    200,
+                    json!({"kod": kod, "usta_id": usta_id, "gecerli_sn": omur, "baglanti": baglanti, "qr_svg": qr}),
+                )
+            }
             Err(e) => Yanit::hata(422, &e),
         }
+    }
+
+    /// GET /yonetim/personel: yönetici sayfası (yalnız bu bilgisayar).
+    pub(crate) fn personel_sayfasi(&self, i: &Istek) -> Yanit {
+        if let Some(r) = Self::yerel_mi(i) {
+            return r;
+        }
+        Yanit::html(sayfalar::PERSONEL_YONETIM.into())
     }
 
     /// GET /api/yonetim/hesaplar

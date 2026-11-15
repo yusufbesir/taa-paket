@@ -13,6 +13,8 @@ use std::path::Path;
 #[serde(rename_all = "lowercase")]
 pub enum Rol {
     Usta,
+    /// Satış/tezgâh personeli: fiş açar, durum sorar, raf yazar; usta imzası ve WhatsApp düğmesi YOK.
+    Personel,
     /// Mağaza telefonu: ortak hesap; yalnız "müşteriye haber ver" ve "gönderdim"; usta imzası ATAMAZ (K8).
     Magaza,
     Yonetici,
@@ -41,6 +43,18 @@ pub struct Hesap {
     pub saat: String,
     pub onaylayan: String,
     pub sira: u64,
+    /// Yöneticinin kendi notu (ör. "kol ustası"); yalnız yönetici ekranında görünür, imzaya girmez.
+    #[serde(default)]
+    pub not: String,
+    /// Bağlanınca telefonda ve yönetici ekranında AYNI görünen 4 haneli doğrulama sayısı: yönetici onaylamadan önce
+    /// kişinin telefonundaki sayıyla karşılaştırır (yanlış kişiye QR gitmesine karşı).
+    #[serde(default)]
+    pub dogrulama: String,
+}
+
+/// Yönetici QR'ının içeriği: kare kodu okutan telefonda Telegram bu bağlantıyla botu açar.
+pub fn baglama_baglantisi(bot_adi: &str, kod: &str) -> String {
+    format!("https://t.me/{bot_adi}?start=baglan-{kod}")
 }
 
 /// Profil adı güvenilmez metindir: denetim karakterleri çıkar, boşluklar sadeleşir, en çok 40 karakter.
@@ -59,6 +73,12 @@ pub fn profil_temizle(s: &str) -> String {
     } else {
         t
     }
+}
+
+fn dogrulama_sayisi() -> Result<String, String> {
+    let mut b = [0u8; 2];
+    getrandom::fill(&mut b).map_err(|e| format!("rastgele sayı alınamadı: {e}"))?;
+    Ok(format!("{:04}", u16::from_le_bytes(b) % 10_000))
 }
 
 /// Yeni rastgele usta kimliği (`U-` + 8 onaltılık hane).
@@ -87,6 +107,8 @@ struct KodKaydi {
     usta_id: String,
     rol: Rol,
     sube: String,
+    #[serde(default)]
+    not: String,
     olusturan: String,
     /// Unix saniye.
     bitis: u64,
@@ -154,6 +176,7 @@ impl Hesaplar<'_> {
         }))
     }
 
+    #[allow(clippy::too_many_arguments)]
     /// YÖNETİCİ ekranı çağırır. `usta_id` boşsa yeni rastgele kimlik üretilir. Dönen: (bağlama kodu, usta_id).
     /// Kod 8 haneli rastgele sayıdır, `omur_sn` saniye geçerlidir, tek kullanımlıktır.
     pub fn kod_uret(
@@ -161,6 +184,7 @@ impl Hesaplar<'_> {
         usta_id: &str,
         rol: Rol,
         sube: &str,
+        not: &str,
         yonetici: &str,
         simdi: u64,
         omur_sn: u64,
@@ -186,6 +210,7 @@ impl Hesaplar<'_> {
             usta_id: usta_id.clone(),
             rol,
             sube: sube.into(),
+            not: not.trim().chars().take(40).collect(),
             olusturan: yonetici.trim().into(),
             bitis: simdi + omur_sn,
             kullanildi: false,
@@ -224,6 +249,8 @@ impl Hesaplar<'_> {
             usta_id: k.usta_id.clone(),
             rol: k.rol,
             sube: k.sube.clone(),
+            not: k.not.clone(),
+            dogrulama: dogrulama_sayisi()?,
             durum: HesapDurum::OnayBekliyor,
             profil_adi: profil_temizle(profil_adi),
             saat: saat.into(),
@@ -285,7 +312,7 @@ mod testler {
         assert!(h.kod_ile_bagla(5, "Yabancı", "12345678", 100, "g").is_err());
         assert!(!d.join("hesaplar.jsonl").exists());
         let (kod, uid) = h
-            .kod_uret("", Rol::Usta, "Esenyurt", "Y-1", 1000, 600)
+            .kod_uret("", Rol::Usta, "Esenyurt", "kol ustası", "Y-1", 1000, 600)
             .unwrap();
         assert!(uid.starts_with("U-") && kod.len() == 8);
         // süresi dolunca olmaz
@@ -298,6 +325,12 @@ mod testler {
             .unwrap();
         assert_eq!(b.durum, HesapDurum::OnayBekliyor);
         assert_eq!(b.profil_adi, "Ahmet Y");
+        assert_eq!(b.not, "kol ustası");
+        assert_eq!(b.dogrulama.len(), 4);
+        assert_eq!(
+            baglama_baglantisi("bot", &kod),
+            format!("https://t.me/bot?start=baglan-{kod}")
+        );
         // tek kullanımlık
         assert!(h.kod_ile_bagla(6, "Başka", &kod, 1500, "g").is_err());
         assert!(h.bul(6).unwrap().is_none());
@@ -307,9 +340,13 @@ mod testler {
         assert_eq!(o.durum, HesapDurum::Onayli);
         assert!(h.onayla(5, "Y-1", "g").is_err());
         // aynı usta kimliği ikinci etkin hesaba verilemez
-        assert!(h.kod_uret(&uid, Rol::Usta, "E", "Y-1", 1000, 600).is_err());
+        assert!(h
+            .kod_uret(&uid, Rol::Usta, "E", "", "Y-1", 1000, 600)
+            .is_err());
         h.durum_ata(5, HesapDurum::Askida, "Y-1", "g").unwrap();
-        assert!(h.kod_uret(&uid, Rol::Usta, "E", "Y-1", 1000, 600).is_ok());
+        assert!(h
+            .kod_uret(&uid, Rol::Usta, "E", "", "Y-1", 1000, 600)
+            .is_ok());
     }
 
     #[test]
