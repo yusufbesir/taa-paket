@@ -440,7 +440,10 @@ fn indir_ve_kur(
     dosya: &Path,
 ) -> Result<(), (KurHata, bool)> {
     let h = |e: KurHata| (e, false);
+    ilerleme(&p.ad, "indir", false);
     let n = kaynak.getir(&p.tam.url, dosya, p.tam.boyut).map_err(h)?;
+    ilerleme(&p.ad, "indir", true);
+    ilerleme(&p.ad, "dogrula", false);
     if n != p.tam.boyut {
         return Err(h(KurHata::Dogrulama(format!(
             "{} {} indirilen boyut ({n}) yayin.json'daki boyutla ({}) uyuşmuyor. Öneri: yayını yeniden indirin.",
@@ -454,14 +457,19 @@ fn indir_ve_kur(
             p.ad, p.surum
         ))));
     }
+    ilerleme(&p.ad, "dogrula", true);
     // Paket imzası (varsa güvenilir anahtarla) Kur::kur içinde denetlenir.
+    ilerleme(&p.ad, "kur", false);
     let kurma = kur.kur(dosya, true);
     let hata = match kurma {
         Ok(s) if s.ad == p.ad && s.surum == p.surum && s.secili => match kur.dogrula(Some(&p.ad)) {
             Ok(sorunlar) if sorunlar.is_empty() => {
                 // Yeni sürümün harici bağımlılıkları (ör. Tailscale) sormadan kurulur; hata güncellemeyi bozmaz,
                 // `taa-kur harici <paket>` ile yeniden denenir.
+                ilerleme(&p.ad, "kur", true);
+                ilerleme(&p.ad, "ayarla", false);
                 let _ = kur.harici_kur_paketten(&p.ad, Some(&p.surum));
+                ilerleme(&p.ad, "ayarla", true);
                 return Ok(());
             }
             Ok(sorunlar) => KurHata::Bozuk(format!(
@@ -485,6 +493,22 @@ fn indir_ve_kur(
         String::new()
     };
     Err((hata.yeniden(format!("{}{ek}", tek(hata.mesaj()))), geri))
+}
+
+/// Kurucu ekranı için makine satırı (docs/KURULUM-EKRANI.md): `TAA-ILERLEME<TAB>paket<TAB>adım<TAB>durum`.
+/// adım: indir | dogrula | kur | ayarla; durum: basladi | bitti.
+pub fn ilerleme_satiri(paket: &str, adim: &str, bitti: bool) -> String {
+    format!(
+        "TAA-ILERLEME\t{paket}\t{adim}\t{}",
+        if bitti { "bitti" } else { "basladi" }
+    )
+}
+
+/// Yalnız `TAA_ILERLEME=1` iken stderr'e ilerleme satırı yazar (TAA Kur kurucusu ayarlar); yoksa sessiz.
+fn ilerleme(paket: &str, adim: &str, bitti: bool) {
+    if std::env::var_os("TAA_ILERLEME").is_some_and(|v| v == "1") {
+        eprintln!("{}", ilerleme_satiri(paket, adim, bitti));
+    }
 }
 
 fn tek(m: &str) -> String {

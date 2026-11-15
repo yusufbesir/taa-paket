@@ -1,0 +1,83 @@
+# Sahip: Yusuf. yazan: [Claude#kur-ekrani 2026-11-15]
+# Kurulum ekranında bekleme sırasında dönen kartlar (docs/KURULUM-EKRANI.md). Kod değişmeden düzenlenir.
+# Biçim: [kimlik] satırı yeni kart açar; altında "anahtar = değer" satırları. Boş satır ve # yorum yok sayılır.
+# Anahtarlar: tur (program | rehber), ad, ozet (1-2 cümle), not, sablon (örnek şablon özeti). ad ve ozet zorunlu.
+# Müşteri verisi, kişi adı, anahtar YAZILMAZ. Var olmayan özellik vaat edilmez.
+
+[fiyatetiketi]
+tur = program
+ad = TAA Etiket
+ozet = Raf ve ürün fiyat etiketlerini hazırlar ve yazdırır. Etiket kuyruğunun sahibidir; diğer programlar etiketi kuyruğa bırakır, TAA Etiket basar.
+not = Ürün ve fiyat bilgisi TAA Veri Tabanı Deposu'ndan okunur; etikette elle fiyat yazmak yerine kaynağı güncelleyin.
+sablon = Raf etiketi: ürün adı · ürün kodu · beden/renk · fiyat · barkod
+
+[tutaa]
+tur = program
+ad = Tutaa
+ozet = Tutanak hazırlama programı. El yazısı belgeyi okutup düzenli bir tutanağa dönüştürmeye yardım eder.
+not = Kayıtlar yedeklenerek tutulur; OCR motoru yoksa tarayıcıdaki yedek okuma kullanılır.
+sablon = Teslim tutanağı: tarih · şube · konu · kalemler · imza alanları
+
+[taarkod]
+tur = program
+ad = TaaRkod
+ozet = Ürün için kod ve barkod üretir. Basılacak etiketi doğrudan TAA Etiket kuyruğuna gönderir.
+not = TaaRkod etiket kuyruğuna yazmaz, öneri bırakır; basma işini TAA Etiket yapar.
+sablon = Barkod satırı: ürün kodu · beden · renk · adet
+
+[taadon]
+tur = program
+ad = TaaDön
+ozet = Belge ve dosya dönüştürücü. ZIP ve GZIP arşivlerini güvenle açar, üretilen çıktının gerçekten beklenen biçimde olduğunu denetler.
+not = Açılan arşivlerde zararlı yol ve aşırı büyük dosya denetlenir; çıktı sizin seçtiğiniz klasöre yazılır.
+sablon = Arşiv açma: arşivi seçin · hedef klasör · denetim sonucu
+
+[taafis]
+tur = program
+ad = TaaFiş / TaaTerziTakip
+ozet = Terzi fişlerini tutar, işin durumunu izler ve fişi yazdırır. TaaTerziTakip geciken, bugün teslim ve kargo bekleyen işleri listeler.
+not = Raporlar yalnız sayı gösterir; müşteri bilgisi rapora çıkmaz. Telefon sayfası aynı ağdan QR ile eşleşir.
+sablon = Tadilat fişi: fiş no · ürün · işlem (ör. paça, bel daraltma) · teslim tarihi · durum
+
+[taarehber]
+tur = program
+ad = TAA Rehber
+ozet = Kurum içi e-posta rehberi. Listeyi doğrular, bölüm ve yönetici sırasına göre ağaç olarak gösterir.
+not = Hatalı e-posta ve döngülü yönetici bağı uyarı olarak listelenir; rehber salt okunur açılır.
+sablon = Rehber CSV: ad · e-posta · unvan · bölüm · yönetici e-postası
+
+[taaveri]
+tur = program
+ad = TAA Veri Tabanı Deposu
+ozet = Tüm TAA verilerinin tutulduğu depo; sunucu PC'de çalışır. Ürün, fiyat ve barkod listelerinin tek yazarıdır, öteki programlar okur.
+not = Şube PC'sine kurulmaz; Sunucu PC rolünde kendiliğinden gelir. Veri silinmez, eski kopya saklanır.
+sablon = Fiyat listesi: ürün kodu · fiyat · geçerlilik başlangıcı
+
+[taavideo]
+tur = program
+ad = TAA Video Yapıcı
+ozet = Mağaza LED ekranları için görsel ve videoları hazırlar.
+not = Görsel ve videolar ortak veri havuzunda tutulur; ekran ölçüsüne uygun dosya seçin.
+sablon = Ekran akışı: görsel/video · süre (sn) · sıra
+
+[rehber-dogrulama]
+tur = rehber
+ad = Neden doğrulama?
+ozet = Her paket indirildikten sonra SHA256 özeti ve imzası denetlenir. Uyuşmazsa paket kurulmaz, önceki sürüm yerinde kalır.
+not = Hata görürseniz "Yeniden dene" yeterlidir; sürerse internet bağlantısını kontrol edin.
+
+[rehber-veriler]
+tur = rehber
+ad = Verileriniz yerinde
+ozet = Kurulum ayar dosyanıza (kur.toml), anahtarlarınıza ve program verilerine dokunmaz. Kaldırma da yalnız kurucunun yazdığı dosyaları siler.
+
+[rehber-sonra]
+tur = rehber
+ad = Sonra eklemek kolay
+ozet = Şimdi seçmediğiniz programları istediğiniz zaman TAA Kur penceresinden kurabilir, güncelleyebilir ya da kaldırabilirsiniz.
+not = Komut satırından: taa-guncelle liste, taa-guncelle kur <ad>
+
+[rehber-vpn]
+tur = rehber
+ad = Şubeler arası bağlantı
+ozet = Bir program Tailscale gerektiriyorsa kurulum onu kendiliğinden ekler. Listede "bağımlılık" olarak görünür.

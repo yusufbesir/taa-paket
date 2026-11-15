@@ -3,6 +3,12 @@
 
 ## Yayınlanmamış
 
+### Kurulum ekranı
+
+- `kurulum/` (TAA-Kur-Kurulum.exe): tarayıcıda ilerleme ekranı (std-only yerel HTTP, yalnız 127.0.0.1, Host denetimi, komutlar jetonlu). Aşamalar, program başına İndir/Doğrula/Kur/Ayarla, yüzde, hata + Yeniden dene / Bitir; bekleme kartları (8 TAA programı + rehber notları, `kurulum/kartlar.txt`); tek vurgu rengi, açık/koyu, renk seçici, klavye, `prefers-reduced-motion`. `--arayuzsuz` kapatır, `--sessiz` iken kapalı (`--arayuz` açar). Saf mantık `ilerleme.rs`, `kartlar.rs`, `arayuz.rs` (16 birim test; çalıştırma: `TAA_KUR_PAKET=<boş klasör> cargo test --manifest-path kurulum/Cargo.toml`). Yeni bağımlılık yok. `docs/KURULUM-EKRANI.md`.
+- `taa-guncelle`: `TAA_ILERLEME=1` iken stderr'e `TAA-ILERLEME<TAB>paket<TAB>adım<TAB>basladi|bitti` satırları (`ilerleme_satiri`, 1 test). Ortam yoksa davranış aynı.
+- Windows'ta ÇALIŞTIRILMADI; yalnız `cargo clippy --target x86_64-pc-windows-gnu` tür denetimi. Linux'ta sahte `taa-guncelle` ile uçtan uca ve başsız Chrome ekran görüntüsüyle denendi.
+
 ### Usta puanı (QR)
 
 - `taa-takip::puan` (yeni): QR okutma olayları, tezgâhtar işareti + yönetici tutanağı, 0–10 usta puanı (verimlilik, kalite, müşteri, zamanında, düzen), küçük örnek düzeltmesi, deneme dönemi, ani değişim uyarıları (yalnız yönetici), kural tabanlı yorum ve veriye göre sınırlı kendini ayarlama (`gozden_gecir`). Özellik anahtarları `qr-uretim` ve `usta-puan`, ikisi de varsayılan KAPALI. Usta puanı göremez; izin `takip.puan@1` yalnız yöneticiye verilmelidir (çağıran program uygular). 13 birim test. `docs/USTA-PUAN.md`. 
