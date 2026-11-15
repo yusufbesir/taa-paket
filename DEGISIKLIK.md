@@ -3,6 +3,13 @@
 
 ## Yayınlanmamış
 
+### Terzi Takip: fiş defteri ileri uyumluluğu ve zincir özeti (TT1)
+
+- `Fis.sube` ve `Girdi.sube` eklendi; eski satırlarda boş (`serde(default)`), okuma bozulmaz. `Imza` satırına isteğe bağlı `saat` ve `cihaz` alanları eklendi (boşsa dosyaya yazılmaz); `Defter::imzala_ayrintili` bunları yazar, `imzala` aynı kaldı.
+- Zincir özeti: `Defter::zincir_baslat` bir "zincir başlangıcı" satırı yazar; ondan sonraki her satır sha-256 ile zincire girer. `zincir_ucu()` (satır sayısı + özet) ve `zincir_dogrula(uc)` ile merkeze gönderilmiş uç hâlâ defterde mi denetlenir. Eski satırlar yeniden yazılmaz ve zincire girmez.
+- Sınır: zincir kısmi değişikliği yakalar; dosyanın tamamını yeniden yazan birini tek başına durdurmaz, bu yüzden uç eşitlemede (TT3) merkeze gönderilir. Eski sürümde çalışan program zincir başlangıcı satırını bilmez ve defteri "bozuk" sayar: zincir, tüm şube bilgisayarları güncellendikten sonra başlatılmalıdır.
+- Yeni bağımlılık yok (sha2 çalışma alanında zaten vardı).
+
 ### Terzi Takip: personel ve usta QR ile eklenir (TT12c devamı)
 
 - Yönetici `GET /yonetim/personel` ekranında (yalnız sunucu bilgisayarı) rol (usta, personel, mağaza telefonu), şube ve kendine özel not seçip kişiye özel, tek kullanımlık, 10 dk geçerli QR üretir. Kişi QR'ı telefon kamerasıyla okutunca Telegram `t.me/<bot>?start=baglan-<kod>` ile açılır ve hesap bağlanır; telefonda ve yönetici ekranında AYNI 4 haneli doğrulama sayısı görünür, yönetici sayıyı karşılaştırıp son onayı verir. İmzanın dayanağı Telegram'ın değişmeyen kullanıcı numarası, profil adı da kayda yazılır. Kodu elle yazmak yedek yol olarak kalır. Yeni rol `personel` (fiş görür, raf yazar; usta imzası ve WhatsApp düğmesi yok).

@@ -250,6 +250,7 @@ mod testler {
 
     fn girdi(musteri: &str, teslim: &str, usta: &str, kalemler: Vec<Kalem>, kargo: bool) -> Girdi {
         Girdi {
+            sube: String::new(),
             tarih: "2026-11-01".into(),
             musteri: musteri.into(),
             telefon: "05321234567".into(),
