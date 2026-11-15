@@ -45,7 +45,7 @@ Kimlik değerleri (`id`) kararlıdır, yeniden kullanılmaz; biçim `[a-z0-9][a-
 |---|---|---|---|
 | `id` | metin | evet | |
 | `ad` | metin (1–120) | evet | |
-| `tur` | `sube` \| `magaza` \| `departman` \| `merkez` | evet | |
+| `tur` | `sube` \| `magaza` \| `departman` \| `merkez` | evet | `sube` = 15 şubeden biri (`subeler.kod`, `docs/sube-sozlesmesi.md` §3); `magaza` = bir şubenin altındaki satış noktası (örn. Outlet, `sube_kodu` bağlı olduğu şubedir, Esenyurt Outlet için `istanbul-merkez`); `departman` ve `merkez` şube değildir |
 | `ust_birim_id` | metin | hayır | Başka birim; döngü yasak |
 | `sube_kodu` | metin | `tur=sube` ya da `magaza` ise evet | `docs/sube-sozlesmesi.md` §3 şube kodu |
 | `ortak_eposta` | metin | hayır | Birimin ortak adresi (mağaza, departman, merkez) |
@@ -201,13 +201,14 @@ python3 tools/rehber_rol_denetle.py --roller docs/rehber-rolleri.toml \
 19. Yetki daralınca sonraki eşitlemede önbellek yeni kapsamla yeniden yazılır.
 20. Eşzamanlı iki yönetici düzenlemesi: eski `surum` ile gelen yazma 409.
 21. `rehber.rol@1` kodu yetki kararında kullanılmaz (kimlik hizmeti rolleriyle karışmaz).
-22. Boş `sube_kapsam`lı rehber satırı şube cihazına gönderilmez (yalnız merkez).
+22. `sube_kapsam` alanı olmayan ya da boş rehber satırını yazma hizmeti reddeder (`kapsam_zorunlu`); satır hiç oluşmaz. Okuma yolunda da boş kapsam şube cihazına gönderilmez (yalnız merkez, ikinci kilit).
 23. Eşleştirme `id` ile: aynı e-postalı iki öneri otomatik birleşmez, inceleme kuyruğuna düşer; aynı göç dosyası iki kez işlenince kayıt çoğalmaz.
 24. Öneri rehberi doğrudan değiştirmez; onaylanmamış öneri hiçbir okuyucuda görünmez.
 
 ## 11. Açık noktalar
 - AÇIK-R1: Ana plan §3.2 (v2) tablosu kişide hâlâ "görev (iş unvanı), bağlı olduğu amir, isteğe bağlı dahili telefon" sayıyor; söküm planı §8 (Fable kabulü) ve koordinatör kararı bunları kişiden çıkarıyor (görev/rol/amir görevlendirmeye, telefon ilk sürümden çıkar). Bu sözleşme §8'i uyguladı; ana plan tablosu düzeltilmeli. Dahili telefonun ayrı izinle görünmesi (§3.3) ilk sürümde karşılıksız kaldı; `rehber.dahili.oku` ayrılmış ad olarak duruyor.
-- AÇIK-R9: Boş kapsam = yalnız merkez kuralı havuzun genel kuralından (boş = herkes) ayrılıyor; `taa-havuz` sunucu süzgeci tür ailesine göre istisna uygulamalı (RH1). `rehber.rol@1` ve `rehber.belge@1` herkese açık olacağı için bu türler açık bir "tüm şubeler" kapsamıyla yayımlanmalı.
+- KAPANDI-R9 (Fable denetimi PR #55, koşul 1): rehber satırında kapsam ZORUNLUDUR: `merkez`, `tum` (tüm şubeler) ya da şube kodu listesi. `rehber.yaz@1` kapsamsız satırı reddeder. `rehber.rol@1` ve `rehber.belge@1` açıkça `tum` kapsamıyla yayımlanır. `taa-havuz` okuma süzgecinde boş kapsam yine "yalnız merkez" sayılır (ikinci kilit); asıl kural yazmada uygulanır.
+- AÇIK-R6 (koşul 2): RH1'in ilk PR'ında doğrulayıcıya ayrı `[hizmetler]` listesi eklenir; hiçbir program.toml rehber türleri için `havuz_yazar` bildiremez. Geçici olarak `rehber-yaz` program listesinde durur.
 - AÇIK-R2: Daha açık rehber (şube başka şubenin kişilerini görsün mü) ve kişi ekleme yetkisi (şube müdürü de mi): ANA plan §10 K7, söküm planı §7. Varsayılan: temkinli görünürlük + mağaza müdürü/sorumlusu görünür (v2), yazma yalnız merkezi yönetici.
 - AÇIK-R3: Rol kodları için depoda ikinci kopya (`docs/rehber-rolleri.toml`) gerekir; tek doğruluk kaynağı ilkesiyle gerilim. Çözüm: kodlar sözleşmedir (depo), ad/açıklama veridir (sunucu).
 - AÇIK-R4: `rehber.belge@1` için ana plan kip belirtmiyor; `tablo` seçildi (metin konu). Görsel/PDF gerekirse ayrı `dosya` türü (`rehber.ek@1`) eklenir.
