@@ -88,6 +88,15 @@ pub struct Takip {
 }
 
 impl Takip {
+    /// Yalnız `uygun` dediği fişleri (ve onların durum geçmişini) tutar; şube kapsamı için (K5).
+    pub fn sinirla(mut self, uygun: impl Fn(&Fis) -> bool) -> Takip {
+        self.fisler.retain(|f| uygun(f));
+        let nolar: std::collections::HashSet<String> =
+            self.fisler.iter().map(|f| f.no.clone()).collect();
+        self.gecmis.retain(|(no, _, _)| nolar.contains(no));
+        self
+    }
+
     pub fn defterden(d: &Defter) -> Result<Takip, String> {
         if !taa_ayar::ozellik_acik(OZELLIK, true) {
             return Err(taa_ayar::kapali_mesaji(OZELLIK));

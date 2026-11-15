@@ -5,6 +5,7 @@
 
 ### Terzi Takip: fiş defteri ileri uyumluluğu ve zincir özeti (TT1)
 
+- Şube kapsamı (K5, Telegram botu): usta, personel ve mağaza hesapları yalnız kendi şubelerinin fişini görür, imzalar, rafa koyar, hazır yapar ve listeler; başka şubenin fişi için "fiş yok" denir. Yönetici tüm şubeleri görür. Şubesi yazılmamış eski fişe denetim uygulanamaz, geçer. `Takip::sinirla` özet ve listelerin şubeye göre daraltılmasını sağlar. Not: fiş yazan uçların `Girdi.sube` alanını doldurması ayrı adımdır; doldurulana kadar yeni fişler de şubesiz kalır ve denetime takılmaz.
 - `Fis.sube` ve `Girdi.sube` eklendi; eski satırlarda boş (`serde(default)`), okuma bozulmaz. `Imza` satırına isteğe bağlı `saat` ve `cihaz` alanları eklendi (boşsa dosyaya yazılmaz); `Defter::imzala_ayrintili` bunları yazar, `imzala` aynı kaldı.
 - Zincir özeti: `Defter::zincir_baslat` bir "zincir başlangıcı" satırı yazar; ondan sonraki her satır sha-256 ile zincire girer. `zincir_ucu()` (satır sayısı + özet) ve `zincir_dogrula(uc)` ile merkeze gönderilmiş uç hâlâ defterde mi denetlenir. Eski satırlar yeniden yazılmaz ve zincire girmez.
 - Sınır: zincir kısmi değişikliği yakalar; dosyanın tamamını yeniden yazan birini tek başına durdurmaz, bu yüzden uç eşitlemede (TT3) merkeze gönderilir. Eski sürümde çalışan program zincir başlangıcı satırını bilmez ve defteri "bozuk" sayar: zincir, tüm şube bilgisayarları güncellendikten sonra başlatılmalıdır.
