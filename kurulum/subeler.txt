@@ -1,19 +1,19 @@
 # Sahip: Yusuf. yazan: [Claude#kur-yerel-pencere 2026-11-15]
 # Şube listesi (kurulum ekranında şube seçimi). Kaynak: Tutaa şube listesi (terziademaltun.com iletişim sayfası,
-# 2026-11-05; kamuya açık işletme bilgisi, kişisel/müşteri verisi yok). Biçim: kod<TAB>ad<TAB>il. Kod küçük harf,
-# rakam ve '-'; kurucu seçilen kodu <kök>\sube.txt'ye yazar. Yeni şube: satır ekleyin (kod değişmeden).
-istanbul-merkez	İstanbul Merkez Mağaza (Esenyurt, Outlet dahil)	İstanbul
-istanbul-pendik	İstanbul Pendik Mağaza	İstanbul
-istanbul-umraniye	İstanbul Ümraniye Mağaza	İstanbul
-ankara	Ankara Mağaza	Ankara
-bursa	Bursa Mağaza	Bursa
-sakarya	Sakarya Mağaza	Sakarya
-diyarbakir	Diyarbakır Mağaza	Diyarbakır
-sivas	Sivas Mağaza	Sivas
-gaziantep	Gaziantep Mağaza	Gaziantep
-sanliurfa	Şanlıurfa Mağaza	Şanlıurfa
-van	Van Mağaza	Van
-siirt	Siirt Mağaza	Siirt
-elazig	Elazığ Mağaza	Elazığ
-izmir	İzmir Mağaza	İzmir
-mus	Muş Mağaza	Muş
+# 2026-11-05; kamuya açık işletme bilgisi, kişisel/müşteri verisi yok). Biçim: kod<TAB>slug<TAB>ad<TAB>il. Kod 3 BÜYÜK harf + 2 rakam
+# (ör. MRK01; docs/sube-sozlesmesi.md §3); slug eski okunur kimlik. Kurucu seçilen kodu <kök>\sube.txt'ye ve veri kökündeki sube.json'a yazar. Yeni şube: satır ekleyin (kod değişmeden).
+MRK01	istanbul-merkez	İstanbul Merkez Mağaza (Esenyurt, Outlet dahil)	İstanbul
+PND01	istanbul-pendik	İstanbul Pendik Mağaza	İstanbul
+UMR01	istanbul-umraniye	İstanbul Ümraniye Mağaza	İstanbul
+ANK01	ankara	Ankara Mağaza	Ankara
+BRS01	bursa	Bursa Mağaza	Bursa
+SKR01	sakarya	Sakarya Mağaza	Sakarya
+DYB01	diyarbakir	Diyarbakır Mağaza	Diyarbakır
+SVS01	sivas	Sivas Mağaza	Sivas
+GZT01	gaziantep	Gaziantep Mağaza	Gaziantep
+URF01	sanliurfa	Şanlıurfa Mağaza	Şanlıurfa
+VAN01	van	Van Mağaza	Van
+SRT01	siirt	Siirt Mağaza	Siirt
+ELZ01	elazig	Elazığ Mağaza	Elazığ
+IZM01	izmir	İzmir Mağaza	İzmir
+MUS01	mus	Muş Mağaza	Muş
