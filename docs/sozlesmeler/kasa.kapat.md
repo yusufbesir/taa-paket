@@ -7,6 +7,7 @@
 - Özet: kapanış/iptal kaydı
 - İsteyenler: yok (modul.toml / verilen listeye göre)
 - Çağrı: `taa-ipc` (T1'de gelecek; şimdilik crate içi çağrı). Kaynak: PLAN-TAA-PAKET §18.3
+- Yazdırma yolu (EB0 K7): yazdırmaz; gün sonu çıktısı `fis.yazdir@1` → `yazdir.sun@1`. Z raporu ve POS gün sonu kasa noktası başına (E6, `docs/esleme-sozlesmesi.md` §4.5).
 
 ## İstek alanları
 belirsiz (kod okunup şema çıkarılmadı; uydurulmadı)

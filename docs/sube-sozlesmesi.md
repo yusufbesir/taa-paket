@@ -1,36 +1,36 @@
-<!-- Sahip: Yusuf. yazan: [Claude#sozlesme-S0 2026-11-15]. Durum: SÖZLEŞME (Ş0). Değişiklik: Yusuf'un onayıyla. -->
+<!-- Sahip: Yusuf. yazan: [Claude#sozlesme-S0 2026-11-15]. Durum: SÖZLEŞME (Ş0). Değişiklik: Yusuf'un onayıyla. EB0 eki işlendi: [Claude#sozlesme-EB0 2026-11-15], `docs/esleme-sozlesmesi.md` §1.5 D1–D16 (Yusuf 15:19, Fable denetimi 2026-11-15). -->
 # Şube sözleşmesi (Ş0)
 
 Kaynak: `planlar/PLAN-SUBE-ORTAK-SUNUCU-2026-11-15.md` (§2, §3.1, EK, EK 2), `planlar/PLAN-TAA-PAKET-ANA-2026-11-15.md` §4.11, §5.3.
-Bağlı belgeler: `docs/sube-tehdit-modeli.md`, `docs/sube-izolasyon-testleri.md`, `docs/rehber-sozlesmesi.md`, `docs/havuz-sozlesmesi.md`, `docs/S3-CATI.md`, `docs/T7-KIMLIK.md`. Mevcut uçlar: Tutaa `API-SOZLESMESI.md` (bu belge yalnız şube eklerini tanımlar).
+Bağlı belgeler: `docs/sube-tehdit-modeli.md`, `docs/sube-izolasyon-testleri.md`, `docs/rehber-sozlesmesi.md`, `docs/havuz-sozlesmesi.md`, `docs/S3-CATI.md`, `docs/T7-KIMLIK.md`, `docs/esleme-sozlesmesi.md` (aynı şubede birden çok bilgisayar, EB0 eki). Mevcut uçlar: Tutaa `API-SOZLESMESI.md` (bu belge yalnız şube eklerini tanımlar).
 
 ## 1. Terimler
 | Terim | Anlam |
 |---|---|
 | Şube | 15 mağazadan biri; kimliği `subeler.kod` (§3) |
-| Şube PC'si | Şubedeki tek kayıtlı bilgisayar (15 şube × 1 PC) |
+| Şube bilgisayarı (şube PC'si) | Şubeye bağlı onaylı bilgisayarlardan biri (bir şubede 1 ya da daha çok). Aynı şubenin bilgisayarları eştir (`docs/esleme-sozlesmesi.md`). Bu belgede "şube PC'si" her zaman "şubenin bilgisayarlarından herhangi biri" demektir |
 | Sunucu | TAA Sunucu (axum + PostgreSQL) = **Yusuf'un bilgisayarı** (EK 2, B3) |
 | Merkez rolü | Tüm şubeleri gören yetki (yönetici, merkez personeli). Bir şube değildir |
-| Merkez Mağaza | `istanbul-merkez` şubesi; Esenyurt Outlet buna bağlıdır, ayrı şube değildir |
+| Merkez Mağaza | `istanbul-merkez` şubesi; Esenyurt Outlet buna bağlıdır, ayrı şube değildir. Esenyurt'ta sunucudan ayrı 2 kasa bilgisayarı vardır; ikisi de normal şube bilgisayarıdır (ana plan §16.1; AÇIK-S2 kapandı) |
 | Merkez cihazı | `taa_cihazlar.sube_id = null` olan onaylı cihaz (Çatı, sunucu PC'si) |
 | Cihaz anahtarı | ed25519; her isteği imzalar ("bu PC kayıtlı mı") |
-| Şube imza anahtarı | ed25519; belgeyi imzalar (tutanak, ciro, gün sonu fiş özeti). Cihaz anahtarından **ayrıdır** |
+| Şube imza anahtarı | ed25519; belgeyi imzalar (tutanak, ciro, gün sonu fiş özeti). Cihaz anahtarından **ayrıdır**. Her eş bilgisayarın kendi şube imza anahtarı vardır; hepsi şube adına geçerlidir |
 | Havuz | Merkezden şubelere dağıtılan ortak içerik |
 | İşlem tabloları | Şubeden merkeze akan kayıt (fiş, fiş olayı, tutanak, ciro) |
 
 ## 2. Beş temel kural (plan §2.1)
 1. **Şube kimliği sunucuda belirlenir.** İstemcinin "ben şu şubeyim" beyanına güvenilmez.
 2. **Tek yazar:** her kaydın tek sahibi şubedir, yalnız sahibi yazar. Merkez yalnız onay, iptal ve not olayı ekler (iptal yalnız yönetici, EK).
-3. **Yerel önce:** şube PC'si sunucu olmadan çalışır; yerel kayıt asıldır, kuyruk sonra gönderir.
+3. **Yerel önce:** her şube bilgisayarı sunucu ve eşi olmadan çalışır; yerel kayıt asıldır, kuyruk sonra gönderir.
 4. **Eklemeli kayıt:** silme ve yerinde değiştirme yok; düzeltme yeni sürüm ya da olaydır.
 5. **İki ayrı kanal** (§6). Şube kaydı havuza yazılmaz.
 
 ## 3. Şube kimliği ve 15 şube
 Kaynak: `Tutaa subeler listesi (terziademaltun.com).json` (sürüm 1, 2026-11-05). Karar kapandı (EK 2, B2).
 - `kod` = listedeki `id` (küçük harf, tire; değişmez, yeniden kullanılmaz). Sunucuda `subeler.kod`, ilişkilerde `sube_id`.
-- `onek` = fiş/tutanak numarası öneki (ör. `PND-000123`, plan §2.2). Aşağıdaki önekler **öneridir** (AÇIK-S1).
+- `onek` = fiş/tutanak numarası öneki (ör. `PND-000123`, plan §2.2). Önekler kesindir (Yusuf 2026-11-15, ana plan §16.1); pilot başladıktan sonra değişmez (AÇIK-S1 kapandı). Çok bilgisayarlı şubede numara sırası `docs/esleme-sozlesmesi.md` §3'e göre tek eşte tutulur.
 
-| # | `kod` | Ad | `onek` (öneri) |
+| # | `kod` | Ad | `onek` |
 |---|---|---|---|
 | 1 | `istanbul-merkez` | İstanbul Merkez Mağaza (Esenyurt, Outlet dahil) | MRK |
 | 2 | `istanbul-pendik` | İstanbul Pendik Mağaza | PND |
@@ -51,13 +51,13 @@ Kaynak: `Tutaa subeler listesi (terziademaltun.com).json` (sürüm 1, 2026-11-05
 Esenyurt Outlet için ayrı `kod` yoktur; kayıtları `istanbul-merkez` altındadır. Yeni şube yalnız Çatı'dan (`taa-cati sube ekle`) eklenir; şube kapatılırsa `pasif` olur, silinmez.
 
 ## 4. Cihazdan şube türetme
-1. Cihaz başvurusu → Çatı'da onay sırasında şubeye bağlanır (`taa_cihazlar.sube_id`). Cihazın şubesi **yalnız Çatı'dan** değişir.
+1. Cihaz başvurusu → Çatı'da onay sırasında şubeye bağlanır (`taa_cihazlar.sube_id`). Cihazın şubesi **yalnız Çatı'dan** değişir. Bir şubeye birden çok cihaz bağlanabilir; Çatı şube başına cihaz listesini gösterir (EB1).
 2. Her istekte sunucu: cihaz imzasını doğrular → `cihaz.sube_id` = **istek şubesi**. Kayıtsız ya da iptal edilmiş cihaz parolaya bakılmadan reddedilir.
 3. Oturum (`kullanici_rol.sube_id`) ile kesişim: kişinin o şubede rolü yoksa 403 `yetkisiz`. Kayıtlı cihaz + bilinen kişi birlikte şart (K13).
 4. `X-TAA-Sube` başlığı (§9.3) ya da gövdedeki şube alanı istek şubesiyle uyuşmazsa **409 `sube_uyusmaz`** ve `yetki.red.sube` olayı denetim izine yazılır.
 5. Merkez cihazında (`sube_id = null`) istek şubesi yoktur; şubeli okuma yalnız merkez rolü izniyle ve `X-TAA-Sube` süzgeciyle yapılır, denetim izine yazılır.
 6. İstemci tarafı: `cihaz.json` içindeki onaylı şube kodu kayıtlara (`Fis.sube` vb.) damgalanır; **yalnız gösterim ve çevrimdışı süzgeç içindir**, yetkili kaynak sunucudur. Kuyruk öğesinin damgası cihazın şubesine uymazsa gönderilmez.
-7. PC başka şubeye verilirse eski yerel veri `eski\sube-<kod>-<tarih>\` altına taşınır (silinmez), yeni alan boş açılır; şube imza anahtarı yeniden üretilir (§7.5).
+7. PC başka şubeye verilirse eski yerel veri `eski\sube-<kod>-<tarih>\` altına taşınır (silinmez), yeni alan boş açılır; şube imza anahtarı yeniden üretilir (§7.5). Devredilen PC eski şubenin eş listesinden düşer; elindeki yedek numara aralığının kullanılmamış kısmı atlandı notuyla kapanır (`docs/esleme-sozlesmesi.md` §3).
 
 ### 4.1 Yerel PIN ve çevrimdışı yönetici belgesi (KM1; ana plan §5.3 v2)
 - **Kayıtlı cihazda yerel PIN yönetici yetkisi vermez.** Cihaz bir kez pakete kaydedildiyse program yerel kipe kendiliğinden geri düşemez; geri dönüş yalnız Çatı'dan cihazın çıkarılmasıyla olur. Kasiyer kilidi gibi çalışan düzeyi PIN'ler ayrıdır ve yönetici izni taşımaz. Paketsiz (hiç kaydedilmemiş) programda yerel PIN sürer.
@@ -69,11 +69,11 @@ Esenyurt Outlet için ayrı `kod` yoktur; kayıtları `istanbul-merkez` altında
 ## 5. Tek yazar kuralı (ayrıntı)
 | Kayıt | Yazar | Merkezin ekleyebildiği |
 |---|---|---|
-| Fiş, fiş olayı | Sahibi şube PC'si (telefonlar yerel sunucuya bağlanır, merkeze yalnız şube PC'si yazar) | iptal (yönetici), not |
+| Fiş, fiş olayı | Sahibi şube; şubenin onaylı bilgisayarlarından herhangi biri yazar, kayıtta `kaynak_cihaz` durur. Telefonlar yalnız telefon sunucusu rolündeki eşe bağlanır (o eşin kendi kapısı, eş kapısından ayrı; `docs/esleme-sozlesmesi.md` §4.5, E8 kararı); telefon merkeze yazmaz | iptal (yönetici), not |
 | Tutanak, tutanak eki | Düzenleyen şube (`taraf_subeler` diğer şubeye yalnız okuma verir) | onay, iptal (yönetici), not |
 | Ciro günlük | Sahibi şube | onay (giren onaylayamaz, K8), not |
 | Havuz türleri | Katalogdaki tek yazar (`docs/havuz-turleri.toml`) | — |
-| Şube imza anahtarı kaydı | Şube PC'si başvurur, Çatı onaylar/iptal eder | onay, iptal |
+| Şube imza anahtarı kaydı | Her şube bilgisayarı kendi anahtarıyla başvurur, Çatı onaylar/iptal eder | onay, iptal |
 
 "Şube kilitli": belgedeki şube alanı cihazın şubesinden gelir, elle değişmez.
 
@@ -88,12 +88,14 @@ Esenyurt Outlet için ayrı `kod` yoktur; kayıtları `istanbul-merkez` altında
 
 Bir kanal öbürünün yerine kullanılmaz: şube kaydı havuza, havuz içeriği işlem tablosuna yazılmaz.
 
+**Eş kanalı** (aynı şubenin bilgisayarları arası, yerel ağ; yalnız çok bilgisayarlı şubede) yalnız o şubenin işlem kayıtlarını, yazdırma işlerini ve numara isteklerini taşır; havuz içeriği, ayar, rehber ve anahtar taşımaz. Ayrıntı `docs/esleme-sozlesmesi.md` §4, §5.
+
 ## 7. Şube imzası
 ### 7.1 İki anahtar
 | Anahtar | Amaç | Saklama |
 |---|---|---|
 | Cihaz anahtarı | İstek imzası | `<kök>\cihaz\` (taa-cihaz) |
-| Şube imza anahtarı | Belge imzası | Şube PC'sinde üretilir; özel anahtar **PC'den çıkmaz**, sunucuya ve depoya gitmez, **yedeği alınmaz**; Windows DPAPI ile sarılı |
+| Şube imza anahtarı | Belge imzası | Her şube bilgisayarında ayrı üretilir; özel anahtar **PC'den çıkmaz**, sunucuya ve depoya gitmez, **yedeği alınmaz**; Windows DPAPI ile sarılı |
 
 İki anahtar **aynı anahtar olamaz**; sunucu kayıtta aynı açık anahtarı görürse başvuruyu reddeder. Yönetici kimliği ≠ şube imzası (EK).
 
@@ -107,7 +109,7 @@ TAA-BELGE-v1\n<sube_kodu>\n<belge_turu>\n<no>\n<sha256(belge kanonik JSON)>
 ### 7.3 Kabul şartı (iki anahtar birlikte)
 Belge imzası yalnız şu koşullar birlikte sağlanırsa kabul edilir:
 1. İstek, **aynı şubeye bağlı onaylı cihazdan** gelir (cihaz imzası geçerli).
-2. Belge imzası, o şubenin **geçerli** (onaylı, iptal edilmemiş, tarih aralığı içinde) şube imza anahtarıyla doğrulanır.
+2. Belge imzası, o şubenin **geçerli** (onaylı, iptal edilmemiş, tarih aralığı içinde) şube imza anahtarlarından biriyle doğrulanır.
 3. Belgedeki `sube_kodu` istek şubesine eşittir.
 
 ### 7.4 Sunucu makbuzu
@@ -124,7 +126,7 @@ Sunucu kabul ettiği her belge için kendi anahtarıyla imzalı makbuz döner; �
 ### 7.5 "Devredilemez" sınırı (dürüst not)
 **Yazılımla tam devredilemezlik garanti edilemez.** DPAPI sarması dosyanın başka PC'de açılmasını engeller, ama PC'de yönetici yetkisi olan bir saldırgan anahtarı kullanabilir. Bu risk iki önlemle sınırlanır:
 - **İki anahtar şartı** (§7.3): yalnız şube imza anahtarı ele geçen biri, aynı şubenin onaylı cihazı olmadan belge gönderemez.
-- **İptal akışı:** Çatı'dan cihaz ve şube imza anahtarı iptal edilir (`iptal` zamanı yazılır) → oturumlar düşer → o andan sonraki imzalar reddedilir. Eski imzalar anahtarın geçerlilik aralığı içinde geçerli kalır. PC değişince yeni anahtar üretilir, Çatı'dan onaylanır, eskisi iptal edilir.
+- **İptal akışı:** Çatı'dan cihaz ve şube imza anahtarı iptal edilir (`iptal` zamanı yazılır) → oturumlar düşer → o andan sonraki imzalar reddedilir. Eski imzalar anahtarın geçerlilik aralığı içinde geçerli kalır. PC değişince yeni anahtar üretilir, Çatı'dan onaylanır, eskisi iptal edilir. Bir bilgisayarın anahtarının iptali şubenin öteki anahtarlarını etkilemez.
 
 ### 7.6 Görünür kısım
 Belgede şube adı ve doğrulama karekodu (K5). Görsel kaşe isteğe bağlı (`sube.kase@1`, tek şubelik `sube_kapsam`). Tutaa (JS) anahtara dokunmaz; `imza.belge@1` yeteneğini ister, yoksa yalnız yerel HMAC ile çalışır ve belge "merkez imzasız" kuyruğa girer.
@@ -133,7 +135,7 @@ Belgede şube adı ve doğrulama karekodu (K5). Görsel kaşe isteğe bağlı (`
 - **Müşteri verisi yalnız sunucuda, yani Yusuf'un bilgisayarındadır** (EK 2, B3). Merkez bulut yoktur; müşteri verisi **dış buluta, Google Sheets'e, dış yapay zekâya ve ajan hafızasına gitmez**. Ciro özeti Sheets aktarımı kapalı (K11).
 - Taşıma şifreli (HTTPS + WireGuard/Tailscale). Uçtan uca şifreleme yok (sunucu rapor için okur). Şube ekleri zarf şifrelemesiyle gider (Ş3).
 - Yedek: gece şifreli `pg_dump`; şifreli kopya da dış buluta konmaz (AÇIK-S4).
-- Şube PC'sinde yerel veri, önbellek ve kuyruk o cihaza aittir; DPAPI ile sarılır.
+- Şube bilgisayarında yerel veri, önbellek ve kuyruk o cihaza aittir; DPAPI ile sarılır. Aynı şubenin işlem kayıtları eşlemeyle her eşte de bulunur; her kopya DPAPI ile sarılıdır.
 
 ## 9. API eki
 ### 9.1 Ortak kurallar
@@ -177,6 +179,11 @@ Belgede şube adı ve doğrulama karekodu (K5). Görsel kaşe isteğe bağlı (`
 | `POST /v1/yonetici-belgesi` | yönetici oturumu (TOTP) | Çevrimdışı yönetici belgesi verir; gövde cihaz açık anahtarı içermez, sunucu istek cihazından alır | KM1 (öneri) |
 | `POST /v1/rehber/komut` | `rehber.yaz` (yönetici) | `rehber.yaz@1` yazma hizmeti; çevrimdışı kuyruğa alınmaz; beklenen `surum` uymazsa 409 | RH1 (öneri) |
 | `POST /v1/oneri` | oturum | `veri.oner@1`; ayrı denetimli kuyruk | RH1 (öneri) |
+| `GET /v1/sube/esler` | şube cihazı | Sunucu imzalı eş listesi; yalnız istek şubesi (`docs/esleme-sozlesmesi.md` §5.2) | EB1 (öneri) |
+| `GET /v1/sube/yazicilar` | şube cihazı | Yazıcı kaydı; yalnız istek şubesi | EB1 (öneri) |
+| `POST /v1/sube/yazici` | `sube_cihaz.yonet` (merkez) ya da kurulum yetkisi (TAA Kur, yönetici oturumu) | Yazıcı ekle, sahibini değiştir, pasifleştir; yalnız istek şubesi; `surum` uymazsa 409 | EB1 (öneri) |
+| `POST /v1/sube/rol` | `sube_cihaz.yonet` (merkez) | Sıra tutan, telefon sunucusu ataması; yalnız o şubenin cihazına | EB1 (öneri) |
+| `POST /v1/numara/olay` | şube cihazı | Verilen blok, kullanılan yedek numara, atlama; `olay_id` tek kayıt | EB1 (öneri) |
 
 Belge yazan uçların yanıtı makbuzu (§7.4) içerir. Uç ayrıntıları (alanlar) Tutaa `API-SOZLESMESI.md` ve ilgili aşama PR'ında; bu tablo şube kuralını bağlar. "(öneri)" satırları planda adı geçmeyen, Ş3'te kesinleşecek uçlardır.
 
@@ -218,8 +225,8 @@ Gövde: `{"hata": "<kod>", "mesaj": "<Türkçe sade cümle>"}`. **Mesaj başka �
 ## 10. Çakışma (plan §2.6)
 - Tekrar gönderim: `no` ve `olay_id` ile tek kayıt.
 - Aynı `no`, farklı içerik: 409 `cakisma`; iki sürüm `cakisma` kaydında saklanır, şube müdürü ya da yönetici geçerliyi işaretler. "Son yazan kazanır" yok.
-- Sıra: sunucu alınma sırası + cihaz sıra numarası; istemci saati yalnız bilgi, 5 dk üstü sapma uyarı.
+- Sıra: sunucu alınma sırası + cihaz sıra numarası; istemci saati yalnız bilgi, 5 dk üstü sapma uyarı. Cihaz sıra numarası her cihaz için ayrıdır; eşten gelen çakışma da aynı kuralla iki hal olarak saklanır (`docs/esleme-sozlesmesi.md` §4.3).
 - Kurala uymayan durum olayı reddedilmez, "çelişkili" işaretiyle saklanır.
 
 ## 11. Açık noktalar
-Liste `docs/sube-tehdit-modeli.md` §8'de ortak tutulur (AÇIK-S1 … S8); rehber açıkları `docs/rehber-sozlesmesi.md` §11.
+Liste `docs/sube-tehdit-modeli.md` §8'de ortak tutulur (AÇIK-S1 … S8; S1 ve S2 kapandı); eşleme açıkları `docs/esleme-sozlesmesi.md` §8; rehber açıkları `docs/rehber-sozlesmesi.md` §11.
