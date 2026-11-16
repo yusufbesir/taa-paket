@@ -156,6 +156,32 @@ impl Defter<'_> {
         saat: &str,
         cihaz: &str,
     ) -> Result<(), String> {
+        self.imzala_kisili(no, kim, rol, tarih, saat, cihaz, "dogrulanmis", "")
+    }
+
+    /// Kimlik düzeyi ve okutan kişi kimliğiyle imza. "beyan" düzeyinde kişi kimliği zorunlu;
+    /// mağaza telefonu (rol teslim-eden/teslim-alan dışı) usta imzasını yalnız "dogrulanmis" atabilir.
+    #[allow(clippy::too_many_arguments)]
+    pub fn imzala_kisili(
+        &self,
+        no: &str,
+        kim: &str,
+        rol: &str,
+        tarih: &str,
+        saat: &str,
+        cihaz: &str,
+        kimlik_duzeyi: &str,
+        okutan_kisi_id: &str,
+    ) -> Result<(), String> {
+        if !["dogrulanmis", "beyan"].contains(&kimlik_duzeyi) {
+            return Err("kimlik düzeyi dogrulanmis ya da beyan olmalı".into());
+        }
+        if kimlik_duzeyi == "beyan" && okutan_kisi_id.trim().is_empty() {
+            return Err("beyan imzasında okutan kişi seçilmeli".into());
+        }
+        if kimlik_duzeyi == "beyan" && rol.trim() == "usta" {
+            return Err("usta imzası yalnız doğrulanmış kimlikle atılır".into());
+        }
         kapali()?;
         if !taa_ayar::ozellik_acik("fis-imza", true) {
             return Err(taa_ayar::kapali_mesaji("fis-imza"));
@@ -179,6 +205,8 @@ impl Defter<'_> {
                 tarih: tarih.into(),
                 saat: saat.trim().into(),
                 cihaz: cihaz.trim().into(),
+                kimlik_duzeyi: kimlik_duzeyi.into(),
+                okutan_kisi_id: okutan_kisi_id.trim().into(),
             },
         })
         .map_err(|e| e.to_string())?;
