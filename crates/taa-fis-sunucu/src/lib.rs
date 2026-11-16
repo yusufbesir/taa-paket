@@ -80,6 +80,11 @@ pub fn simdi() -> u64 {
 }
 
 /// Unix saniyesinden Türkiye (UTC+3) takvim günü, YYYY-AA-GG.
+pub fn saat_iso(epoch: u64) -> String {
+    let sn = (epoch + 3 * 3600) % 86400;
+    format!("{:02}:{:02}:{:02}", sn / 3600, sn % 3600 / 60, sn % 60)
+}
+
 pub fn tarih_iso(epoch: u64) -> String {
     let gun = ((epoch + 3 * 3600) / 86400) as i64;
     let z = gun + 719468;
@@ -745,13 +750,32 @@ impl Uygulama {
             }
             ("POST", ["api", "fis", no, "imza"]) => {
                 let v: serde_json::Value = serde_json::from_slice(&i.govde).unwrap_or_default();
-                match d.imzala(
+                // Mağaza telefonu/bilgisayarı usta imzası atamaz; okutan kişi seçilmeden imza olmaz.
+                // Kişi kimliği havuz kişi kaydından gelecek (KM2); şimdilik biçimi denetlenir.
+                let rol = v["rol"].as_str().unwrap_or("teslim-eden");
+                let okutan = v["okutan"].as_str().unwrap_or("").trim();
+                if okutan.is_empty() {
+                    return Yanit::hata(400, "okutan personel seçilmeli");
+                }
+                if okutan.len() > 40
+                    || !okutan
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+                {
+                    return Yanit::hata(400, "okutan kişi kimliği geçersiz");
+                }
+                let s = self.simdi();
+                match d.imzala_kisili(
                     no,
                     &cihaz.ad,
-                    v["rol"].as_str().unwrap_or("usta"),
-                    &tarih_iso(self.simdi()),
+                    rol,
+                    &tarih_iso(s),
+                    &saat_iso(s),
+                    &cihaz.id,
+                    "beyan",
+                    okutan,
                 ) {
-                    Ok(()) => Yanit::json(200, json!({ "tamam": true })),
+                    Ok(()) => Yanit::json(200, json!({ "tamam": true, "kimlik_duzeyi": "beyan" })),
                     Err(e) => Yanit::hata(422, &e),
                 }
             }
@@ -1306,8 +1330,13 @@ mod testler {
         let p = |yol: &str, g: &str| u.isle(&ist("POST", yol, Some(&t), g, false)).kod;
         assert_eq!(p(&format!("/api/fis/{no}/raf"), r#"{"raf":"a-12"}"#), 200);
         assert_eq!(p(&format!("/api/fis/{no}/raf"), r#"{"raf":""}"#), 422);
-        assert_eq!(p(&format!("/api/fis/{no}/imza"), r#"{"rol":"usta"}"#), 200);
-        assert_eq!(p(&format!("/api/fis/{no}/imza"), r#"{"rol":"usta"}"#), 422);
+        let im = format!("/api/fis/{no}/imza");
+        // okutan seçilmeden ya da usta rolüyle imza olmaz
+        assert_eq!(p(&im, r#"{"rol":"teslim-eden"}"#), 400);
+        assert_eq!(p(&im, r#"{"rol":"teslim-eden","okutan":"k 7!"}"#), 400);
+        assert_eq!(p(&im, r#"{"rol":"usta","okutan":"k-7"}"#), 422);
+        assert_eq!(p(&im, r#"{"rol":"teslim-eden","okutan":"k-7"}"#), 200);
+        assert_eq!(p(&im, r#"{"rol":"teslim-eden","okutan":"k-7"}"#), 422);
         let g = u.isle(&ist("GET", &format!("/api/fis/{no}"), Some(&t), "", false));
         let j: serde_json::Value = serde_json::from_slice(&g.govde).unwrap();
         assert_eq!(j["raf"], "A-12");
