@@ -167,6 +167,8 @@ fn program_kur(hedef: &Path, ad: &str, ekran: &Ekran) -> bool {
     });
     match sonuc {
         Ok(s) if s.success() => { ekran.g(|d| d.program_tamam(ad)); true }
+        // Zaten kurulu paket hata değil: kurulu sayılır, kırmızı hata gösterilmez.
+        Ok(_) if son_hata.contains("zaten kurulu") => { ekran.g(|d| d.program_tamam(ad)); true }
         Ok(_) => {
             ekran.g(|d| d.program_hata(ad, &son_hata));
             eprintln!("UYARI: {ad} kurulamadı; sonra TAA Kur penceresinden ya da `taa-guncelle kur {ad}` ile deneyin.");

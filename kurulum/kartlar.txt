@@ -81,3 +81,10 @@ not = Komut satırından: taa-guncelle liste, taa-guncelle kur <ad>
 tur = rehber
 ad = Şubeler arası bağlantı
 ozet = Bir program Tailscale gerektiriyorsa kurulum onu kendiliğinden ekler. Listede "bağımlılık" olarak görünür.
+
+[taakasa]
+tur = program
+ad = TAA Kasa
+ozet = Kasa ve gün sonu programı. Henüz yayınlanmadı; yayınlanınca bu listede kurulabilir hâle gelir.
+not = Şimdilik yalnız yer tutucu: kurulacak bir paketi yok, bu kart bir söz değildir.
+sablon = Gün sonu: tarih · kasa noktası · nakit sayımı · fark
