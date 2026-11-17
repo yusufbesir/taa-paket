@@ -6,8 +6,13 @@ version = 4
 name = "taa-kur-kurulum"
 version = "0.1.0"
 dependencies = [
+ "taa-kur-tema",
  "windows-sys",
 ]
+
+[[package]]
+name = "taa-kur-tema"
+version = "0.1.0"
 
 [[package]]
 name = "windows-link"

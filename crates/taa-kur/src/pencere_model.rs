@@ -1,4 +1,4 @@
-// Sahip: Yusuf. yazan: [Claude#taa-paket-T3 2026-11-05]
+// Sahip: Yusuf. yazan: [Claude#taa-paket-T3 2026-11-05] değiştiren: [Claude#kurucu-arayuz 2026-11-17] (kok_yolu, durum_ata)
 //! taa-kur penceresinin platformdan bağımsız modeli (docs/T3-PENCERE.md).
 //! Komut -> `Kur` çağrısı, satır modeli, düğme etkin/pasif kuralları ve Türkçe durum metinleri burada;
 //! Win32 çizimi (`win.rs`) yalnız bu modeli çağırır. Hiçbir şey silinmez: kaldırma `Kur::kaldir` ile
@@ -309,6 +309,16 @@ impl PencereModel {
 
     pub fn kok_metni(&self) -> String {
         format!("Kök: {}", self.kur.kok().display())
+    }
+
+    /// Kök klasörün tam yolu (Kopyala düğmesi panoya bunu yazar). [Claude#kurucu-arayuz 2026-11-17]
+    pub fn kok_yolu(&self) -> &Path {
+        self.kur.kok()
+    }
+
+    /// Durum satırına arayüzün kendi mesajını yazar (görünüm ayarları, pano). İş mantığına dokunmaz.
+    pub fn durum_ata(&mut self, metin: impl Into<String>) {
+        self.durum = tek_satir(&metin.into());
     }
 
     pub fn satirlar(&self) -> &[Satir] {

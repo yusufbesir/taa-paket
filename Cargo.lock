@@ -933,12 +933,17 @@ dependencies = [
  "taa-cihaz",
  "taa-dosya",
  "taa-imza",
+ "taa-kur-tema",
  "taa-rapor",
  "taa-yol",
  "toml",
  "windows-sys",
  "zip",
 ]
+
+[[package]]
+name = "taa-kur-tema"
+version = "0.1.0"
 
 [[package]]
 name = "taa-kuyruk"

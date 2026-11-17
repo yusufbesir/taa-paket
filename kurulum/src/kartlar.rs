@@ -1,4 +1,4 @@
-// Sahip: Yusuf. yazan: [Claude#kur-ekrani 2026-11-15]
+// Sahip: Yusuf. yazan: [Claude#kur-ekrani 2026-11-15] değiştiren: [Claude#kurucu-arayuz 2026-11-17]
 //! Bekleme kartları: `kurulum/kartlar.txt` verisini çözer; yerel kurulum penceresi bekleme sırasında döndürür. Saf mantık.
 
 /// Exe'ye gömülen kart verisi.
@@ -62,7 +62,9 @@ pub fn gomulu() -> Vec<Kart> {
     coz(VERI).unwrap_or_default()
 }
 
-/// Kartların dönme aralığı (ms).
+/// Kartların eski sabit dönme aralığı (ms). Pencere artık temanın süresini kullanır
+/// (`taa_kur_tema::Tema::tanitim_ms`: İlmek 6 sn, Kalıp 7,2 sn, Mezura 8,4 sn); sabit konsol/yedek için kalır.
+#[allow(dead_code)]
 pub const DONUS_MS: u64 = 9000;
 
 /// Kart sırası: ileri/geri bir adım, başa/sona sarar. Kart yoksa 0.
@@ -74,9 +76,9 @@ pub fn sonraki(simdiki: usize, adet: usize, ileri: bool) -> usize {
     if ileri { (s + 1) % adet } else { (s + adet - 1) % adet }
 }
 
-/// Kart türünün ekrandaki küçük başlığı.
+/// Kart türünün ekrandaki küçük başlığı (büyük harfli etiket yok, KARAR §2.2).
 pub fn tur_etiketi(tur: &str) -> &'static str {
-    if tur == "rehber" { "NOT" } else { "PROGRAM" }
+    if tur == "rehber" { "Not" } else { "Program tanıtımı" }
 }
 
 #[cfg(test)]
@@ -130,6 +132,6 @@ mod testler {
         assert_eq!(sonraki(0, 3, false), 2);
         assert_eq!(sonraki(7, 3, false), 0);
         assert_eq!(sonraki(5, 0, true), 0);
-        assert_eq!((tur_etiketi("rehber"), tur_etiketi("program")), ("NOT", "PROGRAM"));
+        assert_eq!((tur_etiketi("rehber"), tur_etiketi("program")), ("Not", "Program tanıtımı"));
     }
 }

@@ -8,7 +8,13 @@ build = "build.rs"
 publish = false
 
 # Yerel kurulum penceresi (Win32 + GDI, tarayıcısız). Yusuf'un onaylı bağımlılığı windows-sys 0.61 (taa-kur ve taa-ipc
-# ile aynı sürüm); özellikler taa-kur penceresinin kümesi + tema (Registry), DPI (HiDpi), koyu başlık (Dwm), konsol gizleme.
+# ile aynı sürüm); özellikler taa-kur penceresinin kümesi + tema (Registry), DPI (HiDpi), koyu başlık (Dwm), konsol gizleme,
+# Yüksek Karşıtlık (Accessibility: HIGHCONTRASTW) ve vurgu rengi seçici (Controls_Dialogs: ChooseColorW).
+# Tema çekirdeği (İlmek / Kalıp / Mezura, görünüm tercihi, logo): depodaki std-only crate, path ile; dış crate değil.
+# [Claude#kurucu-arayuz 2026-11-17]
+[dependencies]
+taa-kur-tema = { path = "../crates/taa-kur-tema" }
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", default-features = false, features = [
     "Win32_Foundation",
@@ -17,6 +23,8 @@ windows-sys = { version = "0.61", default-features = false, features = [
     "Win32_System_Console",
     "Win32_System_LibraryLoader",
     "Win32_System_Registry",
+    "Win32_UI_Accessibility",
+    "Win32_UI_Controls_Dialogs",
     "Win32_UI_HiDpi",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_WindowsAndMessaging",
