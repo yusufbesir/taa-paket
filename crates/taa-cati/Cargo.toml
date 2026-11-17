@@ -29,3 +29,5 @@ taa-yol = { path = "../taa-yol" }
 # Panel: çalışma alanında zaten kullanılan crate'ler (taa-fis-sunucu); yeni dış bağımlılık değil.
 getrandom = "0.3"
 tiny_http = "0.12"
+# Görünüm: kontrast hesabı TAA Kurucu'nun tema crate'inden (yerel crate, dış bağımlılık yok). yazan: [Claude#taa-cati-gorunum 2026-11-17]
+taa-kur-tema = { path = "../taa-kur-tema" }

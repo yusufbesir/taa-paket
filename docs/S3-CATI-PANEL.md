@@ -21,8 +21,9 @@ doğrulama, silme yok). TAA Sunucu hizmetine dokunulmaz.
 | Kullanıcılar | `kullanici.yonet` | liste, ekle (rol + şube), parola değiştir, hesabı kapat (silme yok) |
 | Şubeler | `kullanici.yonet` | liste, ekle |
 | Program yetkileri | `program.yonet` | program × şube anahtarları; soluk anahtar genel kuraldan gelir; role özel kurallar komut satırında |
+| Yönetici PIN'leri | `program.yonet` | program başına genel PIN ve şubeye özel PIN; belirle/değiştir/kaldır (taze parola). PIN yalnız buradan belirlenir; programlar (TerziTakip, Tutaa…) sunucuda yalnız doğrular |
 | Günlük | `gunluk.gor` | olaylar, işleme göre süzgeç, daha eski olaylar |
-| Ayarlar | — | 3 tema, vurgu rengi, hareketi azalt, varsayılana dön, çıkış, paneli kapat |
+| Ayarlar > Görünüm | — | 3 tema × açık/koyu (Temaya göre/Açık/Koyu/Sistem), temaya özel vurgu rengi, hareket (Sistem/Azalt/Normal), tanıtımı yeniden göster, varsayılana dön; çıkış, paneli kapat |
 
 Yazma işleminde sunucu 15 dk penceresi isterse (428) parola penceresi açılır ve işlem bir kez yeniden denenir.
 
@@ -33,7 +34,14 @@ Ekip turu v2 (Fable 5.2, GPT-6 Astra, Gemini 3.1 Pro), `/mnt/project-files/arayu
 - **Taş**: mat taş, 92 px etiketli ray, 44 px dokunma hedefleri, zeytin vurgu. 200 ms.
 - Logo: **Üç Çatı** (merkez, şube, cihaz), Yusuf'un seçimi; 16 px için ayrı çizim tasarım klasöründe.
 - Yazı tipleri Windows'ta hazır olanlar (Segoe UI Variable, Georgia, Bahnschrift, Cascadia Mono); dış kaynak yok.
-- `prefers-reduced-motion` ve "Hareketi azalt" tüm geçişleri kapatır. Ayarlar bu bilgisayarda saklanır.
+- Her temanın açık ve koyu hâli (6 palet, ekip turu 3, Fable paletleri; metin ≥ 7:1, ikincil metin ≥ 4,5:1, vurgu panelde ≥ 3:1).
+- Görünüm tercihi `<veri kökü>\cati\gorunum.json` (sürümlü, atomik yazım; `taa_cati::gorunum`). Kavramlar TAA Kurucu ile
+  ortak; kontrast hesabı `taa-kur-tema` crate'inden. Özel vurgu kaydedilirken değil, her kip için çizilirken denetlenir:
+  okunabilirse aynen, yetmiyorsa metin rengine %4 adımlarla yaklaştırılır (en çok 12 adım), olmuyorsa temanın rengi kullanılır
+  ve ekranda not çıkar. Yerel uçlar (oturumdan önce, çerezle): `GET/POST /api/gorunum`, `POST /api/gorunum/sifirla`.
+- İlk açılışta 3 sahnelik tanıtım (cihaz onayı, yetki, günlük); Kule yukarı süzülür (120 ms), Defter sayfa çevirir (160 ms),
+  Taş yumuşak geçer (200 ms). Atla/İleri/Başla, Esc atlar; bitince `tanitim_goruldu` yazılır.
+- Hareket: "Sistem" `prefers-reduced-motion`'a uyar, "Azalt" her zaman kapatır, "Normal" sistem ayarını geçersiz kılar.
 
 ## Güvenlik (yerel sunucu)
 - Yalnız 127.0.0.1; `Host` tam olarak `127.0.0.1:<kapı>` olmalı (DNS yeniden bağlamaya karşı), değilse 421.
@@ -50,6 +58,14 @@ Ekip turu v2 (Fable 5.2, GPT-6 Astra, Gemini 3.1 Pro), `/mnt/project-files/arayu
 - Canlı duman testi (Linux, sahte kök): çerezsiz 401, yanlış Host 421, yanlış/ikinci açılış 403, başka köken 403,
   text/plain 415, büyük gövde 413, oturum yokken kod 5, `/api/kapat` süreci kapatır.
 - Windows: `cargo clippy --target x86_64-pc-windows-gnu --release -D warnings` temiz. **Windows'ta elle denenmedi.**
+
+## Yönetici PIN'i (sunucu sözleşmesi, tutaa `sunucu/src/yonetici_pin.rs`)
+- `GET /v1/yonetici-pin` → `[{program, sube_id, belirlendi, guncellendi, guncelleyen}]` (PIN ve karma hiç dönmez).
+- `POST /v1/yonetici-pin {program, sube_id?, pin}`, `POST /v1/yonetici-pin/kaldir {program, sube_id?}`: `program.yonet` + taze parola.
+- `POST /v1/yonetici-pin/dogrula {program, pin}` (programlar): şube cihazdan; 200 `{gecerli, belirlendi}`;
+  cihaz+program başına 5 yanlış = 5 dk kilit, 423 `{hata:"kilitli", kalan_sn}`.
+- PIN 4–8 rakam; 0000 ve 1234/9876 gibi düz sıralar reddedilir (Çatı da aynı kuralı önceden uygular). argon2id ile saklanır.
+  Program adları sunucudaki program yetkisi adlarıdır (ör. `terzitakip`).
 
 ## Sınırlar
 - Kasa onayları ekranı yok (Çatı kitaplığında kasa uçları yok; ayrı adım).

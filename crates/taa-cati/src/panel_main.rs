@@ -11,6 +11,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
+use taa_cati::gorunum::{self, gorunum_yolu, Gorunum};
 use taa_cati::panel::{self, IstekBilgi, Yanit};
 use taa_cati::{hata_kodu, yonetici_baglantisi_hedef, Cati};
 use tiny_http::{Header, Method, Request, Response, Server};
@@ -270,6 +271,13 @@ fn isle(
         ("GET", "/api/oturum") => json_yanit(istek, oturum(ayar)),
         ("POST", "/api/giris") => json_yanit(istek, giris(ayar, &govde)),
         ("POST", "/api/cikis") => json_yanit(istek, cikis(ayar)),
+        ("GET", "/api/gorunum") => json_yanit(istek, (200, gorunum_oku(ayar).ozet())),
+        ("POST", "/api/gorunum") => json_yanit(istek, gorunum_yaz(ayar, &govde)),
+        ("POST", "/api/gorunum/sifirla") => {
+            let mut g = gorunum_oku(ayar);
+            g.varsayilana_don();
+            json_yanit(istek, gorunum_kaydet(ayar, g))
+        }
         ("POST", "/api/kapat") => {
             json_yanit(istek, (200, json!({"tamam": true})));
             std::process::exit(0);
@@ -280,6 +288,45 @@ fn isle(
         }
     }
     Some(true)
+}
+
+// Görünüm tercihi (tema, kip, vurgu, hareket, tanıtım): oturum gerekmez, çerezle korunur; veri kökünde
+// cati/gorunum.json. Sunucuya gitmez, yalnız bu bilgisayarda durur. yazan: [Claude#taa-cati-gorunum 2026-11-17]
+fn gorunum_oku(ayar: &Ayar) -> Gorunum {
+    Gorunum::yukle_yoldan(&gorunum_yolu(&ayar.kok))
+}
+
+fn gorunum_kaydet(ayar: &Ayar, g: Gorunum) -> Yanit {
+    match g.kaydet_yola(&gorunum_yolu(&ayar.kok)) {
+        Ok(()) => (200, g.ozet()),
+        Err(e) => (
+            500,
+            json!({"hata": format!("Görünüm kaydedilemedi: {e}. Öneri: veri kökü yazılabilir mi bakın."), "kod": 2}),
+        ),
+    }
+}
+
+fn gorunum_yaz(ayar: &Ayar, govde: &Value) -> Yanit {
+    if !govde.is_object() {
+        return (400, json!({"hata": "Gövde bir nesne olmalı.", "kod": 2}));
+    }
+    // Bozuk renk yazısı sessizce "temaya dön" sayılmasın: açıkça reddet.
+    let mut renkler: Vec<&Value> = govde.get("vurgu").into_iter().collect();
+    if let Some(o) = govde.get("ozel_vurgu").and_then(Value::as_object) {
+        renkler.extend(o.values());
+    }
+    if renkler
+        .iter()
+        .any(|d| !d.is_null() && d.as_str().and_then(gorunum::hex_oku).is_none())
+    {
+        return (
+            400,
+            json!({"hata": "Renk #RRGGBB biçiminde olmalı.", "kod": 2}),
+        );
+    }
+    let mut g = gorunum_oku(ayar);
+    g.guncelle(govde);
+    gorunum_kaydet(ayar, g)
 }
 
 fn kimlik_hata(e: taa_kimlik::KimlikHata) -> Yanit {

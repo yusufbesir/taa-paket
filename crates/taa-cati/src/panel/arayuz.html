@@ -23,12 +23,28 @@
   --r:3px;--rb:3px;--f-head:"Segoe UI",system-ui,sans-serif;--f-body:"Segoe UI",system-ui,sans-serif;--f-mono:Consolas,ui-monospace,monospace;
   --f-title:Georgia,Cambria,"Times New Roman",serif;--t-title:34px;--dur:160ms;--ease:cubic-bezier(.3,.6,.2,1);--enter:translateX(10px);color-scheme:light;
 }
+:root[data-tema="kule"][data-kip="acik"]{
+  --bg:#F1F4F9;--panel:#FFFFFF;--panel2:#E7ECF4;--line:#D5DCE8;--line-strong:#6B7A96;--fg:#0E1420;--muted:#56627A;
+  --accent:#B87408;--on-accent:#0E1420;--sel:#1B2538;--ok:#1F7A52;--warn:#B23A12;--err:#B3173F;color-scheme:light;
+}
 :root[data-tema="tas"]{
   --bg:#D8D9D2;--panel:#ECEDE7;--panel2:#E1E3DB;--line:#B0B3A8;--line-strong:#72776A;--fg:#23261F;--muted:#4F544A;
   --accent:#4A5C24;--on-accent:#F4F6EE;--sel:#4A5C24;--ok:#1F7A6B;--warn:#A2621A;--err:#A33A2C;
   --r:14px;--rb:10px;--f-head:Bahnschrift,"Segoe UI",system-ui,sans-serif;--w-head:600;--f-body:"Segoe UI",system-ui,sans-serif;--f-mono:Consolas,ui-monospace,monospace;
   --f-title:var(--f-head);--t-title:30px;--dur:200ms;--ease:cubic-bezier(.2,.9,.3,1.03);--enter:scale(.985);color-scheme:light;
 }
+:root[data-tema="defter"][data-kip="koyu"]{
+  --bg:#121A30;--panel:#18223D;--panel2:#1F2B4A;--line:#2C3A5E;--line-strong:#6F7FA8;--fg:#F3EEE4;--muted:#A9A391;
+  --accent:#8FAAF0;--on-accent:#101830;--sel:#8FAAF0;--ok:#5CC08A;--warn:#E0A040;--err:#F07A6A;color-scheme:dark;
+}
+:root[data-tema="tas"][data-kip="koyu"]{
+  --bg:#1E201C;--panel:#272A24;--panel2:#2F332B;--line:#40453A;--line-strong:#7E8573;--fg:#E6E8DF;--muted:#A8AD9C;
+  --accent:#A9BF6A;--on-accent:#1A1E10;--sel:#A9BF6A;--ok:#4FC0AC;--warn:#DDA04E;--err:#E57A68;color-scheme:dark;
+}
+/* Tanıtım geçişi temaya göre (ekip turu 3): Kule yukarı süzülür, Defter sayfa çevirir, Taş yumuşak geçer. */
+:root{--t-dur:120ms;--t-ease:ease-out;--t-gir:translateY(8px);--t-cik:translateY(-8px)}
+:root[data-tema="defter"]{--t-dur:160ms;--t-ease:cubic-bezier(.2,.7,.2,1);--t-gir:translateX(24px);--t-cik:translateX(-24px)}
+:root[data-tema="tas"]{--t-dur:200ms;--t-ease:ease-in-out;--t-gir:scale(.98);--t-cik:scale(.98)}
 html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--fg);font:14px/1.5 var(--f-body);transition:background var(--dur),color var(--dur)}
 *{box-sizing:border-box}
@@ -183,7 +199,32 @@ dialog .dugmeler{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
   .iki{grid-template-columns:1fr}
   .menu-alt{display:none}
 }
-@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+.segment{display:inline-flex;border:1px solid var(--line-strong);border-radius:var(--rb);overflow:hidden;flex-wrap:wrap}
+.segment button{border:0;background:none;padding:7px 14px;font-size:13px;font-weight:500;color:var(--muted)}
+.segment button+button{border-left:1px solid var(--line)}
+.segment button[aria-pressed="true"]{background:var(--sel);color:var(--panel)}
+.not{font-size:12px;margin-top:6px;color:var(--muted)}
+.not.uyari{color:var(--warn)}
+.renk-sec{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.renk-sec input[type=color]{width:44px;height:32px;padding:0;border:1px solid var(--line-strong);border-radius:var(--rb);background:none}
+#tanitim{position:fixed;inset:0;z-index:70;display:grid;place-items:center;background:var(--bg);padding:24px}
+#tanitim[hidden]{display:none}
+#tanitim .cerceve{width:min(460px,100%);display:grid;gap:22px;justify-items:center;text-align:center}
+#tanitim .sahne{display:grid;gap:14px;justify-items:center;min-height:230px;align-content:center}
+#tanitim .sahne.gir{animation:t-gir var(--t-dur) var(--t-ease) both}
+#tanitim .sahne.cik{animation:t-cik var(--t-dur) var(--t-ease) both}
+@keyframes t-gir{from{opacity:0;transform:var(--t-gir)}to{opacity:1;transform:none}}
+@keyframes t-cik{from{opacity:1;transform:none}to{opacity:0;transform:var(--t-cik)}}
+#tanitim .simge{width:96px;height:96px;border-radius:var(--r);background:var(--panel);border:1px solid var(--line);display:grid;place-items:center}
+#tanitim h2{font:var(--w-head) 24px/1.2 var(--f-title);margin:0;text-wrap:balance}
+#tanitim p{margin:0;color:var(--muted);font-size:15px;max-width:36ch}
+#tanitim .noktalar{display:flex;gap:8px}
+#tanitim .noktalar i{width:8px;height:8px;border-radius:50%;background:var(--line-strong)}
+#tanitim .noktalar i.aktif{background:var(--accent)}
+#tanitim .dugmeler{display:flex;gap:10px;justify-content:center}
+.pin-durum{font-size:12px}
+.pin-durum.var{color:var(--ok)}.pin-durum.yok{color:var(--muted)}
+@media (prefers-reduced-motion:reduce){:root:not(.hareket-normal) *,:root:not(.hareket-normal) *::before,:root:not(.hareket-normal) *::after{animation:none!important;transition:none!important}}
 :root.az-hareket *,:root.az-hareket *::before,:root.az-hareket *::after{animation:none!important;transition:none!important}
 </style>
 </head>
@@ -197,6 +238,14 @@ dialog .dugmeler{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
     </svg>
     <div class="ad">TAA Çatı</div>
     <div class="adim" id="yukle-adim">Oturum okunuyor…</div>
+  </div>
+</div>
+
+<div id="tanitim" role="dialog" aria-modal="true" aria-labelledby="tanitim-baslik" hidden>
+  <div class="cerceve">
+    <div class="sahne" id="tanitim-sahne" aria-live="polite"></div>
+    <div class="noktalar" id="tanitim-nokta" aria-hidden="true"><i></i><i></i><i></i></div>
+    <div class="dugmeler"><button class="dugme" id="tanitim-atla">Atla</button><button class="dugme birincil" id="tanitim-ileri">İleri</button></div>
   </div>
 </div>
 
@@ -240,8 +289,6 @@ dialog .dugmeler{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
 'use strict';
 const $=s=>document.querySelector(s);
 const kok=document.documentElement;
-const oku=k=>{try{return localStorage.getItem(k)}catch(e){return null}};
-const yaz=(k,v)=>{try{v==null?localStorage.removeItem(k):localStorage.setItem(k,v)}catch(e){}};
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const tr=s=>String(s??'').toLocaleLowerCase('tr');
 const zaman=z=>z?String(z).replace('T',' ').replace(/(\.\d+)?Z$/,'').slice(0,16):'-';
@@ -280,13 +327,15 @@ let bt;function bildir(m,hata){const b=$('#bildirim');b.textContent=m;b.classLis
 const hataBildir=e=>bildir(e.message||String(e),true);
 
 // ---- durum ----
-let oturum=null,saglik=null,veri={cihazlar:[],kullanicilar:[],subeler:[],yetkiler:[],roller:[],olaylar:[]};
+let oturum=null,saglik=null,veri={cihazlar:[],kullanicilar:[],subeler:[],yetkiler:[],roller:[],olaylar:[],pinler:[]};
 let suzgec='bekliyor',arama='',sor=null,gunlukIslem='',gunlukSon=null;
 const izinli=i=>!!(oturum&&oturum.izinler&&oturum.izinler.includes(i));
 const EKRANLAR=[
   ['genel','Genel bakış','◐',null],['cihazlar','Cihazlar','▣','cihaz.yonet'],['kullanicilar','Kullanıcılar','◍','kullanici.yonet'],
-  ['subeler','Şubeler','⌂','kullanici.yonet'],['yetkiler','Program yetkileri','▦','program.yonet'],['gunluk','Günlük','≡','gunluk.gor'],['ayarlar','Ayarlar','⚙',null]
+  ['subeler','Şubeler','⌂','kullanici.yonet'],['yetkiler','Program yetkileri','▦','program.yonet'],['pinler','Yönetici PIN\'leri','✱','program.yonet'],['gunluk','Günlük','≡','gunluk.gor'],['ayarlar','Ayarlar','⚙',null]
 ];
+const BILINEN=['terzitakip','tutaa','taarkod','taadon','taa-etiket','taa-giydir','taa-video'];
+const PROGRAM_AD={terzitakip:'TerziTakip',tutaa:'Tutaa',taarkod:'TaaRkod',taadon:'TaaDön','taa-etiket':'TAA Etiket','taa-giydir':'TAA Giydir','taa-video':'TAA Video Yapıcı'};
 const gorunur=()=>EKRANLAR.filter(e=>!e[3]||izinli(e[3]));
 const bekleyen=()=>veri.cihazlar.filter(c=>c.durum==='bekliyor').length;
 const subeAd=id=>{if(id==null||id==='')return 'Merkez';const s=veri.subeler.find(x=>x.id===id);return s?s.ad:'Şube '+id};
@@ -298,6 +347,7 @@ async function yukle(ne){
   if(ne==='hepsi'||ne==='sube')isler.push(al('subeler','/api/subeler','kullanici.yonet'));
   if(ne==='hepsi'||ne==='kullanici')isler.push(al('kullanicilar','/api/kullanicilar','kullanici.yonet'),al('roller','/api/roller','kullanici.yonet'));
   if(ne==='hepsi'||ne==='yetki')isler.push(al('yetkiler','/api/yetkiler','program.yonet'));
+  if(ne==='hepsi'||ne==='pin')isler.push(al('pinler','/api/pinler','program.yonet'));
   if(ne==='hepsi'||ne==='gunluk')isler.push(al('olaylar','/api/gunluk?limit=50'+(gunlukIslem?'&islem='+encodeURIComponent(gunlukIslem):''),'gunluk.gor'));
   if(ne==='hepsi')isler.push(istek('/api/saglik').then(v=>saglik=v).catch(()=>saglik={ulasildi:false}));
   await Promise.all(isler);
@@ -386,7 +436,6 @@ const SAYFA={
     <div class="izgara4">${veri.subeler.map(s=>`<div class="kart istat"><div class="etiket">KOD ${esc(s.kod)}</div><div class="deger">${esc(s.ad)}</div><div class="ayr">${veri.cihazlar.filter(c=>c.sube_id===s.id&&c.durum==='onayli').length} onaylı cihaz${s.aktif===false?' · kapalı':''}</div></div>`).join('')||bosDurum('Şube yok.')}</div>`;
   },
   yetkiler(){
-    const BILINEN=['tutaa','taarkod','taadon','taa-etiket','terzitakip','taa-giydir','taa-video'];
     const kurallar=veri.yetkiler.filter(y=>!y.rol);
     const programlar=[...new Set([...BILINEN,...veri.yetkiler.map(y=>y.program)])];
     const kural=(p,s)=>kurallar.find(y=>y.program===p&&(y.sube_id??null)===s);
@@ -405,18 +454,36 @@ const SAYFA={
     <div class="kart">${veri.olaylar.length?veri.olaylar.map(o=>`<div class="satir"><span class="mono muted" style="font-size:12px;min-width:120px">${esc(zaman(o.zaman))}</span><div class="ana"><b>${esc(o.islem)}</b><span>${esc(subeAd(o.sube_id))}${o.kullanici_id!=null?' · kullanıcı '+esc(o.kullanici_id):''}${o.ayrinti?' · '+esc(typeof o.ayrinti==='string'?o.ayrinti:JSON.stringify(o.ayrinti)):''}</span></div></div>`).join(''):bosDurum('Olay yok.')}</div>
     ${veri.olaylar.length>=50?'<div><button class="dugme" data-daha>Daha eski olaylar</button></div>':''}`;
   },
+  pinler(){
+    const programlar=[...new Set([...BILINEN,...veri.pinler.map(p=>p.program)])];
+    const kayit=(p,sid)=>veri.pinler.find(x=>x.program===p&&(x.sube_id??null)===sid&&x.belirlendi);
+    const satir=(p,sid)=>{const k=kayit(p,sid);const ad=sid==null?'Tüm şubeler':subeAd(sid);
+      return `<div class="satir"><div class="ana"><b>${esc(ad)}</b><span class="pin-durum ${k?'var':'yok'}">${k?'Belirlendi · '+esc(zaman(k.guncellendi))+(k.guncelleyen?' · '+esc(k.guncelleyen):''):(sid==null?'Belirlenmedi · bu programda yönetici işlemleri kilitli':'Belirlenmedi')}</span></div>
+      <button class="dugme${k?'':' birincil'}" data-pin-belirle="${esc(p)}" data-sube="${esc(sid??'')}">${k?'Değiştir':'Belirle'}</button>${k?`<button class="dugme tehlike" data-pin-kaldir="${esc(p)}" data-sube="${esc(sid??'')}">Kaldır</button>`:''}</div>`};
+    return ust('Yönetici PIN\'leri','Programlardaki yönetici işlemleri bu PIN\'le açılır · yalnız buradan belirlenir')+
+    programlar.map(p=>{const ozel=veri.pinler.filter(x=>x.program===p&&x.sube_id!=null&&x.belirlendi);
+      return `<div class="kart"><h2>${esc(PROGRAM_AD[p]||p)} <span class="mono muted" style="font-size:12px;font-weight:400">${esc(p)}</span><span class="bos"></span><button class="dugme" data-pin-belirle="${esc(p)}" data-sube-sec="1">Şubeye özel PIN</button></h2>
+      ${satir(p,null)}${ozel.map(x=>satir(p,x.sube_id)).join('')}</div>`}).join('')+
+    `<div class="ipucu"><span class="nokta"></span>PIN sunucuda geri çevrilemez biçimde saklanır, kimse göremez; unutulursa yenisi belirlenir. Şubeye özel PIN, o şubede genel PIN'in yerine geçer. Bir cihazda 5 yanlış denemede o cihaz 5 dakika bekler.</div>`;
+  },
   ayarlar(){
-    const t=kok.dataset.tema||'kule';
+    const t=gor.tema,k=gor.kip,ha=gor.hareketi_azalt;
     const ornek={kule:['#0E1420','#151D2C','#F2A93B','Koyu kontrol odası, amber vurgu'],defter:['#FAF7F1','#FFFFFF','#2B4C9B','Açık defter, mürekkep lacivert'],tas:['#D8D9D2','#ECEDE7','#4A5C24','Mat taş, zeytin vurgu']};
     const adlar={kule:'Kule Gecesi',defter:'Defter',tas:'Taş'};
+    const seg=(id,ops,sec)=>`<div class="segment" role="group" aria-label="${id}">${ops.map(([d,ad])=>`<button data-${id}="${d}" aria-pressed="${String(sec)===d}">${ad}</button>`).join('')}</div>`;
+    const v=vurguDurum();
+    const not={duzeltildi:'Okunabilirlik için renk biraz ayarlandı.',reddedildi:'Bu renk bu temada okunamıyor; temanın rengi kullanılıyor.'}[v.durum]||'';
     return ust('Ayarlar','Görünüm bu bilgisayarda saklanır')+`
     <div class="kart"><h2>Tema</h2>
-      <div class="temalar">${Object.keys(ornek).map(k=>`<button class="tema-sec" data-tema-sec="${k}" aria-pressed="${t===k}"><div class="on" style="background:${ornek[k][0]}"><i style="width:28%;background:${ornek[k][1]}"></i><i style="flex:1;background:${ornek[k][1]}"></i><i style="width:14px;height:14px;align-self:end;border-radius:50%;background:${ornek[k][2]}"></i></div><div class="alt"><b>${adlar[k]}</b><span>${ornek[k][3]}</span></div></button>`).join('')}</div>
+      <div class="temalar">${Object.keys(ornek).map(x=>`<button class="tema-sec" data-tema-sec="${x}" aria-pressed="${t===x}"><div class="on" style="background:${ornek[x][0]}"><i style="width:28%;background:${ornek[x][1]}"></i><i style="flex:1;background:${ornek[x][1]}"></i><i style="width:14px;height:14px;align-self:end;border-radius:50%;background:${ornek[x][2]}"></i></div><div class="alt"><b>${adlar[x]}</b><span>${ornek[x][3]}</span></div></button>`).join('')}</div>
     </div>
     <div class="kart">
-      <div class="ayar-satir"><div class="ana"><b style="font-weight:500">Vurgu rengi</b><div class="muted" style="font-size:12px">Düğmeler ve seçili öğeler</div></div><input type="color" id="vurgu" value="${esc(getComputedStyle(kok).getPropertyValue('--accent').trim())}" aria-label="Vurgu rengi"></div>
-      <div class="ayar-satir"><div class="ana"><b style="font-weight:500">Hareketi azalt</b><div class="muted" style="font-size:12px">Geçiş animasyonlarını kapatır</div></div><button class="anahtar" role="switch" id="azhareket" aria-checked="${kok.classList.contains('az-hareket')}" aria-label="Hareketi azalt"></button></div>
-      <div class="ayar-satir"><div class="ana"><b style="font-weight:500">Varsayılana dön</b><div class="muted" style="font-size:12px">Tema, renk ve hareket ayarı sıfırlanır</div></div><button class="dugme" data-sifirla>Sıfırla</button></div>
+      <div class="ayar-satir"><div class="ana"><b style="font-weight:500">Açık / koyu</b><div class="muted" style="font-size:12px">Her temanın açık ve koyu hâli var</div></div>${seg('kip',[['tema','Temaya göre'],['acik','Açık'],['koyu','Koyu'],['sistem','Sistem']],k)}</div>
+      <div class="ayar-satir"><div class="ana"><b style="font-weight:500">Vurgu rengi</b><div class="muted" style="font-size:12px">Düğmeler ve seçili öğeler · ${esc(adlar[t])} için ayrı saklanır</div>${not?`<div class="not uyari" role="status">${not}</div>`:''}</div>
+        <div class="renk-sec"><input type="color" id="vurgu" value="${esc(v.ozel||v.renk)}" aria-label="Vurgu rengi">${v.ozel?'<button class="dugme" data-vurgu-sifirla>Temanın rengine dön</button>':''}</div></div>
+      <div class="ayar-satir"><div class="ana"><b style="font-weight:500">Hareket</b><div class="muted" style="font-size:12px">Geçiş ve tanıtım animasyonları</div></div>${seg('hareket',[['null','Sistem'],['true','Azalt'],['false','Normal']],ha)}</div>
+      <div class="ayar-satir"><div class="ana"><b style="font-weight:500">Tanıtım</b><div class="muted" style="font-size:12px">İlk açılıştaki üç kısa sahne</div></div><button class="dugme" data-tanitim>Yeniden göster</button></div>
+      <div class="ayar-satir"><div class="ana"><b style="font-weight:500">Varsayılana dön</b><div class="muted" style="font-size:12px">Tema, açık/koyu, renk ve hareket sıfırlanır</div></div><button class="dugme" data-sifirla>Sıfırla</button></div>
     </div>
     <div class="kart">
       <div class="ayar-satir"><div class="ana"><b style="font-weight:500">Oturum</b><div class="muted" style="font-size:12px">${esc(oturum.kullanici)} · ${esc((oturum.roller||[]).join(', '))}</div></div><button class="dugme" data-cikis>Çıkış yap</button></div>
@@ -431,7 +498,59 @@ function ciz(odak){
   $('#ana').innerHTML=`<div class="ekran">${SAYFA[e]()}</div>`;
   if(odak){const a=$('#ara');if(a){a.focus();a.setSelectionRange(a.value.length,a.value.length)}}
 }
-function temaUygula(t){if(!['kule','defter','tas'].includes(t))t='kule';kok.dataset.tema=t;const v=oku('cati-vurgu-'+t);kok.style.removeProperty('--accent');if(v&&/^#[0-9a-f]{6}$/i.test(v))kok.style.setProperty('--accent',v)}
+// ---- görünüm ---- tercih veri kökünde cati/gorunum.json (yerel panel /api/gorunum); kontrast düzeltmesi sunucu tarafında.
+let gor={tema:'kule',kip:'tema',hareketi_azalt:null,tanitim_goruldu:true,ozel_vurgu:{},vurgular:{}};
+const sistemKoyu=matchMedia('(prefers-color-scheme: dark)');
+const sistemAz=matchMedia('(prefers-reduced-motion: reduce)');
+function koyuMu(){return gor.kip==='koyu'||(gor.kip==='tema'&&gor.tema==='kule')||(gor.kip==='sistem'&&sistemKoyu.matches)}
+function hareketAz(){return gor.hareketi_azalt==null?sistemAz.matches:gor.hareketi_azalt}
+function vurguDurum(){const o=(gor.ozel_vurgu||{})[gor.tema]||null;const v=((gor.vurgular||{})[gor.tema]||{})[koyuMu()?'koyu':'acik']||{};return{ozel:o,renk:v.renk||getComputedStyle(kok).getPropertyValue('--accent').trim(),yazi:v.yazi,durum:v.durum||'tema'}}
+function gorUygula(){
+  const t=['kule','defter','tas'].includes(gor.tema)?gor.tema:'kule';
+  kok.dataset.tema=t;kok.dataset.kip=koyuMu()?'koyu':'acik';
+  kok.style.removeProperty('--accent');kok.style.removeProperty('--on-accent');
+  const v=vurguDurum();
+  if(v.durum==='uygun'||v.durum==='duzeltildi'){kok.style.setProperty('--accent',v.renk);if(v.yazi)kok.style.setProperty('--on-accent',v.yazi)}
+  kok.classList.toggle('az-hareket',gor.hareketi_azalt===true);
+  kok.classList.toggle('hareket-normal',gor.hareketi_azalt===false);
+}
+sistemKoyu.addEventListener('change',()=>{if(gor.kip==='sistem'){gorUygula();ciz()}});
+async function gorKaydet(degisim,ileti){
+  const once=gor;
+  try{gor=await istek('/api/gorunum',degisim);gorUygula();ciz();
+    const d=vurguDurum().durum;
+    if('vurgu' in degisim&&d==='duzeltildi')bildir('Okunabilirlik için renk biraz ayarlandı');
+    else if('vurgu' in degisim&&d==='reddedildi')bildir('Bu renk okunamıyor; temanın rengi kullanılıyor',true);
+    else if(ileti)bildir(ileti);
+  }catch(e){gor=once;gorUygula();hataBildir(e)}
+}
+
+// ---- tanıtım ---- (ekip turu 3, metin: Fable). Atla/İleri/Başla; Esc atlar. Bitince bir daha kendiliğinden açılmaz.
+const SAHNELER=[
+  ['Cihazlar onayınızla bağlanır','Yeni bir cihaz, siz onaylayana kadar hiçbir şeye erişemez.','<rect x="14" y="12" width="36" height="26" rx="3"/><path d="M24 46h16M32 38v8"/><path d="M25 25l5 5 9-10" stroke="var(--accent)"/>'],
+  ['Yetkiyi siz belirlersiniz','Her programın neye erişebileceğini tek tek seçer, dilediğinizde geri alırsınız.','<path d="M14 20h36M14 32h36M14 44h36"/><circle cx="24" cy="20" r="4" fill="var(--panel)"/><circle cx="40" cy="32" r="4" fill="var(--panel)" stroke="var(--accent)"/><circle cx="28" cy="44" r="4" fill="var(--panel)"/>'],
+  ['Her işlem kayıtlı','Kim, ne zaman, ne yaptı; hepsi günlükte durur ve denetlenebilir.','<rect x="16" y="10" width="32" height="44" rx="3"/><path d="M23 22h18M23 30h18M23 38h11"/><circle cx="44" cy="46" r="7" fill="var(--panel)" stroke="var(--accent)"/><path d="M44 42v4l3 2" stroke="var(--accent)"/>']
+];
+let tanitimSira=0,tanitimBitince=null;
+function tanitimCiz(gecis){
+  const kutu=$('#tanitim-sahne'),[b,a,ik]=SAHNELER[tanitimSira];
+  const yaz=()=>{kutu.className='sahne';
+    kutu.innerHTML=`<div class="simge" aria-hidden="true"><svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke="var(--fg)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">${ik}</svg></div><h2 id="tanitim-baslik">${b}</h2><p>${a}</p>`;
+    if(gecis&&!hareketAz()){void kutu.offsetWidth;kutu.classList.add('gir')}};
+  if(gecis&&!hareketAz()){kutu.classList.remove('gir');kutu.classList.add('cik');setTimeout(yaz,parseInt(getComputedStyle(kok).getPropertyValue('--t-dur'))||150)}else yaz();
+  [...$('#tanitim-nokta').children].forEach((n,i)=>n.classList.toggle('aktif',i===tanitimSira));
+  $('#tanitim-ileri').textContent=tanitimSira===SAHNELER.length-1?'Başla':'İleri';
+  $('#tanitim-atla').hidden=tanitimSira===SAHNELER.length-1;
+}
+function tanitimGoster(){return new Promise(coz=>{tanitimSira=0;tanitimBitince=coz;$('#tanitim').hidden=false;tanitimCiz(false);$('#tanitim-ileri').focus()})}
+function tanitimKapat(){
+  $('#tanitim').hidden=true;
+  if(!gor.tanitim_goruldu){gor.tanitim_goruldu=true;istek('/api/gorunum',{tanitim_goruldu:true}).then(v=>{gor=v}).catch(()=>{})}
+  const c=tanitimBitince;tanitimBitince=null;if(c)c();
+}
+$('#tanitim-ileri').addEventListener('click',()=>{if(tanitimSira<SAHNELER.length-1){tanitimSira++;tanitimCiz(true)}else tanitimKapat()});
+$('#tanitim-atla').addEventListener('click',tanitimKapat);
+$('#tanitim').addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();tanitimKapat()}if(e.key==='ArrowRight')$('#tanitim-ileri').click();if(e.key==='Tab'){e.preventDefault();const d=[...$('#tanitim').querySelectorAll('button:not([hidden])')];const i=d.indexOf(document.activeElement);d[(i+(e.shiftKey?d.length-1:1))%d.length].focus()}});
 
 // ---- formlar ----
 function formAc(baslik,govde,kaydet,dugme){
@@ -444,6 +563,8 @@ function formAc(baslik,govde,kaydet,dugme){
 }
 const subeSecici=(ad,secili)=>`<select class="girdi" name="${ad}"><option value="">Merkez (şubesiz)</option>${veri.subeler.map(s=>`<option value="${+s.id}" ${s.id===secili?'selected':''}>${esc(s.ad)} (${esc(s.kod)})</option>`).join('')}</select>`;
 const sayi=v=>v===''||v==null?null:+v;
+function pinZayif(p){if(!/^[0-9]{4,8}$/.test(p))return 'PIN 4-8 rakam olmalı.';const d=[...p].map(Number);if(d.every(x=>x===d[0]))return 'PIN tek rakamın tekrarı olamaz.';
+  const art=d.every((x,i)=>!i||x===d[i-1]+1),az=d.every((x,i)=>!i||x===d[i-1]-1);return art||az?'PIN sıralı rakamlar olamaz (ör. 1234).':''}
 
 // ---- olaylar ----
 document.addEventListener('click',async e=>{
@@ -483,17 +604,38 @@ document.addEventListener('click',async e=>{
     if('gunlukSuz' in ds){gunlukIslem=$('#gunluk-islem').value.trim();await yukle('gunluk');ciz();return}
     if('daha' in ds){const son=veri.olaylar[veri.olaylar.length-1];if(!son)return;d.disabled=true;
       const ek=await api('/api/gunluk?limit=50&onceki_id='+(+son.id)+(gunlukIslem?'&islem='+encodeURIComponent(gunlukIslem):''));veri.olaylar=veri.olaylar.concat(ek||[]);ciz();return}
-    if(ds.temaSec){temaUygula(ds.temaSec);yaz('cati-tema',ds.temaSec);ciz();bildir('Tema değişti');return}
-    if(d.id==='azhareket'){kok.classList.toggle('az-hareket');yaz('cati-az',kok.classList.contains('az-hareket')?'1':null);ciz();return}
-    if('sifirla' in ds){['kule','defter','tas'].forEach(t=>yaz('cati-vurgu-'+t,null));yaz('cati-tema',null);yaz('cati-az',null);kok.classList.remove('az-hareket');temaUygula('kule');ciz();bildir('Varsayılan ayarlara dönüldü');return}
+    if(ds.temaSec){await gorKaydet({tema:ds.temaSec},'Tema değişti');return}
+    if(ds.kip){await gorKaydet({kip:ds.kip});return}
+    if(ds.hareket){await gorKaydet({hareketi_azalt:JSON.parse(ds.hareket)});return}
+    if('vurguSifirla' in ds){await gorKaydet({vurgu:null},'Temanın rengine dönüldü');return}
+    if('tanitim' in ds){await tanitimGoster();d.disabled=false;return}
+    if('sifirla' in ds){try{gor=await istek('/api/gorunum/sifirla',{});gorUygula();ciz();bildir('Varsayılan ayarlara dönüldü')}catch(err){hataBildir(err)}return}
+    if(ds.pinBelirle){
+      const p=ds.pinBelirle,secili=ds.subeSec?undefined:sayi(ds.sube),ad=PROGRAM_AD[p]||p;
+      const subeAlani=ds.subeSec?`<label class="alan">Şube<select class="girdi" name="sube_id" required>${veri.subeler.map(x=>`<option value="${+x.id}">${esc(x.ad)} (${esc(x.kod)})</option>`).join('')}</select></label>`:`<div class="muted" style="font-size:13px">${esc(secili==null?'Tüm şubeler':subeAd(secili))}</div>`;
+      formAc(ad+' yönetici PIN\'i',`${subeAlani}
+        <label class="alan">Yeni PIN (4-8 rakam)<input class="girdi mono" name="pin" type="password" inputmode="numeric" autocomplete="new-password" pattern="[0-9]{4,8}" minlength="4" maxlength="8" required></label>
+        <label class="alan">PIN tekrar<input class="girdi mono" name="pin2" type="password" inputmode="numeric" autocomplete="new-password" pattern="[0-9]{4,8}" minlength="4" maxlength="8" required></label>
+        <div class="muted" style="font-size:12px">0000 ya da 1234 gibi kolay tahmin edilen PIN'ler kabul edilmez.</div>`,
+        async f=>{if(f.pin.value!==f.pin2.value)throw new Error('İki PIN aynı değil.');const z=pinZayif(f.pin.value);if(z)throw new Error(z);
+          const sid=ds.subeSec?sayi(f.sube_id.value):secili;
+          await api('/api/pin',{program:p,pin:f.pin.value,sube_id:sid});f.reset();await yukle('pin');ciz();bildir('PIN belirlendi')},'Kaydet');
+      return}
+    if(ds.pinKaldir){
+      const p=ds.pinKaldir,sid=sayi(ds.sube),ad=PROGRAM_AD[p]||p;
+      formAc('PIN kaldırılsın mı?',`<div>${esc(ad)} · ${esc(sid==null?'Tüm şubeler':subeAd(sid))}</div><div class="muted" style="font-size:13px">${sid==null?'Genel PIN kalkınca şubeye özel PIN\'i olmayan şubelerde bu programın yönetici işlemleri kilitlenir.':'Bu şubede genel PIN geçerli olur.'}</div>`,
+        async()=>{await api('/api/pin/kaldir',{program:p,sube_id:sid});await yukle('pin');ciz();bildir('PIN kaldırıldı')},'Kaldır');
+      return}
     if('cikis' in ds){await istek('/api/cikis',{});oturum=null;girisGoster();return}
     if('panelKapat' in ds){try{await istek('/api/kapat',{})}catch(e){}document.body.innerHTML='<p style="padding:32px;font:16px system-ui">Panel kapandı. Bu pencereyi kapatabilirsiniz.</p>';window.close();return}
   }catch(err){d.disabled=false;hataBildir(err)}
 });
 document.addEventListener('input',e=>{
   if(e.target.id==='ara'){arama=e.target.value;ciz(true)}
-  if(e.target.id==='vurgu'){kok.style.setProperty('--accent',e.target.value);yaz('cati-vurgu-'+(kok.dataset.tema||'kule'),e.target.value)}
+  if(e.target.id==='vurgu'){kok.style.setProperty('--accent',e.target.value)}
 });
+// Renk seçici: sürüklerken önizleme, bırakınca kaydet (sunucu kontrastı düzeltir ya da reddeder).
+document.addEventListener('change',e=>{if(e.target.id==='vurgu')gorKaydet({vurgu:e.target.value})});
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='gunluk-islem'){$('[data-gunluk-suz]').click()}});
 window.addEventListener('hashchange',()=>{sor=null;ciz();$('#ana').focus({preventScroll:true})});
 
@@ -516,10 +658,10 @@ async function basla(){
   await yukle('hepsi');ciz();
 }
 async function ac(){
-  temaUygula(oku('cati-tema')||'kule');
-  if(oku('cati-az'))kok.classList.add('az-hareket');
-  const az=matchMedia('(prefers-reduced-motion: reduce)').matches||kok.classList.contains('az-hareket');
-  const bitir=()=>setTimeout(()=>$('#yukle').classList.add('bitti'),az?0:500);
+  try{gor=await istek('/api/gorunum')}catch(e){}
+  gorUygula();
+  const az=hareketAz();
+  const bitir=()=>setTimeout(async()=>{$('#yukle').classList.add('bitti');if(!gor.tanitim_goruldu){const o=document.activeElement;await tanitimGoster();if(!$('#giris').hidden)$('#giris-form').kullanici.focus();else if(o)o.focus()}},az?0:500);
   try{
     const o=await istek('/api/oturum');
     if(!o.girisli){bitir();girisGoster(o.sunucu);return}

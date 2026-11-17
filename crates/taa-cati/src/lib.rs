@@ -15,6 +15,7 @@
 #[cfg(test)]
 mod testler;
 
+pub mod gorunum;
 pub mod panel;
 
 pub use taa_kimlik::{KimlikHata, Oturum};
@@ -36,6 +37,9 @@ pub const PROGRAM_YETKI_UCU: &str = "/v1/program-yetki";
 pub const OLAY_UCU: &str = "/v1/olay";
 pub const SUBE_UCU: &str = "/v1/sube";
 pub const YENIDEN_DOGRULA_UCU: &str = "/v1/yeniden-dogrula";
+/// Program bazlı yönetici PIN'i (sunucu: tutaa/sunucu `yonetici_pin.rs`). PIN yalnız buradan belirlenir.
+pub const YONETICI_PIN_UCU: &str = "/v1/yonetici-pin";
+pub const YONETICI_PIN_KALDIR_UCU: &str = "/v1/yonetici-pin/kaldir";
 
 /// İzin adları (sunucu tohumu, API-SOZLESMESI).
 pub const IZIN_KULLANICI: &str = "kullanici.yonet";
@@ -490,6 +494,46 @@ impl<'a> Cati<'a> {
         self.liste(IZIN_SUBE, SUBE_UCU)
     }
 
+    // ---- yönetici PIN'i ---- yazan: [Claude#taa-cati-pin 2026-11-17]
+
+    /// `GET /v1/yonetici-pin` → [{program, sube_id, belirlendi, guncellendi, guncelleyen}] (PIN hiç dönmez).
+    pub fn yonetici_pinleri(&self) -> Result<Vec<Value>, CatiHata> {
+        self.liste(IZIN_PROGRAM, YONETICI_PIN_UCU)
+    }
+
+    /// Programın (isteğe bağlı şubeye özel) yönetici PIN'ini belirler. Taze parola ister (428 → yeniden doğrula).
+    pub fn yonetici_pin_belirle(
+        &self,
+        program: &str,
+        sube_id: Option<i64>,
+        pin: &str,
+    ) -> Result<Value, CatiHata> {
+        let program = tanitici("program", program)?;
+        pin_politikasi(pin).map_err(|m| CatiHata::GecersizGirdi(m.into()))?;
+        let mut m = Map::new();
+        m.insert("program".into(), Value::String(program));
+        if let Some(s) = sube_id {
+            m.insert("sube_id".into(), json!(s));
+        }
+        m.insert("pin".into(), Value::String(pin.into()));
+        self.yaz(IZIN_PROGRAM, YONETICI_PIN_UCU, Value::Object(m))
+    }
+
+    /// PIN'i kaldırır (sunucuda kayıt silinmez); şubeye özel kaldırılırsa genel PIN geçerli olur.
+    pub fn yonetici_pin_kaldir(
+        &self,
+        program: &str,
+        sube_id: Option<i64>,
+    ) -> Result<Value, CatiHata> {
+        let program = tanitici("program", program)?;
+        let mut m = Map::new();
+        m.insert("program".into(), Value::String(program));
+        if let Some(s) = sube_id {
+            m.insert("sube_id".into(), json!(s));
+        }
+        self.yaz(IZIN_PROGRAM, YONETICI_PIN_KALDIR_UCU, Value::Object(m))
+    }
+
     pub fn sube_ekle(&self, kod: &str, ad: &str) -> Result<Value, CatiHata> {
         let kod = tanitici("şube kodu", kod)?;
         if !gorunen_ad_gecerli(ad) {
@@ -499,6 +543,21 @@ impl<'a> Cati<'a> {
         }
         self.yaz(IZIN_SUBE, SUBE_UCU, json!({ "kod": kod, "ad": ad.trim() }))
     }
+}
+
+/// Sunucuyla aynı PIN kuralı (erken ve anlaşılır hata için): 4–8 rakam, 0000 ya da 1234/9876 gibi düz sıra değil.
+pub fn pin_politikasi(pin: &str) -> Result<(), &'static str> {
+    let b = pin.as_bytes();
+    if !(4..=8).contains(&b.len()) || !b.iter().all(u8::is_ascii_digit) {
+        return Err("PIN 4-8 rakam olmalı");
+    }
+    if b.iter().all(|&c| c == b[0]) {
+        return Err("PIN tek rakamın tekrarı olamaz");
+    }
+    if b.windows(2).all(|w| w[1] == w[0] + 1) || b.windows(2).all(|w| w[0] == w[1] + 1) {
+        return Err("PIN sıralı rakamlar olamaz (ör. 1234)");
+    }
+    Ok(())
 }
 
 /// Depodaki oturumu okur ve cihaz imzalı göndericiyi kurar. Çatı yalnız sunucu PC'sinde çalışır; cihaz anahtarı

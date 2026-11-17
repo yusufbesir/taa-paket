@@ -239,6 +239,7 @@ pub fn api(
         }
         ("GET", "/api/subeler") => dizi(c.subeler()),
         ("GET", "/api/yetkiler") => dizi(c.program_yetkileri()),
+        ("GET", "/api/pinler") => dizi(c.yonetici_pinleri()),
         ("GET", "/api/gunluk") => {
             let sayi = |ad: &str| sorgu_degeri(sorgu, ad).and_then(|v| v.parse::<i64>().ok());
             let f = OlaySuzgeci {
@@ -313,6 +314,14 @@ pub fn api(
                 acik,
             ))
         }
+        ("POST", "/api/pin") => match (s(govde, "program"), s(govde, "pin")) {
+            (Some(p), Some(pin)) => deger(c.yonetici_pin_belirle(p, i(govde, "sube_id"), pin)),
+            _ => girdi("program ve PIN gerekli"),
+        },
+        ("POST", "/api/pin/kaldir") => match s(govde, "program") {
+            Some(p) => deger(c.yonetici_pin_kaldir(p, i(govde, "sube_id"))),
+            None => girdi("program gerekli"),
+        },
         ("POST", "/api/sube/ekle") => match (s(govde, "kod"), s(govde, "ad")) {
             (Some(k), Some(a)) => deger(c.sube_ekle(k, a)),
             _ => girdi("kod ve ad gerekli"),
@@ -353,6 +362,9 @@ mod testler {
         }
         fn son(&self) -> (String, String, Value) {
             self.istekler.borrow().last().cloned().expect("istek yok")
+        }
+        fn sayi(&self) -> usize {
+            self.istekler.borrow().len()
         }
     }
     impl Gonderici for Sahte {
@@ -484,6 +496,7 @@ mod testler {
             ("/api/roller", "/v1/rol"),
             ("/api/subeler", "/v1/sube"),
             ("/api/yetkiler", "/v1/program-yetki"),
+            ("/api/pinler", "/v1/yonetici-pin"),
         ] {
             let (d, _) = api(&c, &g, "GET", yol, "", &Value::Null);
             assert_eq!(d, 200, "{yol}");
@@ -545,6 +558,51 @@ mod testler {
         );
         assert_eq!(d, 200);
         assert_eq!(g.son().2["roller"][0]["rol"], "kasiyer");
+    }
+
+    #[test]
+    fn yonetici_pin_uclari() {
+        let g = Sahte::yeni();
+        let c = Cati::izinsiz_denetimle(&g);
+        let (d, _) = api(
+            &c,
+            &g,
+            "POST",
+            "/api/pin",
+            "",
+            &json!({"program": "terzitakip", "pin": "2580", "sube_id": 3}),
+        );
+        assert_eq!(d, 200);
+        assert_eq!(g.son().1, "/v1/yonetici-pin");
+        assert_eq!(
+            g.son().2,
+            json!({"program": "terzitakip", "pin": "2580", "sube_id": 3})
+        );
+        let (d, _) = api(
+            &c,
+            &g,
+            "POST",
+            "/api/pin/kaldir",
+            "",
+            &json!({"program": "terzitakip"}),
+        );
+        assert_eq!(d, 200);
+        assert_eq!(g.son().1, "/v1/yonetici-pin/kaldir");
+        assert!(g.son().2.get("sube_id").is_none(), "boş şube = tüm şubeler");
+        // zayıf PIN sunucuya hiç gitmez
+        let n = g.sayi();
+        for kotu in ["1234", "0000", "12", "12ab", "123456789"] {
+            let (d, _) = api(
+                &c,
+                &g,
+                "POST",
+                "/api/pin",
+                "",
+                &json!({"program": "terzitakip", "pin": kotu}),
+            );
+            assert_eq!(d, 400, "{kotu}");
+        }
+        assert_eq!(g.sayi(), n);
     }
 
     #[test]
