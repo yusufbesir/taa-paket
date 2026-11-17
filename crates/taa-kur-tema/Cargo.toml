@@ -1,0 +1,17 @@
+# taa-kur-tema: TAA Kurucu arayüzünün üç teması (İlmek, Kalıp, Mezura), jetonlar, kontrast koruması,
+# görünüm tercih dosyası ve "Geçme Temel" logosu. Bağımlılıksız (yalnız std); Linux'ta test edilir.
+# Sahip: Yusuf. yazan: [Claude#kurucu-arayuz 2026-11-17]. kurulum/ ayrı çalışma alanından path ile de
+# kullanıldığı için workspace.* alanları bilerek kullanılmaz.
+[package]
+name = "taa-kur-tema"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+description = "TAA Kurucu temaları: jetonlar, geometri, tipografi, hareket, kontrast koruması, görünüm tercihi, logo"
+
+[lib]
+name = "taa_kur_tema"
+path = "src/lib.rs"
+
+[dependencies]

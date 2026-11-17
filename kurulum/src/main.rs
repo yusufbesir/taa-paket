@@ -1,4 +1,4 @@
-// Sahip: Yusuf. yazan: [Claude#taa-paket-kurulum 2026-11-09]
+// Sahip: Yusuf. yazan: [Claude#taa-paket-kurulum 2026-11-09] değiştiren: [Claude#kurucu-arayuz 2026-11-17]
 //! TAA Kur kurulum ve kaldırma programı (tek exe; adı "kaldir" ile başlıyorsa kaldırır). Yalnız standart kütüphane.
 //! Kurar: taa-kur.exe, taa-kur-pencere.exe, taa-guncelle.exe, kur.toml (YOKSA), anahtarlar\*.pub (YOKSA), kaldir.exe.
 //! Var olan kur.toml/anahtar dosyasına, depo\, eski\, kayit.json ve veri alanlarına DOKUNMAZ. Kaldırma yalnız kendi
@@ -15,10 +15,15 @@ mod ilerleme;
 #[cfg_attr(not(windows), allow(dead_code))]
 mod kartlar;
 #[cfg(windows)]
+mod cizim;
+#[cfg(windows)]
 mod pencere;
 #[cfg_attr(not(windows), allow(dead_code))]
 mod secim;
 mod subeler;
+// Pencerenin saf yerleşim / durum hesapları (tema, cetvel, yükleme, tanıtım); Linux'ta birim testli.
+#[cfg_attr(not(windows), allow(dead_code))]
+mod yerlesim;
 
 use ekran::{Ekran, Komut};
 use ilerleme::Asama;

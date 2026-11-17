@@ -1,4 +1,4 @@
-// Sahip: Yusuf. yazan: [Claude#taa-paket-T1 2026-11-05]
+// Sahip: Yusuf. yazan: [Claude#taa-paket-T1 2026-11-05] değiştiren: [Claude#kurucu-arayuz 2026-11-17] (pencere_tema modülü)
 //! taa-kur: TAA kurulum yöneticisi (kütüphane API'si; CLI ayrı işte eklenir).
 //! Kök: `TAA_KOK` → kayit.json içindeki `kok` → varsayılan. Tüm yazımlar atomiktir (`taa_dosya::uzerine_yaz_atomik`).
 //! Süreçler arası kilit: `<kok>/kilit` (create_new); değiştiren işlemler kilit altında çalışır, iş bitince kilit
@@ -12,6 +12,7 @@ pub mod harici;
 pub mod kayit;
 pub mod paket;
 pub mod pencere_model;
+pub mod pencere_tema;
 mod veri;
 #[cfg(windows)]
 pub mod win;

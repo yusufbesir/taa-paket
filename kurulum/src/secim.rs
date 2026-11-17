@@ -1,4 +1,4 @@
-// Sahip: Yusuf. yazan: [Claude#kur-yerel-pencere 2026-11-15]
+// Sahip: Yusuf. yazan: [Claude#kur-yerel-pencere 2026-11-15] değiştiren: [Claude#kurucu-arayuz 2026-11-17]
 //! Kurulum ekranındaki seçim (onay, rol, şube, isteğe bağlı programlar): tek ya da çoklu seçim, klavye imleci.
 //! Saf mantık; pencere yalnız çizer ve tuş/tıklama iletir. Konsolda aynı model numaralı soruya döner.
 
@@ -84,6 +84,52 @@ impl Secim {
         }
     }
 
+    /// Boş olmayan grup adları, ilk görünme sırasıyla (İlmek'te hap çipler için).
+    pub fn gruplar(&self) -> Vec<String> {
+        let mut v: Vec<String> = vec![];
+        for x in &self.secenekler {
+            if !x.grup.is_empty() && !v.contains(&x.grup) {
+                v.push(x.grup.clone());
+            }
+        }
+        v
+    }
+
+    /// Gruptaki işaretli ve toplam seçenek sayısı.
+    pub fn grup_sayisi(&self, grup: &str) -> (usize, usize) {
+        let mut n = (0, 0);
+        for (x, i) in self.secenekler.iter().zip(&self.isaretli) {
+            if x.grup == grup {
+                n.1 += 1;
+                if *i {
+                    n.0 += 1;
+                }
+            }
+        }
+        n
+    }
+
+    /// Hap çip: çoklu seçimde gruptakilerin hepsi işaretliyse hepsini kaldırır, değilse hepsini işaretler;
+    /// imleç grubun ilk seçeneğine gider. Tek seçimde ya da bilinmeyen grupta bir şey yapmaz.
+    pub fn grup_degistir(&mut self, grup: &str) {
+        if !self.coklu || grup.is_empty() {
+            return;
+        }
+        let (isaretli, toplam) = self.grup_sayisi(grup);
+        if toplam == 0 {
+            return;
+        }
+        let yeni = isaretli < toplam;
+        for (x, i) in self.secenekler.iter().zip(self.isaretli.iter_mut()) {
+            if x.grup == grup {
+                *i = yeni;
+            }
+        }
+        if let Some(k) = self.secenekler.iter().position(|x| x.grup == grup) {
+            self.imlec = k;
+        }
+    }
+
     /// Onaylanınca dönen seçim: tek seçimde imleç, çoklu seçimde işaretliler (boş olabilir).
     pub fn sonuc(&self) -> Vec<usize> {
         if self.coklu {
@@ -159,6 +205,28 @@ mod testler {
         assert_eq!(s.sonuc(), vec![0, 2]);
         s.tikla(0);
         assert_eq!(s.sonuc(), vec![2]);
+    }
+
+    #[test]
+    fn grup_cipleri() {
+        let g = |e: &str, grup: &str| Secenek { etiket: e.into(), aciklama: String::new(), grup: grup.into() };
+        let mut s = Secim::coklu("P", "", vec![g("a", "Mağaza"), g("b", "Mağaza"), g("c", "Ofis"), g("d", "")]);
+        assert_eq!(s.gruplar(), vec!["Mağaza".to_string(), "Ofis".to_string()]);
+        s.tikla(1);
+        assert_eq!(s.grup_sayisi("Mağaza"), (1, 2));
+        s.grup_degistir("Mağaza");
+        assert_eq!(s.sonuc(), vec![0, 1], "kısmi grup tamamlanır");
+        assert_eq!(s.imlec, 0);
+        s.grup_degistir("Mağaza");
+        assert!(s.sonuc().is_empty(), "tam grup boşalır");
+        s.grup_degistir("Ofis");
+        assert_eq!((s.sonuc(), s.imlec), (vec![2], 2));
+        s.grup_degistir("yok");
+        s.grup_degistir("");
+        assert_eq!(s.sonuc(), vec![2]);
+        let mut t = Secim::tek("x", "", vec![g("a", "G")], 0);
+        t.grup_degistir("G");
+        assert_eq!(t.isaretli, vec![false]);
     }
 
     #[test]
