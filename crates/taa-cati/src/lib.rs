@@ -40,6 +40,8 @@ pub const YENIDEN_DOGRULA_UCU: &str = "/v1/yeniden-dogrula";
 /// Program bazlı yönetici PIN'i (sunucu: tutaa/sunucu `yonetici_pin.rs`). PIN yalnız buradan belirlenir.
 pub const YONETICI_PIN_UCU: &str = "/v1/yonetici-pin";
 pub const YONETICI_PIN_KALDIR_UCU: &str = "/v1/yonetici-pin/kaldir";
+/// KM2: telefon eşleştirmesinde panelden onay (mağaza bilgisayarı bildirir, Çatı onaylar).
+pub const ESLESTIRME_UCU: &str = "/v1/eslestirme";
 
 /// İzin adları (sunucu tohumu, API-SOZLESMESI).
 pub const IZIN_KULLANICI: &str = "kullanici.yonet";
@@ -532,6 +534,120 @@ impl<'a> Cati<'a> {
             m.insert("sube_id".into(), json!(s));
         }
         self.yaz(IZIN_PROGRAM, YONETICI_PIN_KALDIR_UCU, Value::Object(m))
+    }
+
+    // ---- KM2: personel kaydı onayı ve panelden eşleştirme ---- yazan: [Claude#taa-km2 2026-11-17]
+
+    /// `GET /v1/kullanici?durum=` — `durum`: onay_bekliyor | aktif | askida | kaldirildi | reddedildi.
+    pub fn kullanicilar_durumlu(&self, durum: &str) -> Result<Vec<Value>, CatiHata> {
+        if !matches!(
+            durum,
+            "onay_bekliyor" | "aktif" | "askida" | "kaldirildi" | "reddedildi"
+        ) {
+            return Err(CatiHata::GecersizGirdi(format!(
+                "durum geçersiz: {durum:?}"
+            )));
+        }
+        self.liste(IZIN_KULLANICI, &format!("{KULLANICI_UCU}?durum={durum}"))
+    }
+
+    /// Onay bekleyen kaydı onaylar: en az bir rol; `kisi_id` verilirse var olan kişiye bağlanır,
+    /// `gercek_ad` verilirse düzeltilir. Taze parola ister.
+    pub fn kullanici_onayla(
+        &self,
+        kullanici_id: i64,
+        roller: &[RolAtama],
+        kisi_id: Option<&str>,
+        gercek_ad: Option<&str>,
+    ) -> Result<Value, CatiHata> {
+        if roller.is_empty() {
+            return Err(CatiHata::GecersizGirdi("en az bir rol gerekli".into()));
+        }
+        let mut m = Map::new();
+        m.insert(
+            "roller".into(),
+            Value::Array(roller.iter().map(RolAtama::json).collect()),
+        );
+        if let Some(k) = kisi_id.map(str::trim).filter(|k| !k.is_empty()) {
+            let gecerli = (4..=64).contains(&k.len())
+                && k.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'));
+            if !gecerli {
+                return Err(CatiHata::GecersizGirdi(
+                    "kişi kimliği 4-64 karakter; harf, rakam, _ ya da -".into(),
+                ));
+            }
+            m.insert("kisi_id".into(), Value::String(k.into()));
+        }
+        if let Some(g) = gercek_ad.map(str::trim).filter(|g| !g.is_empty()) {
+            if !gorunen_ad_gecerli(g) {
+                return Err(CatiHata::GecersizGirdi(
+                    "ad soyad boş/çok uzun/denetim karakteri".into(),
+                ));
+            }
+            m.insert("gercek_ad".into(), Value::String(g.into()));
+        }
+        self.yaz(
+            IZIN_KULLANICI,
+            &format!("{KULLANICI_UCU}/{kullanici_id}/onayla"),
+            Value::Object(m),
+        )
+    }
+
+    /// `islem`: reddet | askiya-al | geri-ac | kilit-ac. Taze parola ister.
+    pub fn kullanici_durum_islemi(
+        &self,
+        kullanici_id: i64,
+        islem: &str,
+    ) -> Result<Value, CatiHata> {
+        if !matches!(islem, "reddet" | "askiya-al" | "geri-ac" | "kilit-ac") {
+            return Err(CatiHata::GecersizGirdi(format!(
+                "işlem geçersiz: {islem:?}"
+            )));
+        }
+        self.yaz(
+            IZIN_KULLANICI,
+            &format!("{KULLANICI_UCU}/{kullanici_id}/{islem}"),
+            json!({}),
+        )
+    }
+
+    /// Tek kullanımlık, 24 saatlik geçici kod → `{kod, bitis}`. Kod yalnız bu yanıtta gelir; saklanmaz, günlüğe yazılmaz.
+    pub fn gecici_kod(&self, kullanici_id: i64) -> Result<Value, CatiHata> {
+        self.yaz(
+            IZIN_KULLANICI,
+            &format!("{KULLANICI_UCU}/{kullanici_id}/gecici-kod"),
+            json!({}),
+        )
+    }
+
+    /// `GET /v1/eslestirme?durum=` (varsayılan bekliyor). Sayı listede gelmez.
+    pub fn eslestirmeler(&self, durum: Option<&str>) -> Result<Vec<Value>, CatiHata> {
+        let d = durum.unwrap_or("bekliyor");
+        if !matches!(
+            d,
+            "bekliyor" | "onayli" | "reddedildi" | "iptal" | "suresi_doldu" | "hepsi"
+        ) {
+            return Err(CatiHata::GecersizGirdi(format!("durum geçersiz: {d:?}")));
+        }
+        self.liste(IZIN_CIHAZ, &format!("{ESLESTIRME_UCU}?durum={d}"))
+    }
+
+    /// Telefonda görünen iki haneli sayıyla onay. 3 yanlışta sunucu isteği reddeder.
+    pub fn eslestirme_onayla(&self, id: i64, sayi: &str) -> Result<Value, CatiHata> {
+        let sayi = sayi.trim();
+        if sayi.len() != 2 || !sayi.bytes().all(|b| b.is_ascii_digit()) {
+            return Err(CatiHata::GecersizGirdi("sayı iki rakam olmalı".into()));
+        }
+        self.yaz(
+            IZIN_CIHAZ,
+            &format!("{ESLESTIRME_UCU}/{id}/onay"),
+            json!({ "sayi": sayi }),
+        )
+    }
+
+    pub fn eslestirme_reddet(&self, id: i64) -> Result<Value, CatiHata> {
+        self.yaz(IZIN_CIHAZ, &format!("{ESLESTIRME_UCU}/{id}/red"), json!({}))
     }
 
     pub fn sube_ekle(&self, kod: &str, ad: &str) -> Result<Value, CatiHata> {
