@@ -67,6 +67,12 @@ Ekip turu v2 (Fable 5.2, GPT-6 Astra, Gemini 3.1 Pro), `/mnt/project-files/arayu
 - PIN 4–8 rakam; 0000 ve 1234/9876 gibi düz sıralar reddedilir (Çatı da aynı kuralı önceden uygular). argon2id ile saklanır.
   Program adları sunucudaki program yetkisi adlarıdır (ör. `terzitakip`).
 
+## Onay bekleyenler (KM2, sunucu: tutaa `sunucu/src/hesap.rs`, `eslestirme.rs`)
+
+- `/api/hesaplar?durum=` → `GET /v1/kullanici?durum=` (varsayılan onay_bekliyor); `/api/hesap/onayla {id, roller, kisi_id?, gercek_ad?}`, `/api/hesap/islem {id, islem: reddet|askiya-al|geri-ac|kilit-ac}`, `/api/hesap/gecici-kod {id}` → `{kod, bitis}` (kod yalnız ekranda bir kez; hiçbir yerde saklanmaz).
+- `/api/eslestirmeler?durum=` → `GET /v1/eslestirme`; `/api/eslestirme/onay {id, sayi}`, `/api/eslestirme/red {id}`. Sayı listede gelmez; kişiden öğrenilir, 3 yanlışta istek düşer.
+- Yazma işlemleri taze parola ister (428 → parola sorulur).
+
 ## Sınırlar
 - Kasa onayları ekranı yok (Çatı kitaplığında kasa uçları yok; ayrı adım).
 - Role özel program yetkisi ve rol kaldırma yalnız komut satırında.

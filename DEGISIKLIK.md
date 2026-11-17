@@ -3,6 +3,12 @@
 
 ## Yayınlanmamış
 
+### TAA Çatı: onay bekleyen hesaplar ve telefon eşleştirme onayı (KM2)
+
+- Yeni ekran "Onay bekleyenler": mağaza bilgisayarından kendi kaydını yapan personel tek dokunuşla onaylanır (rol en az yetkili olandan, şube kaydın yapıldığı mağazadan önerilir; yönetici asla önerilmez), "Düzenle" ile ad soyad düzeltilir ve var olan kişiye bağlanır, başvuru reddedilir. Telefon eşleştirme istekleri telefonda görünen iki haneli sayıyla onaylanır ya da reddedilir. Menüde bekleyen sayısı rozeti.
+- Kullanıcılar ekranı: Etkin/Askıda/Kapalı durumu, Kilitli ve Geçici kod etiketleri; Geçici kod (bir kez gösterilir), Kilidi aç, Askıya al / Geri aç. Kendi satırınızda işlem yok.
+- Sunucu uçları tutaa deposunda (KM2 sözleşmesi sürüm 2: planlar/SOZLESME-KM2-HESAP-VE-GIRIS-2026-11-17.md).
+
 ### TAA Çatı: açık/koyu temalar, Görünüm ayarı, tanıtım ve yönetici PIN'leri
 
 - Görünüm (TAA Kurucu'nun yeni kavramlarıyla): 3 tema × açık/koyu (6 palet), `cati/gorunum.json` (sürümlü, atomik), temaya özel vurgu rengi ve okunabilirlik düzeltmesi (`taa-kur-tema` kontrast hesabı), hareket Sistem/Azalt/Normal, ilk açılışta 3 sahnelik tanıtım. Tercih artık tarayıcıda değil veri kökünde. Logo Üç Çatı olarak kaldı.
