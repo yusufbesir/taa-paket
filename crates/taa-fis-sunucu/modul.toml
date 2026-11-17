@@ -2,7 +2,7 @@
 ad = "taa-fis-sunucu"
 surum = "0.1.0"
 arayuz = "1"
-gerektirir = { "taa-ayar" = "1", "taa-dosya" = "1", "taa-fis" = "1", "taa-terzi" = "1", "taa-bildirim" = "1", "taa-telegram" = "1", "taa-takip" = "1", "taa-kimlik" = "1", "taa-kuyruk" = "1", "taa-yol" = "1" }
+gerektirir = { "taa-ayar" = "1", "taa-dosya" = "1", "taa-fis" = "1", "taa-terzi" = "1", "taa-bildirim" = "1", "taa-telegram" = "1", "taa-takip" = "1", "taa-kimlik" = "1", "taa-kuyruk" = "1", "taa-yol" = "1", "taa-havuz" = "1" }
 ozellikler = ["fis-sunucu", "telefon-eslestirme"]
 program = "taafis"
 sunar = ["telefon.eslestir@1", "foto.ekle@1"]

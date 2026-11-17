@@ -833,6 +833,7 @@ dependencies = [
  "taa-bildirim",
  "taa-dosya",
  "taa-fis",
+ "taa-havuz",
  "taa-kimlik",
  "taa-kuyruk",
  "taa-takip",

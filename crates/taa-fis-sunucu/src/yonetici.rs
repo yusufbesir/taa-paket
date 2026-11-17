@@ -191,14 +191,24 @@ impl Uygulama {
             .unwrap_or_default();
         Yanit::json(
             200,
-            json!({ "kisiler": kisi::secilebilir(&self.dizin, &sube), "hesaplar": hesaplar }),
+            json!({
+                "kisiler": kisi::secilebilir(&self.dizin, &sube),
+                "hesaplar": hesaplar,
+                "cati_esas": crate::kurulum::cati_bagli(&self.dizin),
+            }),
         )
     }
 
-    /// POST /api/yonetim/kisi {ad, rol}
+    /// POST /api/yonetim/kisi {ad, rol}. TAA Çatı listesi esassa yerel ekleme yapılmaz (tek kimlik, Fable M6).
     pub(crate) fn kisi_ekle(&self, i: &Istek) -> Yanit {
         if let Some(y) = self.yonetim_izni(i) {
             return y;
+        }
+        if crate::kurulum::cati_bagli(&self.dizin) {
+            return Yanit::hata(
+                409,
+                "kişiler TAA Çatı'dan gelir; TAA Rehber'de bu şubeye görevlendirin",
+            );
         }
         let v: serde_json::Value = serde_json::from_slice(&i.govde).unwrap_or_default();
         match kisi::Kisiler::dizinden(&self.dizin).ekle(

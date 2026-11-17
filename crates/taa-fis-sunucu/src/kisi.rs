@@ -1,6 +1,8 @@
 //! Kişi kaydı: fişteki satış danışmanı, ölçü alan ve düzenleyen buradan seçilir; fişe ad değil kimlik yazılır.
-//! İki kaynak birleşir: (a) bu sunucunun `kisiler.jsonl` dosyası (Personel ekranında yönetici ekler/kapatır),
-//! (b) onaylı Telegram hesapları (usta/personel/yönetici; mağaza ortak hesabı kişi değildir).
+//! Kaynaklar: (a) TAA Çatı/havuz kişi listesi (`rehber.kisi` + görevlendirme, `kurulum` modülü eşitler,
+//! `cati-kisiler.json` önbelleği); bu liste bir kez alındıysa ESAS odur ve yerel kayıt seçimden düşer;
+//! (b) bu sunucunun `kisiler.jsonl` dosyası (İlk kurulum ya da Personel ekranında yönetici ekler/kapatır),
+//! (c) onaylı Telegram hesapları (usta/personel/yönetici; mağaza ortak hesabı kişi değildir).
 //! Kayıt eklemelidir; kapatılan kişi listeden düşer ama eski fişlerde adı çözülmeye devam eder.
 
 use serde::{Deserialize, Serialize};
@@ -15,6 +17,9 @@ pub struct Kisi {
     pub rol: String,
     #[serde(default)]
     pub tarih: String,
+    /// Nereden geldi: "" (bu bilgisayar, yönetici), "ilk-kurulum", "cati", "telegram". Yetki vermez.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub kaynak: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -76,6 +81,11 @@ impl Kisiler {
     }
 
     pub fn ekle(&self, ad: &str, rol: &str, tarih: &str) -> Result<Kisi, String> {
+        self.ekle_kaynakli(ad, rol, tarih, "")
+    }
+
+    /// Ad ve rolü denetler; kaydetmez (toplu eklemede önce hepsi denetlenir).
+    pub fn denetle(ad: &str, rol: &str) -> Result<String, String> {
         let ad: String = ad.split_whitespace().collect::<Vec<_>>().join(" ");
         if ad.is_empty() || ad.chars().count() > 40 || ad.chars().any(char::is_control) {
             return Err("ad 1-40 karakter olmalı".into());
@@ -83,11 +93,23 @@ impl Kisiler {
         if !ROLLER.contains(&rol) {
             return Err("rol danisman, usta, personel ya da yonetici olmalı".into());
         }
+        Ok(ad)
+    }
+
+    pub fn ekle_kaynakli(
+        &self,
+        ad: &str,
+        rol: &str,
+        tarih: &str,
+        kaynak: &str,
+    ) -> Result<Kisi, String> {
+        let ad = Self::denetle(ad, rol)?;
         let k = Kisi {
             id: rastgele_id()?,
             ad,
             rol: rol.into(),
             tarih: tarih.into(),
+            kaynak: kaynak.into(),
         };
         let s = serde_json::to_string(&Kayit::Ekle(k.clone())).map_err(|e| e.to_string())?;
         taa_dosya::satir_ekle(&self.yol, &s).map_err(|e| e.to_string())?;
@@ -134,6 +156,7 @@ fn telegram_kisileri(dizin: &Path, sube: &str) -> Vec<(Kisi, bool)> {
                     ad,
                     rol: rol.into(),
                     tarih: String::new(),
+                    kaynak: "telegram".into(),
                 },
                 h.durum == HesapDurum::Onayli,
             )
@@ -141,13 +164,18 @@ fn telegram_kisileri(dizin: &Path, sube: &str) -> Vec<(Kisi, bool)> {
         .collect()
 }
 
-/// Seçilebilir kişiler (açık olanlar), ada göre sıralı.
+/// Seçilebilir kişiler (açık olanlar), ada göre sıralı. TAA Çatı listesi esassa yerel kayıt seçimden düşer.
 pub fn secilebilir(dizin: &Path, sube: &str) -> Vec<Kisi> {
-    let (hepsi, kapali) = Kisiler::dizinden(dizin).yerel().unwrap_or_default();
-    let mut v: Vec<Kisi> = hepsi
-        .into_iter()
-        .filter(|k| !kapali.contains(&k.id))
-        .collect();
+    let mut v: Vec<Kisi> = match crate::kurulum::cati_kisileri(dizin) {
+        Some(c) => c,
+        None => {
+            let (hepsi, kapali) = Kisiler::dizinden(dizin).yerel().unwrap_or_default();
+            hepsi
+                .into_iter()
+                .filter(|k| !kapali.contains(&k.id))
+                .collect()
+        }
+    };
     for (k, acik) in telegram_kisileri(dizin, sube) {
         if acik && !v.iter().any(|x| x.id == k.id) {
             v.push(k);
@@ -165,6 +193,9 @@ pub fn ad_haritasi(dizin: &Path, sube: &str) -> std::collections::BTreeMap<Strin
     }
     let (hepsi, _) = Kisiler::dizinden(dizin).yerel().unwrap_or_default();
     for k in hepsi {
+        m.insert(k.id, k.ad);
+    }
+    for k in crate::kurulum::cati_onbellegi(dizin) {
         m.insert(k.id, k.ad);
     }
     m

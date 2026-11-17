@@ -45,7 +45,7 @@ impl Uygulama {
         let simdi = self.simdi();
         let (sube, sube_hata) = match self.sube_kodu() {
             Ok(k) => (k, String::new()),
-            Err(e) => (String::new(), e),
+            Err(_) => (String::new(), self.sube_yok_iletisi()),
         };
         let telefonlar = self.cihazlar().aktifler().unwrap_or_default();
         let bagli = self
@@ -86,6 +86,12 @@ impl Uygulama {
             .into_iter()
             .map(|k| k.id)
             .collect();
+        if acik.is_empty() {
+            return Err(Yanit::json(
+                422,
+                json!({ "hata": self.kisi_bos_iletisi(), "kisi_kaydi_bos": true }),
+            ));
+        }
         let mut eksik = Vec::new();
         for (id, ad) in [
             (&mut g.satis_danismani_id, "Satış danışmanı"),

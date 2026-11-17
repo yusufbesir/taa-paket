@@ -9,6 +9,7 @@ pub mod cihaz;
 mod ek_uclar;
 mod hesap_uclari;
 pub mod kisi;
+pub mod kurulum;
 pub mod pencere;
 pub mod sayfalar;
 mod yonetici;
@@ -102,6 +103,10 @@ pub struct Uygulama {
     pub yonetici_kilidi: bool,
     /// PIN'i doğrulayan taraf (TAA Çatı istemcisi).
     pub pin: Box<dyn cati_pin::PinDogrulayici>,
+    /// Kişi listesi ve şube kodunu TAA Çatı'dan çeken taraf (bkz. `kurulum`).
+    pub cati: std::sync::Arc<dyn kurulum::CatiKaynagi>,
+    /// TAA programlarının ortak veri kökü (TAA Kur `sube.json`'u buraya yazar). Testlerde None.
+    pub kok: Option<PathBuf>,
     /// (eşleştirme kodu, bitiş, telefonun bağlanacağı kişi)
     kodlar: Mutex<Vec<(String, u64, String)>>,
     yanlis: Mutex<(u32, u64)>,
@@ -165,6 +170,8 @@ impl Uygulama {
             ileri_sn: std::sync::atomic::AtomicU64::new(0),
             yonetici_kilidi: true,
             pin: Box::new(cati_pin::Yapilandirilmamis),
+            cati: std::sync::Arc::new(kurulum::Yapilandirilmamis),
+            kok: None,
             kodlar: Mutex::new(Vec::new()),
             yanlis: Mutex::new((0, 0)),
             yonetici_oturum: Mutex::new(Vec::new()),
@@ -186,19 +193,13 @@ impl Uygulama {
         self.dizin.join("fisler.jsonl")
     }
 
-    /// Bu sunucunun şube kodu (`sube.json`: {"kod":"MRK01"}). Şube kimliği sunucuda belirlenir;
-    /// istemcinin beyanına güvenilmez (docs/sube-sozlesmesi.md §2 kural 1). TAA Kur bu dosyayı yazar.
+    /// Bu sunucunun şube kodu. Şube kimliği sunucuda belirlenir; istemcinin beyanına güvenilmez
+    /// (docs/sube-sozlesmesi.md §2 kural 1). Sıra: bu klasördeki `sube.json` (İlk kurulum, yönetici ya da TAA Çatı
+    /// cihaz kaydı yazar), yoksa TAA veri kökündeki `sube.json` (TAA Kur yazar). Biçim: {"kod":"MRK01"}.
     fn sube_kodu(&self) -> Result<String, String> {
-        let m = std::fs::read_to_string(self.dizin.join("sube.json"))
-            .map_err(|_| "şube kodu ayarlanmamış (sube.json yok): fiş yazılamaz".to_string())?;
-        let v: serde_json::Value =
-            serde_json::from_str(&m).map_err(|e| format!("sube.json bozuk: {e}"))?;
-        let k = v["kod"].as_str().unwrap_or("").trim().to_string();
-        if taa_fis::sube_kodu_gecerli(&k) {
-            Ok(k)
-        } else {
-            Err("sube.json içindeki şube kodu geçersiz: fiş yazılamaz".into())
-        }
+        kurulum::sube_oku(&self.dizin, self.kok.as_deref())
+            .map(|(k, _)| k)
+            .ok_or_else(|| "şube kodu ayarlanmamış: fiş yazılamaz".to_string())
     }
 
     fn yeni_kod(&self, kisi_id: &str) -> Result<String, String> {
@@ -264,6 +265,15 @@ impl Uygulama {
                 Yanit::tur("application/manifest+json", sayfalar::MANIFEST.as_bytes())
             }
             ("GET", ["simge.svg"]) => Yanit::tur("image/svg+xml", sayfalar::SIMGE.as_bytes()),
+            // Chromium/Edge geliştirici araçları açıkken bu adresi kendiliğinden ister (otomatik çalışma klasörü);
+            // 404 konsolda "Failed to load resource" satırı bırakıyordu. Boş yanıt: klasör önerilmez.
+            ("GET", [".well-known", "appspecific", "com.chrome.devtools.json"]) => {
+                Yanit::json(200, json!({}))
+            }
+            ("GET", ["api", "kurulum"]) => self.kurulum_durum(i),
+            ("POST", ["api", "kurulum"]) => self.ilk_kurulum_yap(i),
+            ("POST", ["api", "kurulum", "esitle"]) => self.kurulum_esitle(i),
+            ("POST", ["api", "yonetim", "sube"]) => self.yonetim_sube(i),
             ("POST", ["api", "eslestir"]) => self.eslestir(i),
             ("GET", ["yonetim"]) => {
                 if !i.yerel {
@@ -751,7 +761,12 @@ impl Uygulama {
                 // Şube kodu sunucudan gelir; istemci başka bir şube beyan ederse reddedilir (409).
                 let sube = match self.sube_kodu() {
                     Ok(k) => k,
-                    Err(e) => return Yanit::hata(503, &e),
+                    Err(_) => {
+                        return Yanit::json(
+                            503,
+                            json!({ "hata": self.sube_yok_iletisi(), "sube_yok": true }),
+                        )
+                    }
                 };
                 if !g.sube.trim().is_empty() && g.sube.trim() != sube {
                     return Yanit::hata(409, "sube_uyusmaz: fiş bu sunucunun şubesine yazılır");
@@ -2096,5 +2111,199 @@ mod testler {
         assert_eq!(u.isle(&ist2("/api/yonetim/cihazlar", "GET")).kod, 200);
         u.isle(&ist2("/api/yonetici/cikis", "POST"));
         assert_eq!(u.isle(&ist2("/api/yonetim/cihazlar", "GET")).kod, 401);
+    }
+
+    /// Kişi kaydı ve sube.json olmadan açılan sunucu (Windows'taki temiz kurulum).
+    fn bos_uyg() -> Uygulama {
+        let d = taa_dosya::gecici_klasor().unwrap();
+        let mut u = Uygulama::yeni(d, None, "http://192.168.1.20:8787".into());
+        u.yonetici_kilidi = false;
+        u
+    }
+
+    const FIS_KISISIZ: &str = r#"{"musteri":"Ayşe Çelik","telefon":"0532 123 45 67","kalemler":[{"urun":"Pantolon","islem":"paça kısalt"}],"teslim":"2099-01-01","ucret_kurus":50000,"on_odeme_kurus":10000}"#;
+
+    #[test]
+    fn bos_kayitta_neden_ve_ne_yapilacagi_yazar() {
+        let u = bos_uyg();
+        let y = u.isle(&pc("POST", "/api/fis", FIS_KISISIZ));
+        assert_eq!(y.kod, 422);
+        let v = json_of(&y);
+        assert_eq!(v["kisi_kaydi_bos"], true);
+        let m = v["hata"].as_str().unwrap();
+        assert!(
+            m.contains("Kişi kaydı boş") && m.contains("İlk kurulum"),
+            "{m}"
+        );
+        // Şube yokken durum çubuğu nedeni ve yolu söyler.
+        let d = json_of(&u.isle(&pc("GET", "/api/durum", "")));
+        assert!(d["sube_hata"].as_str().unwrap().contains("İlk kurulum"));
+    }
+
+    #[test]
+    fn ilk_kurulum_yalniz_yerel_program_ve_bir_kez() {
+        let u = bos_uyg();
+        let govde = r#"{"sube":"MRK01","kisiler":[{"ad":"Deneme Danışman","rol":"danisman"},{"ad":"Deneme Usta","rol":"usta"},{"ad":"Deneme Personel","rol":"personel"}]}"#;
+        // Telefon ya da ağdan gelen istek: 403; masaüstü başlığı yoksa (başka site) 403.
+        assert_eq!(
+            u.isle(&ist("POST", "/api/kurulum", None, govde, false)).kod,
+            403
+        );
+        assert_eq!(
+            u.isle(&ist("POST", "/api/kurulum", None, govde, true)).kod,
+            403
+        );
+        assert_eq!(
+            u.isle(&ist("GET", "/api/kurulum", None, "", false)).kod,
+            403
+        );
+        let d = json_of(&u.isle(&pc("GET", "/api/kurulum", "")));
+        assert_eq!(d["ilk_kurulum_acik"], true);
+        assert_eq!(d["subeler"].as_array().unwrap().len(), 15);
+        // Listede olmayan şube ve hatalı kişi: hiçbir şey yazılmaz.
+        let y = u.isle(&pc(
+            "POST",
+            "/api/kurulum",
+            r#"{"sube":"XYZ99","kisiler":[{"ad":"A","rol":"usta"}]}"#,
+        ));
+        assert_eq!(y.kod, 422);
+        let y = u.isle(&pc(
+            "POST",
+            "/api/kurulum",
+            r#"{"sube":"MRK01","kisiler":[{"ad":"A","rol":"usta"},{"ad":" ","rol":"usta"}]}"#,
+        ));
+        assert_eq!(y.kod, 422);
+        assert!(!u.dizin.join("kisiler.jsonl").exists() && !u.dizin.join("sube.json").exists());
+        // Geçerli kurulum: şube + 3 kişi.
+        let y = u.isle(&pc("POST", "/api/kurulum", govde));
+        assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
+        let k = json_of(&y)["kisiler"].as_array().unwrap().clone();
+        assert_eq!(k.len(), 3);
+        assert_eq!(k[0]["kaynak"], "ilk-kurulum");
+        // İz dosyasında ad yok.
+        let iz = std::fs::read_to_string(u.dizin.join("ilk-kurulum.json")).unwrap();
+        assert!(!iz.contains("Deneme"));
+        // Yol kapandı: ikinci deneme 409, kişi eklenmez.
+        let y = u.isle(&pc(
+            "POST",
+            "/api/kurulum",
+            r#"{"kisiler":[{"ad":"Başka Biri","rol":"yonetici"}]}"#,
+        ));
+        assert_eq!(y.kod, 409);
+        assert_eq!(
+            json_of(&u.isle(&pc("GET", "/api/kisiler", "")))["kisiler"]
+                .as_array()
+                .unwrap()
+                .len(),
+            3
+        );
+        assert_eq!(
+            json_of(&u.isle(&pc("GET", "/api/kurulum", "")))["kapali_neden"],
+            "yapildi"
+        );
+        // Fiş artık kaydedilir.
+        let id = |n: usize| k[n]["id"].as_str().unwrap().to_string();
+        let fis = FIS_KISISIZ.replacen(
+            '{',
+            &format!(
+                r#"{{"satis_danismani_id":"{}","olcu_alan_id":"{}","duzenleyen_id":"{}","#,
+                id(0),
+                id(1),
+                id(2)
+            ),
+            1,
+        );
+        let y = u.isle(&pc("POST", "/api/fis", &fis));
+        assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
+        // Şubeyi sonradan yalnız yönetici değiştirir.
+        let mut kilitli = bos_uyg();
+        kilitli.dizin = u.dizin.clone();
+        kilitli.yonetici_kilidi = true;
+        assert_eq!(
+            kilitli
+                .isle(&pc("POST", "/api/yonetim/sube", r#"{"kod":"PND01"}"#))
+                .kod,
+            401
+        );
+        assert_eq!(
+            u.isle(&pc("POST", "/api/yonetim/sube", r#"{"kod":"PND99"}"#))
+                .kod,
+            422
+        );
+        assert_eq!(
+            u.isle(&pc("POST", "/api/yonetim/sube", r#"{"kod":"PND01"}"#))
+                .kod,
+            200
+        );
+        assert_eq!(
+            json_of(&u.isle(&pc("GET", "/api/durum", "")))["sube"],
+            "PND01"
+        );
+    }
+
+    #[test]
+    fn cati_listesi_alininca_ilk_kurulum_kapanir_ve_cati_esas() {
+        struct Sahte;
+        impl kurulum::CatiKaynagi for Sahte {
+            fn cek(&self, _: Option<&str>, _: &str) -> Result<kurulum::CatiVerisi, String> {
+                Ok(kurulum::CatiVerisi {
+                    sube: Some("ANK01".into()),
+                    kisiler: vec![kisi::Kisi {
+                        id: "k-cati-1".into(),
+                        ad: "Çatı K.".into(),
+                        rol: "danisman".into(),
+                        tarih: String::new(),
+                        kaynak: "cati".into(),
+                    }],
+                })
+            }
+        }
+        let mut u = bos_uyg();
+        u.cati = std::sync::Arc::new(Sahte);
+        assert_eq!(
+            u.isle(&ist("POST", "/api/kurulum/esitle", None, "", true))
+                .kod,
+            403
+        );
+        let y = u.isle(&pc("POST", "/api/kurulum/esitle", ""));
+        assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
+        let d = json_of(&u.isle(&pc("GET", "/api/kurulum", "")));
+        assert_eq!(d["ilk_kurulum_acik"], false);
+        assert_eq!(d["kapali_neden"], "cati");
+        assert_eq!(d["sube"], "ANK01");
+        assert_eq!(d["cati"]["bagli"], true);
+        let y = u.isle(&pc(
+            "POST",
+            "/api/kurulum",
+            r#"{"kisiler":[{"ad":"Yerel","rol":"usta"}]}"#,
+        ));
+        assert_eq!(y.kod, 409);
+        // Yönetici de yerel kişi ekleyemez: tek kimlik Çatı'dan.
+        assert_eq!(
+            u.isle(&pc(
+                "POST",
+                "/api/yonetim/kisi",
+                r#"{"ad":"Yerel","rol":"usta"}"#
+            ))
+            .kod,
+            409
+        );
+        let l = json_of(&u.isle(&pc("GET", "/api/kisiler", "")));
+        assert_eq!(l["kisiler"][0]["id"], "k-cati-1");
+        assert_eq!(l["kisiler"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn gelistirici_araclari_adresi_404_vermez() {
+        let u = bos_uyg();
+        let y = u.isle(&ist(
+            "GET",
+            "/.well-known/appspecific/com.chrome.devtools.json",
+            None,
+            "",
+            true,
+        ));
+        assert_eq!(y.kod, 200);
+        assert_eq!(json_of(&y), json!({}));
     }
 }

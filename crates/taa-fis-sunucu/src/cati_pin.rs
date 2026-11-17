@@ -4,7 +4,7 @@
 //! curl gövdeyi stdin'den aldığı için PIN komut satırında da görünmez (taa-kuyruk `CurlGonderici`).
 
 use serde_json::{json, Value};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use taa_kuyruk::{GonderHata, Gonderici};
 
 pub const DOGRULA_UCU: &str = "/v1/yonetici-pin/dogrula";
@@ -94,20 +94,29 @@ pub struct CatiPinIstemcisi {
     pub sertifika: Option<PathBuf>,
 }
 
+/// TAA Çatı ile aynı oturum + cihaz anahtarı + yol listesiyle imzalı gönderici kurar (ağa dokunmaz).
+/// PIN doğrulaması ve kişi/şube eşitlemesi (`kurulum`) aynı göndericiyi kullanır.
+pub fn cati_gonderici(
+    kok: &Path,
+    sunucu: Option<&str>,
+    sertifika: Option<&Path>,
+) -> Result<taa_kuyruk::CurlGonderici, String> {
+    let h = taa_yol::hedef_coz_curl(kok, sunucu, sertifika)
+        .map_err(|e| format!("TAA Çatı sunucu adresi bulunamadı: {e}"))?;
+    let o = taa_kimlik::varsayilan_depo(kok)
+        .oku(&h.anahtar)
+        .map_err(|_| "TAA Çatı oturumu yok; önce TAA Çatı'ya giriş yapın".to_string())?;
+    let cihaz = taa_kimlik::cihaz_imzalayici(kok)
+        .map_err(|e| format!("cihaz anahtarı okunamadı: {e}"))?
+        .ok_or_else(|| "bu bilgisayarın cihaz anahtarı yok".to_string())?;
+    o.gonderici_taban(&h.taban, h.sertifika.as_deref(), Some(cihaz))
+        .map(|g| g.baglanti_suresi(5))
+        .map_err(|e| e.to_string())
+}
+
 impl CatiPinIstemcisi {
     fn gonderici(&self) -> Result<taa_kuyruk::CurlGonderici, String> {
-        let h =
-            taa_yol::hedef_coz_curl(&self.kok, self.sunucu.as_deref(), self.sertifika.as_deref())
-                .map_err(|e| format!("TAA Çatı sunucu adresi bulunamadı: {e}"))?;
-        let o = taa_kimlik::varsayilan_depo(&self.kok)
-            .oku(&h.anahtar)
-            .map_err(|_| "TAA Çatı oturumu yok; önce TAA Çatı'ya giriş yapın".to_string())?;
-        let cihaz = taa_kimlik::cihaz_imzalayici(&self.kok)
-            .map_err(|e| format!("cihaz anahtarı okunamadı: {e}"))?
-            .ok_or_else(|| "bu bilgisayarın cihaz anahtarı yok".to_string())?;
-        o.gonderici_taban(&h.taban, h.sertifika.as_deref(), Some(cihaz))
-            .map(|g| g.baglanti_suresi(5))
-            .map_err(|e| e.to_string())
+        cati_gonderici(&self.kok, self.sunucu.as_deref(), self.sertifika.as_deref())
     }
 }
 

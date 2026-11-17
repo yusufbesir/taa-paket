@@ -83,6 +83,8 @@ kbd{font:600 max(12px,.75em) var(--tk-fm);padding:1px 6px;border:1px solid curre
 .gez{min-height:var(--tk-hedef);width:100%;display:flex;align-items:center;gap:var(--tk-g3);padding:0 var(--tk-g3);border:0;
   border-radius:var(--tk-r);background:none;font-weight:600;text-align:left;cursor:pointer;position:relative}
 .gez:hover{background:var(--tk-panel2)}
+.gez[hidden],.kart[hidden],.dugme[hidden],.yigin[hidden],p[hidden]{display:none}
+.ik-satir{display:grid;grid-template-columns:minmax(0,1fr) 170px auto;gap:var(--tk-g2);align-items:end}
 .gez[aria-current="page"]{background:var(--tk-tx);color:var(--tk-bg)}
 .gez kbd{margin-left:auto}
 .gez .ad{white-space:nowrap}
@@ -663,6 +665,7 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
     <button class="gez" data-git="yeni" title="Yeni fiş (Ctrl+N)"><svg class="sm"><use href="#i-arti"/></svg><span class="ad">Yeni fiş</span><kbd>Ctrl+N</kbd></button>
     <button class="gez" data-git="fisler" title="Fişler (Ctrl+F)"><svg class="sm"><use href="#i-liste"/></svg><span class="ad">Fişler</span><kbd>Ctrl+F</kbd></button>
     <button class="gez" data-git="ac" title="Fiş aç, okut (F2)"><svg class="sm"><use href="#i-kod"/></svg><span class="ad">Fiş aç</span><kbd>F2</kbd></button>
+    <button class="gez" data-git="kurulum" id="gez-kurulum" title="İlk kurulum: şube ve kişiler" hidden><svg class="sm"><use href="#i-ayar"/></svg><span class="ad">İlk kurulum</span></button>
     <div class="gez-baslik kucuk">Yönetim</div>
     <button class="gez yon-kapali" data-git="telefonlar" data-yonetim title="Yönetici girişi"><svg class="sm"><use href="#i-kilit"/></svg><span class="ad">Yönetici girişi</span></button>
     <button class="gez yon-acik" data-git="telefonlar" title="Telefonlar"><svg class="sm"><use href="#i-tel"/></svg><span class="ad">Telefonlar</span></button>
@@ -730,7 +733,7 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
                     <span class="duz-not kucuk mut" id="duz-not"></span>
                   </div>
                 </div>
-                <div class="mesaj uyari kucuk kisi-sira" id="kisi-yok" hidden><svg class="sm"><use href="#i-uyari"/></svg><div><b>Kişi kaydı boş.</b> Yönetici, Personel ve usta ekranından kişileri eklemeli; kişiler eklenmeden fiş kaydedilemez.</div></div>
+                <div class="mesaj uyari kucuk kisi-sira" id="kisi-yok" role="alert" hidden><svg class="sm"><use href="#i-uyari"/></svg><div><span id="kisi-yok-metin"><b>Kişi kaydı boş.</b> Fişte satış danışmanı, ölçü alan ve düzenleyen listeden seçilmek zorunda olduğu için fiş kaydedilemez.</span> <button type="button" class="dugme kucuk" data-git="kurulum" id="kisi-yok-kurulum" hidden>İlk kurulumu aç</button></div></div>
               </div>
             </div>
             <div class="kart duz bolum">
@@ -823,6 +826,26 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
       </div>
     </section>
 
+    <section class="ekran" data-ekran="kurulum" aria-label="İlk kurulum">
+      <div class="sayfa-bas"><div><h1>İlk kurulum</h1><div class="imza-cizgi"></div></div><span class="mut kucuk">Yalnız bu bilgisayarda, bir kez</span></div>
+      <div class="yon-iki">
+        <div class="yigin">
+          <div class="mesaj"><svg class="sm"><use href="#i-kilit"/></svg><div><b>Neden bu ekran?</b> Fiş kaydı için şube ve en az bir kişi gerekir (fişte satış danışmanı, ölçü alan ve düzenleyen listeden seçilir). Bu bilgisayar henüz TAA Çatı'ya bağlanmadığı için kişiler ve şube burada <b>bir kez</b> girilir.</div></div>
+          <div class="mesaj uyari"><svg class="sm"><use href="#i-uyari"/></svg><div>Kaydedince bu ekran kapanır. Sonraki değişiklikler yalnız yönetici girişiyle (TAA Çatı PIN) yapılır. TAA Çatı bağlantısı kurulunca kişi listesi ve şube TAA Çatı'dan gelir ve onlar esas alınır.</div></div>
+          <p class="mut kucuk" id="ik-cati"></p>
+        </div>
+        <div class="kart yigin" id="ik-form">
+          <div class="alan"><label for="ik-sube">Bu bilgisayarın şubesi</label><select id="ik-sube"></select><span class="mut kucuk" id="ik-sube-not"></span></div>
+          <div class="sira ara-bosluk"><h2>Kişiler</h2><span class="mut kucuk">Satış danışmanı, ölçü alan, usta…</span></div>
+          <div class="yigin" id="ik-kisiler"></div>
+          <div><button type="button" class="dugme" id="ik-kisi-ekle"><svg class="sm"><use href="#i-arti"/></svg>Kişi ekle</button></div>
+          <div class="mesaj hata" id="ik-mesaj" role="alert" hidden><svg class="sm"><use href="#i-uyari"/></svg><div></div></div>
+          <button type="button" class="dugme ana genis" id="ik-kaydet">Kaydet ve kurulumu bitir</button>
+        </div>
+        <div class="mesaj tamam" id="ik-kapali" hidden><svg class="sm"><use href="#i-onay"/></svg><div></div></div>
+      </div>
+    </section>
+
     <section class="ekran" data-ekran="pin" aria-label="Yönetici girişi">
       <div class="pin-sahne"><div class="kart pin" id="pin-kart" data-pin-hal="normal">
         <div class="pin-sol">
@@ -874,6 +897,13 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
       <div class="yon-iki">
         <div class="yigin">
           <div class="kart yigin">
+            <h2>Şube ve TAA Çatı</h2>
+            <div class="alan"><label for="y-sube">Bu bilgisayarın şubesi</label><select id="y-sube"></select></div>
+            <button class="dugme genis" id="y-sube-kaydet">Şubeyi kaydet</button>
+            <p class="mut kucuk" id="y-cati"></p>
+            <button class="dugme genis" id="y-esitle">TAA Çatı'dan şimdi eşitle</button>
+          </div>
+          <div class="kart yigin" id="k-ekle-kart">
             <h2>Kişi kaydına ekle</h2>
             <div class="alan"><label for="k-ad">Ad soyad</label><input id="k-ad" maxlength="40" autocomplete="off"></div>
             <div class="cipler" role="group" aria-label="Rol" id="k-rol"><button class="cip" data-rol="danisman" aria-pressed="true">Danışman</button><button class="cip" data-rol="usta" aria-pressed="false">Usta</button><button class="cip" data-rol="personel" aria-pressed="false">Personel</button><button class="cip" data-rol="yonetici" aria-pressed="false">Yönetici</button></div>
@@ -1353,6 +1383,7 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
     $('#ana').scrollTop=0;pinCiz();
     if(e==='telefonlar')telefonlarAc();
     if(e==='personel')personelYukle();
+    if(e==='kurulum')kurulumYukle();
     if(e==='puan'){yon.sonEtkinlik=Date.now();puanYukle()}
     if(e==='yeni')onizle();
     if(e!=='telefonlar')clearInterval(telPoll);
@@ -1383,6 +1414,8 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
     onizle()}
   function kisiSecenekleri(){
     $('#kisi-yok').hidden=KISILER.length>0;
+    if(KURULUM.kisi_bos_iletisi)$('#kisi-yok-metin').textContent=KURULUM.kisi_bos_iletisi;
+    $('#kisi-yok-kurulum').hidden=!KURULUM.ilk_kurulum_acik;
     ALANLAR.forEach(function(k){$('#f-'+k).innerHTML='<option value="">Listeden seçin…</option>'+KISILER.map(function(x){return '<option value="'+esc(x.id)+'">'+esc(x.ad)+'</option>'}).join('')});
     var u=$('#f-usta'),v=u.value,ustalar=KISILER.filter(function(x){return x.rol==='usta'});if(!ustalar.length)ustalar=KISILER;
     u.innerHTML='<option value="">Atanmadı</option>'+ustalar.map(function(x){return '<option>'+esc(x.ad)+'</option>'}).join('');u.value=v}
@@ -1478,7 +1511,45 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
         KAYITLI_FIS=x[0];KAYITLI_FIS.saat=new Date().toTimeString().slice(0,5);KAYITLI_QR=x[1];onizle();if(yazdir)fisYazdir([r.no])})
     },function(e){$('#kaydet').disabled=$('#kaydet-yazdir').disabled=false;
       if(e.ag){taslakSakla(true);kayitMesaj('<b>Yerel sunucuya ulaşılamadı.</b> Fiş taslak olarak saklandı; sunucu açılınca yeniden kaydedin.','uyari');return}
+      var v2=e.veri||{};
+      if(v2.kisi_kaydi_bos||v2.sube_yok){kurulumYukle();kayitMesaj('<b>Kaydedilmedi.</b> '+esc(e.message)+(KURULUM.ilk_kurulum_acik?' <button type="button" class="dugme kucuk" data-git="kurulum">İlk kurulumu aç</button>':''));return}
       kayitMesaj('<b>Kaydedilmedi:</b> '+esc(e.message))})}
+
+  /* ---------- ilk kurulum (yalnız bu bilgisayar, bir kez) ---------- */
+  var KURULUM={};
+  var IK_ROL=[['danisman','Satış danışmanı'],['usta','Usta'],['personel','Personel'],['yonetici','Yönetici']];
+  function subeSecenekleri(sel,secili){sel.innerHTML='<option value="">Şube seçin…</option>'+(KURULUM.subeler||[]).map(function(x){
+    return '<option value="'+esc(x.kod)+'"'+(x.kod===secili?' selected':'')+'>'+esc(x.kod+' · '+x.ad)+'</option>'}).join('')}
+  function catiMetni(c){c=c||{};
+    if(c.bagli)return 'TAA Çatı bağlı: kişi listesi TAA Çatı\'dan gelir ve esas alınır (son eşitleme '+(c.son_esitleme||'—')+').';
+    return 'TAA Çatı\'dan henüz kişi listesi alınmadı'+(c.son_hata?' (son deneme '+(c.son_deneme||'')+': '+c.son_hata+')':'')+'. Bağlantı kurulunca liste kendiliğinden gelir.'}
+  function kurulumYukle(){return api('GET','/api/kurulum').then(function(v){KURULUM=v||{};kurulumCiz();kisiSecenekleri();return KURULUM},function(){return KURULUM})}
+  function ikSatir(){var d=document.createElement('div');d.className='ik-satir';
+    d.innerHTML='<div class="alan"><input data-ik="ad" maxlength="40" autocomplete="off" placeholder="Ad soyad" aria-label="Ad soyad"></div>'+
+      '<div class="alan"><select data-ik="rol" aria-label="Rol">'+IK_ROL.map(function(r){return '<option value="'+r[0]+'">'+r[1]+'</option>'}).join('')+'</select></div>'+
+      '<button type="button" class="simge-d" data-ik-sil aria-label="Bu satırı sil">'+sm('i-x')+'</button>';
+    $('#ik-kisiler').appendChild(d);return d}
+  function kurulumCiz(){var k=KURULUM,acik=!!k.ilk_kurulum_acik;
+    $('#gez-kurulum').hidden=!acik;$('#ik-form').hidden=!acik;$('#ik-cati').textContent=catiMetni(k.cati);
+    var kp=$('#ik-kapali');kp.hidden=acik;
+    kp.lastElementChild.textContent=k.kapali_neden==='cati'?'Bu bilgisayar TAA Çatı\'ya bağlı: kişiler ve şube TAA Çatı\'dan gelir. İlk kurulum kapalı.':
+      k.kapali_neden==='yapildi'?'İlk kurulum yapıldı. Değişiklik yalnız yönetici girişiyle (TAA Çatı PIN) yapılır.':'Şube ve kişi kaydı ayarlı; ilk kurulum gerekmiyor.';
+    if(!acik)return;
+    var sel=$('#ik-sube');subeSecenekleri(sel,k.sube||'');sel.disabled=!k.sube_yok;
+    $('#ik-sube-not').textContent=k.sube_yok?'Fişler bu şubenin koduyla damgalanır.':'Şube ayarlı ('+k.sube+(k.sube_kaynak==='taa-kur'?', TAA Kur':'')+'); değişiklik yönetici girişiyle.';
+    var kisiAcik=!!k.kisi_bos;$('#ik-kisiler').hidden=!kisiAcik;$('#ik-kisi-ekle').hidden=!kisiAcik;
+    if(kisiAcik&&!$('#ik-kisiler').children.length){ikSatir();ikSatir();ikSatir()}}
+  function ikMesaj(t){var m=$('#ik-mesaj');m.hidden=!t;m.lastElementChild.textContent=t||''}
+  function kurulumKaydet(){
+    var g={sube:KURULUM.sube_yok?$('#ik-sube').value:'',kisiler:[]};
+    if(KURULUM.sube_yok&&!g.sube){ikMesaj('Şube seçin.');$('#ik-sube').focus();return}
+    if(KURULUM.kisi_bos){$$('#ik-kisiler .ik-satir').forEach(function(r){var ad=$('[data-ik="ad"]',r).value.trim();if(ad)g.kisiler.push({ad:ad,rol:$('[data-ik="rol"]',r).value})});
+      if(!g.kisiler.length){ikMesaj('En az bir kişinin adını yazın.');var i=$('#ik-kisiler [data-ik="ad"]');if(i)i.focus();return}}
+    ikMesaj('');$('#ik-kaydet').disabled=true;
+    api('POST','/api/kurulum',g).then(function(r){
+      bildir('İlk kurulum tamamlandı: şube '+(r.sube||'—')+', '+(r.kisiler||[]).length+' kişi',null,6000);
+      return Promise.all([kurulumYukle(),kisilerYukle(),durumYukle()]).then(function(){git('yeni')})
+    },function(e){ikMesaj(e.message)}).then(function(){$('#ik-kaydet').disabled=false})}
 
   /* ---------- yazdırma ---------- */
   function yaziciKipi(){var k=TK.oku('yazici');return k||(DURUM.yazici?'dogrudan':'tarayici')}
@@ -1533,11 +1604,14 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
   var YONETICI_AD='Yönetici (PIN)';
   var ROL={danisman:'Danışman',usta:'Usta',personel:'Personel',yonetici:'Yönetici',magaza:'Mağaza telefonu'};
   var HD={'onay-bekliyor':['bekliyor','i-saat','Onay bekliyor'],onayli:['hazir','i-onay','Onaylı'],askida:['teslim','i-x','Askıda'],kaldirildi:['teslim','i-x','Kaldırıldı']};
-  function personelYukle(){api('GET','/api/yonetim/kisiler').then(function(v){
+  var KAYNAK={cati:'TAA Çatı',telegram:'Telegram','ilk-kurulum':'İlk kurulum'};
+  function personelYukle(){kurulumYukle().then(function(k){subeSecenekleri($('#y-sube'),k.sube||'');$('#y-cati').textContent=catiMetni(k.cati)});
+    api('GET','/api/yonetim/kisiler').then(function(v){
     var k=v.kisiler||[],h=v.hesaplar||[];
+    $('#k-ekle-kart').hidden=!!v.cati_esas;
     $('#kisi-ozet').textContent=k.length+' kişi';
-    $('#kisi-liste').innerHTML=k.length?k.map(function(x){var yerel=/^K-/.test(x.id);return '<tr><td><b>'+esc(x.ad)+'</b><br><span class="mut kucuk mono">'+esc(x.id)+'</span></td><td>'+esc(ROL[x.rol]||x.rol)+'</td><td>'+(yerel?'Bu bilgisayar':'Telegram')+'</td><td>'+(yerel?'<button class="dugme kucuk tehlike" data-kisi-kapat="'+esc(x.id)+'">Listeden çıkar</button>':'')+'</td></tr>'}).join(''):
-      '<tr><td colspan="4" class="mut">Kişi kaydı boş. Soldan ekleyin.</td></tr>';
+    $('#kisi-liste').innerHTML=k.length?k.map(function(x){var yerel=/^K-/.test(x.id)&&!v.cati_esas;return '<tr><td><b>'+esc(x.ad)+'</b><br><span class="mut kucuk mono">'+esc(x.id)+'</span></td><td>'+esc(ROL[x.rol]||x.rol)+'</td><td>'+esc(KAYNAK[x.kaynak]||(/^K-/.test(x.id)?'Bu bilgisayar':'Telegram'))+'</td><td>'+(yerel?'<button class="dugme kucuk tehlike" data-kisi-kapat="'+esc(x.id)+'">Listeden çıkar</button>':'')+'</td></tr>'}).join(''):
+      '<tr><td colspan="4" class="mut">'+(v.cati_esas?'TAA Çatı listesi bu şube için boş.':'Kişi kaydı boş. Soldan ekleyin.')+'</td></tr>';
     var bek=h.filter(function(x){return x.durum==='onay-bekliyor'}).length;
     $('#hesap-ozet').textContent=h.length?(bek?bek+' hesap onay bekliyor':h.length+' hesap'):'';
     $('#hesap-liste').innerHTML=h.length?h.map(function(x){var d=HD[x.durum]||HD.askida;
@@ -1591,6 +1665,12 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
     if(b.id==='liste-yeniden'){fislerYukle();return}
     if(b.id==='suz-temizle'){suz='tumu';sorgu='';$('#liste-ara').value='';suzIsaret();listeCiz();return}
     if(d.ac){fisAc(d.ac,'elle');return}
+    if(b.id==='ik-kisi-ekle'){$('[data-ik="ad"]',ikSatir()).focus();return}
+    if(d.ikSil!==undefined){var sat=b.closest('.ik-satir');sat.parentNode.removeChild(sat);return}
+    if(b.id==='ik-kaydet'){kurulumKaydet();return}
+    if(b.id==='y-sube-kaydet'){api('POST','/api/yonetim/sube',{kod:$('#y-sube').value}).then(function(r){bildir('Şube kaydedildi: '+r.sube);durumYukle();personelYukle()},function(x){bildir(x.message,null,6000)});return}
+    if(b.id==='y-esitle'){b.disabled=true;api('POST','/api/kurulum/esitle').then(function(r){bildir(r.ozet||'Eşitlendi',null,6000)},function(x){bildir(x.message,null,8000)})
+      .then(function(){b.disabled=false;personelYukle();kisilerYukle();durumYukle()});return}
     if(d.git){if(d.suz){suz=d.suz;sorgu='';$('#liste-ara').value='';suzIsaret();listeCiz()}git(d.git,d.odak);return}
     if(d.suzSec){suz=d.suzSec;suzIsaret();listeCiz();return}
     if(b.id==='okutarak'){okutarak=!okutarak;b.setAttribute('aria-pressed',String(okutarak));return}
@@ -1708,10 +1788,11 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
   var ilk=(location.hash||'').replace('#','');
   durumYukle().then(function(){
     $('#f-tar').value=gunEkle(BUGUN,3);$('#f-tar').min=BUGUN;
-    return Promise.all([fislerYukle(),kisilerYukle(),katalogYukle()])}).then(function(){taslakYukle();onizle()});
+    return Promise.all([fislerYukle(),kisilerYukle(),katalogYukle(),kurulumYukle()])}).then(function(){taslakYukle();onizle();
+      if(KURULUM.ilk_kurulum_acik&&(KURULUM.kisi_bos||KURULUM.sube_yok)&&!ilk)git('kurulum',false)});
   setInterval(function(){durumYukle()},15000);
   setInterval(function(){var ek=$('.ekran.acik').dataset.ekran;if(!BEKLEYEN&&(ek==='ana'||ek==='fisler'))fislerYukle(true)},20000);
-  git(['ana','yeni','fisler','ac','telefonlar','personel','puan','ayarlar'].indexOf(ilk)>=0?ilk:'ana',false);
+  git(['ana','yeni','fisler','ac','kurulum','telefonlar','personel','puan','ayarlar'].indexOf(ilk)>=0?ilk:'ana',false);
   setTimeout(function(){var a=$('#acilis');if(a)a.remove();if(!TK.oku('tanitim-goruldu')){tSahne(0);$('#tanitim').classList.add('acik')}},TK.hareketAz?0:950);
 })();
 </script>

@@ -6,7 +6,7 @@
 //! yol listesi kullanılır; `--sunucu`/`--sertifika` TAA Çatı'daki anlamıyla aynıdır.
 use std::io::Read;
 use std::path::PathBuf;
-use taa_fis_sunucu::{cati_pin, Istek, Uygulama, FOTO_SINIRI};
+use taa_fis_sunucu::{cati_pin, kurulum, Istek, Uygulama, FOTO_SINIRI};
 
 fn arg(ad: &str) -> Option<String> {
     let a: Vec<String> = std::env::args().collect();
@@ -33,13 +33,35 @@ fn main() {
     });
     let mut uyg = Uygulama::yeni(veri, arg("--yazici").map(PathBuf::from), taban.clone());
     uyg.aydinlatma_url = arg("--aydinlatma-url");
+    let kok = arg("--kok")
+        .map(PathBuf::from)
+        .unwrap_or_else(cati_pin::veri_koku);
     uyg.pin = Box::new(cati_pin::CatiPinIstemcisi {
-        kok: arg("--kok")
-            .map(PathBuf::from)
-            .unwrap_or_else(cati_pin::veri_koku),
+        kok: kok.clone(),
         sunucu: arg("--sunucu"),
         sertifika: arg("--sertifika").map(PathBuf::from),
     });
+    let cati: std::sync::Arc<dyn kurulum::CatiKaynagi> =
+        std::sync::Arc::new(kurulum::CatiIstemcisi {
+            kok: kok.clone(),
+            sunucu: arg("--sunucu"),
+            sertifika: arg("--sertifika").map(PathBuf::from),
+        });
+    uyg.cati = cati.clone();
+    uyg.kok = Some(kok.clone());
+    // Kişi listesi ve şube: açılışta ve periyodik olarak TAA Çatı'dan; ulaşılamazsa son önbellek kalır.
+    {
+        let dizin = uyg.dizin.clone();
+        std::thread::spawn(move || loop {
+            match kurulum::esitle(&dizin, Some(&kok), cati.as_ref(), taa_fis_sunucu::simdi()) {
+                Ok(o) => println!("TAA Çatı eşitlemesi: {o}"),
+                Err(e) => {
+                    eprintln!("TAA Çatı eşitlemesi yapılamadı (son önbellek kullanılıyor): {e}")
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_secs(kurulum::ESITLEME_ARALIGI_SN));
+        });
+    }
     let sunucu = match tiny_http::Server::http(format!("0.0.0.0:{port}")) {
         Ok(s) => s,
         Err(e) => {
@@ -56,9 +78,20 @@ fn main() {
                 .find(|h| h.field.as_str().as_str().eq_ignore_ascii_case(ad))
                 .map(|h| h.value.to_string())
         };
-        // Yerel: loopback adresten VE Host başlığı loopback (DNS yeniden bağlama saldırısına karşı).
+        // Yerel: loopback adresten VE Host başlığı loopback (DNS yeniden bağlama saldırısına karşı) VE önde
+        // bir aracı (Caddy, Tailscale Serve) yok: aracı her bağlantıyı 127.0.0.1'den gösterir (Fable E1); aracının
+        // eklediği başlıklardan biri varsa istek yerel sayılmaz.
         let host_yerel = baslik("Host").is_some_and(|h| host_loopback(&h));
+        let aracidan = [
+            "X-Forwarded-For",
+            "Forwarded",
+            "X-Real-IP",
+            "Tailscale-User-Login",
+        ]
+        .iter()
+        .any(|a| baslik(a).is_some());
         let yerel = host_yerel
+            && !aracidan
             && r.remote_addr()
                 .map(|a| a.ip().is_loopback())
                 .unwrap_or(false);
