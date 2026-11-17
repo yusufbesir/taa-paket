@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TAA Çatı</title>
+<link rel="icon" href="/simge.svg" type="image/svg+xml">
+<!-- Sahip: Yusuf. yazan: [Claude#taa-cati-panel 2026-11-17]. Tasarım: ekip turu v2 (Fable 5.2, GPT-6 Astra, Gemini 3.1 Pro).
+     3 tema, düzen de değişir: Kule Gecesi = sol menü (varsayılan), Defter = üst sekmeler, Taş = etiketli sol ray.
+     Dış kaynak yok (CSP default-src 'none'); yazı tipleri Windows'ta hazır olanlardır. -->
+<style>
+:root{
+  --bg:#0E1420;--panel:#151D2C;--panel2:#1B2538;--line:#26324A;--line-strong:#5A6B8C;--fg:#E8ECF4;--muted:#8B97AE;
+  --accent:#F2A93B;--on-accent:#0E1420;--sel:#E8ECF4;--ok:#4CC38A;--warn:#F2A93B;--err:#FF6B5E;
+  --r:8px;--rb:6px;--f-head:"Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;--w-head:600;
+  --f-body:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;--f-mono:"Cascadia Mono",Consolas,ui-monospace,monospace;
+  --f-title:var(--f-head);--t-title:28px;--dur:120ms;--ease:cubic-bezier(.4,0,.2,1);--enter:translateY(8px);
+  color-scheme:dark;
+}
+:root[data-tema="defter"]{
+  --bg:#FAF7F1;--panel:#FFFFFF;--panel2:#F3EEE4;--line:#E4DCCD;--line-strong:#8A7F6B;--fg:#1C2A44;--muted:#6E6A62;
+  --accent:#2B4C9B;--on-accent:#FFFFFF;--sel:#2B4C9B;--ok:#2F7D4F;--warn:#B45309;--err:#B42318;
+  --r:3px;--rb:3px;--f-head:"Segoe UI",system-ui,sans-serif;--f-body:"Segoe UI",system-ui,sans-serif;--f-mono:Consolas,ui-monospace,monospace;
+  --f-title:Georgia,Cambria,"Times New Roman",serif;--t-title:34px;--dur:160ms;--ease:cubic-bezier(.3,.6,.2,1);--enter:translateX(10px);color-scheme:light;
+}
+:root[data-tema="tas"]{
+  --bg:#D8D9D2;--panel:#ECEDE7;--panel2:#E1E3DB;--line:#B0B3A8;--line-strong:#72776A;--fg:#23261F;--muted:#4F544A;
+  --accent:#4A5C24;--on-accent:#F4F6EE;--sel:#4A5C24;--ok:#1F7A6B;--warn:#A2621A;--err:#A33A2C;
+  --r:14px;--rb:10px;--f-head:Bahnschrift,"Segoe UI",system-ui,sans-serif;--w-head:600;--f-body:"Segoe UI",system-ui,sans-serif;--f-mono:Consolas,ui-monospace,monospace;
+  --f-title:var(--f-head);--t-title:30px;--dur:200ms;--ease:cubic-bezier(.2,.9,.3,1.03);--enter:scale(.985);color-scheme:light;
+}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:14px/1.5 var(--f-body);transition:background var(--dur),color var(--dur)}
+*{box-sizing:border-box}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+button:disabled{opacity:.55;cursor:default}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+main:focus,main:focus-visible{outline:none}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+[hidden]{display:none!important}
+
+#yukle{position:fixed;inset:0;display:grid;place-items:center;background:var(--bg);z-index:60;transition:opacity .4s}
+#yukle.bitti{opacity:0;pointer-events:none}
+#yukle .kutu{display:grid;justify-items:center;gap:14px}
+#yukle svg path{stroke-dasharray:90;stroke-dashoffset:90;animation:ciz .9s var(--ease) forwards}
+#yukle svg path:nth-child(2){animation-delay:.15s}#yukle svg path:nth-child(3){animation-delay:.3s}
+#yukle .ad{font:600 22px var(--f-head)}
+#yukle .adim{font:12px var(--f-mono);color:var(--muted);min-height:18px}
+@keyframes ciz{to{stroke-dashoffset:0}}
+
+.giris{min-height:100%;display:grid;place-items:center;padding:24px}
+.giris form{width:min(380px,100%);display:grid;gap:14px}
+.giris .marka{justify-content:center;padding-bottom:6px}
+label.alan{display:grid;gap:6px;font-size:13px;font-weight:500}
+.girdi,select.girdi{width:100%;padding:10px 12px;border-radius:var(--rb);border:1px solid var(--line-strong);background:var(--panel);color:var(--fg)}
+.hata-kutu{color:var(--err);font-size:13px;min-height:20px}
+
+.uygulama{display:flex;min-height:100%}
+nav.menu{background:var(--panel);border-right:1px solid var(--line);width:240px;flex:none;padding:22px 16px;display:flex;flex-direction:column;gap:4px}
+.marka{display:flex;gap:10px;align-items:center;padding-bottom:18px}
+.marka svg{flex:none}
+.marka b{font:var(--w-head) 16px var(--f-head);display:block}
+.marka small{color:var(--muted);font-size:11px}
+.oge{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:var(--rb);border:0;background:none;color:var(--muted);text-align:left;width:100%}
+.oge:hover{background:color-mix(in srgb,var(--accent) 8%,transparent)}
+.oge[aria-current="page"]{background:color-mix(in srgb,var(--sel) 13%,transparent);color:var(--fg);font-weight:500}
+.oge .ik{font-family:var(--f-mono);width:16px;text-align:center}
+.oge[aria-current="page"] .ik{color:var(--sel)}
+.oge .ad{flex:1}
+.menu-alt{margin-top:auto;padding-top:14px;font-size:12px;color:var(--muted)}
+.rozet{background:var(--accent);color:var(--on-accent);border-radius:999px;font-size:11px;padding:0 7px;font-weight:600}
+main{flex:1;min-width:0;padding:32px;display:flex;flex-direction:column;gap:20px}
+.ust{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.ust h1{font:var(--w-head) var(--t-title)/1.15 var(--f-title);margin:0;text-wrap:balance}
+.ust .baslik{flex:1;min-width:220px}
+.durum{display:inline-flex;gap:10px;align-items:center;padding:7px 12px;border-radius:999px;background:color-mix(in srgb,var(--ok) 13%,transparent);font-size:13px}
+.nokta{width:8px;height:8px;border-radius:50%;background:var(--ok);flex:none}
+.durum.uyari{background:color-mix(in srgb,var(--err) 15%,transparent)}.durum.uyari .nokta{background:var(--err)}
+
+.ekran{display:flex;flex-direction:column;gap:20px;animation:gir var(--dur) var(--ease)}
+@keyframes gir{from{opacity:0;transform:var(--enter)}}
+.kart{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:18px}
+.izgara4{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}
+.istat .etiket{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:12px;font-weight:500;letter-spacing:.04em}
+.istat .deger{font:var(--w-head) 22px var(--f-head);margin:6px 0 2px;overflow-wrap:anywhere}
+.istat .ayr{font:12px var(--f-mono);color:var(--muted);overflow-wrap:anywhere}
+.iki{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,360px);gap:14px;align-items:start}
+.kart h2{font:var(--w-head) 17px var(--f-head);margin:0 0 6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.kart h2 .bos{flex:1}
+.etk{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:500;white-space:nowrap}
+.etk::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.etk.ok{color:var(--ok);background:color-mix(in srgb,var(--ok) 14%,transparent)}
+.etk.uy{color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent)}
+.etk.hata{color:var(--err);background:color-mix(in srgb,var(--err) 14%,transparent)}
+.satir{display:flex;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.satir:last-child{border-bottom:0}
+.satir .ana{flex:1;min-width:160px}
+.satir .ana b{font-weight:500;display:block;overflow-wrap:anywhere}
+.satir .ana span{color:var(--muted);font-size:12px}
+.dugme{border-radius:var(--rb);padding:8px 16px;border:1px solid var(--line-strong);background:none;font-weight:500;font-size:13px;white-space:nowrap;transition:transform var(--dur) var(--ease),background var(--dur)}
+.dugme:active{transform:scale(.97)}
+.dugme.birincil{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.dugme.tehlike{color:var(--err)}
+.dugme.tehlike.dolu{background:var(--err);color:#fff;border-color:var(--err)}
+.olay{display:flex;gap:12px;padding:6px 0}
+.olay b{font-weight:500;display:block}.olay span{color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+.arac{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.parca{display:inline-flex;gap:4px;padding:4px;background:var(--panel2);border-radius:calc(var(--rb) + 4px);flex-wrap:wrap}
+.parca button{border:0;background:none;padding:7px 14px;border-radius:var(--rb);color:var(--muted)}
+.parca button[aria-pressed="true"]{background:var(--panel);color:var(--fg);box-shadow:0 0 0 1px var(--line);font-weight:500}
+.ara{flex:1;min-width:200px;max-width:320px;margin-left:auto;padding:9px 14px;border-radius:var(--rb);border:1px solid var(--line-strong);background:var(--panel);color:var(--fg)}
+.ipucu{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:12px}
+.ipucu .nokta{background:var(--warn);width:6px;height:6px}
+.onayla-kutu{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--err)}
+.tablo-kap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:560px}
+th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font-size:11px;letter-spacing:.08em;color:var(--muted);font-weight:500;text-transform:uppercase}
+.anahtar{width:40px;height:22px;border-radius:999px;border:0;background:var(--line-strong);position:relative;transition:background var(--dur);flex:none}
+.anahtar::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:var(--panel);transition:transform var(--dur) var(--ease)}
+.anahtar[aria-checked="true"]{background:var(--accent)}
+.anahtar[aria-checked="true"]::after{transform:translateX(18px)}
+.anahtar.miras{opacity:.55}
+.temalar{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+.tema-sec{border:2px solid var(--line);border-radius:var(--r);padding:0;overflow:hidden;background:none;text-align:left}
+.tema-sec[aria-pressed="true"]{border-color:var(--accent)}
+.tema-sec .on{height:90px;display:flex;gap:6px;padding:10px}
+.tema-sec .on i{display:block;border-radius:4px}
+.tema-sec .alt{padding:10px 12px;background:var(--panel)}
+.tema-sec .alt b{display:block;font-weight:600}
+.tema-sec .alt span{font-size:12px;color:var(--muted)}
+.ayar-satir{display:flex;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.ayar-satir:last-child{border-bottom:0}
+.ayar-satir .ana{flex:1;min-width:200px}
+input[type=color]{width:44px;height:32px;border:1px solid var(--line-strong);border-radius:var(--rb);background:none;padding:2px}
+.bildirim{position:fixed;right:20px;bottom:20px;max-width:min(460px,calc(100% - 40px));background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:var(--rb);font-weight:500;opacity:0;transform:translateY(8px);transition:all var(--dur) var(--ease);pointer-events:none;z-index:70}
+.bildirim.goster{opacity:1;transform:none}
+.bildirim.hata{background:var(--err);color:#fff}
+dialog{border:1px solid var(--line);border-radius:var(--r);background:var(--panel);color:var(--fg);padding:22px;width:min(420px,calc(100% - 32px))}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+dialog form{display:grid;gap:14px}
+dialog h2{margin:0;font:var(--w-head) 18px var(--f-head)}
+dialog .dugmeler{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+.bos-durum{padding:28px 8px;text-align:center;color:var(--muted)}
+
+:root[data-tema="defter"] .uygulama{flex-direction:column}
+:root[data-tema="defter"] nav.menu{width:auto;flex-direction:row;flex-wrap:wrap;align-items:flex-end;gap:22px;padding:20px 40px 0;border-right:0;border-bottom:1px solid var(--line);background:var(--bg)}
+:root[data-tema="defter"] .marka{padding:0 18px 12px 0;width:100%}
+:root[data-tema="defter"] nav .marka svg{display:none}
+:root[data-tema="defter"] .marka b{font:600 22px var(--f-title);display:inline}
+:root[data-tema="defter"] .marka small{font:400 15px var(--f-title);margin-left:8px}
+:root[data-tema="defter"] .oge{width:auto;padding:6px 0 10px;border-radius:0;border-bottom:2px solid transparent;background:none!important}
+:root[data-tema="defter"] .oge[aria-current="page"]{border-bottom-color:var(--fg)}
+:root[data-tema="defter"] .oge .ik{display:none}
+:root[data-tema="defter"] .rozet{background:none;color:var(--err);padding:0;font-family:var(--f-mono)}
+:root[data-tema="defter"] .rozet::before{content:"("}:root[data-tema="defter"] .rozet::after{content:")"}
+:root[data-tema="defter"] main{padding:28px 40px 40px}
+:root[data-tema="defter"] .oge[data-git="ayarlar"]{margin-left:auto}
+:root[data-tema="defter"] .menu-alt{display:none}
+
+:root[data-tema="tas"] .uygulama{padding:16px;gap:16px}
+:root[data-tema="tas"] nav.menu{width:92px;border:0;border-radius:28px;padding:18px 10px;align-items:center;gap:6px}
+:root[data-tema="tas"] nav .marka{flex-direction:column;padding-bottom:10px}
+:root[data-tema="tas"] nav .marka div{display:none}
+:root[data-tema="tas"] .oge{flex-direction:column;gap:4px;padding:8px 4px;border-radius:16px;text-align:center;font-size:11px;line-height:1.25}
+:root[data-tema="tas"] .oge .ik{font-size:16px;width:auto}
+:root[data-tema="tas"] .rozet{background:var(--err);color:#fff;font-size:10px}
+:root[data-tema="tas"] main{padding:20px}
+:root[data-tema="tas"] .dugme{padding:11px 20px;min-height:44px}
+:root[data-tema="tas"] .dugme:active{transform:none}
+:root[data-tema="tas"] .menu-alt{display:none}
+
+@media (max-width:820px){
+  .uygulama{flex-direction:column}
+  nav.menu,:root[data-tema="tas"] nav.menu{width:auto;flex-direction:row;overflow-x:auto;align-items:center;border-right:0;border-bottom:1px solid var(--line);padding:10px 16px}
+  :root[data-tema="tas"] .uygulama{padding:12px;gap:12px}
+  nav .marka{padding:0 8px 0 0}nav .marka div{display:none}
+  .oge{width:auto;white-space:nowrap;flex:none}
+  :root[data-tema="tas"] .oge{flex-direction:row;font-size:13px}
+  main,:root[data-tema="defter"] main{padding:20px 16px}
+  .iki{grid-template-columns:1fr}
+  .menu-alt{display:none}
+}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+:root.az-hareket *,:root.az-hareket *::before,:root.az-hareket *::after{animation:none!important;transition:none!important}
+</style>
+</head>
+<body>
+<div id="yukle" role="status" aria-live="polite">
+  <div class="kutu">
+    <svg width="76" height="76" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M5 50L32 18L59 50" stroke="var(--fg)" stroke-width="6"/>
+      <path d="M17 50L32 32.5L47 50" stroke="var(--fg)" stroke-width="6"/>
+      <path d="M26 50L32 43L38 50Z" stroke="var(--accent)" fill="var(--accent)" stroke-width="3"/>
+    </svg>
+    <div class="ad">TAA Çatı</div>
+    <div class="adim" id="yukle-adim">Oturum okunuyor…</div>
+  </div>
+</div>
+
+<div class="giris" id="giris" hidden>
+  <form id="giris-form" class="kart" autocomplete="off">
+    <div class="marka"><span id="marka-giris"></span><div><b>TAA Çatı</b><small>Yönetim paneli</small></div></div>
+    <label class="alan">Kullanıcı adı<input class="girdi" name="kullanici" required maxlength="64" autocapitalize="none" spellcheck="false"></label>
+    <label class="alan">Parola<input class="girdi" name="parola" type="password" required></label>
+    <label class="alan">Doğrulama kodu (varsa)<input class="girdi" name="kod" inputmode="numeric" maxlength="12"></label>
+    <div class="hata-kutu" id="giris-hata" role="alert"></div>
+    <button class="dugme birincil" type="submit">Giriş yap</button>
+    <div class="muted" style="font-size:12px" id="giris-sunucu"></div>
+  </form>
+</div>
+
+<div class="uygulama" id="uygulama" hidden>
+  <nav class="menu" aria-label="Ana menü">
+    <div class="marka"><span id="marka-menu"></span><div><b>TAA Çatı</b><small>Yönetim paneli</small></div></div>
+    <div id="menu-ogeler" style="display:contents"></div>
+    <div class="menu-alt" id="menu-alt"></div>
+  </nav>
+  <main id="ana" tabindex="-1"></main>
+</div>
+
+<dialog id="dogrula-d"><form method="dialog" id="dogrula-f">
+  <h2>Parolanızı doğrulayın</h2>
+  <p class="muted" style="margin:0;font-size:13px">Değişiklik yapmak için 15 dakikalık yönetici penceresi açılır. Parola yalnız sunucuya gider, saklanmaz.</p>
+  <label class="alan">Parola<input class="girdi" name="parola" type="password" required></label>
+  <div class="hata-kutu" id="dogrula-hata" role="alert"></div>
+  <div class="dugmeler"><button class="dugme" value="vazgec" formnovalidate>Vazgeç</button><button class="dugme birincil" value="tamam">Doğrula</button></div>
+</form></dialog>
+
+<dialog id="form-d"><form method="dialog" id="form-f"><h2 id="form-baslik"></h2><div id="form-govde" style="display:grid;gap:14px"></div>
+  <div class="hata-kutu" id="form-hata" role="alert"></div>
+  <div class="dugmeler"><button class="dugme" value="vazgec" formnovalidate>Vazgeç</button><button class="dugme birincil" value="tamam" id="form-tamam">Kaydet</button></div>
+</form></dialog>
+
+<div class="bildirim" id="bildirim" role="status" aria-live="polite"></div>
+
+<script>
+'use strict';
+const $=s=>document.querySelector(s);
+const kok=document.documentElement;
+const oku=k=>{try{return localStorage.getItem(k)}catch(e){return null}};
+const yaz=(k,v)=>{try{v==null?localStorage.removeItem(k):localStorage.setItem(k,v)}catch(e){}};
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const tr=s=>String(s??'').toLocaleLowerCase('tr');
+const zaman=z=>z?String(z).replace('T',' ').replace(/(\.\d+)?Z$/,'').slice(0,16):'-';
+
+const LOGO=(w,on)=>`<svg width="${w}" height="${w}" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${on?'<rect width="64" height="64" rx="14" fill="var(--accent)"/>':''}<path d="M5 50L32 18L59 50" stroke="${on?'var(--on-accent)':'var(--fg)'}" stroke-width="6"/><path d="M17 50L32 32.5L47 50" stroke="${on?'var(--on-accent)':'var(--fg)'}" stroke-width="6"/><path d="M26 50L32 43L38 50Z" stroke="${on?'var(--on-accent)':'var(--accent)'}" fill="${on?'var(--on-accent)':'var(--accent)'}" stroke-width="3"/></svg>`;
+$('#marka-menu').innerHTML=LOGO(34,true);$('#marka-giris').innerHTML=LOGO(40,true);
+
+// ---- sunucuyla konuşma ----
+class ApiHata extends Error{constructor(d,v){super(v&&v.hata||('HTTP '+d));this.durum=d;this.kod=v&&v.kod}}
+async function istek(yol,govde){
+  const o={method:govde?'POST':'GET',credentials:'same-origin',headers:{}};
+  if(govde){o.headers['Content-Type']='application/json';o.body=JSON.stringify(govde)}
+  const r=await fetch(yol,o);let v=null;try{v=await r.json()}catch(e){}
+  if(!r.ok)throw new ApiHata(r.status,v);return v;
+}
+// Yazma: sunucu 15 dk penceresi isterse (428) parola sorulur, sonra bir kez yeniden denenir.
+async function api(yol,govde){
+  try{return await istek(yol,govde)}catch(e){
+    if(e.durum===428&&govde){if(await dogrula())return await istek(yol,govde);throw new ApiHata(0,{hata:'İşlem yapılmadı (doğrulama yapılmadı).'})}
+    if(e.durum===401&&e.kod===5){girisGoster();}
+    throw e;
+  }
+}
+function dogrula(){
+  return new Promise(coz=>{
+    const d=$('#dogrula-d'),f=$('#dogrula-f');f.reset();$('#dogrula-hata').textContent='';
+    const kapat=async ev=>{
+      if(d.returnValue!=='tamam'){d.removeEventListener('close',kapat);coz(false);return}
+      try{await istek('/api/dogrula',{parola:f.parola.value});f.reset();d.removeEventListener('close',kapat);coz(true)}
+      catch(e){$('#dogrula-hata').textContent=e.message;d.returnValue='';d.showModal()}
+    };
+    d.addEventListener('close',kapat);d.showModal();f.parola.focus();
+  });
+}
+let bt;function bildir(m,hata){const b=$('#bildirim');b.textContent=m;b.classList.toggle('hata',!!hata);b.classList.add('goster');clearTimeout(bt);bt=setTimeout(()=>b.classList.remove('goster'),hata?5000:2400)}
+const hataBildir=e=>bildir(e.message||String(e),true);
+
+// ---- durum ----
+let oturum=null,saglik=null,veri={cihazlar:[],kullanicilar:[],subeler:[],yetkiler:[],roller:[],olaylar:[]};
+let suzgec='bekliyor',arama='',sor=null,gunlukIslem='',gunlukSon=null;
+const izinli=i=>!!(oturum&&oturum.izinler&&oturum.izinler.includes(i));
+const EKRANLAR=[
+  ['genel','Genel bakış','◐',null],['cihazlar','Cihazlar','▣','cihaz.yonet'],['kullanicilar','Kullanıcılar','◍','kullanici.yonet'],
+  ['subeler','Şubeler','⌂','kullanici.yonet'],['yetkiler','Program yetkileri','▦','program.yonet'],['gunluk','Günlük','≡','gunluk.gor'],['ayarlar','Ayarlar','⚙',null]
+];
+const gorunur=()=>EKRANLAR.filter(e=>!e[3]||izinli(e[3]));
+const bekleyen=()=>veri.cihazlar.filter(c=>c.durum==='bekliyor').length;
+const subeAd=id=>{if(id==null||id==='')return 'Merkez';const s=veri.subeler.find(x=>x.id===id);return s?s.ad:'Şube '+id};
+
+async function yukle(ne){
+  const al=async(k,yol,izin)=>{if(izin&&!izinli(izin))return;try{veri[k]=await api(yol)||[]}catch(e){if(e.durum!==401)hataBildir(e)}};
+  const isler=[];
+  if(ne==='hepsi'||ne==='cihaz')isler.push(al('cihazlar','/api/cihazlar','cihaz.yonet'));
+  if(ne==='hepsi'||ne==='sube')isler.push(al('subeler','/api/subeler','kullanici.yonet'));
+  if(ne==='hepsi'||ne==='kullanici')isler.push(al('kullanicilar','/api/kullanicilar','kullanici.yonet'),al('roller','/api/roller','kullanici.yonet'));
+  if(ne==='hepsi'||ne==='yetki')isler.push(al('yetkiler','/api/yetkiler','program.yonet'));
+  if(ne==='hepsi'||ne==='gunluk')isler.push(al('olaylar','/api/gunluk?limit=50'+(gunlukIslem?'&islem='+encodeURIComponent(gunlukIslem):''),'gunluk.gor'));
+  if(ne==='hepsi')isler.push(istek('/api/saglik').then(v=>saglik=v).catch(()=>saglik={ulasildi:false}));
+  await Promise.all(isler);
+}
+
+// ---- parçalar ----
+function menu(aktif){
+  $('#menu-ogeler').innerHTML=gorunur().map(([id,ad,ik])=>{
+    const n=id==='cihazlar'?bekleyen():0;
+    return `<button class="oge" data-git="${id}" ${id===aktif?'aria-current="page"':''}><span class="ik" aria-hidden="true">${ik}</span><span class="ad">${ad}</span>${n?`<span class="rozet" aria-label="${n} bekleyen">${n}</span>`:''}</button>`;
+  }).join('');
+  $('#menu-alt').innerHTML=oturum?`<span class="mono">${esc(oturum.kullanici)}</span>`:'';
+}
+function durumCubugu(){
+  if(!saglik)return '';
+  return saglik.ulasildi
+    ?`<span class="durum"><span class="nokta"></span><b style="font-weight:500">Sunucu çalışıyor</b></span>`
+    :`<span class="durum uyari"><span class="nokta"></span><b style="font-weight:500">Sunucuya ulaşılamadı</b></span>`;
+}
+const ust=(b,a)=>`<div class="ust"><div class="baslik"><h1>${b}</h1><div class="muted" style="font-size:13px">${a}</div></div>${durumCubugu()}</div>`;
+const bosDurum=m=>`<div class="bos-durum">${m}</div>`;
+
+function cihazSatir(c){
+  const k=esc(c.kimlik);let sag;
+  if(c.durum==='bekliyor'){
+    const sb=c.istenen_sube??c.sube_id;
+    sag = sor===('iptal:'+c.kimlik)
+      ? `<span class="onayla-kutu">Geri alınamaz. Emin misiniz? <button class="dugme" data-vazgec>Vazgeç</button><button class="dugme tehlike dolu" data-iptal-kesin="${k}">Evet, iptal et</button></span>`
+      : `<button class="dugme tehlike" data-iptal="${k}">İptal</button><button class="dugme birincil" data-onayla="${k}" data-sube="${esc(sb??'')}">Onayla</button>`;
+  } else if(c.durum==='onayli'){
+    sag = sor===('iptal:'+c.kimlik)
+      ? `<span class="onayla-kutu">Cihaz sunucuya bağlanamaz hâle gelir. <button class="dugme" data-vazgec>Vazgeç</button><button class="dugme tehlike dolu" data-iptal-kesin="${k}">Evet, iptal et</button></span>`
+      : `<span class="etk ok">Onaylı</span><button class="dugme tehlike" data-iptal="${k}">İptal et</button>`;
+  } else sag='<span class="etk hata">İptal</span>';
+  const ne=c.durum==='bekliyor'?'istek '+zaman(c.kayit_zamani):'son görülme '+zaman(c.son_gorulme);
+  return `<div class="satir"><div class="ana"><b>${esc(c.ad||'Adsız cihaz')}</b><span>${esc(subeAd(c.istenen_sube??c.sube_id))} · ${esc(ne)}</span></div><span class="mono muted" style="font-size:12px">${k}</span>${sag}</div>`;
+}
+
+const SAYFA={
+  genel(){
+    const b=bekleyen();
+    const kart=(e,d,a,r)=>`<div class="kart istat"><div class="etiket"><span class="nokta" style="background:var(--${r})"></span>${e}</div><div class="deger">${d}</div><div class="ayr">${a}</div></div>`;
+    const olaylar=veri.olaylar.slice(0,6);
+    return ust('Genel bakış','Merkez sunucunun durumu · 30 saniyede bir yenilenir')+`
+    <div class="izgara4">
+      ${kart('SUNUCU',saglik&&saglik.ulasildi?'Çalışıyor':'Ulaşılamadı',saglik&&saglik.ulasildi?'sağlık ucu yanıt verdi':esc(saglik&&saglik.hata||'bağlantı yok'),saglik&&saglik.ulasildi?'ok':'err')}
+      ${izinli('cihaz.yonet')?kart('BEKLEYEN CİHAZ',b,b?'onayınızı bekliyor':'hepsi sonuçlandı',b?'warn':'ok'):''}
+      ${izinli('kullanici.yonet')?kart('ŞUBE',veri.subeler.length,veri.kullanicilar.length+' kullanıcı','ok'):''}
+      ${kart('OTURUM',esc(oturum.kullanici),'geçerlilik '+esc(oturum.gecerlilik?zaman(oturum.gecerlilik):'sınırsız'),'ok')}
+    </div>
+    <div class="iki">
+      ${izinli('cihaz.yonet')?`<div class="kart"><h2>Onay bekleyen cihazlar<span class="bos"></span>${b?`<span class="etk uy">${b} yeni</span>`:'<span class="etk ok">Bekleyen yok</span>'}</h2>
+        ${b?veri.cihazlar.filter(c=>c.durum==='bekliyor').map(cihazSatir).join(''):'<p class="muted">Tüm cihaz istekleri sonuçlandı.</p>'}</div>`:'<div></div>'}
+      ${izinli('gunluk.gor')?`<div class="kart"><h2>Son olaylar</h2>${olaylar.length?olaylar.map(o=>`<div class="olay"><span class="mono muted" style="font-size:12px;white-space:nowrap">${esc(zaman(o.zaman).slice(11))}</span><div><b>${esc(o.islem)}</b><span>${esc(subeAd(o.sube_id))}${o.ayrinti?' · '+esc(typeof o.ayrinti==='string'?o.ayrinti:JSON.stringify(o.ayrinti)):''}</span></div></div>`).join(''):'<p class="muted">Olay yok.</p>'}</div>`:''}
+    </div>`;
+  },
+  cihazlar(){
+    const say=d=>veri.cihazlar.filter(c=>c.durum===d).length;
+    const liste=veri.cihazlar.filter(c=>c.durum===suzgec&&tr((c.ad||'')+subeAd(c.istenen_sube??c.sube_id)+c.kimlik).includes(tr(arama)));
+    return ust('Cihazlar','Yalnız onaylı cihazlar sunucuya bağlanabilir')+`
+    <div class="arac">
+      <div class="parca" role="group" aria-label="Durum süzgeci">
+        ${[['bekliyor','Bekleyen'],['onayli','Onaylı'],['iptal','İptal']].map(([d,a])=>`<button data-suz="${d}" aria-pressed="${suzgec===d}">${a} ${say(d)}</button>`).join('')}
+      </div>
+      <input class="ara" id="ara" type="search" placeholder="Cihaz, şube ya da kimlik ara" value="${esc(arama)}" aria-label="Cihaz ara">
+      <button class="dugme" data-yenile="cihaz">Yenile</button>
+    </div>
+    <div class="kart">${liste.length?liste.map(cihazSatir).join(''):bosDurum('Bu süzgeçte cihaz yok.')}</div>
+    <div class="ipucu"><span class="nokta"></span>İptal geri alınamaz; cihaz yeniden kayıt olmak zorunda kalır. Değişiklikler için parola doğrulaması istenebilir.</div>`;
+  },
+  kullanicilar(){
+    const rolYazi=u=>(u.roller||[]).map(r=>typeof r==='string'?r:(r.rol+(r.sube_id!=null?' · '+subeAd(r.sube_id):''))).join(', ')||'-';
+    return ust('Kullanıcılar','Silme yok; ayrılan personelin hesabı kapatılır')+`
+    <div class="arac"><span class="muted">${veri.kullanicilar.length} kullanıcı</span><span style="flex:1"></span><button class="dugme birincil" data-kullanici-ekle>Kullanıcı ekle</button></div>
+    <div class="kart tablo-kap">${veri.kullanicilar.length?`<table><thead><tr><th>Ad</th><th>Kullanıcı adı</th><th>Roller</th><th>Durum</th><th></th></tr></thead><tbody>
+    ${veri.kullanicilar.map(u=>{const etkin=u.aktif!==false;const id=+u.id;
+      const islem=sor===('kapat:'+id)
+        ?`<span class="onayla-kutu">Hesap kapanır. <button class="dugme" data-vazgec>Vazgeç</button><button class="dugme tehlike dolu" data-kapat-kesin="${id}">Evet, kapat</button></span>`
+        :`<button class="dugme" data-parola="${id}">Parola değiştir</button>${etkin?` <button class="dugme tehlike" data-kapat="${id}">Kapat</button>`:''}`;
+      return `<tr><td>${esc(u.gorunen_ad)}</td><td class="mono" style="font-size:12px">${esc(u.ad)}</td><td style="font-size:13px">${esc(rolYazi(u))}</td><td><span class="etk ${etkin?'ok':'hata'}">${etkin?'Etkin':'Kapalı'}</span></td><td style="text-align:right;white-space:nowrap">${islem}</td></tr>`}).join('')}
+    </tbody></table>`:bosDurum('Kullanıcı yok.')}</div>`;
+  },
+  subeler(){
+    return ust('Şubeler','Her şubenin verisi ayrı tutulur')+`
+    <div class="arac"><span class="muted">${veri.subeler.length} şube</span><span style="flex:1"></span><button class="dugme birincil" data-sube-ekle>Şube ekle</button></div>
+    <div class="izgara4">${veri.subeler.map(s=>`<div class="kart istat"><div class="etiket">KOD ${esc(s.kod)}</div><div class="deger">${esc(s.ad)}</div><div class="ayr">${veri.cihazlar.filter(c=>c.sube_id===s.id&&c.durum==='onayli').length} onaylı cihaz${s.aktif===false?' · kapalı':''}</div></div>`).join('')||bosDurum('Şube yok.')}</div>`;
+  },
+  yetkiler(){
+    const BILINEN=['tutaa','taarkod','taadon','taa-etiket','terzitakip','taa-giydir','taa-video'];
+    const kurallar=veri.yetkiler.filter(y=>!y.rol);
+    const programlar=[...new Set([...BILINEN,...veri.yetkiler.map(y=>y.program)])];
+    const kural=(p,s)=>kurallar.find(y=>y.program===p&&(y.sube_id??null)===s);
+    const durum=(p,s)=>{const a=kural(p,s);if(a)return{acik:!!a.acik,miras:false};const g=kural(p,null);return{acik:g?!!g.acik:true,miras:true}};
+    const sutunlar=[{id:null,ad:'Tüm şubeler'},...veri.subeler];
+    const rolKural=veri.yetkiler.filter(y=>y.rol);
+    return ust('Program yetkileri','Hangi şube hangi programı kullanabilir · kapalı her zaman kazanır')+`
+    <div class="kart tablo-kap"><table><thead><tr><th>Program</th>${sutunlar.map(s=>`<th>${esc(s.ad)}</th>`).join('')}</tr></thead><tbody>
+    ${programlar.map(p=>`<tr><td><b style="font-weight:500" class="mono">${esc(p)}</b></td>${sutunlar.map(s=>{const d=durum(p,s.id);return `<td><button class="anahtar${d.miras?' miras':''}" role="switch" aria-checked="${d.acik}" aria-label="${esc(p)} · ${esc(s.ad)}${d.miras?' (genel kuraldan)':''}" data-yetki="${esc(p)}" data-sube="${esc(s.id??'')}"></button></td>`}).join('')}</tr>`).join('')}
+    </tbody></table></div>
+    <div class="ipucu"><span class="nokta"></span>Soluk anahtar genel kuraldan gelir; dokununca o şube için ayrı kural yazılır.${rolKural.length?' Role özel '+rolKural.length+' kural komut satırından yönetilir.':''}</div>`;
+  },
+  gunluk(){
+    return ust('Günlük','Kim, ne zaman, ne yaptı · yalnız okunur')+`
+    <div class="arac"><input class="ara" style="margin-left:0" id="gunluk-islem" placeholder="İşleme göre süz (ör. giris)" value="${esc(gunlukIslem)}" aria-label="İşlem süzgeci"><button class="dugme" data-gunluk-suz>Süz</button><span style="flex:1"></span><button class="dugme" data-yenile="gunluk">Yenile</button></div>
+    <div class="kart">${veri.olaylar.length?veri.olaylar.map(o=>`<div class="satir"><span class="mono muted" style="font-size:12px;min-width:120px">${esc(zaman(o.zaman))}</span><div class="ana"><b>${esc(o.islem)}</b><span>${esc(subeAd(o.sube_id))}${o.kullanici_id!=null?' · kullanıcı '+esc(o.kullanici_id):''}${o.ayrinti?' · '+esc(typeof o.ayrinti==='string'?o.ayrinti:JSON.stringify(o.ayrinti)):''}</span></div></div>`).join(''):bosDurum('Olay yok.')}</div>
+    ${veri.olaylar.length>=50?'<div><button class="dugme" data-daha>Daha eski olaylar</button></div>':''}`;
+  },
+  ayarlar(){
+    const t=kok.dataset.tema||'kule';
+    const ornek={kule:['#0E1420','#151D2C','#F2A93B','Koyu kontrol odası, amber vurgu'],defter:['#FAF7F1','#FFFFFF','#2B4C9B','Açık defter, mürekkep lacivert'],tas:['#D8D9D2','#ECEDE7','#4A5C24','Mat taş, zeytin vurgu']};
+    const adlar={kule:'Kule Gecesi',defter:'Defter',tas:'Taş'};
+    return ust('Ayarlar','Görünüm bu bilgisayarda saklanır')+`
+    <div class="kart"><h2>Tema</h2>
+      <div class="temalar">${Object.keys(ornek).map(k=>`<button class="tema-sec" data-tema-sec="${k}" aria-pressed="${t===k}"><div class="on" style="background:${ornek[k][0]}"><i style="width:28%;background:${ornek[k][1]}"></i><i style="flex:1;background:${ornek[k][1]}"></i><i style="width:14px;height:14px;align-self:end;border-radius:50%;background:${ornek[k][2]}"></i></div><div class="alt"><b>${adlar[k]}</b><span>${ornek[k][3]}</span></div></button>`).join('')}</div>
+    </div>
+    <div class="kart">
+      <div class="ayar-satir"><div class="ana"><b style="font-weight:500">Vurgu rengi</b><div class="muted" style="font-size:12px">Düğmeler ve seçili öğeler</div></div><input type="color" id="vurgu" value="${esc(getComputedStyle(kok).getPropertyValue('--accent').trim())}" aria-label="Vurgu rengi"></div>
+      <div class="ayar-satir"><div class="ana"><b style="font-weight:500">Hareketi azalt</b><div class="muted" style="font-size:12px">Geçiş animasyonlarını kapatır</div></div><button class="anahtar" role="switch" id="azhareket" aria-checked="${kok.classList.contains('az-hareket')}" aria-label="Hareketi azalt"></button></div>
+      <div class="ayar-satir"><div class="ana"><b style="font-weight:500">Varsayılana dön</b><div class="muted" style="font-size:12px">Tema, renk ve hareket ayarı sıfırlanır</div></div><button class="dugme" data-sifirla>Sıfırla</button></div>
+    </div>
+    <div class="kart">
+      <div class="ayar-satir"><div class="ana"><b style="font-weight:500">Oturum</b><div class="muted" style="font-size:12px">${esc(oturum.kullanici)} · ${esc((oturum.roller||[]).join(', '))}</div></div><button class="dugme" data-cikis>Çıkış yap</button></div>
+      <div class="ayar-satir"><div class="ana"><b style="font-weight:500">Paneli kapat</b><div class="muted" style="font-size:12px">Yerel panel sunucusu durur; sunucu hizmetleri çalışmaya devam eder</div></div><button class="dugme" data-panel-kapat>Kapat</button></div>
+    </div>`;
+  }
+};
+function aktifEkran(){const h=location.hash.slice(1);return gorunur().some(e=>e[0]===h)?h:'genel'}
+function ciz(odak){
+  if(!oturum)return;
+  const e=aktifEkran();menu(e);
+  $('#ana').innerHTML=`<div class="ekran">${SAYFA[e]()}</div>`;
+  if(odak){const a=$('#ara');if(a){a.focus();a.setSelectionRange(a.value.length,a.value.length)}}
+}
+function temaUygula(t){if(!['kule','defter','tas'].includes(t))t='kule';kok.dataset.tema=t;const v=oku('cati-vurgu-'+t);kok.style.removeProperty('--accent');if(v&&/^#[0-9a-f]{6}$/i.test(v))kok.style.setProperty('--accent',v)}
+
+// ---- formlar ----
+function formAc(baslik,govde,kaydet,dugme){
+  const d=$('#form-d'),f=$('#form-f');$('#form-baslik').textContent=baslik;$('#form-govde').innerHTML=govde;$('#form-hata').textContent='';$('#form-tamam').textContent=dugme||'Kaydet';
+  const kapat=async()=>{
+    if(d.returnValue!=='tamam'){d.removeEventListener('close',kapat);return}
+    try{await kaydet(f);d.removeEventListener('close',kapat)}catch(e){$('#form-hata').textContent=e.message;d.returnValue='';d.showModal()}
+  };
+  d.addEventListener('close',kapat);d.showModal();const ilk=f.querySelector('input,select');if(ilk)ilk.focus();
+}
+const subeSecici=(ad,secili)=>`<select class="girdi" name="${ad}"><option value="">Merkez (şubesiz)</option>${veri.subeler.map(s=>`<option value="${+s.id}" ${s.id===secili?'selected':''}>${esc(s.ad)} (${esc(s.kod)})</option>`).join('')}</select>`;
+const sayi=v=>v===''||v==null?null:+v;
+
+// ---- olaylar ----
+document.addEventListener('click',async e=>{
+  const d=e.target.closest('button');if(!d||d.closest('dialog'))return;
+  const ds=d.dataset;
+  try{
+    if(ds.git){location.hash=ds.git;return}
+    if(ds.suz){suzgec=ds.suz;sor=null;ciz();return}
+    if('vazgec' in ds){sor=null;ciz();return}
+    if(ds.iptal){sor='iptal:'+ds.iptal;ciz();return}
+    if(ds.kapat){sor='kapat:'+ds.kapat;ciz();return}
+    if(ds.yenile){d.disabled=true;await yukle(ds.yenile);ciz();bildir('Yenilendi');return}
+    if(ds.onayla){d.disabled=true;await api('/api/cihaz/onay',{kimlik:ds.onayla,sube_id:sayi(ds.sube)});await yukle('cihaz');ciz();bildir('Cihaz onaylandı');return}
+    if(ds.iptalKesin){d.disabled=true;await api('/api/cihaz/iptal',{kimlik:ds.iptalKesin});sor=null;await yukle('cihaz');ciz();bildir('Cihaz iptal edildi');return}
+    if(ds.kapatKesin){d.disabled=true;await api('/api/kullanici/kapat',{id:+ds.kapatKesin});sor=null;await yukle('kullanici');ciz();bildir('Hesap kapatıldı');return}
+    if(ds.yetki!==undefined&&d.getAttribute('role')==='switch'){
+      const yeni=d.getAttribute('aria-checked')!=='true';d.disabled=true;
+      await api('/api/yetki',{program:ds.yetki,acik:yeni,sube_id:sayi(ds.sube)});await yukle('yetki');ciz();bildir(yeni?'Program açıldı':'Program kapatıldı');return}
+    if('kullaniciEkle' in ds){
+      formAc('Kullanıcı ekle',`
+        <label class="alan">Ad soyad<input class="girdi" name="gorunen_ad" required maxlength="120"></label>
+        <label class="alan">Kullanıcı adı<input class="girdi" name="ad" required maxlength="64" pattern="[a-z0-9][a-z0-9_.\\-]*" title="küçük harf, rakam, nokta, tire" autocapitalize="none" spellcheck="false"></label>
+        <label class="alan">Parola (en az 8 karakter)<input class="girdi" name="parola" type="password" minlength="8" required autocomplete="new-password"></label>
+        <label class="alan">Rol<select class="girdi" name="rol" required>${veri.roller.map(r=>`<option value="${esc(r.ad)}">${esc(r.ad)}</option>`).join('')}</select></label>
+        <label class="alan">Şube${subeSecici('sube_id',null)}</label>`,
+        async f=>{await api('/api/kullanici/ekle',{ad:f.ad.value.trim(),gorunen_ad:f.gorunen_ad.value.trim(),parola:f.parola.value,roller:[{rol:f.rol.value,sube_id:sayi(f.sube_id.value)}]});f.reset();await yukle('kullanici');ciz();bildir('Kullanıcı eklendi')},'Ekle');
+      return}
+    if(ds.parola){
+      const id=+ds.parola;
+      formAc('Parola değiştir',`<label class="alan">Yeni parola (en az 8 karakter)<input class="girdi" name="yeni" type="password" minlength="8" required autocomplete="new-password"></label>`,
+        async f=>{await api('/api/kullanici/parola',{id,parola:f.yeni.value});f.reset();bildir('Parola değişti')});
+      return}
+    if('subeEkle' in ds){
+      formAc('Şube ekle',`<label class="alan">Kod<input class="girdi" name="kod" required maxlength="64" pattern="[a-z0-9][a-z0-9_.\\-]*" title="küçük harf ve rakam, ör. 12" spellcheck="false"></label><label class="alan">Ad<input class="girdi" name="ad" required maxlength="120"></label>`,
+        async f=>{await api('/api/sube/ekle',{kod:f.kod.value.trim(),ad:f.ad.value.trim()});f.reset();await yukle('sube');ciz();bildir('Şube eklendi')},'Ekle');
+      return}
+    if('gunlukSuz' in ds){gunlukIslem=$('#gunluk-islem').value.trim();await yukle('gunluk');ciz();return}
+    if('daha' in ds){const son=veri.olaylar[veri.olaylar.length-1];if(!son)return;d.disabled=true;
+      const ek=await api('/api/gunluk?limit=50&onceki_id='+(+son.id)+(gunlukIslem?'&islem='+encodeURIComponent(gunlukIslem):''));veri.olaylar=veri.olaylar.concat(ek||[]);ciz();return}
+    if(ds.temaSec){temaUygula(ds.temaSec);yaz('cati-tema',ds.temaSec);ciz();bildir('Tema değişti');return}
+    if(d.id==='azhareket'){kok.classList.toggle('az-hareket');yaz('cati-az',kok.classList.contains('az-hareket')?'1':null);ciz();return}
+    if('sifirla' in ds){['kule','defter','tas'].forEach(t=>yaz('cati-vurgu-'+t,null));yaz('cati-tema',null);yaz('cati-az',null);kok.classList.remove('az-hareket');temaUygula('kule');ciz();bildir('Varsayılan ayarlara dönüldü');return}
+    if('cikis' in ds){await istek('/api/cikis',{});oturum=null;girisGoster();return}
+    if('panelKapat' in ds){try{await istek('/api/kapat',{})}catch(e){}document.body.innerHTML='<p style="padding:32px;font:16px system-ui">Panel kapandı. Bu pencereyi kapatabilirsiniz.</p>';window.close();return}
+  }catch(err){d.disabled=false;hataBildir(err)}
+});
+document.addEventListener('input',e=>{
+  if(e.target.id==='ara'){arama=e.target.value;ciz(true)}
+  if(e.target.id==='vurgu'){kok.style.setProperty('--accent',e.target.value);yaz('cati-vurgu-'+(kok.dataset.tema||'kule'),e.target.value)}
+});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='gunluk-islem'){$('[data-gunluk-suz]').click()}});
+window.addEventListener('hashchange',()=>{sor=null;ciz();$('#ana').focus({preventScroll:true})});
+
+// ---- giriş ----
+function girisGoster(sunucu){
+  $('#uygulama').hidden=true;$('#giris').hidden=false;
+  if(sunucu)$('#giris-sunucu').textContent='Sunucu: '+sunucu;
+  setTimeout(()=>$('#giris-form').kullanici.focus(),0);
+}
+$('#giris-form').addEventListener('submit',async e=>{
+  e.preventDefault();const f=e.target,b=f.querySelector('button');b.disabled=true;$('#giris-hata').textContent='';
+  try{
+    oturum=await istek('/api/giris',{kullanici:f.kullanici.value.trim(),parola:f.parola.value,kod:f.kod.value.trim()||null});
+    f.reset();await basla();
+  }catch(err){$('#giris-hata').textContent=err.message}finally{b.disabled=false;f.parola.value=''}
+});
+
+async function basla(){
+  $('#giris').hidden=true;$('#uygulama').hidden=false;
+  await yukle('hepsi');ciz();
+}
+async function ac(){
+  temaUygula(oku('cati-tema')||'kule');
+  if(oku('cati-az'))kok.classList.add('az-hareket');
+  const az=matchMedia('(prefers-reduced-motion: reduce)').matches||kok.classList.contains('az-hareket');
+  const bitir=()=>setTimeout(()=>$('#yukle').classList.add('bitti'),az?0:500);
+  try{
+    const o=await istek('/api/oturum');
+    if(!o.girisli){bitir();girisGoster(o.sunucu);return}
+    oturum=o;$('#yukle-adim').textContent='Sunucuya bağlanılıyor…';
+    await basla();
+  }catch(e){girisGoster();$('#giris-hata').textContent=e.message}
+  bitir();
+}
+// Pencere açıkken yerel panel canlı kalır; ekran görünürken veriler yenilenir.
+setInterval(async()=>{
+  try{const o=await istek('/api/oturum');if(oturum&&!o.girisli){oturum=null;girisGoster(o.sunucu);return}
+    if(oturum&&!document.hidden&&!document.querySelector('dialog[open]')&&!sor){await yukle('hepsi');const a=document.activeElement;if(!a||a===document.body||a.id==='ana')ciz()}}catch(e){}
+},30000);
+ac();
+</script>
+</body>
+</html>
