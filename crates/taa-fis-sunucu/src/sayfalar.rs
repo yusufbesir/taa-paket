@@ -21,7 +21,11 @@ function mesaj(t,h){const e=$('#msg');if(e)e.innerHTML='<div class="mesaj '+(h?'
 function eslestir(){const kod=new URLSearchParams(location.search).get('kod')||'';
  ana.innerHTML='<h1>Telefonu eşleştir</h1><div id="msg"></div><label>Bilgisayardaki kod</label><input id="kod" inputmode="numeric" value="'+esc(kod)+'"><label>Bu telefonun adı</label><input id="ad" placeholder="örn. Ayşe\'nin telefonu"><button id="e">Eşleştir</button>';
  $('#e').onclick=async()=>{try{const r=await fetch('/api/eslestir',{method:'POST',body:JSON.stringify({kod:$('#kod').value.trim(),ad:$('#ad').value.trim()})});const j=await r.json();if(!r.ok)throw new Error(j.hata||'Hata');
-  localStorage.setItem('taa_tok',j.token);tok=j.token;history.replaceState(null,'','/telefon');ana.innerHTML='';ana.append(form())}catch(e){mesaj(e.message,1)}}}
+  ana.innerHTML='<h1>İkinci kod</h1><div id="msg"></div><p>Bu kodu mağaza bilgisayarındaki yöneticiye söyleyin, bilgisayara yazsın:</p><p style="font-size:48px;letter-spacing:8px;margin:12px 0"><b id="k2">'+esc(j.kod2)+'</b></p><p><small>5 dakika geçerli. Bekleniyor...</small></p>';
+  const bekle=async()=>{try{const d=await fetch('/api/eslestir/'+j.id);const dj=await d.json().catch(()=>({}));
+   if(d.status==410){mesaj(dj.hata||'Eşleştirme iptal oldu',1);return}
+   if(dj.durum==='tamam'){localStorage.setItem('taa_tok',dj.token);tok=dj.token;history.replaceState(null,'','/telefon');ana.innerHTML='<h1>Eşleşti</h1><p>Bu telefon mağaza bilgisayarına bağlandı. Hızlı açmak için tarayıcı menüsünden <b>Ana Ekrana Ekle</b> deyin.</p><button id="devam">Devam</button>';$('#devam').onclick=()=>{ana.innerHTML='';ana.append(form())};return}
+   setTimeout(bekle,2000)}catch(e){setTimeout(bekle,3000)}};bekle()}catch(e){mesaj(e.message,1)}}}
 let sonNo=null;let kat={islemler:[]};
 const GRUPLAR=['Pantolon','Ceket','Gömlek','Yelek','Takım'];
 function kalemHtml(){const d=document.createElement('div');d.className='kalem';
@@ -113,9 +117,9 @@ pub fn yonetim(
     format!(
         r##"<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TaaFiş yönetim</title>
 <style>:root{{--a:#1f3a5f;--b:#fff}}@media(prefers-color-scheme:dark){{:root{{--a:#8ab4f8;--b:#15181d}}}}body{{font:18px system-ui;background:var(--b);color:var(--a);margin:24px}}svg{{background:#fff;padding:8px;border-radius:8px}}td,th{{padding:6px 12px;text-align:left}}button{{font:inherit;padding:8px 16px}}</style></head><body>
-<h1>TaaFiş telefon eşleştirme</h1><p>Telefonla karekodu okutun (10 dakika geçerli, tek kullanımlık). Kod: <b>{kod}</b></p>{qr}<p><small>{url}</small></p>
+<h1>TaaFiş telefon eşleştirme</h1><p>1) Telefonla karekodu okutun (5 dakika geçerli, tek kullanımlık). Kod: <b>{kod}</b></p>{qr}<p><small>{url}</small></p><p>2) Telefonda görünen 4 haneli ikinci kodu buraya yazın:</p><input id="k2" inputmode="numeric" maxlength="4" style="width:6em"> <button onclick="onayla()">Eşleştirmeyi tamamla</button> <span id="sonuc"></span>
 <button onclick="location.reload()">Yeni kod üret</button><h2>Tanımlı telefonlar</h2><table><tr><th>Kod</th><th>Ad</th><th>Tarih</th><th></th></tr>{satirlar}</table>
-<script>async function kapat(id){{if(!confirm('Bu telefon kapatılsın mı?'))return;await fetch('/api/yonetim/cihaz/'+id+'/kapat',{{method:'POST'}});location.reload()}}</script></body></html>"##,
+<script>async function onayla(){{const r=await fetch('/api/yonetim/eslestir/onayla',{{method:'POST',body:JSON.stringify({{kod2:document.getElementById('k2').value.trim()}})}});const j=await r.json().catch(()=>({{}}));document.getElementById('sonuc').textContent=r.ok?'Eşleşti: '+j.ad:(j.hata||'Hata');if(r.ok)setTimeout(()=>location.reload(),1500)}}async function kapat(id){{if(!confirm('Bu telefon kapatılsın mı?'))return;await fetch('/api/yonetim/cihaz/'+id+'/kapat',{{method:'POST'}});location.reload()}}</script></body></html>"##,
         kod = kacis(kod),
         qr = qr_svg,
         url = kacis(url),
