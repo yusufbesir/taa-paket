@@ -3,6 +3,13 @@
 
 ## Yayınlanmamış
 
+### TAA Çatı: grafik yönetim paneli (`taa-cati-panel`)
+
+- Yeni bin `taa-cati-panel` (crate `taa-cati`): 127.0.0.1'de rastgele kapıda yerel sunucu + Edge uygulama penceresi. Ekranlar: Genel bakış, Cihazlar, Kullanıcılar, Şubeler, Program yetkileri, Günlük, Ayarlar (izne göre görünür). 3 tema (Kule Gecesi varsayılan, Defter, Taş; düzen de değişir), vurgu rengi, hareketi azalt, varsayılana dön; Üç Çatı logosu ve yükleme ekranı. Panelden giriş `taa-kimlik giris` ile aynı akış. Ayrıntı ve güvenlik: docs/S3-CATI-PANEL.md.
+- Güvenlik: Host denetimi, tek seferlik açılış belirteci + HttpOnly/SameSite=Strict çerez, Origin ve JSON zorunluluğu, sıkı CSP, gövde sınırı. Komut satırı `taa-cati` ve TAA Sunucu değişmedi.
+- Bağımlılık: `tiny_http` 0.12 ve `getrandom` 0.3 (ikisi de çalışma alanında zaten kullanılıyor; yeni dış crate yok).
+- Windows'ta elle denenmedi; Windows hedefi için clippy temiz.
+
 ### Terzi Takip: fiş defteri ileri uyumluluğu ve zincir özeti (TT1)
 
 - **Şube kodu zorunlu (Yusuf 2026-11-15 21:30):** şube kodu olmadan fiş yazılamaz. `taa_fis::sube_kodu_gecerli` (Yusuf'un seçtiği biçim: 3 büyük harf önek + 2 haneli sıra numarası, ör. `MRK01`, `PND01`; önek `docs/sube-sozlesmesi.md`'deki `onek` değeridir, §3'teki `kod` slug biçimiyle uzlaştırılması sözleşme sahibi başlığa kalır); `Defter::ekle` boş ya da geçersiz kodu reddeder ve deftere hiçbir şey yazmaz. Basılı fişte "Şube: <kod>" satırı çıkar. Sunucu (`taa-fis-sunucu`) şube kodunu `sube.json` ({"kod":"..."}) dosyasından alır, istemcinin beyanına güvenmez: dosya yoksa ya da geçersizse 503, istemci başka şube beyan ederse 409 `sube_uyusmaz`. Telegram hesap bağlama kodu da şube kodu ister (yönetici hesabı hariç). **Dürüst sınır:** bu, fişin şube koduyla damgalanmasıdır; belgeyi şube imza anahtarıyla (ed25519) imzalama Ş3 işidir ve henüz yoktur. **Geçiş:** `sube.json` dosyasını TAA Kur yazacak; o zamana kadar el ile konmalıdır, yoksa yeni fiş yazılamaz. Eski şubesiz fişler okunur.

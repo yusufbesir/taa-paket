@@ -15,6 +15,8 @@
 #[cfg(test)]
 mod testler;
 
+pub mod panel;
+
 pub use taa_kimlik::{KimlikHata, Oturum};
 pub use taa_kuyruk::{GonderHata, Gonderici};
 

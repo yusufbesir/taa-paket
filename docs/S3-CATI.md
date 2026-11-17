@@ -37,7 +37,7 @@ taa-cati gunluk --islem giris --limit 50
 Çıkış kodları: 0 tamam, 2 kullanım, 3 ulaşılamadı, 4 sunucu reddetti, 5 oturum/cihaz yok, 6 `dogrula` gerekli, 7 yetkisiz, 1 diğer.
 
 ## Yapılmadı / sonraki
-- Çatı penceresi (sekmeler: Kullanıcılar, Cihazlar, Program yetkileri, Günlük) → S3c; önce komut satırı sahada denenir.
+- Çatı penceresi → `taa-cati-panel` (2026-11-17, docs/S3-CATI-PANEL.md): Genel bakış, Cihazlar, Kullanıcılar, Şubeler, Program yetkileri, Günlük, Ayarlar; 3 tema.
 - Sunucu tarafı "yalnız merkez cihazından yönetim" kilidi (cihaz `sube_id = null` olmayanın yönetim uçlarına
   erişememesi) sunucu başlığında; istemci bunu varsaymaz.
 - Günlük dışa aktarma (CSV) ve dönemsel yetki gözden geçirme raporu (K12) → sonraki.
