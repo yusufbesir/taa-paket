@@ -67,6 +67,8 @@ yazanlar = ["taayonetici"]
 okuyanlar = ["taagiydir"]
 kisisel = false
 aciklama = "Standart manken ölçüleri (müşteri bedeni saklanmaz)"
+# Satır şeması (bilgi amaçlı; sunucu satırı serbest JSON saklar, doğrulamayı yazan program yapar). Ölçüler cm, sayı.
+alanlar = { anahtar = ["manken_id", "beden"], manken_id = "metin", boy_sinifi = "170|178|186", beden = "S|M|L|XL|referans", boy = "cm", gogus = "cm", bel = "cm", kalca = "cm", omuz = "cm", kol_boyu = "cm", ic_bacak_boyu = "cm", boyun = "cm" }
 
 [turler."giysi.olcu"]
 surum = 1
@@ -75,7 +77,9 @@ kip = "tablo"
 yazanlar = ["taayonetici"]
 okuyanlar = ["taagiydir"]
 kisisel = false
-aciklama = "Ürün ölçüleri: omuz, göğüs, bel, kalça, kol, boy, iç bacak boyu"
+aciklama = "Giysi ölçüleri: göğüs, bel, kalça, kol, boy, paça, iç bacak boyu, esneme"
+# Satır şeması (bilgi amaçlı). Ölçüler cm, sayı; esneme yüzde 0-100; ic_bacak_boyu 40-120; boş geçilebilir alanlar isteğe bağlı.
+alanlar = { anahtar = ["giysi_id", "beden"], giysi_id = "metin", tur = "gomlek|ceket|pantolon|yelek|...", beden = "metin", boy = "cm", gogus = "cm", bel = "cm", kalca = "cm", kol_boyu = "cm", paca = "cm", ic_bacak_boyu = "cm 40-120", esneme = "yuzde 0-100" }
 
 [turler."egitim.video"]
 surum = 1
