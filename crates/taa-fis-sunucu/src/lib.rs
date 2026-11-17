@@ -4,10 +4,17 @@
 //! yönetim sayfası ve kod üretimi yalnız yerel bilgisayardan; yönetici telefonu kapatabilir.
 //! Özellik anahtarları: "fis-sunucu", "telefon-eslestirme" (varsayılan açık). Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-04].
 
+pub mod cati_pin;
 pub mod cihaz;
+mod ek_uclar;
 mod hesap_uclari;
+pub mod kisi;
+pub mod pencere;
 pub mod sayfalar;
+mod yonetici;
 
+pub use ek_uclar::karekod_svg;
+use ek_uclar::{deneme_baytlari, fis_json};
 use serde_json::json;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -20,14 +27,24 @@ const EN_COK_FOTO: usize = 6;
 const KOD_OMRU: u64 = 600;
 const KILIT_SURESI: u64 = 60;
 const EN_COK_YANLIS: u32 = 5;
+/// Yönetici oturumu bu kadar saniye işlem olmazsa kapanır.
+pub const YONETICI_BOSTA_SN: u64 = 600;
+/// Mağaza bilgisayarının sözde cihaz kimliği (masaüstü program, yalnız bu bilgisayardan).
+pub const PC_ID: &str = "PC";
 
+#[derive(Default)]
 pub struct Istek {
     pub metot: String,
     pub yol: String,
     pub yetki: Option<String>,
     pub govde: Vec<u8>,
-    /// İstek bu bilgisayardan (loopback) geldi mi?
+    /// İstek bu bilgisayardan (loopback adresten ve loopback `Host` başlığıyla) geldi mi?
     pub yerel: bool,
+    /// `X-TAA-Masaustu: 1` başlığı: masaüstü programın kendi isteği. Özel başlık başka sitelerin
+    /// tarayıcı üzerinden istek atmasını engeller (CORS ön denetimi yanıtlanmaz).
+    pub masaustu: bool,
+    /// `X-TAA-Yonetici` başlığındaki yönetici oturum belirteci.
+    pub yonetici: Option<String>,
 }
 
 pub struct Yanit {
@@ -54,6 +71,19 @@ impl Yanit {
             govde: s.into_bytes(),
         }
     }
+    fn tur(tur: &'static str, govde: impl Into<Vec<u8>>) -> Self {
+        Yanit {
+            kod: 200,
+            tur,
+            govde: govde.into(),
+        }
+    }
+    /// Eski adresler yeni masaüstü programına yönlenir (yalnız yerel istekler buraya gelir).
+    fn yonlendir(adres: &str) -> Self {
+        Self::html(format!(
+            "<!doctype html><meta charset=utf-8><meta http-equiv=refresh content=\"0;url={adres}\"><title>TAA Terzi Takip</title><p><a href=\"{adres}\">TAA Terzi Takip</a></p>"
+        ))
+    }
 }
 
 pub struct Uygulama {
@@ -67,8 +97,18 @@ pub struct Uygulama {
     pub aydinlatma_url: Option<String>,
     /// Saati ileri alır (yalnız test/deneme; kod süresi ve kilit sınanır).
     pub ileri_sn: std::sync::atomic::AtomicU64,
-    kodlar: Mutex<Vec<(String, u64)>>,
+    /// Yönetim ekranları (Telefonlar, Personel, Usta puanı) yönetici PIN'i ister. Kapalıysa yalnız
+    /// "bu bilgisayardan" kuralı kalır (eski davranış; testlerde kullanılır).
+    pub yonetici_kilidi: bool,
+    /// PIN'i doğrulayan taraf (TAA Çatı istemcisi).
+    pub pin: Box<dyn cati_pin::PinDogrulayici>,
+    /// (eşleştirme kodu, bitiş, telefonun bağlanacağı kişi)
+    kodlar: Mutex<Vec<(String, u64, String)>>,
     yanlis: Mutex<(u32, u64)>,
+    /// Yönetici oturumları: (belirteç özeti, son işlem).
+    yonetici_oturum: Mutex<Vec<(String, u64)>>,
+    /// Cihaz kimliği -> son görülme (bellekte; yeniden başlatınca sıfırlanır).
+    son_gorulme: Mutex<std::collections::BTreeMap<String, u64>>,
 }
 
 /// Unix saniyesi (UTC).
@@ -123,8 +163,12 @@ impl Uygulama {
             taban_url,
             aydinlatma_url: None,
             ileri_sn: std::sync::atomic::AtomicU64::new(0),
+            yonetici_kilidi: true,
+            pin: Box::new(cati_pin::Yapilandirilmamis),
             kodlar: Mutex::new(Vec::new()),
             yanlis: Mutex::new((0, 0)),
+            yonetici_oturum: Mutex::new(Vec::new()),
+            son_gorulme: Mutex::new(Default::default()),
         }
     }
 
@@ -157,16 +201,17 @@ impl Uygulama {
         }
     }
 
-    fn yeni_kod(&self) -> Result<String, String> {
+    fn yeni_kod(&self, kisi_id: &str) -> Result<String, String> {
         let simdi = self.simdi();
         let kod = cihaz::yeni_kod()?;
         let mut k = self.kodlar.lock().map_err(|_| "kilit hatası")?;
-        k.retain(|(_, son)| *son > simdi);
-        k.push((kod.clone(), simdi + KOD_OMRU));
+        k.retain(|(_, son, _)| *son > simdi);
+        k.push((kod.clone(), simdi + KOD_OMRU, kisi_id.to_string()));
         Ok(kod)
     }
 
-    fn kod_tuket(&self, kod: &str) -> Result<(), String> {
+    /// Kod doğruysa tüketir ve kodla bağlanacak kişiyi (boşsa mağaza telefonu) döndürür.
+    fn kod_tuket(&self, kod: &str) -> Result<String, String> {
         let simdi = self.simdi();
         let mut y = self.yanlis.lock().map_err(|_| "kilit hatası")?;
         if y.1 > simdi {
@@ -176,11 +221,11 @@ impl Uygulama {
             ));
         }
         let mut k = self.kodlar.lock().map_err(|_| "kilit hatası")?;
-        k.retain(|(_, son)| *son > simdi);
-        if let Some(i) = k.iter().position(|(c, _)| c == kod) {
-            k.remove(i);
+        k.retain(|(_, son, _)| *son > simdi);
+        if let Some(i) = k.iter().position(|(c, _, _)| c == kod) {
+            let (_, _, kisi) = k.remove(i);
             *y = (0, 0);
-            Ok(())
+            Ok(kisi)
         } else {
             y.0 += 1;
             if y.0 >= EN_COK_YANLIS {
@@ -195,23 +240,48 @@ impl Uygulama {
         if i.govde.len() > if foto { FOTO_SINIRI } else { GOVDE_SINIRI } {
             return Yanit::hata(413, "istek çok büyük");
         }
-        let (yol, _sorgu) = i.yol.split_once('?').unwrap_or((i.yol.as_str(), ""));
+        let (yol, sorgu) = i.yol.split_once('?').unwrap_or((i.yol.as_str(), ""));
         let parca: Vec<&str> = yol.trim_matches('/').split('/').collect();
         if let Some(k) = kapali("fis-sunucu") {
             return k;
         }
         match (i.metot.as_str(), parca.as_slice()) {
-            ("GET", ["telefon"]) | ("GET", [""]) => Yanit::html(sayfalar::TELEFON.into()),
-            ("GET", ["manifest.json"]) => Yanit {
-                kod: 200,
-                tur: "application/manifest+json",
-                govde: sayfalar::MANIFEST.as_bytes().to_vec(),
-            },
-            ("POST", ["api", "eslestir"]) => self.eslestir(i),
-            ("GET", ["yonetim"]) => self.yonetim_sayfasi(i),
-            ("POST", ["api", "yonetim", "cihaz", id, "kapat"]) => {
+            ("GET", ["telefon"]) => Yanit::html(sayfalar::telefon()),
+            ("GET", [""]) => {
+                if i.yerel {
+                    Yanit::yonlendir("/masaustu")
+                } else {
+                    Yanit::html(sayfalar::telefon())
+                }
+            }
+            ("GET", ["masaustu"]) => {
                 if !i.yerel {
-                    return Yanit::hata(403, "yalnız bu bilgisayardan");
+                    return Yanit::hata(403, "masaüstü program yalnız bu bilgisayardan açılır");
+                }
+                Yanit::html(sayfalar::masaustu())
+            }
+            ("GET", ["manifest.json"]) => {
+                Yanit::tur("application/manifest+json", sayfalar::MANIFEST.as_bytes())
+            }
+            ("GET", ["simge.svg"]) => Yanit::tur("image/svg+xml", sayfalar::SIMGE.as_bytes()),
+            ("POST", ["api", "eslestir"]) => self.eslestir(i),
+            ("GET", ["yonetim"]) => {
+                if !i.yerel {
+                    return Yanit::hata(403, "yönetim yalnız bu bilgisayardan açılır");
+                }
+                Yanit::yonlendir("/masaustu#telefonlar")
+            }
+            ("POST", ["api", "yonetici", "giris"]) => self.yonetici_giris(i),
+            ("POST", ["api", "yonetici", "cikis"]) => self.yonetici_cikis(i),
+            ("GET", ["api", "yonetici", "durum"]) => self.yonetici_durum(i),
+            ("GET", ["api", "yonetim", "eslestirme"]) => self.eslestirme_kodu(i, sorgu),
+            ("GET", ["api", "yonetim", "cihazlar"]) => self.cihaz_listesi(i),
+            ("GET", ["api", "yonetim", "kisiler"]) => self.kisi_listesi_yonetim(i),
+            ("POST", ["api", "yonetim", "kisi"]) => self.kisi_ekle(i),
+            ("POST", ["api", "yonetim", "kisi", id, "kapat"]) => self.kisi_kapat(i, id),
+            ("POST", ["api", "yonetim", "cihaz", id, "kapat"]) => {
+                if let Some(y) = self.yonetim_izni(i) {
+                    return y;
                 }
                 match self.cihazlar().kapat(id, &tarih_iso(self.simdi())) {
                     Ok(()) => Yanit::json(200, json!({ "tamam": true })),
@@ -222,7 +292,7 @@ impl Uygulama {
                 if !i.yerel {
                     return Yanit::hata(403, "yalnız bu bilgisayardan");
                 }
-                Yanit::html(sayfalar::PUAN_YONETIM.into())
+                Yanit::yonlendir("/masaustu#puan")
             }
             ("GET", ["api", "yonetim", "isaretler"]) => self.puan_isaretleri(i),
             ("POST", ["api", "yonetim", "tutanak"]) => self.puan_tutanak(i),
@@ -238,7 +308,12 @@ impl Uygulama {
             ("POST", ["telegram", gizli]) => self.telegram(gizli, i),
             ("GET", ["wa", belirtec]) => self.wa_sayfasi(belirtec),
             ("POST", ["api", "yonetim", "baglama-kodu"]) => self.baglama_kodu(i),
-            ("GET", ["yonetim", "personel"]) => self.personel_sayfasi(i),
+            ("GET", ["yonetim", "personel"]) => {
+                if !i.yerel {
+                    return Yanit::hata(403, "yalnız bu bilgisayardan");
+                }
+                Yanit::yonlendir("/masaustu#personel")
+            }
             ("GET", ["api", "yonetim", "hesaplar"]) => self.hesap_listesi(i),
             ("POST", ["api", "yonetim", "hesap", tg, islem]) => self.hesap_islemi(i, tg, islem),
             ("GET" | "POST", ["api", ..]) => self.yetkili(i, &parca),
@@ -314,46 +389,21 @@ impl Uygulama {
             v["kod"].as_str().unwrap_or(""),
             v["ad"].as_str().unwrap_or(""),
         );
-        if let Err(e) = self.kod_tuket(kod) {
-            return Yanit::hata(403, &e);
-        }
+        let kisi_id = match self.kod_tuket(kod) {
+            Ok(k) => k,
+            Err(e) => return Yanit::hata(403, &e),
+        };
         let token = match cihaz::yeni_token() {
             Ok(t) => t,
             Err(e) => return Yanit::hata(500, &e),
         };
-        match self.cihazlar().ekle(ad, &token, &tarih_iso(self.simdi())) {
+        match self
+            .cihazlar()
+            .ekle(ad, &token, &tarih_iso(self.simdi()), &kisi_id)
+        {
             Ok(c) => Yanit::json(200, json!({ "token": token, "id": c.id })),
             Err(e) => Yanit::hata(400, &e),
         }
-    }
-
-    fn yonetim_sayfasi(&self, i: &Istek) -> Yanit {
-        if !i.yerel {
-            return Yanit::hata(403, "yönetim sayfası yalnız bu bilgisayardan açılır");
-        }
-        if let Some(k) = kapali("telefon-eslestirme") {
-            return k;
-        }
-        let kod = match self.yeni_kod() {
-            Ok(k) => k,
-            Err(e) => return Yanit::hata(500, &e),
-        };
-        let url = format!("{}/telefon?kod={kod}", self.taban_url.trim_end_matches('/'));
-        let qr = match qrcode::QrCode::new(url.as_bytes()) {
-            Ok(q) => q
-                .render::<qrcode::render::svg::Color>()
-                .min_dimensions(260, 260)
-                .build(),
-            Err(e) => return Yanit::hata(500, &format!("karekod üretilemedi: {e}")),
-        };
-        let cihazlar = self
-            .cihazlar()
-            .aktifler()
-            .unwrap_or_default()
-            .into_iter()
-            .map(|c| (c.id, c.ad, c.tarih))
-            .collect::<Vec<_>>();
-        Yanit::html(sayfalar::yonetim(&qr, &kod, &url, &cihazlar))
     }
 
     /// TaaTerziTakip listeleri (salt okunur): özet, kargo, kuru-temizleme, geciken, bugun, usta.
@@ -507,8 +557,8 @@ impl Uygulama {
 
     /// Yönetici tutanağı (yalnız bu bilgisayardan). Gövde: {isaret_id, sonuc: usta_kaynakli|usta_kaynakli_degil|kismen, yuzde, agir, aciklama, yonetici}.
     fn puan_tutanak(&self, i: &Istek) -> Yanit {
-        if !i.yerel {
-            return Yanit::hata(403, "yalnız bu bilgisayardan");
+        if let Some(y) = self.yonetim_izni(i) {
+            return y;
         }
         let v: serde_json::Value = match serde_json::from_slice(&i.govde) {
             Ok(v) => v,
@@ -543,8 +593,8 @@ impl Uygulama {
 
     /// Tutanak bekleyenler ve yazılmış tutanaklar (yalnız bu bilgisayardan, `usta-puan` açıkken).
     fn puan_isaretleri(&self, i: &Istek) -> Yanit {
-        if !i.yerel {
-            return Yanit::hata(403, "yalnız bu bilgisayardan");
+        if let Some(y) = self.yonetim_izni(i) {
+            return y;
         }
         if !taa_ayar::ozellik_acik("usta-puan", false) {
             return Yanit::hata(503, &taa_ayar::kapali_mesaji("usta-puan"));
@@ -575,8 +625,8 @@ impl Uygulama {
 
     /// Yönetici raporu: puanlar, yorumlar ve anomaliler. Yalnız bu bilgisayardan; usta ekranına ASLA gitmez.
     fn puan_raporu(&self, i: &Istek, bas: &str, bit: &str) -> Yanit {
-        if !i.yerel {
-            return Yanit::hata(403, "yalnız bu bilgisayardan");
+        if let Some(y) = self.yonetim_izni(i) {
+            return y;
         }
         let (ayar, sure, kayitlar, teslimler) = match self.puan_girdisi() {
             Ok(g) => g,
@@ -596,8 +646,8 @@ impl Uygulama {
 
     /// Veriye göre ayar önerisi; `otomatik` açıksa uygular, kaydeder ve deftere yazar.
     fn puan_gozden_gecir(&self, i: &Istek, bas: &str, bit: &str) -> Yanit {
-        if !i.yerel {
-            return Yanit::hata(403, "yalnız bu bilgisayardan");
+        if let Some(y) = self.yonetim_izni(i) {
+            return y;
         }
         let (ayar, sure, kayitlar, teslimler) = match self.puan_girdisi() {
             Ok(g) => g,
@@ -642,17 +692,61 @@ impl Uygulama {
             .as_deref()
             .and_then(|h| h.strip_prefix("Bearer "))
             .unwrap_or("");
-        let Some(cihaz) = self.cihazlar().dogrula(token) else {
-            return Yanit::hata(401, "yetkisiz telefon");
+        let cihaz = if token.is_empty() && i.yerel && i.masaustu {
+            // Mağaza bilgisayarındaki masaüstü program: belirteç yerine "bu bilgisayar" kuralı.
+            cihaz::Cihaz {
+                id: PC_ID.into(),
+                ad: "Mağaza PC".into(),
+                token_sha256: String::new(),
+                tarih: String::new(),
+                kisi_id: String::new(),
+            }
+        } else {
+            match self.cihazlar().dogrula(token) {
+                Some(c) => c,
+                None => return Yanit::hata(401, "yetkisiz telefon"),
+            }
         };
+        if let Ok(mut m) = self.son_gorulme.lock() {
+            m.insert(cihaz.id.clone(), self.simdi());
+        }
         let defter_yolu = self.fis_yolu();
         let d = Defter { yol: &defter_yolu };
         match (i.metot.as_str(), parca) {
+            ("GET", ["api", "oturum"]) => self.oturum(&cihaz),
+            ("GET", ["api", "kisiler"]) => Yanit::json(
+                200,
+                json!({ "kisiler": kisi::secilebilir(&self.dizin, &self.sube_kodu().unwrap_or_default()) }),
+            ),
+            ("GET", ["api", "durum"]) => self.genel_durum(),
+            ("GET", ["api", "fis", no, "karekod"]) => match d.bul(no) {
+                Ok(Some(f)) => match karekod_svg(&self.fis_karekod_adresi(&f.no)) {
+                    Ok(svg) => Yanit::tur("image/svg+xml", svg),
+                    Err(e) => Yanit::hata(500, &e),
+                },
+                Ok(None) => Yanit::hata(404, "fiş yok"),
+                Err(e) => Yanit::hata(500, &e),
+            },
+            ("POST", ["api", "yazici", "deneme"]) => {
+                let Some(yazici) = &self.yazici_yolu else {
+                    return Yanit::hata(
+                        409,
+                        "yazıcı ayarlı değil (sunucuyu --yazici ile başlatın)",
+                    );
+                };
+                match yaziciya_yaz(yazici, &deneme_baytlari()) {
+                    Ok(()) => Yanit::json(200, json!({ "tamam": true })),
+                    Err(e) => Yanit::hata(502, &format!("yazıcıya yazılamadı: {e}")),
+                }
+            }
             ("POST", ["api", "fis"]) => {
                 let mut g: Girdi = match serde_json::from_slice(&i.govde) {
                     Ok(g) => g,
                     Err(e) => return Yanit::hata(400, &format!("geçersiz fiş: {e}")),
                 };
+                if let Err(y) = self.kisileri_denetle(&mut g, &cihaz) {
+                    return y;
+                }
                 g.tarih = tarih_iso(self.simdi());
                 // Şube kodu sunucudan gelir; istemci başka bir şube beyan ederse reddedilir (409).
                 let sube = match self.sube_kodu() {
@@ -688,7 +782,11 @@ impl Uygulama {
                 }
             }
             ("GET", ["api", "fisler"]) => match d.fisler() {
-                Ok(f) => Yanit::json(200, json!({ "fisler": f })),
+                Ok(f) => {
+                    let h = kisi::ad_haritasi(&self.dizin, &self.sube_kodu().unwrap_or_default());
+                    let v: Vec<_> = f.into_iter().map(|f| fis_json(f, &h)).collect();
+                    Yanit::json(200, json!({ "fisler": v }))
+                }
                 Err(e) => Yanit::hata(500, &e),
             },
             ("POST", ["api", "fis", no, "durum"]) => {
@@ -713,10 +811,13 @@ impl Uygulama {
                 }
             }
             ("GET", ["api", "fis", no, "metin"]) => match d.bul(no) {
-                Ok(Some(f)) => Yanit {
+                Ok(Some(mut f)) => Yanit {
                     kod: 200,
                     tur: "text/plain; charset=utf-8",
-                    govde: taa_fis::duz_metin(&f, 42).into_bytes(),
+                    govde: {
+                        self.adlari_doldur(&mut f);
+                        taa_fis::duz_metin(&f, 42).into_bytes()
+                    },
                 },
                 Ok(None) => Yanit::hata(404, "fiş yok"),
                 Err(e) => Yanit::hata(500, &e),
@@ -732,7 +833,12 @@ impl Uygulama {
                 }
             }
             ("GET", ["api", "fis", no]) => match d.bul(no) {
-                Ok(Some(f)) => Yanit::json(200, json!(f)),
+                Ok(Some(f)) => {
+                    let h = kisi::ad_haritasi(&self.dizin, &self.sube_kodu().unwrap_or_default());
+                    let mut v = fis_json(f, &h);
+                    v["foto_adet"] = json!(self.foto_sayisi(no));
+                    Yanit::json(200, v)
+                }
                 Ok(None) => Yanit::hata(404, "fiş yok"),
                 Err(e) => Yanit::hata(500, &e),
             },
@@ -824,10 +930,15 @@ impl Uygulama {
                     Err(_) => Yanit::hata(404, "fotoğraf yok"),
                 }
             }
-            ("POST", ["api", "fis", no, "okut"]) => self.okut(&d, no, &cihaz.ad, i),
+            ("POST", ["api", "fis", no, "okut"]) => {
+                if cihaz.id == PC_ID {
+                    return Yanit::hata(403, "iş bitti okutması ustanın telefonundan yapılır");
+                }
+                self.okut(&d, no, &cihaz.ad, i)
+            }
             ("POST", ["api", "fis", no, "isaret"]) => self.isaret(&d, no, &cihaz.ad, i),
             ("POST", ["api", "fis", no, "yazdir"]) => {
-                let f = match d.bul(no) {
+                let mut f = match d.bul(no) {
                     Ok(Some(f)) => f,
                     Ok(None) => return Yanit::hata(404, "fiş yok"),
                     Err(e) => return Yanit::hata(500, &e),
@@ -838,15 +949,12 @@ impl Uygulama {
                         "yazıcı ayarlı değil (sunucuyu --yazici ile başlatın)",
                     );
                 };
+                self.adlari_doldur(&mut f);
                 let nusha: serde_json::Value = serde_json::from_slice(&i.govde).unwrap_or_default();
                 let baytlar = if nusha["nusha"].as_u64() == Some(1) {
                     taa_fis::escpos(&f, 42)
                 } else {
-                    let qr = format!(
-                        "{}/telefon#fis={}",
-                        self.taban_url.trim_end_matches('/'),
-                        f.no
-                    );
+                    let qr = self.fis_karekod_adresi(&f.no);
                     let ayd = self.aydinlatma_url.clone().unwrap_or_else(|| {
                         format!("{}/aydinlatma", self.taban_url.trim_end_matches('/'))
                     });
@@ -897,8 +1005,20 @@ mod testler {
     fn uyg() -> Uygulama {
         let d = taa_dosya::gecici_klasor().unwrap();
         std::fs::write(d.join("sube.json"), r#"{"kod":"MRK01"}"#).unwrap();
-        Uygulama::yeni(d, None, "http://192.168.1.20:8787".into())
+        std::fs::write(d.join("kisiler.jsonl"), KISILER).unwrap();
+        let mut u = Uygulama::yeni(d, None, "http://192.168.1.20:8787".into());
+        u.yonetici_kilidi = false;
+        u
     }
+
+    /// Deneme kişileri (gerçek kişi değildir).
+    const KISILER: &str = concat!(
+        r#"{"tur":"ekle","v":{"id":"K-test0001","ad":"Deneme Danışman","rol":"danisman","tarih":"2026-11-01"}}"#,
+        "\n",
+        r#"{"tur":"ekle","v":{"id":"K-test0002","ad":"Deneme Usta","rol":"usta","tarih":"2026-11-01"}}"#,
+        "\n"
+    );
+    const KISI_ALANLARI: &str = r#""satis_danismani_id":"K-test0001","olcu_alan_id":"K-test0002","duzenleyen_id":"K-test0001""#;
 
     fn ist(metot: &str, yol: &str, yetki: Option<&str>, govde: &str, yerel: bool) -> Istek {
         Istek {
@@ -907,14 +1027,15 @@ mod testler {
             yetki: yetki.map(|t| format!("Bearer {t}")),
             govde: govde.as_bytes().to_vec(),
             yerel,
+            ..Default::default()
         }
     }
 
     fn kod_al(u: &Uygulama) -> String {
-        let y = u.isle(&ist("GET", "/yonetim", None, "", true));
-        let s = String::from_utf8(y.govde).unwrap();
-        let i = s.find("telefon?kod=").unwrap() + "telefon?kod=".len();
-        s[i..i + 6].to_string()
+        let y = u.isle(&ist("GET", "/api/yonetim/eslestirme", None, "", true));
+        assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
+        let v: serde_json::Value = serde_json::from_slice(&y.govde).unwrap();
+        v["kod"].as_str().unwrap().to_string()
     }
 
     fn esles(u: &Uygulama) -> String {
@@ -933,7 +1054,7 @@ mod testler {
             .to_string()
     }
 
-    const FIS: &str = r#"{"satis_danismani":"Mert","olcu_alan":"Kadir Y.","musteri":"Ayşe Çelik","telefon":"0532 123 45 67","kalemler":[{"urun":"Pantolon","islem":"paça kısalt"}],"teslim":"2099-01-01","ucret_kurus":50000,"on_odeme_kurus":10000}"#;
+    const FIS: &str = r#"{"satis_danismani_id":"K-test0001","olcu_alan_id":"K-test0002","duzenleyen_id":"K-test0001","musteri":"Ayşe Çelik","telefon":"0532 123 45 67","kalemler":[{"urun":"Pantolon","islem":"paça kısalt"}],"teslim":"2099-01-01","ucret_kurus":50000,"on_odeme_kurus":10000}"#;
 
     #[test]
     fn tarih() {
@@ -946,10 +1067,28 @@ mod testler {
     fn yonetim_yalniz_yerel() {
         let u = uyg();
         assert_eq!(u.isle(&ist("GET", "/yonetim", None, "", false)).kod, 403);
+        assert_eq!(u.isle(&ist("GET", "/masaustu", None, "", false)).kod, 403);
+        assert_eq!(
+            u.isle(&ist("GET", "/api/yonetim/eslestirme", None, "", false))
+                .kod,
+            403
+        );
+        // Eski adres masaüstü programa yönlenir.
         let y = u.isle(&ist("GET", "/yonetim", None, "", true));
+        assert!(String::from_utf8(y.govde)
+            .unwrap()
+            .contains("/masaustu#telefonlar"));
+        let y = u.isle(&ist("GET", "/api/yonetim/eslestirme", None, "", true));
         assert_eq!(y.kod, 200);
-        let s = String::from_utf8(y.govde).unwrap();
-        assert!(s.contains("<svg") && s.contains("192.168.1.20:8787/telefon?kod="));
+        let v: serde_json::Value = serde_json::from_slice(&y.govde).unwrap();
+        assert!(v["qr_svg"].as_str().unwrap().contains("<svg"));
+        assert!(v["url"]
+            .as_str()
+            .unwrap()
+            .starts_with("http://192.168.1.20:8787/telefon?kod="));
+        let m = u.isle(&ist("GET", "/masaustu", None, "", true));
+        assert_eq!(m.kod, 200);
+        assert!(String::from_utf8(m.govde).unwrap().contains("<html"));
     }
 
     #[test]
@@ -1550,6 +1689,7 @@ mod testler {
             yetki: Some(format!("Bearer {t}")),
             govde: g,
             yerel: false,
+            ..Default::default()
         };
         let y = u.isle(&ist("POST", format!("/api/fis/{no}/foto"), jpg.clone()));
         assert_eq!(y.kod, 200);
@@ -1636,7 +1776,7 @@ mod testler {
         let t = esles(&u);
         let fis = |olcu: i32, onay: bool| {
             format!(
-                r#"{{"satis_danismani":"M","olcu_alan":"K","musteri":"A B","telefon":"05321234567","kalemler":[{{"urun":"Pantolon","islem":"Bel daraltma","islem_kodu":"pant-bel-daralt","olcu_mm":{olcu},"usta_onayli":{onay}}}],"teslim":"2099-01-01","ucret_kurus":0}}"#
+                r#"{{"satis_danismani_id":"K-test0001","olcu_alan_id":"K-test0002","duzenleyen_id":"K-test0001","musteri":"A B","telefon":"05321234567","kalemler":[{{"urun":"Pantolon","islem":"Bel daraltma","islem_kodu":"pant-bel-daralt","olcu_mm":{olcu},"usta_onayli":{onay}}}],"teslim":"2099-01-01","ucret_kurus":0}}"#
             )
         };
         let y = u.isle(&ist("POST", "/api/fis", Some(&t), &fis(60, false), false));
@@ -1651,7 +1791,7 @@ mod testler {
     fn olcu_cm_istege_bagli_igneli() {
         let u = uyg();
         let t = esles(&u);
-        let fis = r#"{"satis_danismani":"M","olcu_alan":"K","musteri":"A B","telefon":"05321234567","kalemler":[{"urun":"Pantolon","islem":"Bel daraltma","islem_kodu":"pant-bel-daralt","igneli":true},{"urun":"Pantolon","islem":"Paça kısaltma","islem_kodu":"pant-paca-kisalt","varyant":"Düz paça","igneli":true}],"teslim":"2099-01-01","ucret_kurus":0}"#;
+        let fis = r#"{"satis_danismani_id":"K-test0001","olcu_alan_id":"K-test0002","duzenleyen_id":"K-test0001","musteri":"A B","telefon":"05321234567","kalemler":[{"urun":"Pantolon","islem":"Bel daraltma","islem_kodu":"pant-bel-daralt","igneli":true},{"urun":"Pantolon","islem":"Paça kısaltma","islem_kodu":"pant-paca-kisalt","varyant":"Düz paça","igneli":true}],"teslim":"2099-01-01","ucret_kurus":0}"#;
         let y = u.isle(&ist("POST", "/api/fis", Some(&t), fis, false));
         assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
         assert!(String::from_utf8_lossy(&y.govde).contains("denetlenemedi"));
@@ -1684,5 +1824,261 @@ mod testler {
             u.isle(&ist("GET", "/api/takip/ozet", None, "", false)).kod,
             401
         );
+    }
+
+    fn pc(metot: &str, yol: &str, govde: &str) -> Istek {
+        Istek {
+            masaustu: true,
+            ..ist(metot, yol, None, govde, true)
+        }
+    }
+
+    fn json_of(y: &Yanit) -> serde_json::Value {
+        serde_json::from_slice(&y.govde).unwrap_or_default()
+    }
+
+    #[test]
+    fn kisi_alanlari_zorunlu_ve_kimlik_saklanir() {
+        let u = uyg();
+        let t = esles(&u);
+        // Üçü de eksik: hata eksik alanları adıyla söyler.
+        let bos = FIS.replace(KISI_ALANLARI, r#""satis_danismani":"Ad","olcu_alan":"Ad""#);
+        let y = u.isle(&ist("POST", "/api/fis", Some(&t), &bos, false));
+        assert_eq!(y.kod, 422);
+        let v = json_of(&y);
+        assert_eq!(
+            v["eksik"],
+            serde_json::json!(["Satış danışmanı", "Ölçü alan", "Fişi düzenleyen"])
+        );
+        assert!(v["hata"]
+            .as_str()
+            .unwrap()
+            .starts_with("Kaydetmek için seçin:"));
+        // Kayıtta olmayan kimlik kabul edilmez.
+        let yok = FIS.replace(
+            r#""duzenleyen_id":"K-test0001""#,
+            r#""duzenleyen_id":"K-yok00001""#,
+        );
+        let v = json_of(&u.isle(&ist("POST", "/api/fis", Some(&t), &yok, false)));
+        assert_eq!(v["eksik"], serde_json::json!(["Fişi düzenleyen"]));
+        assert!(!u.dizin.join("fisler.jsonl").exists());
+        // Doğru fiş: kayıtta ad değil kimlik; okurken ad çözülür.
+        let y = u.isle(&ist("POST", "/api/fis", Some(&t), FIS, false));
+        assert_eq!(y.kod, 200);
+        let satir = std::fs::read_to_string(u.dizin.join("fisler.jsonl")).unwrap();
+        assert!(satir.contains("K-test0002") && !satir.contains("Deneme Usta"));
+        let no = json_of(&y)["no"].as_str().unwrap().to_string();
+        let f = json_of(&u.isle(&ist("GET", &format!("/api/fis/{no}"), Some(&t), "", false)));
+        assert_eq!(f["olcu_alan"], "Deneme Usta");
+        assert_eq!(f["satis_danismani"], "Deneme Danışman");
+        assert_eq!(f["duzenleyen"], "Deneme Danışman");
+        assert_eq!(f["kalan_kurus"], 40000);
+        let l = json_of(&u.isle(&ist("GET", "/api/fisler", Some(&t), "", false)));
+        assert_eq!(l["fisler"][0]["olcu_alan"], "Deneme Usta");
+        // Kişi listesi telefon yetkisiyle okunur.
+        let k = json_of(&u.isle(&ist("GET", "/api/kisiler", Some(&t), "", false)));
+        assert_eq!(k["kisiler"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn kisisel_telefonda_duzenleyen_oturumdan_gelir() {
+        let u = uyg();
+        let y = u.isle(&ist(
+            "GET",
+            "/api/yonetim/eslestirme?kisi=K-test0002",
+            None,
+            "",
+            true,
+        ));
+        assert_eq!(y.kod, 200);
+        let kod = json_of(&y)["kod"].as_str().unwrap().to_string();
+        assert_eq!(
+            u.isle(&ist(
+                "GET",
+                "/api/yonetim/eslestirme?kisi=K-yok",
+                None,
+                "",
+                true
+            ))
+            .kod,
+            422
+        );
+        let y = u.isle(&ist(
+            "POST",
+            "/api/eslestir",
+            None,
+            &format!(r#"{{"kod":"{kod}","ad":"Kişisel"}}"#),
+            false,
+        ));
+        let t = json_of(&y)["token"].as_str().unwrap().to_string();
+        let o = json_of(&u.isle(&ist("GET", "/api/oturum", Some(&t), "", false)));
+        assert_eq!(o["giris"], "kullanici");
+        assert_eq!(o["kisi"]["ad"], "Deneme Usta");
+        // İstemci başka düzenleyen gönderse de kayıt giren kişidir.
+        let y = u.isle(&ist("POST", "/api/fis", Some(&t), FIS, false));
+        assert_eq!(y.kod, 200);
+        let no = json_of(&y)["no"].as_str().unwrap().to_string();
+        let f = json_of(&u.isle(&ist("GET", &format!("/api/fis/{no}"), Some(&t), "", false)));
+        assert_eq!(f["duzenleyen_id"], "K-test0002");
+        // Mağaza telefonu "tel" girişidir.
+        let t2 = esles(&u);
+        assert_eq!(
+            json_of(&u.isle(&ist("GET", "/api/oturum", Some(&t2), "", false)))["giris"],
+            "tel"
+        );
+    }
+
+    #[test]
+    fn magaza_pc_yalniz_yerel_ve_baslikli() {
+        let u = uyg();
+        // Başlıksız ya da uzaktan: telefon belirteci gerekir.
+        assert_eq!(u.isle(&ist("GET", "/api/fisler", None, "", true)).kod, 401);
+        let mut uzak = pc("GET", "/api/fisler", "");
+        uzak.yerel = false;
+        assert_eq!(u.isle(&uzak).kod, 401);
+        assert_eq!(u.isle(&pc("GET", "/api/fisler", "")).kod, 200);
+        assert_eq!(
+            json_of(&u.isle(&pc("GET", "/api/oturum", "")))["giris"],
+            "pc"
+        );
+        let y = u.isle(&pc("POST", "/api/fis", FIS));
+        assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
+        let no = json_of(&y)["no"].as_str().unwrap().to_string();
+        // Karekod sunucuda SVG olarak üretilir, içerik fişin telefon adresidir.
+        let k = u.isle(&pc("GET", &format!("/api/fis/{no}/karekod"), ""));
+        assert_eq!((k.kod, k.tur), (200, "image/svg+xml"));
+        assert!(String::from_utf8(k.govde).unwrap().starts_with("<svg"));
+        assert_eq!(u.isle(&pc("GET", "/api/fis/F-yok/karekod", "")).kod, 404);
+        // Okutma ustanın telefonundan yapılır.
+        assert_eq!(
+            u.isle(&pc("POST", &format!("/api/fis/{no}/okut"), "{}"))
+                .kod,
+            403
+        );
+        let d = json_of(&u.isle(&pc("GET", "/api/durum", "")));
+        assert_eq!(d["sube"], "MRK01");
+        assert_eq!(d["yazici"], false);
+        assert_eq!(u.isle(&pc("POST", "/api/yazici/deneme", "")).kod, 409);
+        assert_eq!(u.isle(&ist("GET", "/simge.svg", None, "", false)).kod, 200);
+        assert!(
+            String::from_utf8(u.isle(&ist("GET", "/manifest.json", None, "", false)).govde)
+                .unwrap()
+                .contains("/simge.svg")
+        );
+    }
+
+    struct SahtePin(std::sync::Mutex<Vec<String>>);
+    impl cati_pin::PinDogrulayici for SahtePin {
+        fn dogrula(&self, pin: &str) -> cati_pin::PinSonuc {
+            self.0.lock().unwrap().push(pin.into());
+            match pin {
+                "4821" => cati_pin::PinSonuc::Gecerli,
+                "9999" => cati_pin::PinSonuc::Belirlenmemis,
+                "5555" => cati_pin::PinSonuc::Kilitli {
+                    ileti: "Çok fazla yanlış deneme".into(),
+                    kalan_sn: 290,
+                },
+                "7777" => cati_pin::PinSonuc::Ulasilamadi("ağ yok".into()),
+                _ => cati_pin::PinSonuc::Yanlis,
+            }
+        }
+    }
+
+    #[test]
+    fn yonetici_kilidi_pin_cati_dan_ve_bosta_kapanir() {
+        let mut u = uyg();
+        u.yonetici_kilidi = true;
+        u.pin = Box::new(SahtePin(Default::default()));
+        let giris = |pin: &str| {
+            u.isle(&pc(
+                "POST",
+                "/api/yonetici/giris",
+                &format!(r#"{{"pin":"{pin}"}}"#),
+            ))
+        };
+        // Kilitliyken yönetim uçları 401.
+        for yol in [
+            "/api/yonetim/cihazlar",
+            "/api/yonetim/kisiler",
+            "/api/yonetim/eslestirme",
+            "/api/yonetim/hesaplar",
+            "/api/yonetim/isaretler",
+        ] {
+            assert_eq!(u.isle(&pc("GET", yol, "")).kod, 401, "{yol}");
+        }
+        assert_eq!(giris("12").kod, 400);
+        assert_eq!(giris("12a4").kod, 400);
+        let y = giris("0000");
+        assert_eq!(
+            (y.kod, json_of(&y)["gecerli"].clone()),
+            (200, serde_json::json!(false))
+        );
+        let y = giris("9999");
+        assert_eq!(json_of(&y)["belirlendi"], false);
+        assert_eq!(
+            json_of(&y)["ileti"],
+            "Yönetici PIN'i TAA Çatı'dan belirlenmemiş"
+        );
+        let y = giris("5555");
+        assert_eq!(y.kod, 423);
+        assert_eq!(json_of(&y)["kalan_sn"], 290);
+        let y = giris("7777");
+        assert_eq!(y.kod, 503);
+        assert_eq!(
+            json_of(&y)["ileti"],
+            "TAA Çatı'ya ulaşılamıyor, yönetim ekranları açılamaz"
+        );
+        // Uzaktan ya da başlıksız giriş yok (PIN Çatı'ya hiç gitmez).
+        let mut uzak = pc("POST", "/api/yonetici/giris", r#"{"pin":"4821"}"#);
+        uzak.yerel = false;
+        assert_eq!(u.isle(&uzak).kod, 403);
+        let y = giris("4821");
+        assert_eq!(y.kod, 200);
+        let b = json_of(&y)["belirtec"].as_str().unwrap().to_string();
+        let yon = |yol: &str| Istek {
+            yonetici: Some(b.clone()),
+            ..pc("GET", yol, "")
+        };
+        assert_eq!(u.isle(&yon("/api/yonetim/cihazlar")).kod, 200);
+        assert_eq!(json_of(&u.isle(&yon("/api/yonetici/durum")))["acik"], true);
+        // Kişi ekle / kapat.
+        let k = u.isle(&Istek {
+            yonetici: Some(b.clone()),
+            ..pc(
+                "POST",
+                "/api/yonetim/kisi",
+                r#"{"ad":"Yeni Kişi","rol":"usta"}"#,
+            )
+        });
+        assert_eq!(k.kod, 200);
+        let id = json_of(&k)["id"].as_str().unwrap().to_string();
+        assert_eq!(
+            u.isle(&Istek {
+                yonetici: Some(b.clone()),
+                ..pc("POST", &format!("/api/yonetim/kisi/{id}/kapat"), "")
+            })
+            .kod,
+            200
+        );
+        // Belirteç uzaktan geçmez.
+        let mut uzak = yon("/api/yonetim/cihazlar");
+        uzak.yerel = false;
+        assert_eq!(u.isle(&uzak).kod, 403);
+        // 10 dk işlem olmazsa kapanır.
+        u.ileri_sn
+            .fetch_add(YONETICI_BOSTA_SN + 1, std::sync::atomic::Ordering::SeqCst);
+        assert_eq!(u.isle(&yon("/api/yonetim/cihazlar")).kod, 401);
+        // Çıkış.
+        let b2 = json_of(&giris("4821"))["belirtec"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let ist2 = |yol: &str, m: &str| Istek {
+            yonetici: Some(b2.clone()),
+            ..pc(m, yol, "")
+        };
+        assert_eq!(u.isle(&ist2("/api/yonetim/cihazlar", "GET")).kod, 200);
+        u.isle(&ist2("/api/yonetici/cikis", "POST"));
+        assert_eq!(u.isle(&ist2("/api/yonetim/cihazlar", "GET")).kod, 401);
     }
 }
