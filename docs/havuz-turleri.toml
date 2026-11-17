@@ -59,6 +59,24 @@ okuyanlar = ["taagiydir", "terzitakip"]
 kisisel = false
 aciklama = "Beden cetveli (ayakkabı ve aksesuar hariç)"
 
+[turler."manken.olcu"]
+surum = 1
+aile = "olcu"
+kip = "tablo"
+yazanlar = ["taayonetici"]
+okuyanlar = ["taagiydir"]
+kisisel = false
+aciklama = "Standart manken ölçüleri (müşteri bedeni saklanmaz)"
+
+[turler."giysi.olcu"]
+surum = 1
+aile = "olcu"
+kip = "tablo"
+yazanlar = ["taayonetici"]
+okuyanlar = ["taagiydir"]
+kisisel = false
+aciklama = "Ürün ölçüleri: omuz, göğüs, bel, kalça, kol, boy, iç bacak boyu"
+
 [turler."egitim.video"]
 surum = 1
 aile = "egitim"
