@@ -85,3 +85,10 @@ dosyalarında c2pa metadata olduğu için kaynak olarak bu path'ler kullanılır
 4. `cargo test -p taa-kur-tema`: kontrast testleri yeni paleti otomatik denetler; geçmezse renkleri
    düzeltin, testi gevşetmeyin.
 5. Önce KARAR belgesine yazılır, sonra koda; bu belgedeki tabloyu güncelleyin.
+
+## HD logo ve simgeler (2026-11-17, Yusuf: "logo piksel piksel duruyor")
+[Claude#kurucu-arayuz coPLkm]
+- `taa_kur_tema::simge::tara`: Geçme Temel kenar yumuşatmalı taranır (16×16 alt örnek; 256 px'te 4×4). 48 px altında köşeler piksele oturtulur (keskin), üstünde gerçek oran + yumuşak kenar. Çıktı önceden çarpılmış 32 bit BGRA; pencerelerde `AlphaBlend` ile basılır (kurulum `hd.rs`, taa-kur `win_hd.rs`). Pencere her karede çizdiği için `tara_onbellekli`.
+- Pencere simgeleri alfa kanallı ve sistemin istediği boyutta üretilir (`GetSystemMetricsForDpi`: %150'de 48/24 px), ekran ölçeği değişince (`WM_DPICHANGED`) yeniden üretilir. taa-kur penceresinin önceden simgesi yoktu.
+- İki pencere de monitör başına DPI farkındalığı v2 bildirir (yoksa sistem DPI'si): ölçek değişince Windows pencereyi bitmap olarak büyütüp bulanıklaştırmaz.
+- Exe dosya simgesi: `build.rs` (kurulum ve taa-kur) `simge::rsrc_nesnesi` ile 16, 20, 24, 32, 40, 48, 64, 256 px'lik RT_ICON/RT_GROUP_ICON içeren `.rsrc` COFF nesnesi üretip bağlayıcıya verir (rc.exe / windres gerekmez). Gezgin, Başlat menüsü kısayolu ve görev çubuğu bu simgeyi kullanır.

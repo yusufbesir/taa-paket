@@ -16,6 +16,8 @@ pub mod pencere_tema;
 mod veri;
 #[cfg(windows)]
 pub mod win;
+#[cfg(windows)]
+mod win_hd;
 mod zaman;
 pub mod zipac;
 

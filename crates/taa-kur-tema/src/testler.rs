@@ -467,3 +467,114 @@ fn logo_svg_metni() {
     assert!(s.contains("fill=\"#6A2C5A\" d=\"M6 21H12V36H36V21H42V42H6Z\""));
     assert!(s.starts_with("<svg") && s.trim_end().ends_with("</svg>"));
 }
+
+// ------------------------------------------------------------------ HD logo (simge.rs)
+mod simge_testleri {
+    use crate::simge::*;
+
+    #[test]
+    fn kucukte_keskin_buyukte_yumusak() {
+        // 28 px: köşeler piksele oturur, ara alfa yok (bulanık kenar olmaz).
+        let p = tara(&LogoCizimi::yeni(28, 0x2A2320, 0x6A2C5A));
+        assert_eq!(p.len(), 28 * 28);
+        assert!(p.iter().all(|&v| v >> 24 == 0 || v >> 24 == 255));
+        assert_eq!(p[0], 0);
+        assert_eq!(p[(28 * 10 / 48) * 28 + 14], 0xFF2A2320);
+        // 72 px: 1,5 px'lik birimler; kenarlar kenar yumuşatmalı (ara alfa var).
+        let b = tara(&LogoCizimi::yeni(72, 0x2A2320, 0x6A2C5A));
+        let ara = b
+            .iter()
+            .filter(|&&v| {
+                let a = v >> 24;
+                a > 0 && a < 255
+            })
+            .count();
+        assert!(ara > 50, "kenar yumuşatma yok: {ara}");
+    }
+
+    #[test]
+    fn premultiplied_kurali() {
+        for v in tara(&LogoCizimi::yeni(20, 0xFFD600, 0xFFFFFF)) {
+            let a = v >> 24;
+            for k in [v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF] {
+                assert!(k <= a, "renk alfadan büyük: {v:08X}");
+            }
+        }
+    }
+
+    #[test]
+    fn karo_tam_opak_ve_yuvarlak_koseli() {
+        let p = tara(&uygulama_simgesi(64));
+        // Merkez opak; köşe yuvarlatıldığı için (0,0) saydam; kenar ortası opak.
+        assert_eq!(p[32 * 64 + 32] >> 24, 255);
+        assert_eq!(p[0] >> 24, 0);
+        assert_eq!(p[32 * 64] >> 24, 255);
+    }
+
+    #[test]
+    fn onbellek_ayni_sonucu_verir() {
+        let c = LogoCizimi::yeni(32, 0x101010, 0xF2C811);
+        assert_eq!(*tara_onbellekli(&c), tara(&c));
+        assert!(std::rc::Rc::ptr_eq(
+            &tara_onbellekli(&c),
+            &tara_onbellekli(&c)
+        ));
+    }
+
+    #[test]
+    fn vurgu_kenari_cizilir() {
+        let mut c = LogoCizimi::yeni(48, 0x101010, 0xFFD600);
+        c.vurgu_kenari = Some(0x1A1A1A);
+        let p = tara(&c);
+        // Yuvanın sol dikey kolunun dış kenarı (x=6, y=30) kenar renginde, içi (x=9,y=30) sarı.
+        assert_eq!(p[30 * 48 + 6], 0xFF1A1A1A);
+        assert_eq!(p[30 * 48 + 9], 0xFFFFD600);
+    }
+
+    #[test]
+    fn ico_dosyasi_gecerli() {
+        let v = ico_dosyasi(&ICO_BOYUTLARI);
+        assert_eq!(&v[0..6], &[0, 0, 1, 0, ICO_BOYUTLARI.len() as u8, 0]);
+        for (i, &b) in ICO_BOYUTLARI.iter().enumerate() {
+            let e = &v[6 + 16 * i..6 + 16 * (i + 1)];
+            assert_eq!(e[0], if b == 256 { 0 } else { b as u8 });
+            let boy = u32::from_le_bytes(e[8..12].try_into().unwrap()) as usize;
+            let kon = u32::from_le_bytes(e[12..16].try_into().unwrap()) as usize;
+            assert!(kon + boy <= v.len());
+            assert_eq!(u32::from_le_bytes(v[kon..kon + 4].try_into().unwrap()), 40);
+            let n = b as usize;
+            assert_eq!(boy, 40 + n * n * 4 + n.div_ceil(32) * 4 * n);
+        }
+    }
+
+    #[test]
+    fn rsrc_nesnesi_yapisi() {
+        let o = rsrc_nesnesi(&[16, 32]);
+        assert_eq!(&o[0..2], &0x8664u16.to_le_bytes());
+        assert_eq!(&o[20..28], b".rsrc\0\0\0");
+        let ham_boy = u32::from_le_bytes(o[36..40].try_into().unwrap()) as usize;
+        let ham = u32::from_le_bytes(o[40..44].try_into().unwrap()) as usize;
+        let yd = u32::from_le_bytes(o[44..48].try_into().unwrap()) as usize;
+        let yd_sayi = u16::from_le_bytes(o[52..54].try_into().unwrap()) as usize;
+        assert_eq!(yd_sayi, 3); // 2 simge + 1 grup
+        assert_eq!(ham + ham_boy, yd);
+        let r = &o[ham..ham + ham_boy];
+        // Kök: 0 adlı, 2 kimlikli öğe; RT_ICON (3) önce, RT_GROUP_ICON (14) sonra.
+        assert_eq!(u16::from_le_bytes(r[14..16].try_into().unwrap()), 2);
+        assert_eq!(u32::from_le_bytes(r[16..20].try_into().unwrap()), 3);
+        assert_eq!(u32::from_le_bytes(r[24..28].try_into().unwrap()), 14);
+        // Her yer değiştirme bir veri girdisini gösterir; girdi bölüm içinde 8'e hizalı veriyi işaret eder.
+        for i in 0..yd_sayi {
+            let a =
+                u32::from_le_bytes(o[yd + 10 * i..yd + 10 * i + 4].try_into().unwrap()) as usize;
+            let hedef = u32::from_le_bytes(r[a..a + 4].try_into().unwrap()) as usize;
+            let boy = u32::from_le_bytes(r[a + 4..a + 8].try_into().unwrap()) as usize;
+            assert_eq!(hedef % 8, 0);
+            assert!(hedef + boy <= r.len());
+        }
+        // Simge tablosu dosya başlığındaki konumda, adı .rsrc.
+        let st = u32::from_le_bytes(o[8..12].try_into().unwrap()) as usize;
+        assert_eq!(&o[st..st + 8], b".rsrc\0\0\0");
+        assert_eq!(o.len(), st + 18 + 4);
+    }
+}
