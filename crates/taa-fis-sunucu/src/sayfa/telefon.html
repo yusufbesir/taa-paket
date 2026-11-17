@@ -311,6 +311,7 @@ html[data-tema="keten"] .rozet{border-radius:8px}
     <p class="mut">Mağaza bilgisayarında <b>Telefonlar</b> ekranındaki karekodu okutun ya da 6 haneli kodu yazın. Kod 5 dakika geçerlidir.</p>
     <div class="kart duz yigin">
       <div class="alan"><label for="e-kod">Eşleştirme kodu</label><input id="e-kod" class="esles-kod" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="······"></div>
+      <button class="dugme genis" id="e-karekod" hidden><svg class="sm"><use href="#i-kod"/></svg>Karekodu oku</button>
       <div class="alan"><label for="e-ad">Bu telefonun adı</label><input id="e-ad" maxlength="40" placeholder="Örn. Tezgâh telefonu" autocomplete="off"></div>
       <button class="dugme ana" id="e-dugme">Eşleştir</button>
       <div class="mesaj hata" id="e-mesaj" role="status" hidden></div>
@@ -770,7 +771,17 @@ html[data-tema="keten"] .rozet{border-radius:8px}
     else if(b.id==='isaret-kaydet'){var ne=$('#is-neden').value.trim();if(!ne){fisMesaj('Nedenini yazın','hata');return}
       var t=$('[data-is-tur][aria-pressed="true"]').dataset.isTur;yap(api('POST',yol+'/isaret',{kalem:+$('#is-kalem').value,tur:t,neden:ne}),'İşaretlendi; yönetici tutanak yazacak')}});
 
-  /* ---------- kod okut: BarcodeDetector varsa kamera, yoksa elle ---------- */
+  /* ---------- kod okut: Android uygulamasında yerel okuyucu (window.TaaAndroid), yoksa BarcodeDetector + kamera, o da yoksa elle ----------
+     Uygulama sonucu window'a 'taa-karekod' olayıyla verir: detail {deger} ya da {iptal, hata}. */
+  var YEREL=window.TaaAndroid&&typeof window.TaaAndroid.karekodOku==='function'?window.TaaAndroid:null, yerelHedef=null;
+  window.addEventListener('taa-karekod',function(ev){var d=ev.detail||{},h=yerelHedef;yerelHedef=null;
+    if(!h)return;if(d.deger)h(String(d.deger));else if(d.hata)bildir(d.hata)});
+  function yerelOku(hedef){yerelHedef=hedef;try{YEREL.karekodOku()}catch(e){yerelHedef=null;bildir('Kamera okuyucu açılamadı')}}
+  if(YEREL){var ek=$('#e-karekod');ek.hidden=false;ek.addEventListener('click',function(){yerelOku(function(ham){
+    var m=$('#e-mesaj'),k=(ham.match(/[?&]kod=(\d{6})/)||[])[1]||(/^\d{6}$/.test(ham.trim())?ham.trim():''),o='';try{o=new URL(ham).origin}catch(e){}
+    if(o&&o!=='null'&&o.toLowerCase()!==location.origin.toLowerCase()){m.hidden=false;m.textContent='Bu karekod başka bir mağaza sunucusuna ait. Adresi değiştirmek için başlıktaki Terzi Takip yazısına uzun basın.';return}
+    if(!k){m.hidden=false;m.textContent='Bu bir eşleştirme karekodu değil.';return}
+    m.hidden=true;$('#e-kod').value=k;$('#e-ad').focus()})})}
   var akis=null, tarayici=null, taraZaman=0;
   function noCoz(ham){ham=String(ham||'').trim();var m=ham.match(/#fis=([^&\s]+)/);if(m)return decodeURIComponent(m[1]);
     m=ham.match(/F.?(\d{8}).?(\d{3})/i);if(m)return 'F-'+m[1]+'-'+m[2];
@@ -778,11 +789,13 @@ html[data-tema="keten"] .rozet{border-radius:8px}
     return ham}
   function okutAc(){
     $('#okut-mesaj').hidden=true;
+    if(YEREL){$('#kamera-ac').hidden=false;$('#kamera-not').textContent='Fiş karekodunu kamerayla okutun ya da numarayı elle yazın.';kameraAc();return}
     var var_='BarcodeDetector' in window&&navigator.mediaDevices&&navigator.mediaDevices.getUserMedia;
     $('#kamera-ac').hidden=!var_;
     $('#kamera-not').textContent=var_?'Karekodu çerçevenin içine tutun.':'Bu tarayıcı kamerayla karekod okuyamıyor; fiş numarasını elle yazın.';
     if(var_)kameraAc()}
   function kameraAc(){
+    if(YEREL){yerelOku(function(ham){if(EKRAN==='okut')fisAc(noCoz(ham))});return}
     if(akis)return;
     try{tarayici=tarayici||new window.BarcodeDetector({formats:['qr_code']})}catch(e){$('#kamera-ac').hidden=true;$('#kamera-not').textContent='Kamera okuyucu kullanılamıyor; fiş numarasını elle yazın.';return}
     navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false}).then(function(s){

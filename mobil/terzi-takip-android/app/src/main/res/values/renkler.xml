@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Koçan teması (tema.css html[data-tema="kocan"] ile aynı jetonlar). -->
+<resources>
+    <color name="tk_bg">#FFFFFF</color>
+    <color name="tk_panel2">#F1F1EE</color>
+    <color name="tk_line">#111111</color>
+    <color name="tk_tx">#0A0A0A</color>
+    <color name="tk_mut">#4A4A4A</color>
+    <color name="tk_ac">#0B3BD6</color>
+    <color name="tk_ac_fg">#FFFFFF</color>
+    <color name="tk_hata">#B00020</color>
+    <!-- Yaka logosu: kısa bant ve uzun bant -->
+    <color name="yaka_kisa">#0A0A0A</color>
+    <color name="yaka_uzun">#0B3BD6</color>
+    <color name="simge_zemin">#FFFFFF</color>
+</resources>

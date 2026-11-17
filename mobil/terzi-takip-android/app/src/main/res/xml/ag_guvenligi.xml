@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sahip: Yusuf. yazan: [Claude#terzi-takip-android 2026-11-17]
+     Ağ güvenliği. network_security_config IP aralığı tanımlayamaz (yalnız alan adı eşler); bu yüzden düz http
+     genel düzeyde açık bırakılır ve "yalnız yerel ağ IP'leri" kuralı uygulama kodunda uygulanır:
+       - SunucuAdresi.yerelIpMi: 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10 (Tailscale);
+       - Kurulum ekranı bu aralık dışındaki http adresini kaydetmez;
+       - WebView.shouldInterceptRequest bu aralık dışındaki her http isteğini 403 ile keser.
+     Tailscale (.ts.net) için düz http tamamen yasak, yalnız https. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">ts.net</domain>
+    </domain-config>
+    <!-- Kendi imzalı (kullanıcının kurduğu) sertifikaya güven YALNIZ debug derlemede. -->
+    <debug-overrides>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </debug-overrides>
+</network-security-config>

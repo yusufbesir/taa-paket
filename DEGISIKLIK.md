@@ -3,6 +3,13 @@
 
 ## Yayınlanmamış
 
+### Terzi Takip Android uygulaması (mobil/terzi-takip-android)
+
+- Mağaza telefonları için yerel Kotlin + WebView kabuğu (`com.taa.terzitakip`, "Terzi Takip" 1.0.0; minSdk 26, targetSdk 37; AGP 9.5.1, Gradle 9.6.1 sarmalayıcısı). Telefon sitesini (`<sunucu>/telefon`) açar; gezinti yalnız kayıtlı sunucu kökünde, düz http yalnız yerel ağ IP'lerinde (10/8, 172.16/12, 192.168/16, 100.64/10), `.ts.net` yalnız https; kendi imzalı sertifikaya güven yalnız debug.
+- İlk kurulum: eşleştirme karekodu (`/telefon?kod=`) okutulunca adres ve kod kendiliğinden dolar; adres SharedPreferences'ta. Gizli Sunucu ayarı: başlığa uzun basma. Açılışta sunucuya ulaşılamazsa markalı "Yeniden dene" ekranı. Android 12 SplashScreen ve uyarlanabilir/tek renk Yaka simgesi. Fotoğraf için dosya seçicide kamera.
+- Yerel karekod okuyucu (CameraX + ML Kit bundled) ve kökene bağlı JS köprüsü `window.TaaAndroid` (`karekodOku()` → `taa-karekod` olayı). `telefon.html` köprü varsa Kod okut ve eşleştirme ekranında onu kullanır; yoksa davranış aynı.
+- Release imza anahtarı depoya konmaz (`keystore.properties` / `TAA_IMZA_*`); Windows için `derle.ps1` (APK → `dist\TerziTakip-1.0.0.apk`, silmez). **Sınır:** bulut ortamında Android SDK indirilemediği için hiç derlenmedi ve telefonda denenmedi; ayrıntı README "Riskler".
+
 ### Terzi Takip: yeni arayüz (masaüstü program, telefon sitesi, 80 mm fiş, yönetici kilidi)
 
 - **Masaüstü program `/masaustu`** (yalnız bu bilgisayar: loopback + Host + `X-TAA-Masaustu` başlığı): Ana sayfa, Yeni fiş (canlı 80 mm önizleme), Fişler (toplu işlem, okutarak seç, 10 sn geri al / Ctrl+Z), Fiş aç (F2), Telefonlar, Personel ve usta, Usta puanı, Ayarlar. Altı tema (Koçan varsayılan, Tebeşir, Askı, Çözgü, Çivit, Keten), ton, yazı boyutu, kontrast denetimli vurgu rengi, varsayılana dön, yazıcı kipi. Açılış ≤1 sn, 3 sahnelik tanıtım, hareketi azaltta animasyon yok, kısayollar ve barkod tabancası algılama. Dış kaynak yok; sayfalar `src/sayfa/` altında, `include_str!` ile gömülü, tema jetonları telefonla ortak (`tema.css`, `ortak.js`).

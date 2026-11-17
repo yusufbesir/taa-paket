@@ -41,6 +41,12 @@ TAA Paketi çekirdek deposu: TaaDön ve diğer TAA programlarının paylaştığ
 | taa-imza | var | ed25519 imza (T3): anahtar üret/imzala/doğrula, `ed25519:<hex>` genel anahtar dosyası; özel anahtar yalnız verilen dosyadan okunur, depoya yazılmaz |
 | taa-log | planlı | Günlükleme |
 
+## Mobil
+
+| Proje | Durum | Görev |
+|---|---|---|
+| mobil/terzi-takip-android | var (derlenmedi) | Terzi Takip Android uygulaması: mağaza telefonları için WebView kabuğu, yerel karekod okuyucu, sunucu adresi ve eşleştirme. Derleme ve kurulum: `mobil/terzi-takip-android/README.md` |
+
 ## Derleme
 
 ```
