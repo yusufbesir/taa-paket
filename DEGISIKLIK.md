@@ -3,6 +3,12 @@
 
 ## Yayınlanmamış
 
+### TAA Çatı: açık/koyu temalar, Görünüm ayarı, tanıtım ve yönetici PIN'leri
+
+- Görünüm (TAA Kurucu'nun yeni kavramlarıyla): 3 tema × açık/koyu (6 palet), `cati/gorunum.json` (sürümlü, atomik), temaya özel vurgu rengi ve okunabilirlik düzeltmesi (`taa-kur-tema` kontrast hesabı), hareket Sistem/Azalt/Normal, ilk açılışta 3 sahnelik tanıtım. Tercih artık tarayıcıda değil veri kökünde. Logo Üç Çatı olarak kaldı.
+- Yeni ekran "Yönetici PIN'leri" (Yusuf 2026-11-17: yönetici PIN'i yalnız TAA Çatı'dan belirlenir): program başına genel ve şubeye özel PIN. Sunucu uçları tutaa deposunda (PR #41).
+- Bağımlılık: `taa-cati` → `taa-kur-tema` (yerel crate; yeni dış crate yok).
+
 ### TAA Çatı: grafik yönetim paneli (`taa-cati-panel`)
 
 - Yeni bin `taa-cati-panel` (crate `taa-cati`): 127.0.0.1'de rastgele kapıda yerel sunucu + Edge uygulama penceresi. Ekranlar: Genel bakış, Cihazlar, Kullanıcılar, Şubeler, Program yetkileri, Günlük, Ayarlar (izne göre görünür). 3 tema (Kule Gecesi varsayılan, Defter, Taş; düzen de değişir), vurgu rengi, hareketi azalt, varsayılana dön; Üç Çatı logosu ve yükleme ekranı. Panelden giriş `taa-kimlik giris` ile aynı akış. Ayrıntı ve güvenlik: docs/S3-CATI-PANEL.md.
