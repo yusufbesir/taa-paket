@@ -14,7 +14,7 @@ use crate::pencere::{Hedef, PencereDurumu};
 use crate::secim::Secim;
 use crate::yerlesim::{self as y, AyarOge, Dik, Tanitim, Yerlesim, Yukleme};
 use std::ptr::null_mut;
-use taa_kur_tema::{ara_renk, colorref, etkin_jetonlar, logo, Geometri, Gorunum, Jetonlar, Mod, Tema, Tipografi};
+use taa_kur_tema::{ara_renk, colorref, etkin_jetonlar, simge, Geometri, Gorunum, Jetonlar, Mod, Tema, Tipografi};
 use windows_sys::Win32::Foundation::POINT;
 use windows_sys::Win32::Graphics::Gdi::{
     CreateFontW, CreatePen, CreateSolidBrush, DeleteObject, DrawTextW, FillRect, GetDC, GetStockObject, GetTextFaceW,
@@ -583,15 +583,14 @@ fn kart_h_al(c: &Cizer, d: &mut PencereDurumu, x: &Ctx, w: i32, h: i32) -> i32 {
 
 fn logo_ciz(c: &Cizer, tema: Tema, koyu: bool, j: &Jetonlar, boyut: i32, lx: i32, ly: i32) {
     // T hiçbir zaman vurgu rengiyle boyanmaz; Mezura sarısı açık zemine doğrudan basılmaz (koyu kare üstünde).
-    let (ana, vurgu) = if tema == Tema::Mezura && !koyu {
-        c.doldur(Dik::yeni(lx, ly, boyut, boyut), j.metin);
-        (j.zemin, j.vurgu)
-    } else {
-        (j.metin, j.vurgu)
-    };
-    for (parca, nk) in logo::cokgenler(boyut, lx, ly) {
-        c.cokgen(&nk, if parca == logo::Parca::Ana { ana } else { vurgu });
+    // HD: kenar yumuşatmalı tarama + AlphaBlend (GDI Polygon köşeleri piksele yuvarlayıp tırtıklı çiziyordu).
+    let mut cizim = simge::LogoCizimi::yeni(boyut.max(1) as u32, j.metin, j.vurgu);
+    if tema == Tema::Mezura && !koyu {
+        cizim.ana = j.zemin;
+        cizim.karo = Some(simge::Karo { renk: j.metin, yaricap: 0.0, pay: 0.0 });
     }
+    // SAFETY: geçerli bellek DC'si (çift tampon).
+    unsafe { crate::hd::logo_bas(c.dc, lx, ly, &cizim) };
 }
 
 fn kenar_payi(c: &Cizer, x: &Ctx) -> i32 {

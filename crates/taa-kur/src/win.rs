@@ -24,9 +24,7 @@ use std::os::windows::ffi::OsStringExt;
 use std::path::PathBuf;
 use std::ptr::{null, null_mut};
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
-use taa_kur_tema::{
-    ara_renk, colorref, colorref_rgb, logo, Gorunum, Hareket, Jetonlar, Tema, Yazi,
-};
+use taa_kur_tema::{ara_renk, colorref, colorref_rgb, Gorunum, Hareket, Jetonlar, Tema, Yazi};
 use windows_sys::Win32::Foundation::{
     GlobalFree, ERROR_SUCCESS, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM,
 };
@@ -34,12 +32,12 @@ use windows_sys::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_USE_IMMERSI
 use windows_sys::Win32::Graphics::Gdi::{
     BeginPaint, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreateFontW, CreatePen,
     CreateSolidBrush, DeleteDC, DeleteObject, DrawTextW, Ellipse, EndPaint, FillRect, GetDC,
-    GetStockObject, GetTextExtentPoint32W, GetTextFaceW, GetTextMetricsW, InvalidateRect, Polygon,
-    Polyline, RedrawWindow, ReleaseDC, RoundRect, SelectObject, SetBkMode, SetTextColor,
-    CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, DEFAULT_CHARSET, DEFAULT_PITCH, DT_CALCRECT, DT_CENTER,
-    DT_EDITCONTROL, DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_PATH_ELLIPSIS, DT_SINGLELINE,
-    DT_VCENTER, DT_WORDBREAK, HDC, HFONT, NULL_PEN, OUT_DEFAULT_PRECIS, PAINTSTRUCT, PS_SOLID,
-    RDW_ALLCHILDREN, RDW_INVALIDATE, SRCCOPY, TEXTMETRICW, TRANSPARENT,
+    GetStockObject, GetTextExtentPoint32W, GetTextFaceW, GetTextMetricsW, InvalidateRect, Polyline,
+    RedrawWindow, ReleaseDC, RoundRect, SelectObject, SetBkMode, SetTextColor, CLEARTYPE_QUALITY,
+    CLIP_DEFAULT_PRECIS, DEFAULT_CHARSET, DEFAULT_PITCH, DT_CALCRECT, DT_CENTER, DT_EDITCONTROL,
+    DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_PATH_ELLIPSIS, DT_SINGLELINE, DT_VCENTER,
+    DT_WORDBREAK, HDC, HFONT, NULL_PEN, OUT_DEFAULT_PRECIS, PAINTSTRUCT, PS_SOLID, RDW_ALLCHILDREN,
+    RDW_INVALIDATE, SRCCOPY, TEXTMETRICW, TRANSPARENT,
 };
 use windows_sys::Win32::System::DataExchange::{
     CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
@@ -72,8 +70,8 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     AdjustWindowRectEx, CallWindowProcW, CreateWindowExW, DefWindowProcW, DispatchMessageW,
     GetClientRect, GetMessageW, GetParent, GetSystemMetrics, GetWindowLongPtrW, IsDialogMessageW,
     IsWindowVisible, KillTimer, LoadCursorW, MessageBoxW, MoveWindow, PostMessageW,
-    PostQuitMessage, RegisterClassW, RegisterWindowMessageW, SendMessageW, SetProcessDPIAware,
-    SetTimer, SetWindowLongPtrW, SetWindowPos, ShowWindow, SystemParametersInfoW, TranslateMessage,
+    PostQuitMessage, RegisterClassW, RegisterWindowMessageW, SendMessageW, SetTimer,
+    SetWindowLongPtrW, SetWindowPos, ShowWindow, SystemParametersInfoW, TranslateMessage,
     BN_CLICKED, BS_OWNERDRAW, CREATESTRUCTW, CW_USEDEFAULT, GWLP_USERDATA, GWLP_WNDPROC,
     HWND_BROADCAST, IDC_ARROW, IDYES, MB_ICONERROR, MB_ICONINFORMATION, MB_ICONQUESTION, MB_OK,
     MB_YESNO, MINMAXINFO, MSG, SM_CXVSCROLL, SPI_GETCLIENTAREAANIMATION, SPI_GETHIGHCONTRAST,
@@ -364,7 +362,7 @@ pub fn calistir() -> i32 {
     let ileti_adi = genis(GORUNUM_ILETISI);
     // SAFETY: DPI farkındalığı pencere açılmadan önce bildirilir; ileti adı sıfır sonlu.
     let (gorunum_iletisi, sistem_dpi) = unsafe {
-        SetProcessDPIAware();
+        crate::win_hd::dpi_farkindaligi();
         (
             RegisterWindowMessageW(ileti_adi.as_ptr()),
             GetDpiForSystem().max(96),
@@ -407,7 +405,8 @@ pub fn calistir() -> i32 {
             cbClsExtra: 0,
             cbWndExtra: 0,
             hInstance: ornek,
-            hIcon: null_mut(),
+            // HD uygulama simgesi (alfa kanallı, sistemin istediği boyutta; Windows büyütüp pikselleştirmez).
+            hIcon: crate::win_hd::sinif_simgesi(),
             hCursor: LoadCursorW(null_mut(), IDC_ARROW),
             // Arka plan WM_PAINT'te tema rengiyle çizilir (titreme olmasın diye fırça yok).
             hbrBackground: null_mut(),
@@ -451,6 +450,7 @@ pub fn calistir() -> i32 {
             mesaj_kutusu(null_mut(), "Pencere açılamadı.", "TAA Kurucu", MB_ICONERROR);
             return 1;
         }
+        crate::win_hd::simgeleri_ayarla(pencere, GetDpiForWindow(pencere).max(96));
         ShowWindow(pencere, SW_SHOW);
         let mut ileti: MSG = std::mem::zeroed();
         while GetMessageW(&mut ileti, null_mut(), 0, 0) > 0 {
@@ -547,6 +547,7 @@ unsafe extern "system" fn pencere_proc(h: HWND, ileti: u32, w: WPARAM, l: LPARAM
         WM_DPICHANGED => {
             if let Some(d) = durum_al(h) {
                 d.dpi = (((w >> 16) & 0xFFFF) as u32).max(96);
+                crate::win_hd::simgeleri_ayarla(h, d.dpi);
                 let r = &*(l as *const RECT);
                 SetWindowPos(
                     h,
@@ -1045,29 +1046,14 @@ fn kip_bayragi(k: MetinKipi) -> u32 {
     }
 }
 
-/// Geçme Temel logosu: ana parça `metin`, vurgu parçası `vurgu` (Mezura açıkta `kenar` çerçeveli).
+/// Geçme Temel logosu, kenar yumuşatmalı (HD): ana parça `metin`, vurgu parçası `vurgu` (Mezura
+/// açıkta içten `kenar` çerçeveli). GDI `Polygon` köşeleri piksele yuvarlayıp tırtıklı çiziyordu.
 unsafe fn logo_ciz(dc: HDC, alan: Dik, j: &Jetonlar, cerceveli: bool) {
-    for (parca, noktalar) in logo::cokgenler(alan.en, alan.x, alan.y) {
-        let (dolgu_rengi, kalem) = match parca {
-            logo::Parca::Ana => (j.metin, None),
-            logo::Parca::Vurgu => (j.vurgu, cerceveli.then_some(j.kenar)),
-        };
-        let pts: Vec<POINT> = noktalar.iter().map(|&(x, y)| POINT { x, y }).collect();
-        let firca = CreateSolidBrush(colorref(dolgu_rengi));
-        let eski_f = SelectObject(dc, firca);
-        let k = kalem.map(|c| CreatePen(PS_SOLID, 1, colorref(c)));
-        let eski_k = match k {
-            Some(p) => SelectObject(dc, p),
-            None => SelectObject(dc, GetStockObject(NULL_PEN)),
-        };
-        Polygon(dc, pts.as_ptr(), pts.len() as i32);
-        SelectObject(dc, eski_k);
-        SelectObject(dc, eski_f);
-        if let Some(p) = k {
-            DeleteObject(p);
-        }
-        DeleteObject(firca);
+    let mut c = taa_kur_tema::simge::LogoCizimi::yeni(alan.en.max(1) as u32, j.metin, j.vurgu);
+    if cerceveli {
+        c.vurgu_kenari = Some(j.kenar);
     }
+    crate::win_hd::logo_bas(dc, alan.x, alan.y, &c);
 }
 
 /// Pencere arka planı, başlık, bantlar, tablo çerçevesi, metinler (çift tampon, tek BitBlt).

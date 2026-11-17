@@ -7,7 +7,7 @@
 //! açıksa ve kullanıcı tema seçmediyse Mezura; hareketi azaltın varsayılanı SPI_GETCLIENTAREAANIMATION'ın tersi.
 //! Açılışta markalı yükleme ekranı (10 tik), ilk açılışta 3 sahneli tanıtım; başlıkta Ayarlar yan paneli.
 //! Klavye: Enter = onay / Yeniden dene / Bitir, Esc = vazgeç / kapat, Yukarı/Aşağı + Boşluk = seçim, Sol/Sağ = kartlar,
-//! Tab = Ayarlar düğmesi (panelde denetimler arası; Esc paneli kapatır). Yüksek DPI: SetProcessDPIAware + GetDpiForWindow.
+//! Tab = Ayarlar düğmesi (panelde denetimler arası; Esc paneli kapatır). Yüksek DPI: monitör başına v2 (yoksa SetProcessDPIAware) + GetDpiForWindow.
 //! DİKKAT: Windows'ta elle DENENMEDİ; Linux'ta yalnız `cargo check/clippy --target x86_64-pc-windows-gnu`.
 
 use crate::cizim::{self, Cizer, Fontlar};
@@ -20,14 +20,14 @@ use std::ffi::c_void;
 use std::ptr::{null, null_mut};
 use std::time::Instant;
 use taa_kur_tema::{
-    colorref, colorref_rgb, etkin_jetonlar, hataya_yakin, logo, vurgu_duzelt, Gorunum, Jetonlar, Mod, Tema, ILMEK_ACIK,
+    colorref, colorref_rgb, etkin_jetonlar, hataya_yakin, vurgu_duzelt, Gorunum, Jetonlar, Mod, Tema,
 };
 use windows_sys::Win32::Foundation::{ERROR_SUCCESS, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows_sys::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_USE_IMMERSIVE_DARK_MODE};
 use windows_sys::Win32::Graphics::Gdi::{
-    BeginPaint, BitBlt, CreateBitmap, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, EndPaint,
-    FillRect, GetDC, GetMonitorInfoW, GetStockObject, InvalidateRect, MonitorFromWindow, ReleaseDC, SelectObject,
-    SetBkMode, BLACK_BRUSH, MONITORINFO, MONITOR_DEFAULTTONEAREST, PAINTSTRUCT, SRCCOPY, TRANSPARENT,
+    BeginPaint, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, EndPaint, GetMonitorInfoW,
+    InvalidateRect, MonitorFromWindow, SelectObject, SetBkMode, MONITORINFO, MONITOR_DEFAULTTONEAREST, PAINTSTRUCT,
+    SRCCOPY, TRANSPARENT,
 };
 use windows_sys::Win32::System::Console::{GetConsoleProcessList, GetConsoleWindow};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -39,14 +39,14 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     GetKeyState, VK_DOWN, VK_ESCAPE, VK_LEFT, VK_RETURN, VK_RIGHT, VK_SHIFT, VK_SPACE, VK_TAB, VK_UP,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CreateIconIndirect, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect, GetMessageW,
-    GetWindowLongPtrW, LoadCursorW, LoadIconW, MessageBoxW, PostQuitMessage, RegisterClassW, SendMessageW, SetCursor,
-    SetProcessDPIAware, SetTimer, SetWindowLongPtrW, SetWindowPos, ShowWindow, SystemParametersInfoW, TranslateMessage,
-    CREATESTRUCTW, CW_USEDEFAULT, GWLP_USERDATA, HICON, HTCLIENT, ICONINFO, ICON_SMALL, IDC_ARROW, IDC_HAND,
-    IDI_APPLICATION, IDYES, MB_ICONQUESTION, MB_YESNO, MINMAXINFO, MSG, SPI_GETCLIENTAREAANIMATION, SPI_GETHIGHCONTRAST,
-    SWP_NOZORDER, SW_HIDE, SW_SHOW, WM_CLOSE, WM_DESTROY, WM_DPICHANGED, WM_ERASEBKGND, WM_GETMINMAXINFO, WM_KEYDOWN,
-    WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_NCCREATE, WM_NCDESTROY, WM_PAINT, WM_SETCURSOR, WM_SETICON,
-    WM_SETTINGCHANGE, WM_SIZE, WM_TIMER, WNDCLASSW, WS_OVERLAPPEDWINDOW,
+    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect, GetMessageW, GetWindowLongPtrW,
+    LoadCursorW, LoadIconW, MessageBoxW, PostQuitMessage, RegisterClassW, SetCursor, SetTimer, SetWindowLongPtrW,
+    SetWindowPos, ShowWindow, SystemParametersInfoW, TranslateMessage, CREATESTRUCTW, CW_USEDEFAULT, GWLP_USERDATA,
+    HTCLIENT, IDC_ARROW, IDC_HAND, IDI_APPLICATION, IDYES, MB_ICONQUESTION, MB_YESNO, MINMAXINFO, MSG,
+    SPI_GETCLIENTAREAANIMATION, SPI_GETHIGHCONTRAST, SWP_NOZORDER, SW_HIDE, SW_SHOW, WM_CLOSE, WM_DESTROY,
+    WM_DPICHANGED, WM_ERASEBKGND, WM_GETMINMAXINFO, WM_KEYDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL,
+    WM_NCCREATE, WM_NCDESTROY, WM_PAINT, WM_SETCURSOR, WM_SETTINGCHANGE, WM_SIZE, WM_TIMER, WNDCLASSW,
+    WS_OVERLAPPEDWINDOW,
 };
 
 const SINIF: &str = "TaaKurKurulum";
@@ -180,10 +180,10 @@ impl Pencere {
     pub fn ac(uc: Uc) -> Result<Pencere, String> {
         // SAFETY: Win32 çağrıları; durum kutusu WM_NCDESTROY'da geri alınır.
         unsafe {
-            SetProcessDPIAware();
+            crate::hd::dpi_farkindaligi();
             let ornek = GetModuleHandleW(null());
             let sinif = genis(SINIF);
-            let buyuk = logo_simgesi(32);
+            let buyuk = crate::hd::sinif_simgesi();
             let wc = WNDCLASSW {
                 style: 0,
                 lpfnWndProc: Some(pencere_proc),
@@ -243,10 +243,7 @@ impl Pencere {
             if hwnd.is_null() {
                 return Err("pencere yaratılamadı".into());
             }
-            let kucuk = logo_simgesi(16);
-            if !kucuk.is_null() {
-                SendMessageW(hwnd, WM_SETICON, ICON_SMALL as usize, kucuk as isize);
-            }
+            crate::hd::simgeleri_ayarla(hwnd, GetDpiForWindow(hwnd).max(96));
             boyutla_ortala(hwnd);
             koyu_baslik(hwnd, koyu);
             ShowWindow(hwnd, SW_SHOW);
@@ -268,37 +265,6 @@ impl Pencere {
             }
         }
     }
-}
-
-/// Geçme Temel logosundan çalışma zamanında küçük pencere simgesi (krem kare üstünde; İlmek açık renkleri).
-/// Yaratılamazsa boş tutamak döner, sınıf varsayılan simgeyi kullanır.
-unsafe fn logo_simgesi(boyut: i32) -> HICON {
-    let ekran = GetDC(null_mut());
-    if ekran.is_null() {
-        return null_mut();
-    }
-    let dc = CreateCompatibleDC(ekran);
-    let renk = CreateCompatibleBitmap(ekran, boyut, boyut);
-    let maske = CreateBitmap(boyut, boyut, 1, 1, null());
-    let j = ILMEK_ACIK;
-    let eski = SelectObject(dc, renk);
-    let c = Cizer { dc, dpi: 96 };
-    c.doldur(Dik::yeni(0, 0, boyut, boyut), j.zemin);
-    for (parca, nk) in logo::cokgenler(boyut, 0, 0) {
-        c.cokgen(&nk, if parca == logo::Parca::Ana { j.metin } else { j.vurgu });
-    }
-    // Maske tümüyle siyah: simge tamamen opak (kare karo).
-    SelectObject(dc, maske);
-    let r = RECT { left: 0, top: 0, right: boyut, bottom: boyut };
-    FillRect(dc, &r, GetStockObject(BLACK_BRUSH));
-    SelectObject(dc, eski);
-    let ii = ICONINFO { fIcon: 1, xHotspot: 0, yHotspot: 0, hbmMask: maske, hbmColor: renk };
-    let h = CreateIconIndirect(&ii);
-    DeleteObject(renk);
-    DeleteObject(maske);
-    DeleteDC(dc);
-    ReleaseDC(null_mut(), ekran);
-    h
 }
 
 /// Kurucu çift tıklamayla açıldıysa (konsol yalnız bizim) konsol penceresini gizler; terminalden çalıştırılınca dokunmaz.
@@ -883,6 +849,7 @@ unsafe extern "system" fn pencere_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPA
                 d.dpi = ((wp >> 16) & 0xFFFF) as u32;
                 d.fontlar = Fontlar::yap(d.dpi.max(96), d.tema);
                 d.kart_h = None;
+                crate::hd::simgeleri_ayarla(hwnd, d.dpi.max(96));
             }
             let r = &*(lp as *const RECT);
             SetWindowPos(hwnd, null_mut(), r.left, r.top, r.right - r.left, r.bottom - r.top, SWP_NOZORDER);
