@@ -1,0 +1,13 @@
+# Sahip: Yusuf. yazan: [Claude#taa-kur-arayuz coPLkm 2026-11-17]
+# taa-kur-tema modül tanımı. TAA Kurucu'nun üç teması (İlmek, Kalıp, Mezura), görünüm tercihi ve logo çizimi.
+ad = "taa-kur-tema"
+surum = "0.1.0"
+arayuz = "1"
+gerektirir = {}
+ozellikler = ["tema"]
+program = "ortak"
+sunar = []
+ister = []
+veri_sahibi = []
+veri_okur = []
+ayar_alani = "moduller.taa-kur-tema"
