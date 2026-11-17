@@ -3,6 +3,17 @@
 
 ## Yayınlanmamış
 
+### Terzi Takip: yeni arayüz (masaüstü program, telefon sitesi, 80 mm fiş, yönetici kilidi)
+
+- **Masaüstü program `/masaustu`** (yalnız bu bilgisayar: loopback + Host + `X-TAA-Masaustu` başlığı): Ana sayfa, Yeni fiş (canlı 80 mm önizleme), Fişler (toplu işlem, okutarak seç, 10 sn geri al / Ctrl+Z), Fiş aç (F2), Telefonlar, Personel ve usta, Usta puanı, Ayarlar. Altı tema (Koçan varsayılan, Tebeşir, Askı, Çözgü, Çivit, Keten), ton, yazı boyutu, kontrast denetimli vurgu rengi, varsayılana dön, yazıcı kipi. Açılış ≤1 sn, 3 sahnelik tanıtım, hareketi azaltta animasyon yok, kısayollar ve barkod tabancası algılama. Dış kaynak yok; sayfalar `src/sayfa/` altında, `include_str!` ile gömülü, tema jetonları telefonla ortak (`tema.css`, `ortak.js`).
+- **Başlatıcı `taa-terzi-takip`**: sunucu kapalıysa açar, Edge `--app` (ayrı profil) penceresi, yoksa varsayılan tarayıcı.
+- **Telefon sitesi `/telefon`** yeniden yazıldı: altı tema, eşleştirme (`?kod=`), `taa_tok` / `taa_kuyruk` korunur (çevrimdışı kuyruk), kamera ile karekod (BarcodeDetector; yoksa elle), fiş sayfası (durum, raf, imza, okut, işaret, foto, teslim tarihi), PWA simgesi Yaka.
+- **Kişi alanları**: Satış danışmanı, Ölçü alan, Fişi düzenleyen zorunlu, her fişte boş başlar; son 3 kişi çipleri, "Danışmanla aynı / Ölçü alanla aynı". Fişe ad değil kimlik yazılır (`*_id`), sunucu üçünü de kişi kaydına karşı denetler (422, eksik alanlar adıyla). Kişisel telefonda düzenleyen ve imzalayan sunucuda giren kişiye sabitlenir. Düzenleyen fişe basılmaz. Yerel kişi kaydı `kisiler.jsonl` + onaylı Telegram hesapları.
+- **80 mm fiş**: müşteri nüshası (Danışman + Ölçü alan) ve ürün üstü nüsha (Ölçü alan + Usta + Kalan), 72 mm basılabilir alan, karekod sunucuda SVG (`GET /api/fis/<no>/karekod`), tarayıcı baskısında nüsha başına ölçülmüş `@page`; mevcut yazıcı yolu da kullanılır.
+- **Yönetici kilidi**: Telefonlar, Personel ve Usta puanı yönetici PIN'i ister; PIN TAA Çatı `POST /v1/yonetici-pin/dogrula` ile sunucu tarafında doğrulanır, saklanmaz ve günlüğe yazılmaz; 10 dk boşta oturum kapanır; Çatı'ya ulaşılamazsa yönetim ekranları açılmaz.
+- Yeni uçlar: `/api/oturum`, `/api/kisiler`, `/api/durum`, `/api/fis/<no>/karekod`, `/api/yazici/deneme`, `/api/yonetici/{giris,cikis,durum}`, `/api/yonetim/{eslestirme,cihazlar,kisiler,kisi,kisi/<id>/kapat}`. Eski `/yonetim*` sayfaları masaüstü ekranlarına yönlenir.
+- Bağımlılık: `taa-kimlik`, `taa-kuyruk`, `taa-yol` (yerel crate'ler; yeni dış crate yok). **Sınır:** Çatı istemcisi yalnız sahte gönderici ile sınandı; gerçek Çatı'ya karşı denenmedi.
+
 ### TAA Çatı: açık/koyu temalar, Görünüm ayarı, tanıtım ve yönetici PIN'leri
 
 - Görünüm (TAA Kurucu'nun yeni kavramlarıyla): 3 tema × açık/koyu (6 palet), `cati/gorunum.json` (sürümlü, atomik), temaya özel vurgu rengi ve okunabilirlik düzeltmesi (`taa-kur-tema` kontrast hesabı), hareket Sistem/Azalt/Normal, ilk açılışta 3 sahnelik tanıtım. Tercih artık tarayıcıda değil veri kökünde. Logo Üç Çatı olarak kaldı.

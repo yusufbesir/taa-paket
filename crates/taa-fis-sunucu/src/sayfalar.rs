@@ -14,7 +14,7 @@ const TELEFON_HTML: &str = include_str!("sayfa/telefon.html");
 /// Uygulama simgesi (Yaka), PWA bildirgesi ve sekme simgesi.
 pub const SIMGE: &str = include_str!("sayfa/simge.svg");
 
-pub const MANIFEST: &str = r##"{"name":"TAA Terzi Takip","short_name":"Terzi Takip","lang":"tr","start_url":"/telefon","scope":"/","display":"standalone","background_color":"#f3ede1","theme_color":"#2b2620","icons":[{"src":"/simge.svg","sizes":"any","type":"image/svg+xml","purpose":"any"}]}"##;
+pub const MANIFEST: &str = r##"{"name":"TAA Terzi Takip","short_name":"Terzi Takip","lang":"tr","start_url":"/telefon","scope":"/","display":"standalone","background_color":"#FFFFFF","theme_color":"#0B3BD6","icons":[{"src":"/simge.svg","sizes":"any","type":"image/svg+xml","purpose":"any"}]}"##;
 
 fn birlestir(s: &str) -> String {
     s.replace("/*@TEMA@*/", TEMA_CSS)
@@ -38,4 +38,57 @@ pub fn kacis(s: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&#39;")
+}
+
+#[cfg(test)]
+mod testler {
+    use super::*;
+
+    #[test]
+    fn sayfalar_ortak_jetonu_ve_alti_temayi_tasir() {
+        for s in [masaustu(), telefon()] {
+            assert!(!s.contains("/*@TEMA@*/") && !s.contains("/*@ORTAK@*/"));
+            for t in ["kocan", "tebesir", "aski", "cozgu", "civit", "keten"] {
+                assert!(s.contains(&format!("html[data-tema=\"{t}\"]")), "{t}");
+            }
+            assert!(s.contains("taa:terzitakip:"));
+            assert!(s.contains("prefers-reduced-motion"));
+        }
+        // Telefon: eşleştirme belirteci ve çevrimdışı kuyruk anahtarları korunur.
+        let t = telefon();
+        assert!(t.contains("taa_tok") && t.contains("taa_kuyruk"));
+        assert!(t.contains("BarcodeDetector"));
+    }
+
+    #[test]
+    fn dis_kaynak_yok() {
+        for s in [masaustu(), telefon()] {
+            for k in [
+                "<script src",
+                "<link rel=\"stylesheet\"",
+                "@import",
+                "fonts.googleapis",
+                "cdn.",
+            ] {
+                assert!(!s.contains(k), "dış kaynak: {k}");
+            }
+            // Yalnız SVG ad alanı ve yerel adresler; başka http(s) bağlantısı yok.
+            let dis = s
+                .match_indices("http")
+                .filter(|(i, _)| {
+                    let r = &s[*i..(*i + 40).min(s.len())];
+                    !r.starts_with("http://www.w3.org/")
+                })
+                .count();
+            assert_eq!(dis, 0, "sayfada dış adres var");
+        }
+    }
+
+    #[test]
+    fn duzenleyen_fise_basilmaz() {
+        let m = masaustu();
+        let i = m.find("function fis80(").unwrap();
+        let govde = &m[i..i + m[i..].find("function onizle(").unwrap()];
+        assert!(!govde.contains("duzenleyen") && !govde.contains("Düzenleyen"));
+    }
 }

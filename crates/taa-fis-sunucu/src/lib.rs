@@ -859,7 +859,12 @@ impl Uygulama {
                 // Mağaza telefonu/bilgisayarı usta imzası atamaz; okutan kişi seçilmeden imza olmaz.
                 // Kişi kimliği havuz kişi kaydından gelecek (KM2); şimdilik biçimi denetlenir.
                 let rol = v["rol"].as_str().unwrap_or("teslim-eden");
-                let okutan = v["okutan"].as_str().unwrap_or("").trim();
+                // Kişisel telefonda (kullanıcı girişi) imzalayan her zaman giren kişidir.
+                let okutan = if cihaz.kisi_id.is_empty() {
+                    v["okutan"].as_str().unwrap_or("").trim()
+                } else {
+                    cihaz.kisi_id.as_str()
+                };
                 if okutan.is_empty() {
                     return Yanit::hata(400, "okutan personel seçilmeli");
                 }
@@ -1920,6 +1925,17 @@ mod testler {
         let no = json_of(&y)["no"].as_str().unwrap().to_string();
         let f = json_of(&u.isle(&ist("GET", &format!("/api/fis/{no}"), Some(&t), "", false)));
         assert_eq!(f["duzenleyen_id"], "K-test0002");
+        // İmzada da imzalayan giren kişidir.
+        let y = u.isle(&ist(
+            "POST",
+            &format!("/api/fis/{no}/imza"),
+            Some(&t),
+            r#"{"rol":"teslim-eden","okutan":"K-test0001"}"#,
+            false,
+        ));
+        assert_eq!(y.kod, 200);
+        let f = json_of(&u.isle(&ist("GET", &format!("/api/fis/{no}"), Some(&t), "", false)));
+        assert_eq!(f["imzalar"][0]["okutan_kisi_id"], "K-test0002");
         // Mağaza telefonu "tel" girişidir.
         let t2 = esles(&u);
         assert_eq!(

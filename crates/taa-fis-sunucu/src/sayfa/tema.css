@@ -1,1 +1,85 @@
-/* tema.css */
+/* TAA Terzi Takip tema jetonları: masaüstü program ve telefon sitesi ortak (src/sayfa/tema.css).
+   Kaynak: ekip-2026-11-17 onaylı taslak (KARAR.md, tur2/KARAR-TEMA2.md). Altı tema: kocan (varsayılan), tebesir, aski,
+   cozgu, civit, keten; html[data-tema][data-ton]. Bileşen CSS'i yalnız --tk-* jetonlarını kullanır. */
+/* ============ 1. ORTAK SÖZLEŞME: varsayılanlar (telefon sitesiyle aynı) ============ */
+:root{
+  --tk-g1:4px;--tk-g2:8px;--tk-g3:12px;--tk-g4:16px;--tk-g5:24px;--tk-g6:32px;
+  --tk-hedef:48px;--tk-hedef-ana:56px;--tk-yazi:16px;
+  --tk-fb:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --tk-fh:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --tk-fm:ui-monospace,"SF Mono",Consolas,"Roboto Mono",monospace;
+  --tk-kenar:1px;--tk-yogunluk:1;--tk-sure:160ms;--tk-egri:ease;
+  /* termal fiş: temadan bağımsız, tek renk siyah, beyaz kâğıt */
+  --tk-kagit:#FFFFFF;--tk-murekkep:#000000;
+}
+/* ============ 2. TEMALAR: yalnız jeton (KARAR.md ile birebir) ============ */
+html[data-tema="kocan"],[data-onizleme="kocan"]{
+  --tk-bg:#FFFFFF;--tk-panel:#FFFFFF;--tk-panel2:#F1F1EE;--tk-line:#111111;
+  --tk-tx:#0A0A0A;--tk-mut:#4A4A4A;--tk-ac:#0B3BD6;--tk-ac-fg:#FFFFFF;
+  --tk-ok:#0B6B2E;--tk-uyari:#8A4B00;--tk-hata:#B00020;
+  --tk-r:4px;--tk-yazi:18px;--tk-gol:4px 4px 0 var(--tk-line);
+  --tk-kenar:2px;--tk-yogunluk:1;--tk-sure:120ms;--tk-egri:steps(3,end);
+}
+html[data-tema="kocan"][data-ton="koyu"]{
+  --tk-bg:#000000;--tk-panel:#0D0D0D;--tk-panel2:#1C1C1C;--tk-line:#FFFFFF;
+  --tk-tx:#FFFFFF;--tk-mut:#C9C9C9;--tk-ac:#8FB0FF;--tk-ac-fg:#000B33;
+  --tk-ok:#5BE08A;--tk-uyari:#FFC14D;--tk-hata:#FF8A8A;
+}
+html[data-tema="tebesir"],[data-onizleme="tebesir"]{
+  --tk-bg:#1F1E22;--tk-panel:#2A292E;--tk-panel2:#35343A;--tk-line:#817D8A;
+  --tk-tx:#F3F0E8;--tk-mut:#B5B0A6;--tk-ac:#FF9B85;--tk-ac-fg:#2B1009;
+  --tk-ok:#7FD6A4;--tk-uyari:#F2C94C;--tk-hata:#FF8585;
+  --tk-r:10px;--tk-yazi:16px;--tk-gol:none;
+  --tk-fh:"Iowan Old Style","Palatino Linotype",Georgia,"Noto Serif",serif;
+  --tk-kenar:1px;--tk-yogunluk:.875;--tk-sure:180ms;--tk-egri:cubic-bezier(.3,0,.2,1);
+}
+html[data-tema="aski"],[data-onizleme="aski"]{
+  --tk-bg:#F3EEE4;--tk-panel:#FFFDF8;--tk-panel2:#E9E2D4;--tk-line:#857E6D;
+  --tk-tx:#23302D;--tk-mut:#4F5B57;--tk-ac:#0F5C55;--tk-ac-fg:#FFFFFF;
+  --tk-ok:#17683A;--tk-uyari:#855000;--tk-hata:#A82F25;
+  --tk-r:22px;--tk-yazi:17px;--tk-gol:0 1px 2px rgba(35,48,45,.08),0 10px 24px rgba(35,48,45,.10);
+  --tk-fh:ui-rounded,"SF Pro Rounded",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --tk-kenar:1px;--tk-yogunluk:1.125;--tk-sure:320ms;--tk-egri:cubic-bezier(.2,.9,.25,1.1);
+}
+html[data-tema="aski"][data-ton="koyu"]{
+  --tk-bg:#17201E;--tk-panel:#1F2A27;--tk-panel2:#293632;--tk-line:#74857F;
+  --tk-tx:#ECE7DB;--tk-mut:#A5B0AA;--tk-ac:#6FD0C2;--tk-ac-fg:#06231F;
+  --tk-ok:#7FD6A4;--tk-uyari:#F0C060;--tk-hata:#FF8F80;
+  --tk-gol:0 1px 2px rgba(0,0,0,.4),0 10px 24px rgba(0,0,0,.35);
+}
+/* ---- Tur 2: üç yeni tema (tur2/KARAR-TEMA2.md ile birebir) ---- */
+html[data-tema="cozgu"],[data-onizleme="cozgu"]{
+  --tk-bg:#EBEFF1;--tk-panel:#F8FAFB;--tk-panel2:#DDE3E7;--tk-line:#66727C;
+  --tk-tx:#1B2127;--tk-mut:#49545E;--tk-ac:#5A2CA0;--tk-ac-fg:#FFFFFF;
+  --tk-ok:#1E6140;--tk-uyari:#7A4E00;--tk-hata:#A3263F;
+  --tk-r:0px;--tk-yazi:16px;--tk-gol:none;
+  --tk-fh:Consolas,"Cascadia Mono",ui-monospace,"SF Mono","Roboto Mono",monospace;
+  --tk-kenar:1px;--tk-yogunluk:.85;--tk-sure:80ms;--tk-egri:cubic-bezier(.2,0,0,1);
+}
+html[data-tema="cozgu"][data-ton="koyu"]{
+  --tk-bg:#14181C;--tk-panel:#1C2227;--tk-panel2:#262E35;--tk-line:#7C8894;
+  --tk-tx:#E9EDF0;--tk-mut:#A9B4BE;--tk-ac:#B9A2F5;--tk-ac-fg:#1B0B3D;
+  --tk-ok:#7FD6A4;--tk-uyari:#F0C060;--tk-hata:#FF8F9A;
+}
+html[data-tema="civit"],[data-onizleme="civit"]{
+  --tk-bg:#1B2233;--tk-panel:#252E43;--tk-panel2:#303B55;--tk-line:#8E9BB8;
+  --tk-tx:#EEF1F7;--tk-mut:#B9C2D6;--tk-ac:#E2B659;--tk-ac-fg:#231A05;
+  --tk-ok:#8FD6A8;--tk-uyari:#FF9F6E;--tk-hata:#FF8FAE;
+  --tk-r:6px;--tk-yazi:16px;--tk-gol:inset 0 1px 0 rgba(255,255,255,.14);
+  --tk-fh:Bahnschrift,"DIN Alternate","Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
+  --tk-kenar:1px;--tk-yogunluk:1;--tk-sure:140ms;--tk-egri:cubic-bezier(.16,1,.3,1);
+}
+html[data-tema="keten"],[data-onizleme="keten"]{
+  --tk-bg:#D2CBBB;--tk-panel:#E6E1D5;--tk-panel2:#DCD6C8;--tk-line:#6A6355;
+  --tk-tx:#211E18;--tk-mut:#474238;--tk-ac:#6A1B3D;--tk-ac-fg:#FFFFFF;
+  --tk-ok:#1D5230;--tk-uyari:#633E00;--tk-hata:#8E2A0A;
+  --tk-r:14px;--tk-yazi:17px;--tk-gol:0 1px 2px rgba(33,30,24,.22);
+  --tk-fh:"Segoe UI Semilight","Segoe UI Light","Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
+  --tk-kenar:1px;--tk-yogunluk:1.05;--tk-sure:220ms;--tk-egri:cubic-bezier(.22,1,.36,1);
+}
+html[data-tema="keten"][data-ton="koyu"]{
+  --tk-bg:#2A2620;--tk-panel:#353028;--tk-panel2:#413B31;--tk-line:#9A9080;
+  --tk-tx:#F1EBDD;--tk-mut:#C2B9A8;--tk-ac:#F0A3B8;--tk-ac-fg:#3A0A1C;
+  --tk-ok:#8FD6A0;--tk-uyari:#F0C060;--tk-hata:#FF9A7A;
+  --tk-gol:0 1px 2px rgba(0,0,0,.45);
+}
