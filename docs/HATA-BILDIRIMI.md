@@ -20,5 +20,7 @@ Kuyruk dosyası şifrelenmez; güvence temizlemedir (şifreli kuyruk, ortak biç
 Cihaz imzası + Bearer (diğer uçlar gibi). Yanıt 2xx; kayıt `hata_raporlari` tablosunda `(program, parmak_izi)` ile birleşir, sayaç artar. TAA Çatı'da "Hatalar" listesi.
 
 ## Yaygınlaştırma durumu
+- Çatı: `taa-cati hata liste [--program]` ve panelde "Hatalar" sekmesi (`GET /v1/hata-raporu`, `gunluk.gor`).
+- Sunucu ucu: tutaa #45. Electron: tutaa #46, taarkod #8, dosya-donusturucu #14, fiyat-etiketi #12 (hata-bildirimi.js).
 - Rust (bu depo): taa-kur, taa-cati, taa-donustur, taa-fis-sunucu, taa-guncelle, taa-ocr, taa-rapor, taa-raporlar, taa-yedek bağlandı (kimlik/cihaz/imza/yol/kuyruk küçük araçlar, bağlanmadı). Gönderim: `taa-kuyruk gonder` tüm `hata-*` kuyruklarını da yollar.
 - Electron programları (Tutaa, Etiket, TaaRkod, TaaDön) ve Python/diğer: aynı biçimi üreten küçük JS yardımcı, kendi depolarında.

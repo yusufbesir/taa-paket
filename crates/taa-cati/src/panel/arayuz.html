@@ -327,12 +327,12 @@ let bt;function bildir(m,hata){const b=$('#bildirim');b.textContent=m;b.classLis
 const hataBildir=e=>bildir(e.message||String(e),true);
 
 // ---- durum ----
-let oturum=null,saglik=null,veri={cihazlar:[],kullanicilar:[],subeler:[],yetkiler:[],roller:[],olaylar:[],pinler:[]};
+let oturum=null,saglik=null,veri={cihazlar:[],kullanicilar:[],subeler:[],yetkiler:[],roller:[],olaylar:[],pinler:[],hatalar:[]};
 let suzgec='bekliyor',arama='',sor=null,gunlukIslem='',gunlukSon=null;
 const izinli=i=>!!(oturum&&oturum.izinler&&oturum.izinler.includes(i));
 const EKRANLAR=[
   ['genel','Genel bakış','◐',null],['cihazlar','Cihazlar','▣','cihaz.yonet'],['kullanicilar','Kullanıcılar','◍','kullanici.yonet'],
-  ['subeler','Şubeler','⌂','kullanici.yonet'],['yetkiler','Program yetkileri','▦','program.yonet'],['pinler','Yönetici PIN\'leri','✱','program.yonet'],['gunluk','Günlük','≡','gunluk.gor'],['ayarlar','Ayarlar','⚙',null]
+  ['subeler','Şubeler','⌂','kullanici.yonet'],['yetkiler','Program yetkileri','▦','program.yonet'],['pinler','Yönetici PIN\'leri','✱','program.yonet'],['gunluk','Günlük','≡','gunluk.gor'],['hatalar','Hatalar','⚠','gunluk.gor'],['ayarlar','Ayarlar','⚙',null]
 ];
 const BILINEN=['terzitakip','tutaa','taarkod','taadon','taa-etiket','taa-giydir','taa-video'];
 const PROGRAM_AD={terzitakip:'TerziTakip',tutaa:'Tutaa',taarkod:'TaaRkod',taadon:'TaaDön','taa-etiket':'TAA Etiket','taa-giydir':'TAA Giydir','taa-video':'TAA Video Yapıcı'};
@@ -349,6 +349,7 @@ async function yukle(ne){
   if(ne==='hepsi'||ne==='yetki')isler.push(al('yetkiler','/api/yetkiler','program.yonet'));
   if(ne==='hepsi'||ne==='pin')isler.push(al('pinler','/api/pinler','program.yonet'));
   if(ne==='hepsi'||ne==='gunluk')isler.push(al('olaylar','/api/gunluk?limit=50'+(gunlukIslem?'&islem='+encodeURIComponent(gunlukIslem):''),'gunluk.gor'));
+  if(ne==='hepsi'||ne==='hatalar')isler.push(al('hatalar','/api/hatalar','gunluk.gor'));
   if(ne==='hepsi')isler.push(istek('/api/saglik').then(v=>saglik=v).catch(()=>saglik={ulasildi:false}));
   await Promise.all(isler);
 }
@@ -453,6 +454,11 @@ const SAYFA={
     <div class="arac"><input class="ara" style="margin-left:0" id="gunluk-islem" placeholder="İşleme göre süz (ör. giris)" value="${esc(gunlukIslem)}" aria-label="İşlem süzgeci"><button class="dugme" data-gunluk-suz>Süz</button><span style="flex:1"></span><button class="dugme" data-yenile="gunluk">Yenile</button></div>
     <div class="kart">${veri.olaylar.length?veri.olaylar.map(o=>`<div class="satir"><span class="mono muted" style="font-size:12px;min-width:120px">${esc(zaman(o.zaman))}</span><div class="ana"><b>${esc(o.islem)}</b><span>${esc(subeAd(o.sube_id))}${o.kullanici_id!=null?' · kullanıcı '+esc(o.kullanici_id):''}${o.ayrinti?' · '+esc(typeof o.ayrinti==='string'?o.ayrinti:JSON.stringify(o.ayrinti)):''}</span></div></div>`).join(''):bosDurum('Olay yok.')}</div>
     ${veri.olaylar.length>=50?'<div><button class="dugme" data-daha>Daha eski olaylar</button></div>':''}`;
+  },
+  hatalar(){
+    return ust('Hatalar','Programlardan gelen çökme ve hata raporları · kişisel veri içermez')+`
+    <div class="arac"><span style="flex:1"></span><button class="dugme" data-yenile="hatalar">Yenile</button></div>
+    <div class="kart">${veri.hatalar.length?veri.hatalar.map(h=>`<div class="satir"><span class="mono muted" style="font-size:12px;min-width:120px">${esc(zaman(h.son_zaman))}</span><div class="ana"><b>${esc(PROGRAM_AD[h.program]||h.program)} ${esc(h.surum)} · ${h.tur==='cokme'?'çökme':'hata'}${h.tekrar>1?' ×'+esc(h.tekrar):''}</b><span class="mono">${esc(h.yer)} ${esc(h.mesaj)}</span></div></div>`).join(''):bosDurum('Hata raporu yok.')}</div>`;
   },
   pinler(){
     const programlar=[...new Set([...BILINEN,...veri.pinler.map(p=>p.program)])];
