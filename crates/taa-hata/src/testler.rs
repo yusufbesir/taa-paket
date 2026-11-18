@@ -4,7 +4,9 @@ use taa_kuyruk::GonderHata;
 
 #[test]
 fn temizle_sirlari_ve_kisisel_veriyi_cikarir() {
-    let t = temizle(r#"parola=abc123 ve bearer eyJhbGciOiJIUzI1NiJ9abcdefghijkl ali@x.com C:\Users\Yusuf\gizli\tutaa.db 05321234567 "Ali Yılmaz""#);
+    let t = temizle(
+        r#"parola=abc123 ve bearer eyJhbGciOiJIUzI1NiJ9abcdefghijkl ali@x.com C:\Users\Yusuf\gizli\tutaa.db 05321234567 "Ali Yılmaz""#,
+    );
     assert!(!t.contains("abc123"), "{t}");
     assert!(!t.contains("eyJ"), "{t}");
     assert!(!t.contains("ali@x.com"), "{t}");
@@ -16,19 +18,50 @@ fn temizle_sirlari_ve_kisisel_veriyi_cikarir() {
 
 #[test]
 fn ayni_hata_ayni_parmak_izi() {
-    let a = Rapor::yeni("p", "1.0", Tur::Cokme, "src/a.rs:10", "indeks 5 sınır dışı", &[]);
-    let b = Rapor::yeni("p", "1.0", Tur::Cokme, "src/a.rs:10", "indeks 9 sınır dışı", &[]);
+    let a = Rapor::yeni(
+        "p",
+        "1.0",
+        Tur::Cokme,
+        "src/a.rs:10",
+        "indeks 5 sınır dışı",
+        &[],
+    );
+    let b = Rapor::yeni(
+        "p",
+        "1.0",
+        Tur::Cokme,
+        "src/a.rs:10",
+        "indeks 9 sınır dışı",
+        &[],
+    );
     assert_eq!(a.parmak_izi, b.parmak_izi);
-    let c = Rapor::yeni("p", "1.0", Tur::Cokme, "src/b.rs:10", "indeks 9 sınır dışı", &[]);
+    let c = Rapor::yeni(
+        "p",
+        "1.0",
+        Tur::Cokme,
+        "src/b.rs:10",
+        "indeks 9 sınır dışı",
+        &[],
+    );
     assert_ne!(a.parmak_izi, c.parmak_izi);
 }
 
 #[test]
 fn kuyruga_yazar_tekrarda_tek_kayit() {
     let kok = taa_dosya::gecici_klasor().unwrap();
-    let r = Rapor::yeni("taa-x", "1.0", Tur::Hata, "", "bir hata", &["satır".to_string()]);
+    let r = Rapor::yeni(
+        "taa-x",
+        "1.0",
+        Tur::Hata,
+        "",
+        "bir hata",
+        &["satır".to_string()],
+    );
     assert!(matches!(kuyruga_yaz(&kok, &r).unwrap(), Ekleme::Eklendi(_)));
-    assert!(matches!(kuyruga_yaz(&kok, &r).unwrap(), Ekleme::ZatenVar(_)));
+    assert!(matches!(
+        kuyruga_yaz(&kok, &r).unwrap(),
+        Ekleme::ZatenVar(_)
+    ));
 }
 
 struct Sahte(RefCell<Vec<Value>>);

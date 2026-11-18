@@ -58,8 +58,21 @@ fn parca_ayir(c: char) -> bool {
 
 /// Anahtar sözcüklerden sonra gelen değerin sır sayılacağı alan adları.
 const SIR_ANAHTARLARI: &[&str] = &[
-    "parola", "sifre", "şifre", "password", "pass", "pin", "token", "jeton", "anahtar", "key", "secret",
-    "bearer", "authorization", "oturum", "cookie",
+    "parola",
+    "sifre",
+    "şifre",
+    "password",
+    "pass",
+    "pin",
+    "token",
+    "jeton",
+    "anahtar",
+    "key",
+    "secret",
+    "bearer",
+    "authorization",
+    "oturum",
+    "cookie",
 ];
 
 fn sir_anahtari_mi(s: &str) -> bool {
@@ -153,11 +166,15 @@ fn sozcuk_temizle(s: &str) -> String {
         return s.replace(t, dosya_adi(t));
     }
     let rakam = t.chars().filter(|c| c.is_ascii_digit()).count();
-    if rakam >= 4 && t.chars().all(|c| c.is_ascii_digit() || matches!(c, '+' | '-' | '.' | '/' | ' ')) {
+    if rakam >= 4
+        && t.chars()
+            .all(|c| c.is_ascii_digit() || matches!(c, '+' | '-' | '.' | '/' | ' '))
+    {
         return s.replace(t, "<sayi>");
     }
     if t.chars().count() >= 24
-        && t.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '/' | '=' | '-' | '_'))
+        && t.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '/' | '=' | '-' | '_'))
     {
         return s.replace(t, "<belirtec>");
     }
@@ -183,7 +200,14 @@ fn parmak_izi_hesapla(program: &str, tur: Tur, yer: &str, mesaj: &str) -> String
 
 impl Rapor {
     /// Ham veriden temizlenmiş rapor kurar. `yer`: panikte `dosya:satır`, yoksa boş.
-    pub fn yeni(program: &str, surum: &str, tur: Tur, yer: &str, mesaj: &str, son_satirlar: &[String]) -> Rapor {
+    pub fn yeni(
+        program: &str,
+        surum: &str,
+        tur: Tur,
+        yer: &str,
+        mesaj: &str,
+        son_satirlar: &[String],
+    ) -> Rapor {
         let yer = kisalt(&temizle(yer), 120);
         let mesaj = kisalt(&temizle(mesaj), MESAJ_EN_COK);
         let basla = son_satirlar.len().saturating_sub(SATIR_EN_COK);
@@ -192,7 +216,15 @@ impl Rapor {
             .map(|s| kisalt(&temizle(s), SATIR_UZUNLUK))
             .collect();
         let parmak_izi = parmak_izi_hesapla(program, tur, &yer, &mesaj);
-        Rapor { program: program.to_string(), surum: surum.to_string(), tur, yer, mesaj, son_satirlar, parmak_izi }
+        Rapor {
+            program: program.to_string(),
+            surum: surum.to_string(),
+            tur,
+            yer,
+            mesaj,
+            son_satirlar,
+            parmak_izi,
+        }
     }
 
     /// Sunucuya gidecek gövde.
@@ -214,7 +246,11 @@ impl Rapor {
 
 fn gun_eki() -> String {
     // "YYYY-AA-GG..." -> "YYYYAAGG"
-    zaman::simdi().chars().take(10).filter(|c| c.is_ascii_digit()).collect()
+    zaman::simdi()
+        .chars()
+        .take(10)
+        .filter(|c| c.is_ascii_digit())
+        .collect()
 }
 
 /// Raporu yerel kuyruğa yazar. Aynı hata aynı gün ikinci kez eklenmez (`Ekleme::ZatenVar`).
@@ -249,12 +285,19 @@ static AYAR: OnceLock<Ayar> = OnceLock::new();
 /// Program başında bir kez çağrılır: panik kancasını kurar. Kanca yalnız yerel kuyruğa yazar, ağa gitmez
 /// ve kendisi asla paniklemez. Mevcut kanca (varsa) sonra çalışır.
 pub fn kur(program: &str, surum: &str, kok: impl Into<PathBuf>) {
-    let _ = AYAR.set(Ayar { program: program.to_string(), surum: surum.to_string(), kok: kok.into() });
+    let _ = AYAR.set(Ayar {
+        program: program.to_string(),
+        surum: surum.to_string(),
+        kok: kok.into(),
+    });
     let onceki = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |bilgi| {
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             if let Some(a) = AYAR.get() {
-                let yer = bilgi.location().map(|l| format!("{}:{}", l.file(), l.line())).unwrap_or_default();
+                let yer = bilgi
+                    .location()
+                    .map(|l| format!("{}:{}", l.file(), l.line()))
+                    .unwrap_or_default();
                 let mesaj = if let Some(s) = bilgi.payload().downcast_ref::<&str>() {
                     (*s).to_string()
                 } else if let Some(s) = bilgi.payload().downcast_ref::<String>() {
