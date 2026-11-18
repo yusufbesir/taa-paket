@@ -12,6 +12,7 @@ mod direktif;
 mod ekran;
 #[cfg_attr(not(windows), allow(dead_code))]
 mod ilerleme;
+mod is_nesnesi;
 #[cfg_attr(not(windows), allow(dead_code))]
 mod kartlar;
 #[cfg(windows)]
@@ -155,6 +156,7 @@ fn program_kur(hedef: &Path, ad: &str, ekran: &Ekran) -> bool {
     ekran.g(|d| d.program_ekle(ad, false));
     let mut son_hata = String::new();
     let sonuc = Command::new(exe).args(["kur", ad]).env("TAA_KOK", hedef).env("TAA_ILERLEME", "1").stderr(Stdio::piped()).spawn().and_then(|mut c| {
+        is_nesnesi::bagla(&c);
         if let Some(e) = c.stderr.take() {
             let mut r = io::BufReader::new(e);
             let mut b = Vec::new();
