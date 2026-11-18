@@ -18,6 +18,11 @@ path = "src/lib.rs"
 name = "taa-kimlik"
 path = "src/main.rs"
 
+# Pencere açmadan arka planda `taa-kimlik gonder` çalıştıran küçük başlatıcı (zamanlanmış görev bunu çağırır).
+[[bin]]
+name = "taa-kimlik-arka"
+path = "src/arka_main.rs"
+
 [dependencies]
 serde_json = "1"
 taa-dosya = { path = "../taa-dosya" }

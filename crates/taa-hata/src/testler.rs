@@ -83,3 +83,15 @@ fn bekleyenleri_gonderir() {
     assert_eq!(g.0.borrow()[0]["program"], "taa-x");
     assert_eq!(bekleyenleri_gonder(&kok, &g), 0);
 }
+
+#[test]
+fn kuyruk_dosyasinda_mesaj_acik_yazilmaz() {
+    let kok = taa_dosya::gecici_klasor().unwrap();
+    let r = Rapor::yeni("taa-z", "1.0", Tur::Hata, "", "benzersizifade", &[]);
+    kuyruga_yaz(&kok, &r).unwrap();
+    let ham = std::fs::read_to_string(kok.join("kuyruk/hata-taa-z/giden.jsonl")).unwrap();
+    assert!(
+        !ham.contains("benzersizifade") && ham.contains("_sifreli"),
+        "{ham}"
+    );
+}
