@@ -1,0 +1,12 @@
+# Sahip: Yusuf. yazan: [Claude#hata-bildirimi 2026-11-18]
+ad = "taa-hata"
+surum = "0.1.0"
+arayuz = "1"
+gerektirir = { "taa-dosya" = "1", "taa-kuyruk" = "1" }
+ozellikler = ["hata"]
+program = "ortak"
+sunar = ["hata.rapor@1"]
+ister = []
+veri_sahibi = []
+veri_okur = []
+ayar_alani = "moduller.taa-hata"
