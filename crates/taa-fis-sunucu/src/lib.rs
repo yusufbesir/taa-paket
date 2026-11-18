@@ -25,7 +25,7 @@ pub const GOVDE_SINIRI: usize = 64 * 1024;
 /// Ürün fotoğrafı (JPEG) için gövde sınırı.
 pub const FOTO_SINIRI: usize = 3 * 1024 * 1024;
 const EN_COK_FOTO: usize = 6;
-const KOD_OMRU: u64 = 600;
+const KOD_OMRU: u64 = 300;
 const KILIT_SURESI: u64 = 60;
 const EN_COK_YANLIS: u32 = 5;
 /// Yönetici oturumu bu kadar saniye işlem olmazsa kapanır.
@@ -114,6 +114,21 @@ pub struct Uygulama {
     yonetici_oturum: Mutex<Vec<(String, u64)>>,
     /// Cihaz kimliği -> son görülme (bellekte; yeniden başlatınca sıfırlanır).
     son_gorulme: Mutex<std::collections::BTreeMap<String, u64>>,
+    /// Birinci kodu girmiş, ikinci kodu bekleyen telefonlar (çifte kod eşleştirme).
+    bekleyen: Mutex<Vec<Bekleyen>>,
+    yanlis2: Mutex<u32>,
+}
+
+/// Çifte kod eşleştirmede ikinci kodu bekleyen telefon. Kodlar yalnız bellekte durur, günlüğe yazılmaz.
+struct Bekleyen {
+    id: String,
+    ad: String,
+    /// Kodla bağlanacak kişi (boşsa mağaza telefonu).
+    kisi_id: String,
+    kod2: String,
+    son: u64,
+    /// Yönetici onayından sonra telefonun bir kez alacağı belirteç ve cihaz kimliği.
+    tamam: Option<(String, String)>,
 }
 
 /// Unix saniyesi (UTC).
@@ -176,6 +191,8 @@ impl Uygulama {
             yanlis: Mutex::new((0, 0)),
             yonetici_oturum: Mutex::new(Vec::new()),
             son_gorulme: Mutex::new(Default::default()),
+            bekleyen: Mutex::new(Vec::new()),
+            yanlis2: Mutex::new(0),
         }
     }
 
@@ -275,6 +292,8 @@ impl Uygulama {
             ("POST", ["api", "kurulum", "esitle"]) => self.kurulum_esitle(i),
             ("POST", ["api", "yonetim", "sube"]) => self.yonetim_sube(i),
             ("POST", ["api", "eslestir"]) => self.eslestir(i),
+            ("GET", ["api", "eslestir", id]) => self.eslestir_durumu(id),
+            ("POST", ["api", "yonetim", "eslestir", "onayla"]) => self.eslestir_onayla(i),
             ("GET", ["yonetim"]) => {
                 if !i.yerel {
                     return Yanit::hata(403, "yönetim yalnız bu bilgisayardan açılır");
@@ -403,15 +422,99 @@ impl Uygulama {
             Ok(k) => k,
             Err(e) => return Yanit::hata(403, &e),
         };
+        let ad = ad.trim();
+        if ad.is_empty() {
+            return Yanit::hata(400, "telefon adı yazılmalı");
+        }
+        let (id, kod2) = match (cihaz::yeni_token(), cihaz::yeni_kod2()) {
+            (Ok(t), Ok(k)) => (t[..16].to_string(), k),
+            (Err(e), _) | (_, Err(e)) => return Yanit::hata(500, &e),
+        };
+        let simdi = self.simdi();
+        let mut b = match self.bekleyen.lock() {
+            Ok(b) => b,
+            Err(_) => return Yanit::hata(500, "kilit hatası"),
+        };
+        b.retain(|x| x.son > simdi);
+        b.push(Bekleyen {
+            id: id.clone(),
+            ad: ad.into(),
+            kisi_id,
+            kod2: kod2.clone(),
+            son: simdi + KOD_OMRU,
+            tamam: None,
+        });
+        Yanit::json(200, json!({ "id": id, "kod2": kod2 }))
+    }
+
+    /// Telefon ikinci kodun onaylanıp onaylanmadığını yoklar; belirteç yalnız bir kez verilir.
+    fn eslestir_durumu(&self, id: &str) -> Yanit {
+        let simdi = self.simdi();
+        let mut b = match self.bekleyen.lock() {
+            Ok(b) => b,
+            Err(_) => return Yanit::hata(500, "kilit hatası"),
+        };
+        b.retain(|x| x.son > simdi);
+        match b.iter().position(|x| x.id == id) {
+            None => Yanit::hata(
+                410,
+                "eşleştirme iptal oldu ya da süresi doldu; baştan başlayın",
+            ),
+            Some(n) if b[n].tamam.is_none() => Yanit::json(200, json!({ "durum": "bekliyor" })),
+            Some(n) => {
+                let x = b.remove(n);
+                let (token, cid) = x.tamam.unwrap_or_default();
+                Yanit::json(200, json!({ "durum": "tamam", "token": token, "id": cid }))
+            }
+        }
+    }
+
+    /// Yönetici, telefonda görünen ikinci kodu bu bilgisayarda (masaüstü "Telefonlar" ekranı) yazar.
+    /// Yalnız yerel ve yönetici oturumuyla. 5 yanlışta bekleyenler iptal.
+    pub(crate) fn eslestir_onayla(&self, i: &Istek) -> Yanit {
+        if !i.yerel {
+            return Yanit::hata(403, "eşleştirme yalnız bu bilgisayardan onaylanır");
+        }
+        if let Some(y) = self.yonetim_izni(i) {
+            return y;
+        }
+        let v: serde_json::Value = serde_json::from_slice(&i.govde).unwrap_or_default();
+        let kod2 = v["kod2"].as_str().unwrap_or("").trim().to_string();
+        let simdi = self.simdi();
+        let (mut b, mut y) = match (self.bekleyen.lock(), self.yanlis2.lock()) {
+            (Ok(b), Ok(y)) => (b, y),
+            _ => return Yanit::hata(500, "kilit hatası"),
+        };
+        b.retain(|x| x.son > simdi);
+        let Some(n) = b.iter().position(|x| x.tamam.is_none() && x.kod2 == kod2) else {
+            *y += 1;
+            if *y >= EN_COK_YANLIS {
+                *y = 0;
+                b.clear();
+                return Yanit::hata(
+                    403,
+                    "5 yanlış deneme: eşleştirme iptal edildi, telefonda baştan başlayın",
+                );
+            }
+            return Yanit::hata(403, "ikinci kod yanlış ya da süresi dolmuş");
+        };
+        *y = 0;
         let token = match cihaz::yeni_token() {
             Ok(t) => t,
             Err(e) => return Yanit::hata(500, &e),
         };
         match self
             .cihazlar()
-            .ekle(ad, &token, &tarih_iso(self.simdi()), &kisi_id)
+            .ekle(&b[n].ad, &token, &tarih_iso(simdi), &b[n].kisi_id)
         {
-            Ok(c) => Yanit::json(200, json!({ "token": token, "id": c.id })),
+            Ok(c) => {
+                // Kayıt: kim, hangi cihaz, şube, saat. Kodlar yazılmaz.
+                let sube = self.sube_kodu().unwrap_or_default();
+                let satir = json!({"olay": "eslestirme", "cihaz": c.id, "ad": b[n].ad, "kisi": b[n].kisi_id, "sube": sube, "tarih": tarih_iso(simdi), "saat": saat_iso(simdi)}).to_string();
+                let _ = taa_dosya::satir_ekle(&self.dizin.join("eslestirme.jsonl"), &satir);
+                b[n].tamam = Some((token, c.id.clone()));
+                Yanit::json(200, json!({ "tamam": true, "cihaz": c.id, "ad": b[n].ad }))
+            }
             Err(e) => Yanit::hata(400, &e),
         }
     }
@@ -1060,18 +1163,54 @@ mod testler {
 
     fn esles(u: &Uygulama) -> String {
         let k = kod_al(u);
+        kodla_esles(u, &k, "Ayşe'nin telefonu")
+    }
+
+    /// Çifte kod akışının tamamı: KOD 1 -> {id,kod2} -> yönetici onayı -> belirteç (bir kez).
+    fn kodla_esles(u: &Uygulama, k: &str, ad: &str) -> String {
         let y = u.isle(&ist(
             "POST",
             "/api/eslestir",
             None,
-            &format!(r#"{{"kod":"{k}","ad":"Ayşe'nin telefonu"}}"#),
+            &format!(r#"{{"kod":"{k}","ad":"{ad}"}}"#),
             false,
         ));
         assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
-        serde_json::from_slice::<serde_json::Value>(&y.govde).unwrap()["token"]
+        let j = serde_json::from_slice::<serde_json::Value>(&y.govde).unwrap();
+        assert!(j["token"].is_null(), "tek kodla belirteç verilmez");
+        let (id, kod2) = (j["id"].as_str().unwrap(), j["kod2"].as_str().unwrap());
+        // onaydan önce telefon beklemede
+        let d = u.isle(&ist("GET", &format!("/api/eslestir/{id}"), None, "", false));
+        assert!(String::from_utf8_lossy(&d.govde).contains("bekliyor"));
+        // yerel olmayan istek onaylayamaz
+        let o = u.isle(&ist(
+            "POST",
+            "/api/yonetim/eslestir/onayla",
+            None,
+            &format!(r#"{{"kod2":"{kod2}"}}"#),
+            false,
+        ));
+        assert_eq!(o.kod, 403);
+        let o = u.isle(&ist(
+            "POST",
+            "/api/yonetim/eslestir/onayla",
+            None,
+            &format!(r#"{{"kod2":"{kod2}"}}"#),
+            true,
+        ));
+        assert_eq!(o.kod, 200, "{}", String::from_utf8_lossy(&o.govde));
+        let d = u.isle(&ist("GET", &format!("/api/eslestir/{id}"), None, "", false));
+        let t = serde_json::from_slice::<serde_json::Value>(&d.govde).unwrap()["token"]
             .as_str()
             .unwrap()
-            .to_string()
+            .to_string();
+        // belirteç yalnız bir kez verilir
+        assert_eq!(
+            u.isle(&ist("GET", &format!("/api/eslestir/{id}"), None, "", false))
+                .kod,
+            410
+        );
+        t
     }
 
     const FIS: &str = r#"{"satis_danismani_id":"K-test0001","olcu_alan_id":"K-test0002","duzenleyen_id":"K-test0001","musteri":"Ayşe Çelik","telefon":"0532 123 45 67","kalemler":[{"urun":"Pantolon","islem":"paça kısalt"}],"teslim":"2099-01-01","ucret_kurus":50000,"on_odeme_kurus":10000}"#;
@@ -1225,6 +1364,61 @@ mod testler {
                 .kod,
             403
         ); // süresi doldu
+    }
+
+    #[test]
+    fn cifte_kod_yanlis_ikinci_kod_iptal_eder() {
+        let u = uyg();
+        let k = kod_al(&u);
+        let y = u.isle(&ist(
+            "POST",
+            "/api/eslestir",
+            None,
+            &format!(r#"{{"kod":"{k}","ad":"x"}}"#),
+            false,
+        ));
+        assert_eq!(y.kod, 200);
+        let j = serde_json::from_slice::<serde_json::Value>(&y.govde).unwrap();
+        let id = j["id"].as_str().unwrap().to_string();
+        let kod2 = j["kod2"].as_str().unwrap().to_string();
+        assert_eq!(kod2.len(), 4);
+        // birinci kod tek kullanımlık
+        let yine = u.isle(&ist(
+            "POST",
+            "/api/eslestir",
+            None,
+            &format!(r#"{{"kod":"{k}","ad":"y"}}"#),
+            false,
+        ));
+        assert_eq!(yine.kod, 403);
+        let yanlis = if kod2 == "0000" { "0001" } else { "0000" };
+        for _ in 0..5 {
+            let o = u.isle(&ist(
+                "POST",
+                "/api/yonetim/eslestir/onayla",
+                None,
+                &format!(r#"{{"kod2":"{yanlis}"}}"#),
+                true,
+            ));
+            assert_eq!(o.kod, 403);
+        }
+        // 5 yanlıştan sonra bekleyen eşleştirme iptal: doğru kod bile geçmez, telefon 410 alır
+        let o = u.isle(&ist(
+            "POST",
+            "/api/yonetim/eslestir/onayla",
+            None,
+            &format!(r#"{{"kod2":"{kod2}"}}"#),
+            true,
+        ));
+        assert_eq!(o.kod, 403);
+        assert_eq!(
+            u.isle(&ist("GET", &format!("/api/eslestir/{id}"), None, "", false))
+                .kod,
+            410
+        );
+        // kodlar kayda yazılmaz
+        let log = std::fs::read_to_string(u.dizin.join("eslestirme.jsonl")).unwrap_or_default();
+        assert!(!log.contains(&kod2) && !log.contains(&k));
     }
 
     #[test]
@@ -1923,14 +2117,7 @@ mod testler {
             .kod,
             422
         );
-        let y = u.isle(&ist(
-            "POST",
-            "/api/eslestir",
-            None,
-            &format!(r#"{{"kod":"{kod}","ad":"Kişisel"}}"#),
-            false,
-        ));
-        let t = json_of(&y)["token"].as_str().unwrap().to_string();
+        let t = kodla_esles(&u, &kod, "Kişisel");
         let o = json_of(&u.isle(&ist("GET", "/api/oturum", Some(&t), "", false)));
         assert_eq!(o["giris"], "kullanici");
         assert_eq!(o["kisi"]["ad"], "Deneme Usta");
@@ -2013,6 +2200,96 @@ mod testler {
                 _ => cati_pin::PinSonuc::Yanlis,
             }
         }
+    }
+
+    #[test]
+    fn cifte_kod_belirtec_yalniz_yonetici_onayindan_sonra() {
+        let mut u = uyg();
+        u.yonetici_kilidi = true;
+        u.pin = Box::new(SahtePin(Default::default()));
+        let gir = json_of(&u.isle(&pc("POST", "/api/yonetici/giris", r#"{"pin":"4821"}"#)));
+        let b = gir["belirtec"].as_str().unwrap().to_string();
+        let yon = |metot: &str, yol: &str, govde: &str| Istek {
+            yonetici: Some(b.clone()),
+            ..pc(metot, yol, govde)
+        };
+        // Telefonlar ekranı: kişiye bağlı KOD 1 + karekod.
+        let y = u.isle(&yon("GET", "/api/yonetim/eslestirme?kisi=K-test0002", ""));
+        assert_eq!(y.kod, 200);
+        let e = json_of(&y);
+        assert_eq!(e["gecerli_sn"], 300);
+        let kod = e["kod"].as_str().unwrap().to_string();
+        // Telefon KOD 1'i girer: belirteç yok, yalnız {id, kod2}.
+        let y = u.isle(&ist(
+            "POST",
+            "/api/eslestir",
+            None,
+            &format!(r#"{{"kod":"{kod}","ad":"Usta telefonu"}}"#),
+            false,
+        ));
+        assert_eq!(y.kod, 200);
+        let j = json_of(&y);
+        assert!(j.get("token").is_none() && j.get("belirtec").is_none());
+        let (id, kod2) = (
+            j["id"].as_str().unwrap().to_string(),
+            j["kod2"].as_str().unwrap().to_string(),
+        );
+        assert_eq!(kod2.len(), 4);
+        let durum =
+            |u: &Uygulama| u.isle(&ist("GET", &format!("/api/eslestir/{id}"), None, "", false));
+        let d = durum(&u);
+        assert_eq!(
+            (d.kod, json_of(&d)["durum"].clone()),
+            (200, json!("bekliyor"))
+        );
+        assert!(json_of(&d).get("token").is_none());
+        // Yönetici oturumu olmadan (yerel olsa bile) onay yok, belirteç yok.
+        let govde = format!(r#"{{"kod2":"{kod2}"}}"#);
+        assert_eq!(
+            u.isle(&pc("POST", "/api/yonetim/eslestir/onayla", &govde))
+                .kod,
+            401
+        );
+        assert_eq!(json_of(&durum(&u))["durum"], "bekliyor");
+        assert!(u.cihazlar().aktifler().unwrap().is_empty());
+        let c = json_of(&u.isle(&yon("GET", "/api/yonetim/cihazlar", "")));
+        assert_eq!(c["bekleyen"], 1);
+        assert!(!c.to_string().contains(&kod2));
+        // Uzaktan oturumla da olmaz.
+        let mut uzak = yon("POST", "/api/yonetim/eslestir/onayla", &govde);
+        uzak.yerel = false;
+        assert_eq!(u.isle(&uzak).kod, 403);
+        // Yönetici onaylar: telefon belirteci bir kez alır, cihaz kişiye bağlanır.
+        let o = u.isle(&yon("POST", "/api/yonetim/eslestir/onayla", &govde));
+        assert_eq!(o.kod, 200, "{}", String::from_utf8_lossy(&o.govde));
+        assert_eq!(json_of(&o)["ad"], "Usta telefonu");
+        let d = json_of(&durum(&u));
+        assert_eq!(d["durum"], "tamam");
+        let t = d["token"].as_str().unwrap().to_string();
+        assert_eq!(durum(&u).kod, 410);
+        let ot = json_of(&u.isle(&ist("GET", "/api/oturum", Some(&t), "", false)));
+        assert_eq!(ot["kisi"]["ad"], "Deneme Usta");
+        let c = json_of(&u.isle(&yon("GET", "/api/yonetim/cihazlar", "")));
+        assert_eq!(c["cihazlar"][0]["kisi_id"], "K-test0002");
+        // Kayıtta kodlar ve belirteç yok, kişi var.
+        let log = std::fs::read_to_string(u.dizin.join("eslestirme.jsonl")).unwrap();
+        assert!(log.contains("K-test0002"));
+        assert!(!log.contains(&kod2) && !log.contains(&kod) && !log.contains(&t));
+        // Süre: 5 dakika sonra bekleyen düşer (telefon 410 alır).
+        let k = json_of(&u.isle(&yon("GET", "/api/yonetim/eslestirme", "")))["kod"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let j = json_of(&u.isle(&ist(
+            "POST",
+            "/api/eslestir",
+            None,
+            &format!(r#"{{"kod":"{k}","ad":"Geç"}}"#),
+            false,
+        )));
+        u.ileri_sn.store(301, std::sync::atomic::Ordering::SeqCst);
+        let gec = format!("/api/eslestir/{}", j["id"].as_str().unwrap());
+        assert_eq!(u.isle(&ist("GET", &gec, None, "", false)).kod, 410);
     }
 
     #[test]

@@ -248,6 +248,11 @@ html[data-tema="keten"] .ekran.acik{animation-name:tb-giris}
 .foto{width:72px;height:72px;object-fit:cover;border-radius:var(--tk-r)}
 .kucuk{font-size:.875em}
 .esles-kod{font-family:var(--tk-fm);font-size:1.5em;letter-spacing:.2em;text-align:center}
+.kod2{font-family:var(--tk-fm);font-weight:700;font-size:clamp(48px,18vw,80px);letter-spacing:.18em;line-height:1;text-align:center;
+  padding:var(--tk-g4) 0 var(--tk-g4) .18em;border:var(--tk-kenar) solid var(--tk-line);border-radius:var(--tk-r);background:var(--tk-panel2);color:var(--tk-tx)}
+.bekle-isik{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--tk-ac);margin-right:var(--tk-g2);animation:tk-nabiz 1.2s ease-in-out infinite alternate}
+@keyframes tk-nabiz{from{opacity:.25}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){.bekle-isik{animation:none}}
 /* Çözgü, Çivit, Keten: imza çizgisi (telefon) */
 html[data-tema="cozgu"] h2{font-weight:600;letter-spacing:-.01em}
 html[data-tema="cozgu"] .imza-cizgi{height:3px;width:56px;background:var(--tk-ac)}
@@ -316,6 +321,25 @@ html[data-tema="keten"] .rozet{border-radius:8px}
       <button class="dugme ana" id="e-dugme">Eşleştir</button>
       <div class="mesaj hata" id="e-mesaj" role="status" hidden></div>
     </div>
+  </section>
+
+  <section class="ekran" data-ekran="esles2" aria-label="İkinci kod">
+    <div><h2>İkinci kod</h2><div class="imza-cizgi"></div></div>
+    <p>Bu kodu mağaza bilgisayarında <b>Telefonlar</b> ekranındaki <b>“telefonda görünen 4 haneli kod”</b> alanına yazdırın.</p>
+    <div class="kod2 mono" id="e2-kod" aria-live="polite">····</div>
+    <div class="kart duz yigin">
+      <div class="sira ara-bosluk"><span id="e2-durum"><span class="bekle-isik" aria-hidden="true"></span>Bilgisayarın onayı bekleniyor</span><b class="mono" id="e2-sure">5:00</b></div>
+      <p class="mut kucuk" style="margin:0">Onay gelmeden bu telefon siteye giremez. Kod 5 dakika geçerlidir.</p>
+      <div class="mesaj hata" id="e2-mesaj" role="status" hidden><svg class="sm"><use href="#i-x"/></svg><div></div></div>
+      <button class="dugme" id="e2-vazgec">Vazgeç, baştan başla</button>
+    </div>
+  </section>
+
+  <section class="ekran" data-ekran="esles3" aria-label="Eşleşti">
+    <div><h2>Eşleşti</h2><div class="imza-cizgi"></div></div>
+    <div class="mesaj tamam" role="status"><svg class="sm"><use href="#i-onay"/></svg><div>Bu telefon mağaza bilgisayarına bağlandı.</div></div>
+    <p class="mut">Hızlı açmak için tarayıcı menüsünden <b>Ana Ekrana Ekle</b> deyin.</p>
+    <button class="dugme ana" id="e3-devam">Devam</button>
   </section>
 
   <!-- ANA -->
@@ -529,22 +553,38 @@ html[data-tema="keten"] .rozet{border-radius:8px}
   /* ---------- yönlendirme ---------- */
   var EKRAN='ana', ACIK_NO=null;
   function git(e){
-    if(!tok&&e!=='esles'&&e!=='ayarlar')e='esles';
+    if(!tok&&!/^esles/.test(e)&&e!=='ayarlar')e='esles';
     if(EKRAN==='okut'&&e!=='okut')kameraKapat();
     EKRAN=e;
     $$('.ekran').forEach(function(x){x.classList.toggle('acik',x.dataset.ekran===e)});
     $$('.alt button').forEach(function(b){if(b.dataset.git===e)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});
-    $('#alt').hidden=!tok;
+    $('#alt').hidden=!tok||/^esles/.test(e);
     window.scrollTo(0,0);
     if(e==='liste')listeCiz();
     if(e==='okut')okutAc();
     if(e==='ayarlar')ayarCiz();
     if(e==='yeni'&&kayitli)yeniSifirla();
-    try{history.replaceState(null,'',location.pathname+(e==='fis'&&ACIK_NO?'#fis='+ACIK_NO:e==='ana'||e==='esles'?'':'#'+e))}catch(x){}
+    try{history.replaceState(null,'',location.pathname+(e==='fis'&&ACIK_NO?'#fis='+ACIK_NO:e==='ana'||/^esles/.test(e)?'':'#'+e))}catch(x){}
   }
   document.addEventListener('click',function(ev){var b=ev.target.closest('[data-git]');if(b){ev.preventDefault();git(b.dataset.git)}});
 
-  /* ---------- eşleştirme ---------- */
+  /* ---------- eşleştirme (çifte kod) ----------
+     1) KOD 1 (6 hane) -> POST /api/eslestir -> {id, kod2}; belirteç YOK.
+     2) Telefon kod2'yi gösterir, yönetici bilgisayarda onaylar; telefon GET /api/eslestir/<id> ile yoklar.
+     3) durum "tamam" gelince belirteç bir kez gelir ve saklanır; 410 = iptal ya da süre doldu. */
+  var ES={id:null,bitis:0,zam:0,say:0};
+  function esDur(){clearTimeout(ES.zam);clearInterval(ES.say);ES.id=null}
+  function esHata(m,t){var e=$('#e-mesaj');esDur();$('#e-kod').value='';git('esles');e.hidden=false;e.textContent=t||m}
+  function esSure(){var k=Math.max(0,Math.round((ES.bitis-Date.now())/1000));$('#e2-sure').textContent=Math.floor(k/60)+':'+('0'+k%60).slice(-2)}
+  function esYokla(){if(!ES.id)return;var id=ES.id;
+    fetch('/api/eslestir/'+encodeURIComponent(id),{cache:'no-store'}).then(function(r){
+      return r.json().catch(function(){return {}}).then(function(j){
+        if(id!==ES.id)return;
+        if(r.status===410){esHata('','Eşleştirme iptal oldu ya da 5 dakikalık süre doldu. Bilgisayardaki Telefonlar ekranından yeni kod alıp baştan başlayın.');return}
+        if(!r.ok){ES.zam=setTimeout(esYokla,3000);return}
+        if(j.durum==='tamam'&&j.token){tok=j.token;ls('taa_tok',tok);esDur();$('#e-kod').value='';git('esles3');return}
+        $('#e2-mesaj').hidden=true;ES.zam=setTimeout(esYokla,2000)})
+    },function(){if(id!==ES.id)return;var m=$('#e2-mesaj');m.hidden=false;m.lastElementChild.textContent='Mağaza sunucusuna ulaşılamıyor; yeniden deneniyor.';ES.zam=setTimeout(esYokla,3000)})}
   $('#e-dugme').addEventListener('click',function(){
     var kod=$('#e-kod').value.replace(/\D/g,''),ad=$('#e-ad').value.trim(),m=$('#e-mesaj');m.hidden=true;
     if(kod.length!==6){m.hidden=false;m.textContent='Kod 6 rakam olmalı.';return}
@@ -552,7 +592,15 @@ html[data-tema="keten"] .rozet{border-radius:8px}
     this.disabled=true;var d=this;
     fetch('/api/eslestir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kod:kod,ad:ad})}).then(function(r){
       return r.json().catch(function(){return {}}).then(function(j){if(!r.ok)throw new Error(j.hata||('Hata '+r.status));return j})
-    }).then(function(j){tok=j.token;ls('taa_tok',tok);d.disabled=false;$('#e-kod').value='';baslat()},function(e){d.disabled=false;m.hidden=false;m.textContent=e.message==='Failed to fetch'?'Mağaza sunucusuna ulaşılamıyor; telefon mağaza ağına bağlı mı?':e.message})});
+    }).then(function(j){d.disabled=false;
+      if(!j.id||!j.kod2)throw new Error('Sunucudan beklenmeyen yanıt; bilgisayardaki programı güncelleyin.');
+      esDur();ES.id=j.id;ES.bitis=Date.now()+300000;
+      $('#e2-kod').textContent=j.kod2;$('#e2-mesaj').hidden=true;esSure();
+      ES.say=setInterval(function(){esSure();if(Date.now()>ES.bitis)esHata('','Süre doldu: ikinci kod 5 dakika içinde onaylanmadı. Bilgisayardan yeni kod alıp baştan başlayın.')},1000);
+      git('esles2');ES.zam=setTimeout(esYokla,1500)
+    }).catch(function(e){d.disabled=false;m.hidden=false;m.textContent=e.message==='Failed to fetch'?'Mağaza sunucusuna ulaşılamıyor; telefon mağaza ağına bağlı mı?':e.message})});
+  $('#e2-vazgec').addEventListener('click',function(){esDur();$('#e-mesaj').hidden=true;git('esles')});
+  $('#e3-devam').addEventListener('click',function(){baslat()});
 
   /* ---------- ana ---------- */
   function anaCiz(){

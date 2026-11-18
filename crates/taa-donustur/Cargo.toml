@@ -19,6 +19,7 @@ name = "taa-donustur"
 path = "src/main.rs"
 
 [dependencies]
+taa-hata = { path = "../taa-hata" }
 zip = { version = "9.3.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 flate2 = { version = "1.1.10", default-features = false, features = ["zlib-rs"] }
 serde = { version = "1", features = ["derive"] }

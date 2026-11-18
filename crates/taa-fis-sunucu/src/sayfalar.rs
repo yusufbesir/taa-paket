@@ -58,6 +58,10 @@ mod testler {
         let t = telefon();
         assert!(t.contains("taa_tok") && t.contains("taa_kuyruk"));
         assert!(t.contains("BarcodeDetector"));
+        // Çifte kod: telefon kod2'yi gösterip yoklar; bilgisayar Telefonlar ekranında onaylar.
+        assert!(t.contains("'/api/eslestir/'") && t.contains("kod2") && t.contains("410"));
+        let m = masaustu();
+        assert!(m.contains("/api/yonetim/eslestir/onayla") && m.contains("esles-kod2"));
     }
 
     #[test]

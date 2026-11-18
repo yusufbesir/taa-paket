@@ -19,6 +19,7 @@
 //! Özellik anahtarı: "kuyruk".
 
 mod gonderici;
+pub mod sifre;
 pub mod zaman;
 
 #[cfg(test)]
@@ -315,6 +316,23 @@ impl Kuyruk {
         Ok(Ekleme::Eklendi(kayit))
     }
 
+    /// Kök (veri kökü) verilen programın kuyruğuna gövdeyi şifreli ekler (bkz. `sifre`).
+    /// `kok`: `<kok>/kuyruk/<program>` düzenindeki veri kökü. Gönderimde `gonder` kendiliğinden çözer.
+    pub fn ekle_sifreli(
+        &self,
+        kok: &Path,
+        uc: &str,
+        no: &str,
+        govde: Value,
+    ) -> Result<Ekleme, KuyrukHata> {
+        if !govde.is_object() {
+            return Err(KuyrukHata::GecersizGovde("nesne ({}) olmalı".into()));
+        }
+        let a = sifre::anahtar_al(kok)?;
+        let k = sifre::kapat(&a, &govde)?;
+        self.ekle(uc, no, k)
+    }
+
     /// `giden.jsonl`deki tüm kayıtlar (ekleme sırasıyla).
     pub fn kayitlar(&self) -> Result<Vec<Kayit>, KuyrukHata> {
         let yol = self.giden_yolu();
@@ -413,6 +431,13 @@ impl Kuyruk {
     /// Bekleyenleri sırayla gönderir; en çok `en_cok` kayıt (0 = sınırsız). Sunucuya ulaşılamazsa durur,
     /// kalanlar bir sonraki çağrıya kalır. Kabul edilen kayıt `gonderildi.jsonl`e, kalıcı reddedilen
     /// `reddedildi.jsonl`e yazılır; `giden.jsonl` değişmez.
+    /// Kuyruk klasörü `<kök>/kuyruk/<program>` ise `<kök>/anahtar/kuyruk.key` ile çözer.
+    fn sifre_coz(&self, govde: &Value) -> Option<Value> {
+        let kok = self.klasor.parent()?.parent()?;
+        let a = sifre::anahtar_al(kok).ok()?;
+        sifre::ac(&a, govde)
+    }
+
     pub fn gonder(&self, g: &dyn Gonderici, en_cok: usize) -> Result<GonderOzeti, KuyrukHata> {
         let bekleyen = self.bekleyenler()?;
         let mut ozet = GonderOzeti {
@@ -423,7 +448,22 @@ impl Kuyruk {
             if en_cok != 0 && i >= en_cok {
                 break;
             }
-            match g.gonder(&k.uc, &k.govde) {
+            let govde = if sifre::sifreli_mi(&k.govde) {
+                match self.sifre_coz(&k.govde) {
+                    Some(d) => d,
+                    None => {
+                        let s = json!({"no": k.no, "zaman": zaman::simdi(), "kod": 0, "mesaj": "şifreli kayıt çözülemedi (anahtar yok/yanlış)"})
+                            .to_string();
+                        taa_dosya::satir_ekle(&self.reddedildi_yolu(), &s)?;
+                        ozet.reddedilen += 1;
+                        ozet.kalan -= 1;
+                        continue;
+                    }
+                }
+            } else {
+                k.govde.clone()
+            };
+            match g.gonder(&k.uc, &govde) {
                 Ok(yanit) => {
                     let s =
                         json!({"no": k.no, "zaman": zaman::simdi(), "yanit": yanit}).to_string();

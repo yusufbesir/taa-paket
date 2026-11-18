@@ -46,6 +46,13 @@ pub fn yeni_kod() -> Result<String, String> {
     Ok(format!("{:06}", u32::from_le_bytes(b) % 1_000_000))
 }
 
+/// 4 haneli ikinci eşleştirme kodu (telefonda görünür, yönetici bilgisayara yazar).
+pub fn yeni_kod2() -> Result<String, String> {
+    let mut b = [0u8; 4];
+    getrandom::fill(&mut b).map_err(|e| format!("rastgele sayı alınamadı: {e}"))?;
+    Ok(format!("{:04}", u32::from_le_bytes(b) % 10_000))
+}
+
 /// Sabit zamanlı karşılaştırma (belirteç özeti).
 fn esit(a: &str, b: &str) -> bool {
     a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |d, (x, y)| d | (x ^ y)) == 0

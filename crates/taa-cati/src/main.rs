@@ -26,6 +26,7 @@ Kullanım (ortak seçenekler: --sunucu <https://adres> | TAA_SUNUCU | yol listes
   taa-cati cihaz iptal --kimlik <16 hex>
   taa-cati program-yetki liste
   taa-cati program-yetki ayarla --program <ad> (--acik | --kapali) [--sube <id>] [--rol <rol>]   (kapalı kazanır)
+  taa-cati hata liste [--program <ad>]
   taa-cati gunluk [--islem <ad>] [--kullanici-id <no>] [--sube <id>] [--tarih-bas <YYYY-AA-GG>] [--tarih-bit <..>] [--limit <1..500>] [--onceki-id <no>]
   taa-cati sube liste | sube ekle --kod <kod> --ad <ad>
 Kurallar: varsayılan reddet (izin yoksa istek gitmez); silme yok; parola ve oturum anahtarı hiçbir yere yazılmaz.";
@@ -45,6 +46,7 @@ fn veri_kok_ortamdan() -> Option<PathBuf> {
 }
 
 fn main() -> ExitCode {
+    taa_hata::kur_varsayilan("taa-cati", env!("CARGO_PKG_VERSION"));
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.is_empty()
         || args
@@ -351,6 +353,19 @@ fn calistir(args: &[String], json: bool) -> Result<(), Hata> {
                 &c.program_yetki_ayarla(sube, rol, &p, acik).map_err(ch)?,
             );
         }
+        (Some("hata"), Some("liste"), None) => tablo(
+            json,
+            &c.hata_raporlari(s.program.as_deref()).map_err(ch)?,
+            &[
+                "son_zaman",
+                "program",
+                "surum",
+                "tur",
+                "tekrar",
+                "yer",
+                "mesaj",
+            ],
+        ),
         (Some("gunluk"), None, _) => {
             let f = OlaySuzgeci {
                 islem: s.islem.clone(),

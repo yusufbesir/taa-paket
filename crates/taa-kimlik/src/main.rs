@@ -20,6 +20,8 @@ Kullanım:
   taa-kimlik gonder --sunucu <https://adres> [--kok <veri kökü>] [--sertifika <pem>] [--en-cok N] [--json]
   --sunucu yoksa <kök>\\yol\\sunucu-yollari.json'daki yollar sırayla denenir (taa-yol); oturum anahtarı listenin
   'sunucu' adıdır; yol değişse de oturum korunur. Çevrimdışı komutlar (durum, yetki, cikis) ağa çıkmaz.
+  taa-kimlik zamanla kur|kaldir|durum [--kok <veri kökü>]   (Windows) 5 dakikada bir `gonder` çalıştıran zamanlanmış görev:
+               kuyruktaki tüm kayıtlar (hata raporları dahil) oturumla otomatik gider; pencere açılmaz.
   taa-kimlik yetki  --sunucu <https://adres> [--program <ad>] [--izin <program.islem>] [--kok] [--json]
                Saklı yetki belgesine göre (internet gerekmez): çıkış 0 izinli, 7 yetkisiz, 5 belge yok/süresi geçmiş.
   Sunucu genel anahtarı <kök>\\anahtarlar\\sunucu.pub varsa giriş yanıtı ve yetki belgesi imzası doğrulanır.
@@ -87,6 +89,7 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
     let mut en_cok = 0usize;
     let mut json = false;
     let mut komut: Option<String> = None;
+    let mut alt: Option<String> = None;
     let mut i = 0;
     let deger = |i: &mut usize, ad: &str| -> Result<String, (u8, String)> {
         *i += 1;
@@ -126,6 +129,7 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
                 ))
             }
             a if komut.is_none() => komut = Some(a.to_string()),
+            a if komut.as_deref() == Some("zamanla") && alt.is_none() => alt = Some(a.to_string()),
             a => return Err((2, format!("fazla argüman: {a}. Öneri: taa-kimlik --yardim"))),
         }
         i += 1;
@@ -137,6 +141,9 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
     let kok = kok
         .or_else(veri_kok_ortamdan)
         .ok_or_else(|| (2, "veri kökü bulunamadı. Öneri: --kok verin.".to_string()))?;
+    if komut.as_deref() == Some("zamanla") {
+        return zamanla(alt.as_deref(), &kok, json);
+    }
     let yh = |e: taa_yol::YolHata| (taa_yol::hata_kodu(&e), e.to_string());
     // Çevrimdışı komutlar (durum, yetki, cikis) yalnız depo anahtarını ister; ağa çıkılmaz.
     // Ağ komutları (giris, gonder) yol listesinden ilk ulaşılan adresi seçer (taa-yol, S4a).
@@ -371,5 +378,76 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
             format!("bilinmeyen komut: {k}. Öneri: taa-kimlik --yardim"),
         )),
         None => Err((2, "komut gerekli: giris | durum | cikis | gonder".into())),
+    }
+}
+
+const GOREV_ADI: &str = "TAA Kuyruk Gonder";
+
+/// Zamanlanmış görev yönetimi (yalnız Windows; `schtasks` kullanıcı hesabıyla, oturum açıkken çalışır).
+fn zamanla(alt: Option<&str>, kok: &Path, json: bool) -> Result<u8, (u8, String)> {
+    if !cfg!(windows) {
+        return Err((2, "zamanla yalnız Windows'ta çalışır (schtasks).".into()));
+    }
+    let schtasks = |a: &[&str]| -> Result<(bool, String), (u8, String)> {
+        let o = std::process::Command::new("schtasks")
+            .args(a)
+            .output()
+            .map_err(|e| (1u8, format!("schtasks çalışmadı: {e}")))?;
+        let m = format!(
+            "{}{}",
+            String::from_utf8_lossy(&o.stdout),
+            String::from_utf8_lossy(&o.stderr)
+        );
+        Ok((o.status.success(), m.trim().to_string()))
+    };
+    let bitir = |durum: &str, ok: bool, m: String| -> Result<u8, (u8, String)> {
+        if json {
+            println!(
+                "{}",
+                serde_json::json!({"durum": durum, "tamam": ok, "ayrinti": m})
+            );
+        } else {
+            println!(
+                "{durum}{}",
+                if m.is_empty() {
+                    String::new()
+                } else {
+                    format!(": {m}")
+                }
+            );
+        }
+        Ok(if ok { 0 } else { 1 })
+    };
+    match alt {
+        Some("kur") => {
+            let exe = std::env::current_exe().map_err(|e| (1u8, e.to_string()))?;
+            let arka = exe.with_file_name("taa-kimlik-arka.exe");
+            let hedef = if arka.exists() { arka } else { exe };
+            let komut = format!("\"{}\" --kok \"{}\"", hedef.display(), kok.display());
+            let (ok, m) = schtasks(&[
+                "/Create", "/TN", GOREV_ADI, "/SC", "MINUTE", "/MO", "5", "/TR", &komut, "/F",
+            ])?;
+            bitir(if ok { "kuruldu" } else { "kurulamadı" }, ok, m)
+        }
+        Some("kaldir") => {
+            let (ok, m) = schtasks(&["/Delete", "/TN", GOREV_ADI, "/F"])?;
+            bitir(
+                if ok {
+                    "kaldırıldı"
+                } else {
+                    "kaldırılamadı"
+                },
+                ok,
+                m,
+            )
+        }
+        Some("durum") => {
+            let (ok, m) = schtasks(&["/Query", "/TN", GOREV_ADI])?;
+            bitir(if ok { "kurulu" } else { "kurulu değil" }, ok, m)
+        }
+        _ => Err((
+            2,
+            "zamanla kur|kaldir|durum olmalı. Öneri: taa-kimlik --yardim".into(),
+        )),
     }
 }

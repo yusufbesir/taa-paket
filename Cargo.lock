@@ -775,6 +775,7 @@ version = "0.1.0"
 dependencies = [
  "getrandom 0.3.4",
  "serde_json",
+ "taa-hata",
  "taa-kimlik",
  "taa-kur-tema",
  "taa-kuyruk",
@@ -801,6 +802,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "taa-hata",
  "zip",
 ]
 
@@ -833,6 +835,7 @@ dependencies = [
  "taa-bildirim",
  "taa-dosya",
  "taa-fis",
+ "taa-hata",
  "taa-havuz",
  "taa-kimlik",
  "taa-kuyruk",
@@ -850,9 +853,19 @@ dependencies = [
  "serde",
  "serde_json",
  "taa-dosya",
+ "taa-hata",
  "taa-imza",
  "taa-kur",
  "zip",
+]
+
+[[package]]
+name = "taa-hata"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "taa-dosya",
+ "taa-kuyruk",
 ]
 
 [[package]]
@@ -937,6 +950,7 @@ dependencies = [
  "taa-ayar",
  "taa-cihaz",
  "taa-dosya",
+ "taa-hata",
  "taa-imza",
  "taa-kur-tema",
  "taa-rapor",
@@ -954,6 +968,7 @@ version = "0.1.0"
 name = "taa-kuyruk"
 version = "0.2.0"
 dependencies = [
+ "chacha20poly1305",
  "serde_json",
  "taa-dosya",
 ]
@@ -974,6 +989,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "taa-dosya",
+ "taa-hata",
  "taa-imza",
  "zip",
 ]
@@ -1003,6 +1019,7 @@ dependencies = [
  "serde_json",
  "taa-ayar",
  "taa-dosya",
+ "taa-hata",
 ]
 
 [[package]]
@@ -1011,6 +1028,7 @@ version = "0.1.0"
 dependencies = [
  "serde_json",
  "taa-dosya",
+ "taa-hata",
  "taa-kimlik",
  "taa-rapor",
 ]
@@ -1101,6 +1119,7 @@ dependencies = [
  "sha2",
  "taa-ayar",
  "taa-dosya",
+ "taa-hata",
 ]
 
 [[package]]

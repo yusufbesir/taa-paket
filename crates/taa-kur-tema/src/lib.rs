@@ -16,6 +16,7 @@ pub mod gorunum;
 pub mod kontrast;
 pub mod logo;
 pub mod olcu;
+pub mod simge;
 
 pub use gorunum::{gorunum_yolu, veri_koku, Gorunum, GORUNUM_SURUM};
 pub use kontrast::{

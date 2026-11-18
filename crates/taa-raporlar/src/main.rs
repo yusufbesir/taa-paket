@@ -39,6 +39,7 @@ fn veri_kok_ortamdan() -> Option<PathBuf> {
 }
 
 fn main() -> ExitCode {
+    taa_hata::kur_varsayilan("taa-raporlar", env!("CARGO_PKG_VERSION"));
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args
         .iter()

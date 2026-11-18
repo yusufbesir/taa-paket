@@ -177,7 +177,17 @@ impl Uygulama {
                 })
             })
             .collect();
-        Yanit::json(200, json!({ "cihazlar": v }))
+        // İkinci kodun onayını bekleyen telefon sayısı (kodlar dönmez; yalnız sayı).
+        let bekleyen = self
+            .bekleyen
+            .lock()
+            .map(|b| {
+                b.iter()
+                    .filter(|x| x.tamam.is_none() && x.son > simdi)
+                    .count()
+            })
+            .unwrap_or(0);
+        Yanit::json(200, json!({ "cihazlar": v, "bekleyen": bekleyen }))
     }
 
     /// GET /api/yonetim/kisiler: yerel kişi kaydı + Telegram hesapları (yönetici görür).
