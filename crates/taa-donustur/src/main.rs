@@ -163,6 +163,7 @@ fn calis() -> Sonuc<Value> {
 }
 
 fn main() {
+    taa_hata::kur_varsayilan("taa-donustur", env!("CARGO_PKG_VERSION"));
     let (cikti, kod) = match calis() {
         Ok(v) => (v, 0),
         Err(h) => (json!({ "ok": false, "hata": h.0 }), 2),

@@ -20,6 +20,7 @@ fn yerel_ip() -> Option<String> {
 }
 
 fn main() {
+    taa_hata::kur_varsayilan("taa-fis-sunucu", env!("CARGO_PKG_VERSION"));
     let port: u16 = arg("--port").and_then(|p| p.parse().ok()).unwrap_or(8787);
     let veri = PathBuf::from(arg("--veri").unwrap_or_else(|| "taa-fis-veri".into()));
     let taban = arg("--adres").unwrap_or_else(|| {

@@ -802,6 +802,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "taa-hata",
  "zip",
 ]
 
@@ -834,6 +835,7 @@ dependencies = [
  "taa-bildirim",
  "taa-dosya",
  "taa-fis",
+ "taa-hata",
  "taa-takip",
  "taa-telegram",
  "taa-terzi",
@@ -847,6 +849,7 @@ dependencies = [
  "serde",
  "serde_json",
  "taa-dosya",
+ "taa-hata",
  "taa-imza",
  "taa-kur",
  "zip",
@@ -981,6 +984,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "taa-dosya",
+ "taa-hata",
  "taa-imza",
  "zip",
 ]
@@ -1010,6 +1014,7 @@ dependencies = [
  "serde_json",
  "taa-ayar",
  "taa-dosya",
+ "taa-hata",
 ]
 
 [[package]]
@@ -1018,6 +1023,7 @@ version = "0.1.0"
 dependencies = [
  "serde_json",
  "taa-dosya",
+ "taa-hata",
  "taa-kimlik",
  "taa-rapor",
 ]
@@ -1108,6 +1114,7 @@ dependencies = [
  "sha2",
  "taa-ayar",
  "taa-dosya",
+ "taa-hata",
 ]
 
 [[package]]
