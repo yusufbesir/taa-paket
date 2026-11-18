@@ -28,6 +28,7 @@ fn hata(m: &str) -> Value {
 }
 
 fn main() {
+    taa_hata::kur_varsayilan("taa-ocr", env!("CARGO_PKG_VERSION"));
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     let deger = |ad: &str, args: &mut Vec<String>| -> Option<String> {
         let i = args.iter().position(|a| a == ad)?;

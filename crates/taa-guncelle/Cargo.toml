@@ -17,6 +17,7 @@ name = "taa-guncelle"
 path = "src/main.rs"
 
 [dependencies]
+taa-hata = { path = "../taa-hata" }
 taa-kur = { path = "../taa-kur" }
 taa-imza = { path = "../taa-imza" }
 serde = { version = "1", features = ["derive"] }

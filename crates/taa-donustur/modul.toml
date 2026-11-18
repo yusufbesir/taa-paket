@@ -4,7 +4,7 @@
 ad = "taa-donustur"
 surum = "1.6.0"
 arayuz = "1"
-gerektirir = {}
+gerektirir = { "taa-hata" = "1" }
 ozellikler = ["arsiv", "imza"]
 program = "taadon"
 sunar = ["arsiv.ac@1", "arsiv.olustur@1", "arsiv.sikistir@1", "imza.denetle@1"]

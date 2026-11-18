@@ -3,7 +3,7 @@
 ad = "taa-guncelle"
 surum = "0.1.0"
 arayuz = "1"
-gerektirir = { "taa-imza" = "1", "taa-kur" = "1" }
+gerektirir = { "taa-hata" = "1", "taa-imza" = "1", "taa-kur" = "1" }
 ozellikler = ["guncelle"]
 program = "ortak"
 sunar = []

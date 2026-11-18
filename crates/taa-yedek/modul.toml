@@ -2,7 +2,7 @@
 ad = "taa-yedek"
 surum = "0.1.0"
 arayuz = "1"
-gerektirir = { "taa-ayar" = "1", "taa-dosya" = "1" }
+gerektirir = { "taa-ayar" = "1", "taa-dosya" = "1", "taa-hata" = "1" }
 ozellikler = ["yedek", "dogrula", "geri-yukle"]
 program = "taayedek"
 sunar = ["yedek.al@1", "yedek.dogrula@1", "yedek.yukle@1"]

@@ -16,6 +16,7 @@ use taa_kur::{kur_ayari_oku, Kur, KurHata};
 const KULLANIM: &str = "Kullanım: taa-guncelle <kontrol|uygula|liste|kur <ad>> [--json] [--duz] [--kaynak <klasor|url>] [--kanal <ad>] [--paket <ad>]. Öneri: ayrıntı için docs/T3-TASARIM.md.";
 
 fn main() -> ExitCode {
+    taa_hata::kur_varsayilan("taa-guncelle", env!("CARGO_PKG_VERSION"));
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     let json = args.iter().any(|a| a == "--json");
     args.retain(|a| a != "--json");
