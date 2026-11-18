@@ -587,3 +587,51 @@ fn curl_ham_get_aralik_ve_ikili_govde() {
         Err(GonderHata::Yapilandirma(_))
     ));
 }
+
+#[test]
+fn sifreli_kayit_gonderimde_cozulur_ve_dosyada_acik_metin_yok() {
+    let kok = taa_dosya::gecici_klasor().unwrap();
+    let k = Kuyruk::program(&kok, "hata-x").unwrap();
+    k.ekle_sifreli(
+        &kok,
+        "/v1/hata-raporu",
+        "H-1",
+        serde_json::json!({"mesaj": "çok gizli ifade"}),
+    )
+    .unwrap();
+    let ham = std::fs::read_to_string(k.klasor().join("giden.jsonl")).unwrap();
+    assert!(!ham.contains("gizli"), "{ham}");
+    assert!(ham.contains("_sifreli"));
+    struct G(std::cell::RefCell<Vec<serde_json::Value>>);
+    impl Gonderici for G {
+        fn gonder(&self, _u: &str, g: &serde_json::Value) -> Result<serde_json::Value, GonderHata> {
+            self.0.borrow_mut().push(g.clone());
+            Ok(serde_json::Value::Null)
+        }
+    }
+    let g = G(Default::default());
+    let o = k.gonder(&g, 0).unwrap();
+    assert_eq!(o.gonderilen, 1);
+    assert_eq!(g.0.borrow()[0]["mesaj"], "çok gizli ifade");
+}
+
+#[test]
+fn anahtar_yoksa_cozulemeyen_kayit_reddedilir() {
+    let kok = taa_dosya::gecici_klasor().unwrap();
+    let k = Kuyruk::program(&kok, "hata-y").unwrap();
+    k.ekle_sifreli(&kok, "/v1/hata-raporu", "H-2", serde_json::json!({"a": 1}))
+        .unwrap();
+    std::fs::write(sifre::anahtar_yolu(&kok), "00".repeat(32)).unwrap(); // yanlış anahtar
+    struct G;
+    impl Gonderici for G {
+        fn gonder(
+            &self,
+            _u: &str,
+            _g: &serde_json::Value,
+        ) -> Result<serde_json::Value, GonderHata> {
+            panic!("gönderilmemeli")
+        }
+    }
+    let o = k.gonder(&G, 0).unwrap();
+    assert_eq!((o.gonderilen, o.reddedilen, o.kalan), (0, 1, 0));
+}
