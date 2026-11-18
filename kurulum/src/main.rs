@@ -382,6 +382,9 @@ fn kur(a: &[String], hedef: &Path, ekran: &Ekran) -> i32 {
              Var olan ayar, anahtar ve verilere dokunulmaz.", hedef.display()), vec![], 0).dugmeler("Kur", "Vazgeç");
         if ekran.sec(s).is_none() { println!("Vazgeçildi."); return 0; }
     } else if !sor("Kurulsun mu?", sessiz) { println!("Vazgeçildi."); return 0; }
+    // Önceki (belki yarım kalmış) kurulum: manifest çekirdek yazımından sonra yazıldığı için yarıda kalan kurulum da bunu bırakır.
+    let onceki = hedef.join(MANIFEST).exists();
+    if onceki { println!("Önceki kurulum bulundu: kayıtlı rol ve şube kullanılır, kurulu paketler atlanır, eksikler tamamlanır."); }
     ekran.g(|d| d.cekirdek_basla(DOSYALAR.len() as u32 + 1));
     let mut liste: Vec<String> = vec![];
     let mut atlanan = 0;
@@ -412,7 +415,7 @@ fn kur(a: &[String], hedef: &Path, ekran: &Ekran) -> i32 {
     let veri = veri_koku(hedef);
     let oto = direktif::yan_dosyalari_kopyala(yan_klasor().as_deref(), hedef, &veri);
     direktifleri_guncelle(hedef, &oto, ekran);
-    ekran.g(|d| d.asama(Asama::Secim, "Rol ve şube seçimi"));
+    ekran.g(|d| d.asama(Asama::Secim, if onceki { "Önceki kurulum bulundu: eksikler tamamlanıyor" } else { "Rol ve şube seçimi" }));
     let rol = rol_sec(a, hedef, sessiz, ekran);
     direktifleri_guncelle(hedef, &oto, ekran);
     if rol == "sube" { sube_sec(a, hedef, sessiz, ekran); }
