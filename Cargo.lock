@@ -775,6 +775,7 @@ version = "0.1.0"
 dependencies = [
  "getrandom 0.3.4",
  "serde_json",
+ "taa-hata",
  "taa-kimlik",
  "taa-kur-tema",
  "taa-kuyruk",
@@ -849,6 +850,15 @@ dependencies = [
  "taa-imza",
  "taa-kur",
  "zip",
+]
+
+[[package]]
+name = "taa-hata"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "taa-dosya",
+ "taa-kuyruk",
 ]
 
 [[package]]
@@ -933,6 +943,7 @@ dependencies = [
  "taa-ayar",
  "taa-cihaz",
  "taa-dosya",
+ "taa-hata",
  "taa-imza",
  "taa-kur-tema",
  "taa-rapor",

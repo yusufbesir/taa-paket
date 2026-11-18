@@ -22,6 +22,7 @@ name = "taa-kur-pencere"
 path = "src/pencere_main.rs"
 
 [dependencies]
+taa-hata = { path = "../taa-hata" }
 taa-ayar = { path = "../taa-ayar" }
 taa-dosya = { path = "../taa-dosya" }
 taa-imza = { path = "../taa-imza" }
