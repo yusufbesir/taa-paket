@@ -1522,7 +1522,8 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
     return '<option value="'+esc(x.kod)+'"'+(x.kod===secili?' selected':'')+'>'+esc(x.kod+' · '+x.ad)+'</option>'}).join('')}
   function catiMetni(c){c=c||{};
     if(c.bagli)return 'TAA Çatı bağlı: kişi listesi TAA Çatı\'dan gelir ve esas alınır (son eşitleme '+(c.son_esitleme||'—')+').';
-    return 'TAA Çatı\'dan henüz kişi listesi alınmadı'+(c.son_hata?' (son deneme '+(c.son_deneme||'')+': '+c.son_hata+')':'')+'. Bağlantı kurulunca liste kendiliğinden gelir.'}
+    var neden=!c.son_hata?'':/sunucu adresi/i.test(c.son_hata)?' Bu bilgisayarda TAA Çatı adresi henüz ayarlı değil (TAA Kur ayarlar).':' Son denemede TAA Çatı\'ya ulaşılamadı'+(c.son_deneme?' ('+String(c.son_deneme).slice(11,16)+')':'')+'.';
+    return 'TAA Çatı\'dan henüz kişi listesi alınmadı.'+neden+' Bağlantı kurulunca liste kendiliğinden gelir.'}
   function kurulumYukle(){return api('GET','/api/kurulum').then(function(v){KURULUM=v||{};kurulumCiz();kisiSecenekleri();return KURULUM},function(){return KURULUM})}
   function ikSatir(){var d=document.createElement('div');d.className='ik-satir';
     d.innerHTML='<div class="alan"><input data-ik="ad" maxlength="40" autocomplete="off" placeholder="Ad soyad" aria-label="Ad soyad"></div>'+
@@ -1530,7 +1531,7 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
       '<button type="button" class="simge-d" data-ik-sil aria-label="Bu satırı sil">'+sm('i-x')+'</button>';
     $('#ik-kisiler').appendChild(d);return d}
   function kurulumCiz(){var k=KURULUM,acik=!!k.ilk_kurulum_acik;
-    $('#gez-kurulum').hidden=!acik;$('#ik-form').hidden=!acik;$('#ik-cati').textContent=catiMetni(k.cati);
+    $('#gez-kurulum').hidden=!acik;$('#ik-form').hidden=!acik;$('#ik-cati').textContent=catiMetni(k.cati);$('#ik-cati').title=(k.cati&&k.cati.son_hata)||'';
     var kp=$('#ik-kapali');kp.hidden=acik;
     kp.lastElementChild.textContent=k.kapali_neden==='cati'?'Bu bilgisayar TAA Çatı\'ya bağlı: kişiler ve şube TAA Çatı\'dan gelir. İlk kurulum kapalı.':
       k.kapali_neden==='yapildi'?'İlk kurulum yapıldı. Değişiklik yalnız yönetici girişiyle (TAA Çatı PIN) yapılır.':'Şube ve kişi kaydı ayarlı; ilk kurulum gerekmiyor.';
