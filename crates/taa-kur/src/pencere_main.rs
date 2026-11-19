@@ -4,6 +4,7 @@
 
 #[cfg(windows)]
 fn main() -> std::process::ExitCode {
+    taa_hata::kur_varsayilan("taa-kur", env!("CARGO_PKG_VERSION"));
     std::process::ExitCode::from(taa_kur::win::calistir() as u8)
 }
 
