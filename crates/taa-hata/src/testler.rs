@@ -83,6 +83,7 @@ fn bekleyenleri_gonderir() {
     assert_eq!(g.0.borrow()[0]["program"], "taa-x");
     assert_eq!(bekleyenleri_gonder(&kok, &g), 0);
 }
+<<<<<<< HEAD
 
 #[test]
 fn kuyruk_dosyasinda_mesaj_acik_yazilmaz() {
@@ -95,3 +96,5 @@ fn kuyruk_dosyasinda_mesaj_acik_yazilmaz() {
         "{ham}"
     );
 }
+=======
+>>>>>>> 6b7af0627ab50614c7695a61886f608eda18ad48
