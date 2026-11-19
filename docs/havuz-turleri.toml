@@ -59,6 +59,29 @@ okuyanlar = ["taagiydir", "terzitakip"]
 kisisel = false
 aciklama = "Beden cetveli (ayakkabı ve aksesuar hariç)"
 
+[turler."manken.olcu"]
+surum = 1
+aile = "olcu"
+kip = "tablo"
+yazanlar = ["taayonetici"]
+okuyanlar = ["taagiydir"]
+kisisel = false
+aciklama = "Standart manken ölçüleri (müşteri bedeni saklanmaz)"
+# Satır şeması (bilgi amaçlı; sunucu satırı serbest JSON saklar, doğrulamayı yazan program yapar). Ölçüler cm, sayı.
+alanlar = { anahtar = ["manken_id", "beden"], manken_id = "metin", boy_sinifi = "170|178|186", beden = "S|M|L|XL|referans", boy = "cm", gogus = "cm", bel = "cm", kalca = "cm", omuz = "cm", kol_boyu = "cm", ic_bacak_boyu = "cm", boyun = "cm" }
+
+[turler."giysi.olcu"]
+surum = 1
+aile = "olcu"
+kip = "tablo"
+yazanlar = ["taayonetici"]
+okuyanlar = ["taagiydir"]
+kisisel = false
+aciklama = "Giysi ölçüleri: göğüs, bel, kalça, kol, boy, paça, iç bacak boyu, esneme"
+# Satır şeması (bilgi amaçlı). Ölçüler cm, sayı; esneme yüzde 0-100; ic_bacak_boyu 40-120. İsteğe bağlı alanlar boş geçilebilir.
+# urun_kodu doluysa ürüne özel ölçü (anahtar: urun_kodu + beden); boşsa tür + beden cetveli satırı (anahtar: tur + beden). giysi_id yok.
+alanlar = { anahtar = "urun_kodu+beden (urun_kodu doluysa) | tur+beden (urun_kodu boşsa)", urun_kodu = "metin, isteğe bağlı", tur = "gomlek|ceket|pantolon|yelek|...", beden = "metin", boy = "cm", gogus = "cm", bel = "cm", kalca = "cm", kol_boyu = "cm", paca = "cm", ic_bacak_boyu = "cm 40-120", esneme = "yuzde 0-100" }
+
 [turler."egitim.video"]
 surum = 1
 aile = "egitim"
