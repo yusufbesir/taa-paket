@@ -257,15 +257,11 @@ fn gun_eki() -> String {
 pub fn kuyruga_yaz(kok: &Path, r: &Rapor) -> Result<Ekleme, taa_kuyruk::KuyrukHata> {
     let k = Kuyruk::program(kok, &format!("hata-{}", r.program))?;
     let no = format!("H-{}-{}", r.parmak_izi, gun_eki());
-<<<<<<< HEAD
     // Önce şifreli (taa_kuyruk::sifre); anahtar üretilemez/okunamazsa rapor kaybolmasın diye düz yazılır (zaten temizlenmiş).
     match k.ekle_sifreli(kok, UC, &no, r.govde()) {
         Err(taa_kuyruk::KuyrukHata::Io(_)) => k.ekle(UC, &no, r.govde()),
         sonuc => sonuc,
     }
-=======
-    k.ekle(UC, &no, r.govde())
->>>>>>> 6b7af0627ab50614c7695a61886f608eda18ad48
 }
 
 /// Bekleyen hata raporlarını (tüm programlar) sunucuya yollar. Ulaşılamazsa sessizce kalır; gönderilen sayısını döner.
