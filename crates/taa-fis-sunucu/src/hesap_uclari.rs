@@ -31,13 +31,9 @@ impl Uygulama {
         }
     }
 
-    fn yerel_mi(i: &Istek) -> Option<Yanit> {
-        (!i.yerel).then(|| Yanit::hata(403, "yalnız bu bilgisayardan"))
-    }
-
     /// POST /api/yonetim/baglama-kodu {usta_id?, rol, sube, yonetici, omur_dk?}
     pub(crate) fn baglama_kodu(&self, i: &Istek) -> Yanit {
-        if let Some(r) = Self::yerel_mi(i) {
+        if let Some(r) = self.yonetim_izni(i) {
             return r;
         }
         let Ok(v) = serde_json::from_slice::<serde_json::Value>(&i.govde) else {
@@ -89,17 +85,9 @@ impl Uygulama {
         }
     }
 
-    /// GET /yonetim/personel: yönetici sayfası (yalnız bu bilgisayar).
-    pub(crate) fn personel_sayfasi(&self, i: &Istek) -> Yanit {
-        if let Some(r) = Self::yerel_mi(i) {
-            return r;
-        }
-        Yanit::html(sayfalar::PERSONEL_YONETIM.into())
-    }
-
     /// GET /api/yonetim/hesaplar
     pub(crate) fn hesap_listesi(&self, i: &Istek) -> Yanit {
-        if let Some(r) = Self::yerel_mi(i) {
+        if let Some(r) = self.yonetim_izni(i) {
             return r;
         }
         match (Hesaplar { dizin: &self.dizin }).guncel() {
@@ -110,7 +98,7 @@ impl Uygulama {
 
     /// POST /api/yonetim/hesap/<tg_id>/onayla|askiya|kaldir  {yonetici}
     pub(crate) fn hesap_islemi(&self, i: &Istek, tg: &str, islem: &str) -> Yanit {
-        if let Some(r) = Self::yerel_mi(i) {
+        if let Some(r) = self.yonetim_izni(i) {
             return r;
         }
         let Ok(tg_id) = tg.parse::<i64>() else {
@@ -128,6 +116,7 @@ impl Uygulama {
             "onayla" => h.onayla(tg_id, &yonetici, &gun).map(|_| ()),
             "askiya" => h.durum_ata(tg_id, HesapDurum::Askida, &yonetici, &gun),
             "kaldir" => h.durum_ata(tg_id, HesapDurum::Kaldirildi, &yonetici, &gun),
+            "yeniden-ac" => h.durum_ata(tg_id, HesapDurum::Onayli, &yonetici, &gun),
             _ => return Yanit::hata(404, "bulunamadı"),
         };
         match r {

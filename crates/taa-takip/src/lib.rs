@@ -273,6 +273,9 @@ mod testler {
             usta: usta.into(),
             satis_danismani: "Mert".into(),
             olcu_alan: "Kadir Y.".into(),
+            satis_danismani_id: String::new(),
+            olcu_alan_id: String::new(),
+            duzenleyen_id: String::new(),
             kargo,
             kargo_notu: String::new(),
             kargo_ad: if kargo {

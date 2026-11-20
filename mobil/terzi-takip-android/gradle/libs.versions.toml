@@ -1,0 +1,25 @@
+# Sahip: Yusuf. yazan: [Claude#terzi-takip-android 2026-11-17]
+# Sürümler 2026-11-17'de developer.android.com sürüm notlarından doğrulandı (ML Kit hariç, bkz. README "Riskler").
+[versions]
+agp = "9.5.1"
+coreKtx = "1.19.1"
+activity = "1.13.0"
+webkit = "1.18.0"
+splashscreen = "1.2.0"
+camerax = "1.6.2"
+mlkitBarcode = "17.3.0"
+
+[libraries]
+androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-core-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "splashscreen" }
+androidx-activity-ktx = { group = "androidx.activity", name = "activity-ktx", version.ref = "activity" }
+androidx-webkit = { group = "androidx.webkit", name = "webkit", version.ref = "webkit" }
+androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
+androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
+androidx-camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
+androidx-camera-mlkit-vision = { group = "androidx.camera", name = "camera-mlkit-vision", version.ref = "camerax" }
+# "bundled" sürüm: model APK içinde, Google Play hizmetlerine bağlı değil.
+mlkit-barcode-scanning = { group = "com.google.mlkit", name = "barcode-scanning", version.ref = "mlkitBarcode" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
