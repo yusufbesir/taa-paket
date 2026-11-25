@@ -29,6 +29,8 @@ use std::sync::Arc;
 pub const OZELLIK: &str = "kimlik";
 /// Giriş ucu.
 pub const GIRIS_UCU: &str = "/v1/giris";
+/// Şifresini unutan ya da hesabı kilitlenen personelin yöneticiye başvurusu (KM2, Yusuf 11-17).
+pub const BASVURU_UCU: &str = "/v1/yonetici-basvuru";
 /// Kullanıcı adı uzunluk sınırı.
 pub const KULLANICI_EN_COK: usize = 64;
 
@@ -54,6 +56,23 @@ impl fmt::Display for KimlikHata {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             KimlikHata::GecersizGirdi(m) => write!(f, "geçersiz girdi: {m}"),
+            // KM2 (Yusuf 11-17): kilit ve sınır durumlarında kişiye ne yapacağı söylenir.
+            KimlikHata::GirisReddi { kod: 423, .. } => write!(
+                f,
+                "hesabınız kilitlendi. Öneri: programdaki \"Yöneticiye başvur\" ile yöneticiden kilidi açmasını isteyin."
+            ),
+            KimlikHata::GirisReddi { kod: 429, mesaj } if mesaj.contains("cihaz_mesgul") => write!(
+                f,
+                "bu bilgisayardan önceki istek sürüyor. Öneri: birazdan yeniden deneyin."
+            ),
+            KimlikHata::GirisReddi { kod: 429, .. } => write!(
+                f,
+                "bu bilgisayardan çok fazla hatalı deneme yapıldı. Öneri: bir saat sonra yeniden deneyin."
+            ),
+            KimlikHata::GirisReddi { kod: 403, mesaj } if mesaj.contains("hesap_onay_bekliyor") => write!(
+                f,
+                "hesabınız yönetici onayı bekliyor. Öneri: yönetici onaylayınca yeniden deneyin."
+            ),
             KimlikHata::GirisReddi { kod, mesaj } => {
                 write!(f, "giriş reddedildi ({kod}): {mesaj}. Öneri: kullanıcı adı ve parolayı denetleyin.")
             }
@@ -284,10 +303,7 @@ pub fn giris_dogrulayarak(
     }
     let yanit = match g.gonder(GIRIS_UCU, &govde) {
         Ok(y) => y,
-        Err(GonderHata::Reddedildi { kod, mesaj }) => {
-            return Err(KimlikHata::GirisReddi { kod, mesaj })
-        }
-        Err(e) => return Err(KimlikHata::Baglanti(e.to_string())),
+        Err(e) => return Err(giris_hatasi(e)),
     };
     if let Some(a) = sunucu_anahtari {
         yetki::belge_dogrula(&yanit, a)?;
@@ -313,6 +329,46 @@ pub fn giris_dogrulayarak(
         zaman: taa_kuyruk::zaman::simdi(),
         oturum,
     })
+}
+
+/// Gönderici hatasını giriş hatasına çevirir. Kuyruk 429'u "yeniden denenir" sayar; girişte ise 429 bir ret
+/// (bilgisayar saatlik hatalı deneme sınırında) ve kişiye sunucu kapalıymış gibi gösterilmez.
+fn giris_hatasi(e: GonderHata) -> KimlikHata {
+    match e {
+        GonderHata::Reddedildi { kod, mesaj } => KimlikHata::GirisReddi { kod, mesaj },
+        GonderHata::Ulasilamadi(m) if m.starts_with("HTTP 429") => {
+            KimlikHata::GirisReddi { kod: 429, mesaj: m }
+        }
+        e => KimlikHata::Baglanti(e.to_string()),
+    }
+}
+
+/// `POST /v1/yonetici-basvuru {kullanici, yeni_parola?}` — şifresini unutan (yeni şifresiyle) ya da hesabı
+/// kilitlenen (şifresiz) personel yöneticiye başvurur; yönetici TAA Çatı'da onaylar. Yalnız onaylı mağaza
+/// bilgisayarından (cihaz imzalı gönderici). Sunucu her zaman aynı yanıtı verir (adın var olup olmadığı sızmaz).
+/// Yeni şifre yalnız gövdede gider, hiçbir yere yazılmaz.
+pub fn yoneticiye_basvur(
+    g: &dyn Gonderici,
+    kullanici: &str,
+    yeni_parola: Option<&str>,
+) -> Result<(), KimlikHata> {
+    if !kullanici_gecerli(kullanici) {
+        return Err(KimlikHata::GecersizGirdi(format!(
+            "kullanıcı adı boş/çok uzun/boşluklu olamaz (en çok {KULLANICI_EN_COK})"
+        )));
+    }
+    let mut govde = json!({ "kullanici": kullanici });
+    if let Some(p) = yeni_parola.filter(|p| !p.is_empty()) {
+        if p.contains(['\n', '\r']) {
+            return Err(KimlikHata::GecersizGirdi(
+                "şifre satır sonu içeremez".into(),
+            ));
+        }
+        govde["yeni_parola"] = Value::String(p.to_string());
+    }
+    g.gonder(BASVURU_UCU, &govde)
+        .map(|_| ())
+        .map_err(giris_hatasi)
 }
 
 /// Oturum deposu: sunucu başına bir oturum.

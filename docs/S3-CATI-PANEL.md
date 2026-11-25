@@ -18,7 +18,7 @@ doğrulama, silme yok). TAA Sunucu hizmetine dokunulmaz.
 |---|---|---|
 | Genel bakış | — | sunucu sağlığı (`/v1/saglik`), bekleyen cihazlar, son olaylar, oturum |
 | Cihazlar | `cihaz.yonet` | bekleyen/onaylı/iptal süzgeci, arama, onayla (istenen şubeyle), iptal (satır içi onay) |
-| Kullanıcılar | `kullanici.yonet` | liste, ekle (rol + şube), parola değiştir, hesabı kapat (silme yok) |
+| Kullanıcılar | `kullanici.yonet` | liste, ekle (ad soyad, isteğe bağlı fişte görünen ad = boşsa yıldızlı maske, rol + şube; şifre kalıcı), kilidi aç, askıya al/geri aç, hesabı kapat (silme yok). Şifre değiştirme ve geçici kod yok: unutan personel programdan yöneticiye başvurur, başvuru "Onay bekleyenler"de onaylanır |
 | Şubeler | `kullanici.yonet` | liste, ekle |
 | Program yetkileri | `program.yonet` | program × şube anahtarları; soluk anahtar genel kuraldan gelir; role özel kurallar komut satırında |
 | Yönetici PIN'leri | `program.yonet` | program başına genel PIN ve şubeye özel PIN; belirle/değiştir/kaldır (taze parola). PIN yalnız buradan belirlenir; programlar (TerziTakip, Tutaa…) sunucuda yalnız doğrular |

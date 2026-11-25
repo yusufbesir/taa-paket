@@ -30,7 +30,7 @@ echo parola | taa-kimlik giris --kullanici yonetici
 echo parola | taa-cati dogrula
 taa-cati cihaz liste --durum bekliyor
 taa-cati cihaz onay --kimlik 0123456789abcdef --sube 2
-echo yeni-parola | taa-cati kullanici ekle --ad ayse --gorunen-ad "Ayşe Yılmaz" --rol kasa --sube 2
+echo yeni-parola | taa-cati kullanici ekle --ad ayse --gorunen-ad "Ayşe Y." --ad-soyad "Ayşe Yılmaz" --rol kasa --sube 2
 taa-cati program-yetki ayarla --program taakasa --rol personel --kapali
 taa-cati gunluk --islem giris --limit 50
 ```
