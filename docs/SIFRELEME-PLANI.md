@@ -11,7 +11,7 @@ Karar: tam uçtan uca şifreleme YOK (sunucu rapor/yetki için veriyi okumalı).
 
 ## Adım B — Şubeden gelen belge/fotoğraf şifreleme (cihaz anahtarı)
 - Şube PC dosyayı sunucuya göndermeden önce zarf şifreler (X25519 + XChaCha20-Poly1305; alıcı: sunucu genel anahtarı).
-- Sunucu şifreli saklar; açma yalnız yetkili istekte. Sunucu tarafı tutaa deposu işi (ayrı başlık).
+- Sunucu şifreli saklar; açma yalnız yetkili istekte. Sunucu tarafı taa-sunucu deposu işi (ayrı başlık).
 - Bu adım sunucu sözleşmesi gerektirir; A bittikten sonra tasarım belgesi yazılır.
 
 ## Adım C — Sunucu PC diski: BitLocker (kod yok, Yusuf yapar)

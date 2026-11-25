@@ -22,7 +22,7 @@ yalnız "nereden gidileceği"dir. Sunucu tüm yollardan aynı anda dinler.
 
 ## Sunucu PC'si (S4b, PC işi — koordinatör slotu) — yapılacak
 Üçüncü taraf programlar `D:\Programlar\Araçlar Ve İndirilenler\` altına (klasör kuralı). Yalnız 443/TCP ve 51820/UDP dışarı
-açılır; 8443 (tutaa-sunucu) ve 5432 (PostgreSQL) yalnız yerel.
+açılır; 8443 (taa-sunucu) ve 5432 (PostgreSQL) yalnız yerel.
 
 ### Yol 1 — Doğrudan statik IP + kendi sertifikamız (Caddy iç CA)
 Caddy hem ters vekil hem **iç sertifika makamı**: IP için kendisi sertifika üretir, kök sertifikayı şubelere dağıtırız.

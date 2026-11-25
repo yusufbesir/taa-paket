@@ -39,7 +39,7 @@ pub const OLAY_UCU: &str = "/v1/olay";
 pub const HATA_RAPORU_UCU: &str = "/v1/hata-raporu";
 pub const SUBE_UCU: &str = "/v1/sube";
 pub const YENIDEN_DOGRULA_UCU: &str = "/v1/yeniden-dogrula";
-/// Program bazlı yönetici PIN'i (sunucu: tutaa/sunucu `yonetici_pin.rs`). PIN yalnız buradan belirlenir.
+/// Program bazlı yönetici PIN'i (sunucu: taa-sunucu `src/yonetici_pin.rs`). PIN yalnız buradan belirlenir.
 pub const YONETICI_PIN_UCU: &str = "/v1/yonetici-pin";
 pub const YONETICI_PIN_KALDIR_UCU: &str = "/v1/yonetici-pin/kaldir";
 /// KM2: telefon eşleştirmesinde panelden onay (mağaza bilgisayarı bildirir, Çatı onaylar).
@@ -729,7 +729,7 @@ pub fn pin_politikasi(pin: &str) -> Result<(), &'static str> {
 }
 
 /// Depodaki oturumu okur ve cihaz imzalı göndericiyi kurar. Çatı yalnız sunucu PC'sinde çalışır; cihaz anahtarı
-/// yoksa hata (sunucu imzasız isteği reddeder; `taa-cihaz uret` + `tutaa-sunucu merkez-cihaz`).
+/// yoksa hata (sunucu imzasız isteği reddeder; `taa-cihaz uret` + `taa-sunucu merkez-cihaz`).
 pub fn yonetici_baglantisi(
     kok: &Path,
     sunucu: &str,
@@ -749,7 +749,7 @@ pub fn yonetici_baglantisi_hedef(
     let o = depo.oku(anahtar)?;
     let cihaz = taa_kimlik::cihaz_imzalayici(kok)?.ok_or_else(|| {
         CatiHata::Kimlik(KimlikHata::Depo(format!(
-            "cihaz anahtarı yok ({}). Öneri: taa-cihaz uret, sonra sunucuda tutaa-sunucu merkez-cihaz",
+            "cihaz anahtarı yok ({}). Öneri: taa-cihaz uret, sonra sunucuda taa-sunucu merkez-cihaz",
             kok.join("cihaz").display()
         )))
     })?;

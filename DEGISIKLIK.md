@@ -1,6 +1,9 @@
 <!-- Sahip: Yusuf. yazan: [Claude#taa-paket-T0 2026-11-05] -->
 # Değişiklik günlüğü
 
+## Sunucu deposu ayrıldı (2026-11-25)
+- Sunucu kodu (hesap/giriş, göçler, /v1 uçları) artık `yusufbesir/taa-sunucu` deposunda (eski yer: tutaa `sunucu/`, geçmiş korundu). Tutaa masaüstü programı ayrı kaldı; bu depodaki sunucu başvuruları taa-sunucu'ya çevrildi, ikili adı `taa-sunucu`.
+
 ## Yayınlanmamış
 
 ### Dinamik sunucu adresi (taa-yol otomatik güncelleme, taa-dns)
