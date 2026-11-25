@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#F3EDE1">
+<meta name="theme-color" content="#F1F1EE">
 <meta name="referrer" content="no-referrer">
 <title>TAA Terzi Takip</title>
 <link rel="icon" href="/simge.svg" type="image/svg+xml">
@@ -53,6 +53,12 @@ kbd{font:600 max(12px,.75em) var(--tk-fm);padding:1px 6px;border:1px solid curre
 /* pencere başlık çubuğu */
 .cubuk{grid-area:1/1/2/3;height:40px;display:flex;align-items:center;gap:var(--tk-g3);padding-left:var(--tk-g3);
   background:var(--tk-panel2);border-bottom:var(--tk-kenar) solid var(--tk-line);user-select:none;white-space:nowrap}
+/* Kurulu uygulama penceresi (window-controls-overlay): üst bant başlık çubuğuyla birleşir, bantta sürükleme bölgesi olur. */
+@media (display-mode: window-controls-overlay){
+  .cubuk{app-region:drag;-webkit-app-region:drag;height:env(titlebar-area-height,40px);padding-left:max(var(--tk-g3),env(titlebar-area-x,0px));
+    padding-right:calc(100vw - env(titlebar-area-x,0px) - env(titlebar-area-width,100vw))}
+  .cubuk button,.cubuk input,.cubuk .cubuk-ara,.cubuk .yon-d{app-region:no-drag;-webkit-app-region:no-drag}
+}
 .cubuk .marka{display:flex;align-items:center;gap:var(--tk-g2);font-family:var(--tk-fh);font-weight:700}
 .cubuk .marka svg.logo{width:22px;height:22px}
 .cubuk-ara{flex:1 1 120px;min-width:0;max-width:440px;margin:0 auto;height:30px;display:flex;align-items:center;gap:var(--tk-g2);padding:0 var(--tk-g2);

@@ -51,8 +51,11 @@
     var kayitli = oku('renk:' + ad), sonuc = { tamam: true };
     kok.style.removeProperty('--tk-ac'); kok.style.removeProperty('--tk-ac-fg');
     if (kayitli) { sonuc = vurguUygula(kayitli, false); if (!sonuc.tamam) yaz('renk:' + ad, null); }
+    /* Pencere başlık çubuğu (Edge/Chrome uygulama penceresi) üst bantla (--tk-panel2) aynı renkte olsun.
+       <head> aşamasında da çalışır: renk jetonu :root'tan okunur, body'ye gerek yoktur. */
     var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta && document.body) meta.setAttribute('content', jeton('--tk-panel2') || jeton('--tk-bg'));
+    var bant = hex(jeton('--tk-panel2')) || hex(jeton('--tk-bg'));
+    if (meta && bant) meta.setAttribute('content', bant);
     return { tema: ad, koyu: kok.dataset.ton === 'koyu' || !!SABIT_KOYU[ad], vurguDustu: kayitli && !sonuc.tamam };
   }
   function yaziUygula(v, sakla) {
@@ -75,4 +78,6 @@
   };
   temaUygula(oku('tema') || 'kocan', oku('ton'), false);
   yaziUygula(oku('yazi') || '', false);
+  /* <meta name="theme-color"> ilk çalıştırmada henüz ayrıştırılmamış olabilir; sayfa hazır olunca bir kez daha uygula. */
+  document.addEventListener('DOMContentLoaded', function () { temaUygula(kok.dataset.tema, kok.dataset.ton, false); });
 })();

@@ -29,6 +29,13 @@
     '.taa-oturum-uyari{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);max-width:560px;z-index:2147483000;' +
     'background:var(--tk-panel);color:var(--tk-tx);border:1px solid var(--tk-uyari);border-radius:var(--tk-r);padding:12px 44px 12px 16px;' +
     'box-shadow:var(--tk-gol);font:inherit;line-height:1.45}' +
+    // Çıkış satırı: kenar çubuğunun en altında (Ayarlar'ın altında), durum çubuğuyla çakışmaz.
+    '.gez-alt .tg-cikis{position:static;width:100%;min-height:var(--tk-hedef);margin:var(--tk-g1) 0 0;padding:0 var(--tk-g3);justify-content:flex-start;' +
+    'border:0;border-top:1px solid var(--tk-line);border-radius:0;background:none;box-shadow:none;opacity:1;color:var(--tk-mut);' +
+    'font:inherit;font-weight:600;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;display:flex;align-items:center}' +
+    '.gez-alt .tg-cikis:hover,.gez-alt .tg-cikis:focus-visible{background:var(--tk-panel2);color:var(--tk-tx)}' +
+    '.gez-alt .tg-cikis:focus-visible{outline:3px solid var(--tk-ac);outline-offset:-3px}' +
+    '@container pencere (max-width:1120px){.gez-alt .tg-cikis{justify-content:center;padding:0;font-size:0}.gez-alt .tg-cikis::before{content:"\\21AA";font-size:var(--tk-yazi)}}' +
     '.taa-oturum-uyari button{position:absolute;right:8px;top:8px;min-width:28px;min-height:28px;padding:0;border:0;background:none;color:inherit;font-size:18px;cursor:pointer}';
   document.head.appendChild(stil);
 
@@ -61,7 +68,9 @@
   // Ortak bilgisayarda giren kişi kalıcı olmasın: köşede "Çıkış" düğmesi (basınca giriş yeniden istenir).
   function cikisGoster(oturum) {
     if (window.TaaGirisEkrani && window.TaaGirisEkrani.cikisDugmesi) {
-      window.TaaGirisEkrani.cikisDugmesi({ api: api, oturum: oturum, cikinca: girisAc });
+      var d = window.TaaGirisEkrani.cikisDugmesi({ api: api, oturum: oturum, cikinca: girisAc });
+      var alt = document.querySelector('.gez-alt');
+      if (d && alt && d.parentNode !== alt) alt.appendChild(d);   // gövdeye sabit baloncuk yerine kenar çubuğu satırı
     }
   }
 
