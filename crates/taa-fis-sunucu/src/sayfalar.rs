@@ -16,9 +16,16 @@ pub const SIMGE: &str = include_str!("sayfa/simge.svg");
 
 pub const MANIFEST: &str = r##"{"name":"TAA Terzi Takip","short_name":"Terzi Takip","lang":"tr","start_url":"/telefon","scope":"/","display":"standalone","background_color":"#FFFFFF","theme_color":"#0B3BD6","icons":[{"src":"/simge.svg","sizes":"any","type":"image/svg+xml","purpose":"any"}]}"##;
 
+/// TAA ortak giriş ekranı: çalışma alanındaki tek kaynaktan derlemede gömülür (kopya yok, kayma olmaz).
+pub const GIRIS_EKRANI_JS: &str = include_str!("../../../araclar/js/taa-giris-ekrani.js");
+/// Masaüstü açılışında ortak giriş (window.taaGiris yerel /api/giris/* uçlarına gider).
+pub const GIRIS_BASLAT_JS: &str = include_str!("sayfa/taa-giris-baslat.js");
+
 fn birlestir(s: &str) -> String {
     s.replace("/*@TEMA@*/", TEMA_CSS)
         .replace("/*@ORTAK@*/", ORTAK_JS)
+        .replace("/*@GIRIS-EKRANI@*/", GIRIS_EKRANI_JS)
+        .replace("/*@GIRIS-BASLAT@*/", GIRIS_BASLAT_JS)
 }
 
 pub fn masaustu() -> String {
@@ -62,6 +69,11 @@ mod testler {
         assert!(t.contains("'/api/eslestir/'") && t.contains("kod2") && t.contains("410"));
         let m = masaustu();
         assert!(m.contains("/api/yonetim/eslestir/onayla") && m.contains("esles-kod2"));
+        // Ortak giriş yalnız masaüstünde: ekran + başlatıcı gömülü, yer tutucu kalmaz; telefon sayfasında yok.
+        assert!(
+            m.contains("TaaGirisEkrani") && m.contains("'/api/giris/'") && !m.contains("@GIRIS-")
+        );
+        assert!(!t.contains("TaaGirisEkrani"));
     }
 
     #[test]
