@@ -135,13 +135,19 @@ fn yazma_uclari_ve_govdeler() {
         RolAtama::yeni("kasa", Some(2)).unwrap(),
         RolAtama::yeni("personel", None).unwrap(),
     ];
-    c.kullanici_ekle("ayse", "Ayşe Yılmaz", "cok-gizli-parola", &r)
-        .unwrap();
+    c.kullanici_ekle(
+        "ayse",
+        "Ayşe Y.",
+        Some("Ayşe Yılmaz"),
+        "cok-gizli-parola",
+        &r,
+    )
+    .unwrap();
     let (y, uc, g) = s.son();
     assert_eq!((y.as_str(), uc.as_str()), ("POST", "/v1/kullanici"));
     assert_eq!(
         g,
-        json!({"ad": "ayse", "gorunen_ad": "Ayşe Yılmaz", "parola": "cok-gizli-parola",
+        json!({"ad": "ayse", "gorunen_ad": "Ayşe Y.", "gercek_ad": "Ayşe Yılmaz", "parola": "cok-gizli-parola",
                "roller": [{"rol": "kasa", "sube_id": 2}, {"rol": "personel"}]})
     );
     c.rol_ver(7, &r[0]).unwrap();
@@ -152,9 +158,6 @@ fn yazma_uclari_ve_govdeler() {
     c.kullanici_kapat(7).unwrap();
     assert_eq!(s.son().1, "/v1/kullanici/7/kapat");
     assert_eq!(s.son().2, json!({}));
-    c.parola_degistir(7, "yeni-parola-1").unwrap();
-    assert_eq!(s.son().1, "/v1/kullanici/7/parola");
-    assert_eq!(s.son().2, json!({"parola": "yeni-parola-1"}));
     c.cihaz_onayla("0123456789abcdef", Some(3)).unwrap();
     assert_eq!(s.son().1, "/v1/cihaz/0123456789abcdef/onay");
     assert_eq!(s.son().2, json!({"sube_id": 3}));
@@ -186,13 +189,30 @@ fn girdi_dogrulama_sunucuya_gitmez() {
     let c = Cati::izinsiz_denetimle(&s);
     let r = vec![RolAtama::yeni("kasa", None).unwrap()];
     let gec = |x: Result<Value, CatiHata>| matches!(x, Err(CatiHata::GecersizGirdi(_)));
-    assert!(gec(c.kullanici_ekle("Ayşe", "A", "cok-gizli-parola", &r)));
-    assert!(gec(c.kullanici_ekle("ayse", "", "cok-gizli-parola", &r)));
-    assert!(gec(c.kullanici_ekle("ayse", "A", "kisa", &r)));
-    assert!(gec(c.kullanici_ekle("ayse", "A", "cok-gizli-parola", &[])));
+    assert!(gec(c.kullanici_ekle(
+        "Ayşe",
+        "A",
+        None,
+        "cok-gizli-parola",
+        &r
+    )));
+    assert!(gec(c.kullanici_ekle(
+        "ayse",
+        "",
+        None,
+        "cok-gizli-parola",
+        &r
+    )));
+    assert!(gec(c.kullanici_ekle("ayse", "A", None, "kisa", &r)));
+    assert!(gec(c.kullanici_ekle(
+        "ayse",
+        "A",
+        None,
+        "cok-gizli-parola",
+        &[]
+    )));
     assert!(RolAtama::yeni("Yonetici", None).is_err());
     assert!(RolAtama::yeni("", None).is_err());
-    assert!(gec(c.parola_degistir(1, "kisa")));
     assert!(gec(c.cihaz_onayla("kisa", None)));
     assert!(gec(c.cihaz_onayla("0123456789ABCDEF", None)));
     assert!(gec(c.cihaz_iptal("0123456789abcdef0")));

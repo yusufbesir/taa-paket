@@ -42,6 +42,11 @@ pub const YENIDEN_DOGRULA_UCU: &str = "/v1/yeniden-dogrula";
 /// Program bazlı yönetici PIN'i (sunucu: tutaa/sunucu `yonetici_pin.rs`). PIN yalnız buradan belirlenir.
 pub const YONETICI_PIN_UCU: &str = "/v1/yonetici-pin";
 pub const YONETICI_PIN_KALDIR_UCU: &str = "/v1/yonetici-pin/kaldir";
+/// KM2: telefon eşleştirmesinde panelden onay (mağaza bilgisayarı bildirir, Çatı onaylar).
+pub const ESLESTIRME_UCU: &str = "/v1/eslestirme";
+/// Kendi hesabına başka bilgisayardan yapılan hatalı giriş denemeleri (Yusuf 11-17).
+pub const UYARI_UCU: &str = "/v1/uyari";
+pub const UYARI_GORULDU_UCU: &str = "/v1/uyari/goruldu";
 
 /// İzin adları (sunucu tohumu, API-SOZLESMESI).
 pub const IZIN_KULLANICI: &str = "kullanici.yonet";
@@ -338,15 +343,19 @@ impl<'a> Cati<'a> {
     }
 
     /// `POST /v1/kullanici` → 201 {id, ad}. En az bir rol zorunlu (rolsüz kullanıcı hiçbir şey yapamaz; K1).
+    /// `gorunen_ad` fişte görünen addır; boşsa sunucu ad soyadın yıldızlı maskesini koyar ("M*** K***").
+    /// `gercek_ad` (ad soyad) yalnız yöneticiye görünür. Şifre kalıcıdır (Yusuf 11-17: geçici şifre yok).
     pub fn kullanici_ekle(
         &self,
         ad: &str,
         gorunen_ad: &str,
+        gercek_ad: Option<&str>,
         parola: &str,
         roller: &[RolAtama],
     ) -> Result<Value, CatiHata> {
         let ad = tanitici("kullanıcı adı", ad)?;
-        if !gorunen_ad_gecerli(gorunen_ad) {
+        let gercek_var = gercek_ad.is_some_and(|g| !g.trim().is_empty());
+        if !(gorunen_ad_gecerli(gorunen_ad) || gercek_var && gorunen_ad.trim().is_empty()) {
             return Err(CatiHata::GecersizGirdi(
                 "görünen ad boş/çok uzun/denetim karakteri".into(),
             ));
@@ -361,16 +370,21 @@ impl<'a> Cati<'a> {
                 "en az bir rol gerekli (--rol)".into(),
             ));
         }
-        self.yaz(
-            IZIN_KULLANICI,
-            KULLANICI_UCU,
-            json!({
-                "ad": ad,
-                "gorunen_ad": gorunen_ad.trim(),
-                "parola": parola,
-                "roller": roller.iter().map(RolAtama::json).collect::<Vec<_>>(),
-            }),
-        )
+        let mut govde = json!({
+            "ad": ad,
+            "gorunen_ad": gorunen_ad.trim(),
+            "parola": parola,
+            "roller": roller.iter().map(RolAtama::json).collect::<Vec<_>>(),
+        });
+        if let Some(g) = gercek_ad.map(str::trim).filter(|g| !g.is_empty()) {
+            if !gorunen_ad_gecerli(g) {
+                return Err(CatiHata::GecersizGirdi(
+                    "ad soyad boş/çok uzun/denetim karakteri".into(),
+                ));
+            }
+            govde["gercek_ad"] = Value::String(g.into());
+        }
+        self.yaz(IZIN_KULLANICI, KULLANICI_UCU, govde)
     }
 
     pub fn rol_ver(&self, kullanici_id: i64, rol: &RolAtama) -> Result<Value, CatiHata> {
@@ -395,19 +409,6 @@ impl<'a> Cati<'a> {
             IZIN_KULLANICI,
             &format!("{KULLANICI_UCU}/{kullanici_id}/kapat"),
             json!({}),
-        )
-    }
-
-    pub fn parola_degistir(&self, kullanici_id: i64, parola: &str) -> Result<Value, CatiHata> {
-        if !parola_gecerli(parola) {
-            return Err(CatiHata::GecersizGirdi(format!(
-                "parola en az {PAROLA_EN_AZ} karakter olmalı"
-            )));
-        }
-        self.yaz(
-            IZIN_KULLANICI,
-            &format!("{KULLANICI_UCU}/{kullanici_id}/parola"),
-            json!({ "parola": parola }),
         )
     }
 
@@ -546,6 +547,159 @@ impl<'a> Cati<'a> {
             m.insert("sube_id".into(), json!(s));
         }
         self.yaz(IZIN_PROGRAM, YONETICI_PIN_KALDIR_UCU, Value::Object(m))
+    }
+
+    // ---- KM2: personel kaydı onayı ve panelden eşleştirme ---- yazan: [Claude#taa-km2 2026-11-17]
+
+    /// `GET /v1/kullanici?durum=` — `durum`: onay_bekliyor | aktif | askida | kaldirildi | reddedildi | basvuru
+    /// (`basvuru`: şifresini unutan ya da kilitlenen personelin yöneticiye başvuruları).
+    pub fn kullanicilar_durumlu(&self, durum: &str) -> Result<Vec<Value>, CatiHata> {
+        if !matches!(
+            durum,
+            "onay_bekliyor" | "aktif" | "askida" | "kaldirildi" | "reddedildi" | "basvuru"
+        ) {
+            return Err(CatiHata::GecersizGirdi(format!(
+                "durum geçersiz: {durum:?}"
+            )));
+        }
+        self.liste(IZIN_KULLANICI, &format!("{KULLANICI_UCU}?durum={durum}"))
+    }
+
+    /// Onay bekleyen kaydı onaylar: en az bir rol; `kisi_id` verilirse var olan kişiye bağlanır, `gercek_ad`
+    /// verilirse düzeltilir (görünen ad maskesi yenilenir), `gorunen_ad` verilirse o yazılır. Taze parola ister.
+    pub fn kullanici_onayla(
+        &self,
+        kullanici_id: i64,
+        roller: &[RolAtama],
+        kisi_id: Option<&str>,
+        gercek_ad: Option<&str>,
+        gorunen_ad: Option<&str>,
+    ) -> Result<Value, CatiHata> {
+        if roller.is_empty() {
+            return Err(CatiHata::GecersizGirdi("en az bir rol gerekli".into()));
+        }
+        let mut m = Map::new();
+        if let Some(g) = gorunen_ad.map(str::trim).filter(|g| !g.is_empty()) {
+            if !gorunen_ad_gecerli(g) {
+                return Err(CatiHata::GecersizGirdi(
+                    "görünen ad çok uzun/denetim karakteri".into(),
+                ));
+            }
+            m.insert("gorunen_ad".into(), Value::String(g.into()));
+        }
+        m.insert(
+            "roller".into(),
+            Value::Array(roller.iter().map(RolAtama::json).collect()),
+        );
+        if let Some(k) = kisi_id.map(str::trim).filter(|k| !k.is_empty()) {
+            let gecerli = (4..=64).contains(&k.len())
+                && k.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'));
+            if !gecerli {
+                return Err(CatiHata::GecersizGirdi(
+                    "kişi kimliği 4-64 karakter; harf, rakam, _ ya da -".into(),
+                ));
+            }
+            m.insert("kisi_id".into(), Value::String(k.into()));
+        }
+        if let Some(g) = gercek_ad.map(str::trim).filter(|g| !g.is_empty()) {
+            if !gorunen_ad_gecerli(g) {
+                return Err(CatiHata::GecersizGirdi(
+                    "ad soyad boş/çok uzun/denetim karakteri".into(),
+                ));
+            }
+            m.insert("gercek_ad".into(), Value::String(g.into()));
+        }
+        self.yaz(
+            IZIN_KULLANICI,
+            &format!("{KULLANICI_UCU}/{kullanici_id}/onayla"),
+            Value::Object(m),
+        )
+    }
+
+    /// `islem`: reddet | askiya-al | geri-ac | kilit-ac | basvuru-reddet. Taze parola ister.
+    /// Başvuru onayı ayrı: [`Self::basvuru_onayla`] (doğrulama sayısı ister).
+    pub fn kullanici_durum_islemi(
+        &self,
+        kullanici_id: i64,
+        islem: &str,
+    ) -> Result<Value, CatiHata> {
+        if !matches!(
+            islem,
+            "reddet" | "askiya-al" | "geri-ac" | "kilit-ac" | "basvuru-reddet"
+        ) {
+            return Err(CatiHata::GecersizGirdi(format!(
+                "işlem geçersiz: {islem:?}"
+            )));
+        }
+        self.yaz(
+            IZIN_KULLANICI,
+            &format!("{KULLANICI_UCU}/{kullanici_id}/{islem}"),
+            json!({}),
+        )
+    }
+
+    /// `POST /v1/kullanici/{id}/basvuru-onayla {sayi}` — yöneticiye başvuruyu, başvuranın ekranında görünen iki
+    /// haneli sayıyla onaylar (Fable Y1): şifre başvurusunda yeni şifre geçerli olur, kilit açılır. Sayı tutmazsa
+    /// sunucu 400 `sayi_yanlis` döner; 3 yanlışta başvuru düşer (409 `basvuru_dustu`). Taze parola ister.
+    pub fn basvuru_onayla(&self, kullanici_id: i64, sayi: &str) -> Result<Value, CatiHata> {
+        let sayi = sayi.trim();
+        if sayi.len() != 2 || !sayi.bytes().all(|b| b.is_ascii_digit()) {
+            return Err(CatiHata::GecersizGirdi("sayı iki rakam olmalı".into()));
+        }
+        self.yaz(
+            IZIN_KULLANICI,
+            &format!("{KULLANICI_UCU}/{kullanici_id}/basvuru-onayla"),
+            json!({ "sayi": sayi }),
+        )
+    }
+
+    /// `GET /v1/eslestirme?durum=` (varsayılan bekliyor). Sayı listede gelmez.
+    pub fn eslestirmeler(&self, durum: Option<&str>) -> Result<Vec<Value>, CatiHata> {
+        let d = durum.unwrap_or("bekliyor");
+        if !matches!(
+            d,
+            "bekliyor" | "onayli" | "reddedildi" | "iptal" | "suresi_doldu" | "hepsi"
+        ) {
+            return Err(CatiHata::GecersizGirdi(format!("durum geçersiz: {d:?}")));
+        }
+        self.liste(IZIN_CIHAZ, &format!("{ESLESTIRME_UCU}?durum={d}"))
+    }
+
+    /// Telefonda görünen iki haneli sayıyla onay. 3 yanlışta sunucu isteği reddeder.
+    pub fn eslestirme_onayla(&self, id: i64, sayi: &str) -> Result<Value, CatiHata> {
+        let sayi = sayi.trim();
+        if sayi.len() != 2 || !sayi.bytes().all(|b| b.is_ascii_digit()) {
+            return Err(CatiHata::GecersizGirdi("sayı iki rakam olmalı".into()));
+        }
+        self.yaz(
+            IZIN_CIHAZ,
+            &format!("{ESLESTIRME_UCU}/{id}/onay"),
+            json!({ "sayi": sayi }),
+        )
+    }
+
+    pub fn eslestirme_reddet(&self, id: i64) -> Result<Value, CatiHata> {
+        self.yaz(IZIN_CIHAZ, &format!("{ESLESTIRME_UCU}/{id}/red"), json!({}))
+    }
+
+    // ---- Hesap uyarıları (Yusuf 11-17: "benim hesabıma giriş yapmaya çalışan olursa bana uyarı gelecek") ----
+
+    /// `GET /v1/uyari` — oturum açan yöneticinin KENDİ hesabına başka bilgisayardan yapılan hatalı denemeler:
+    /// `{yeni, denemeler:[{gun, cihaz, cihaz_adi, sube_id, deneme, son, yeni}]}`. İzin gerekmez (yalnız kendi hesabı).
+    pub fn uyarilar(&self) -> Result<Value, CatiHata> {
+        match self.g.al(UYARI_UCU)? {
+            v @ Value::Object(_) => Ok(v),
+            Value::Null => Ok(json!({ "yeni": 0, "denemeler": [] })),
+            _ => Err(CatiHata::BozukYanit(format!(
+                "{UYARI_UCU} nesne döndürmedi"
+            ))),
+        }
+    }
+
+    /// `POST /v1/uyari/goruldu` — yeni uyarı sayacını sıfırlar; geçmiş listede kalır.
+    pub fn uyari_goruldu(&self) -> Result<Value, CatiHata> {
+        Ok(self.g.gonder(UYARI_GORULDU_UCU, &json!({}))?)
     }
 
     pub fn sube_ekle(&self, kod: &str, ad: &str) -> Result<Value, CatiHata> {
