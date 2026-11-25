@@ -19,7 +19,11 @@ pub const SIMGE_ICO: &[u8] = include_bytes!("sayfa/simge.ico");
 pub const SIMGE_192: &[u8] = include_bytes!("sayfa/simge-192.png");
 pub const SIMGE_512: &[u8] = include_bytes!("sayfa/simge-512.png");
 
-pub const MANIFEST: &str = r##"{"name":"TAA Terzi Takip","short_name":"Terzi Takip","lang":"tr","start_url":"/telefon","scope":"/","display":"standalone","display_override":["window-controls-overlay","standalone"],"background_color":"#FFFFFF","theme_color":"#F1F1EE","icons":[{"src":"/simge.svg","sizes":"any","type":"image/svg+xml","purpose":"any"},{"src":"/simge-192.png","sizes":"192x192","type":"image/png","purpose":"any"},{"src":"/simge-512.png","sizes":"512x512","type":"image/png","purpose":"any"}]}"##;
+/// Masaüstü program bildirgesi: Edge/Chrome "Uygulamayı yükle" ile kurulunca /masaustu açılır; başlık çubuğu
+/// window-controls-overlay ile sayfanın üst bandıyla birleşir ve tema rengini alır.
+pub const MANIFEST_MASAUSTU: &str = r##"{"id":"/masaustu","name":"TAA Terzi Takip","short_name":"Terzi Takip","lang":"tr","start_url":"/masaustu","scope":"/masaustu","display":"standalone","display_override":["window-controls-overlay","standalone"],"background_color":"#FFFFFF","theme_color":"#F1F1EE","icons":[{"src":"/simge.svg","sizes":"any","type":"image/svg+xml","purpose":"any"},{"src":"/simge-192.png","sizes":"192x192","type":"image/png","purpose":"any"},{"src":"/simge-512.png","sizes":"512x512","type":"image/png","purpose":"any"}]}"##;
+
+pub const MANIFEST: &str =r##"{"name":"TAA Terzi Takip","short_name":"Terzi Takip","lang":"tr","start_url":"/telefon","scope":"/","display":"standalone","display_override":["window-controls-overlay","standalone"],"background_color":"#FFFFFF","theme_color":"#F1F1EE","icons":[{"src":"/simge.svg","sizes":"any","type":"image/svg+xml","purpose":"any"},{"src":"/simge-192.png","sizes":"192x192","type":"image/png","purpose":"any"},{"src":"/simge-512.png","sizes":"512x512","type":"image/png","purpose":"any"}]}"##;
 
 /// TAA ortak giriş ekranı: çalışma alanındaki tek kaynaktan derlemede gömülür (kopya yok, kayma olmaz).
 pub const GIRIS_EKRANI_JS: &str = include_str!("../../../araclar/js/taa-giris-ekrani.js");

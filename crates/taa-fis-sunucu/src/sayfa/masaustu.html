@@ -9,7 +9,7 @@
 <link rel="icon" href="/simge.svg" type="image/svg+xml">
 <link rel="icon" href="/simge.ico" sizes="16x16 20x20 24x24 32x32 40x40 48x48 64x64 128x128 256x256">
 <link rel="icon" href="/simge-192.png" sizes="192x192" type="image/png">
-<link rel="manifest" href="/manifest.json">
+<link rel="manifest" href="/masaustu.webmanifest">
 <!-- TAA Terzi Takip masaüstü programı. Yalnız bu bilgisayardan açılır (127.0.0.1). Dış kaynak yok.
      Bileşen CSS'i yalnız --tk-* jetonlarını kullanır; jetonlar telefon sitesiyle ortak (tema.css). -->
 <style>
@@ -1798,6 +1798,12 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
   var tNo=0;
   function tSahne(n){tNo=n;$$('.t-sahne').forEach(function(s,i){s.classList.toggle('acik',i===n)});$$('#t-noktalar i').forEach(function(s,i){s.classList.toggle('acik',i===n)});$('#t-ileri').textContent=n===2?'Başla':'İleri'}
 
+  /* Ortak hesap menüsü (taa-giris-baslat.js) bu küçük köprüden sayfa işlevlerine ulaşır. */
+  window.TerziKopru={git:function(e){git(e)},tema:function(ad){temaSec(ad,document.documentElement.dataset.ton||'')},
+    kisayollar:function(){$('#kisayollar').classList.add('acik')},yoneticiAcik:function(){return yon.acik},
+    yoneticiKilitle:function(){kilitle()},
+    yardim:function(){api('GET','/api/durum').then(function(d){bildir('TAA Terzi Takip · '+(d&&d.sube?'Şube '+d.sube+' · ':'')+'sunucu '+location.host,null,8000)},function(){bildir('TAA Terzi Takip · sunucu '+location.host,null,8000)})}};
+
   /* ---------- klavye kısayolları ---------- */
   document.addEventListener('keydown',function(e){
     var k=(e.key||'').toLowerCase(), c=e.ctrlKey||e.metaKey, ek=$('.ekran.acik').dataset.ekran, ae=document.activeElement, yazi=ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName);
@@ -1810,7 +1816,7 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
       if(e.key==='Enter')return al(function(){pinGonder()})}
     if(c&&k==='n')return al(function(){git('yeni')});
     if((c&&k==='f')||e.key==='F3')return al(function(){git('fisler','ara');$('#liste-ara').select()});
-    if(c&&k==='l')return al(function(){kilitle()});
+    if(c&&k==='l'){if($('#taa-giris-hesap'))return;/* hesap menüsü varken Ctrl+L oturumu kilitler (ortak bileşen) */return al(function(){kilitle()})}
     if(c&&k==='z'&&BEKLEYEN&&!yazi)return al(geriAl);
     if(c&&k==='s'&&ek==='yeni')return al(function(){kaydet(false)});
     if(c&&k==='p'&&ek==='fisler'&&acikNo)return al(function(){fisYazdir([acikNo])});

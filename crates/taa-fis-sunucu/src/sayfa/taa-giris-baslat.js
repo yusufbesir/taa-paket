@@ -29,13 +29,9 @@
     '.taa-oturum-uyari{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);max-width:560px;z-index:2147483000;' +
     'background:var(--tk-panel);color:var(--tk-tx);border:1px solid var(--tk-uyari);border-radius:var(--tk-r);padding:12px 44px 12px 16px;' +
     'box-shadow:var(--tk-gol);font:inherit;line-height:1.45}' +
-    // Çıkış satırı: kenar çubuğunun en altında (Ayarlar'ın altında), durum çubuğuyla çakışmaz.
-    '.gez-alt .tg-cikis{position:static;width:100%;min-height:var(--tk-hedef);margin:var(--tk-g1) 0 0;padding:0 var(--tk-g3);justify-content:flex-start;' +
-    'border:0;border-top:1px solid var(--tk-line);border-radius:0;background:none;box-shadow:none;opacity:1;color:var(--tk-mut);' +
-    'font:inherit;font-weight:600;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;display:flex;align-items:center}' +
-    '.gez-alt .tg-cikis:hover,.gez-alt .tg-cikis:focus-visible{background:var(--tk-panel2);color:var(--tk-tx)}' +
-    '.gez-alt .tg-cikis:focus-visible{outline:3px solid var(--tk-ac);outline-offset:-3px}' +
-    '@container pencere (max-width:1120px){.gez-alt .tg-cikis{justify-content:center;padding:0;font-size:0}.gez-alt .tg-cikis::before{content:"\\21AA";font-size:var(--tk-yazi)}}' +
+    // Dar pencerede kenar çubuğu 64 px: hesap satırı yalnız baş harf rozeti olur.
+    '@container pencere (max-width:1120px){.gez-alt .tg-hesap{padding:6px 0;justify-content:center;gap:0;width:100%}' +
+    '.gez-alt .tg-hesap .tg-kim,.gez-alt .tg-hesap .tg-ok{display:none}}' +
     '.taa-oturum-uyari button{position:absolute;right:8px;top:8px;min-width:28px;min-height:28px;padding:0;border:0;background:none;color:inherit;font-size:18px;cursor:pointer}';
   document.head.appendChild(stil);
 
@@ -65,22 +61,49 @@
     document.body.appendChild(d);
   }
 
-  // Ortak bilgisayarda giren kişi kalıcı olmasın: köşede "Çıkış" düğmesi (basınca giriş yeniden istenir).
+  var TEMA_ADLARI = [['kocan', 'Koçan'], ['tebesir', 'Tebeşir'], ['aski', 'Askı'], ['cozgu', 'Çözgü'], ['civit', 'Çivit'], ['keten', 'Keten']];
+  var sonHesap = null;   // menüsü kurulu kullanıcı (10 dakikalık denetim açık menüyü bozmasın)
+
+  // Ortak hesap menüsü (kenar çubuğunun altında): hesap bilgisi, Kullanıcı değiştir, Ekranı kilitle, Çıkış yap + Terzi Takip öğeleri.
+  // Öğeler menü her açıldığında yeniden kurulur (tema işareti, yönetici durumu güncel kalır).
   function cikisGoster(oturum) {
-    if (window.TaaGirisEkrani && window.TaaGirisEkrani.cikisDugmesi) {
-      var d = window.TaaGirisEkrani.cikisDugmesi({ api: api, oturum: oturum, cikinca: girisAc });
-      var alt = document.querySelector('.gez-alt');
-      if (d && alt && d.parentNode !== alt) alt.appendChild(d);   // gövdeye sabit baloncuk yerine kenar çubuğu satırı
-    }
+    if (!(window.TaaGirisEkrani && window.TaaGirisEkrani.hesapMenusu)) return;
+    var ad = oturum && oturum.kullanici ? String(oturum.kullanici) : '';
+    if (sonHesap === ad && document.getElementById('taa-giris-hesap')) return;
+    sonHesap = ad;
+    var k = function () { return window.TerziKopru || {}; };
+    window.TaaGirisEkrani.hesapMenusu({
+      api: api, oturum: oturum, cikinca: girisAc,
+      hedef: document.querySelector('.gez-alt'), programAdi: 'TAA Terzi Takip',
+      get ogeler() {
+        var tema = document.documentElement.dataset.tema || 'kocan';
+        var liste = [
+          { ad: 'Ayarlar', tikla: function () { if (k().git) k().git('ayarlar'); } },
+          { ad: 'Tema', alt: TEMA_ADLARI.map(function (t) { return { ad: t[1], secili: t[0] === tema, tikla: function () { if (k().tema) k().tema(t[0]); } }; }) },
+          { ayrac: true },
+          { ad: 'Klavye kısayolları', kisayol: 'F1', tikla: function () { if (k().kisayollar) k().kisayollar(); } },
+          { ad: 'Yardım ve sürüm', tikla: function () { if (k().yardim) k().yardim(); } }
+        ];
+        if (k().yoneticiAcik && k().yoneticiAcik()) {
+          liste.push({ ayrac: true });
+          liste.push({ ad: 'Yönetici kipinden çık', tikla: function () { k().yoneticiKilitle(); } });
+        }
+        return liste;
+      }
+    });
   }
 
   function girildi(oturum) { uyariGoster(oturum); cikisGoster(oturum); }
 
-  function girisAc() {
-    var d = document.getElementById('taa-giris-cikis'); if (d) d.remove();
+  // n: hesap menüsünden gelen { neden, kullanici, ileti }; 'kilit' ise kullanıcı adı dolu açılır.
+  function girisAc(n) {
+    sonHesap = null;
+    var d = document.getElementById('taa-giris-hesap'); if (d) d.remove();
     if (document.querySelector('.taa-giris')) return;   // zaten açık
     if (!window.TaaGirisEkrani) { kilitle(); return; }
-    window.TaaGirisEkrani.ac(document.body, { programAdi: 'TAA Terzi Takip', api: api, girildi: girildi });
+    var s = { programAdi: 'TAA Terzi Takip', api: api, girildi: girildi };
+    if (n && typeof n === 'object') { s.kullanici = n.kullanici; s.kilitli = n.neden === 'kilit'; if (n.ileti) s.ileti = n.ileti; }
+    window.TaaGirisEkrani.ac(document.body, s);
   }
 
   function denetle() {

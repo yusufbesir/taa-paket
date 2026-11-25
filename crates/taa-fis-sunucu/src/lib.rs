@@ -285,6 +285,9 @@ impl Uygulama {
             ("GET", ["manifest.json"]) => {
                 Yanit::tur("application/manifest+json", sayfalar::MANIFEST.as_bytes())
             }
+            ("GET", ["masaustu.webmanifest"]) => {
+                Yanit::tur("application/manifest+json", sayfalar::MANIFEST_MASAUSTU.as_bytes())
+            }
             ("GET", ["simge.svg"]) => Yanit::tur("image/svg+xml", sayfalar::SIMGE.as_bytes()),
             // Windows görev çubuğu/Başlat ve Edge --app penceresi keskin simge için çok boyutlu .ico ve PNG ister.
             ("GET", ["simge.ico"]) => Yanit::tur("image/x-icon", sayfalar::SIMGE_ICO),
@@ -2201,6 +2204,10 @@ mod testler {
                 .unwrap()
                 .contains("/simge.svg")
         );
+        let mm = u.isle(&ist("GET", "/masaustu.webmanifest", None, "", false));
+        assert_eq!(mm.kod, 200);
+        let mm = String::from_utf8(mm.govde).unwrap();
+        assert!(mm.contains("\"start_url\":\"/masaustu\"") && mm.contains("window-controls-overlay"));
         let ico = u.isle(&ist("GET", "/simge.ico", None, "", false));
         assert_eq!(ico.kod, 200);
         assert_eq!(&ico.govde[..4], &[0, 0, 1, 0]);
