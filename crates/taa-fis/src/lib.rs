@@ -372,6 +372,42 @@ mod testler {
     }
 
     #[test]
+    fn takip_karekodu_yalniz_musteri_nushasinda() {
+        let dir = taa_dosya::gecici_klasor().unwrap();
+        let y = dir.join("d.jsonl");
+        let f = Defter { yol: &y }.ekle(girdi()).unwrap();
+        let personel = "http://x/telefon#fis=PERSONEL";
+        let t = Takip {
+            adres: "https://takip.example/t/abcdefghjkmnpqrs",
+            yedek: Some("https://yedek.example/t/abcdefghjkmnpqrs"),
+            cumle: "Ürününüzün durumunu bu karekodu okutarak takip edebilirsiniz.",
+        };
+        let b = escpos_nushalar_takipli(&f, 42, personel, None, Some(&t));
+        let sayi = |hedef: &[u8]| b.windows(hedef.len()).filter(|w| *w == hedef).count();
+        assert_eq!(
+            sayi(t.adres.as_bytes()),
+            1,
+            "takip karekodu yalnız müşteri nüshasında"
+        );
+        assert_eq!(
+            sayi(personel.as_bytes()),
+            1,
+            "personel karekodu yalnız terzihane nüshasında"
+        );
+        assert_eq!(sayi(b"yedek.example"), 1);
+        let cumle: Vec<u8> = "Ürününüzün durumunu".chars().map(cp857).collect();
+        assert_eq!(sayi(&cumle), 1);
+        // takip yoksa eski davranış: iki nüshada da personel karekodu
+        let c = escpos_nushalar_takipli(&f, 42, personel, None, None);
+        assert_eq!(
+            c.windows(personel.len())
+                .filter(|w| *w == personel.as_bytes())
+                .count(),
+            2
+        );
+    }
+
+    #[test]
     fn aydinlatma_yalniz_musteri_nushasinda() {
         let dir = taa_dosya::gecici_klasor().unwrap();
         let y = dir.join("d.jsonl");

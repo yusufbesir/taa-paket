@@ -4,6 +4,8 @@
 //! Masaüstü program: bu bilgisayarda http://127.0.0.1:PORT/masaustu (ya da `taa-terzi-takip` başlatıcısı).
 //! Yönetici PIN'i TAA Çatı'da doğrulanır: `--kok` (varsayılan TAA veri kökü) altındaki oturum, cihaz anahtarı ve
 //! yol listesi kullanılır; `--sunucu`/`--sertifika` TAA Çatı'daki anlamıyla aynıdır.
+//! Müşteri takip: `taa-fis-sunucu --veri KLASÖR --takip-genel-anahtar` bulut sayfasına verilecek GENEL anahtarı
+//! yazar ve çıkar (özel anahtar ve takip anahtarı klasörde kalır). Ayar `musteri-takip.json` (bkz. musteri_takip.rs).
 use std::io::Read;
 use std::path::PathBuf;
 use taa_fis_sunucu::{cati_pin, kurulum, Istek, Uygulama, FOTO_SINIRI};
@@ -32,6 +34,29 @@ fn main() {
             yerel_ip().unwrap_or_else(|| "localhost".into())
         )
     });
+    if std::env::args().any(|a| a == "--takip-genel-anahtar") {
+        match taa_fis_sunucu::musteri_takip::genel_anahtar(&veri) {
+            Ok(g) => {
+                println!("{g}");
+                std::process::exit(0);
+            }
+            Err(e) => {
+                eprintln!("Takip anahtarı okunamadı: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+    // Müşteri takip: bekleyen durumlar dakikada bir bulut sayfalarına gönderilir (ayar yoksa bir şey yapmaz).
+    {
+        let dizin = veri.clone();
+        std::thread::spawn(move || loop {
+            let g = taa_fis_sunucu::musteri_takip::CurlGonderici;
+            if let Err(e) = taa_fis_sunucu::musteri_takip::gonder_bekleyenler(&dizin, &g) {
+                eprintln!("Müşteri takip gönderimi yapılamadı: {e}");
+            }
+            std::thread::sleep(std::time::Duration::from_secs(60));
+        });
+    }
     let mut uyg = Uygulama::yeni(veri, arg("--yazici").map(PathBuf::from), taban.clone());
     uyg.aydinlatma_url = arg("--aydinlatma-url");
     let kok = arg("--kok")

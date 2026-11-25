@@ -45,19 +45,20 @@ pub trait Gonderici {
     fn gonder(&self, m: &Mesaj) -> Result<(), String>;
 }
 
-/// Şablonda yalnız `{no}` yer tutucusuna izin verilir (KVKK: başka kişisel veri girmesin).
+/// Şablonda yalnız `{no}` ve `{takip}` (müşteri takip sayfası adresi) yer tutucularına izin verilir
+/// (KVKK: başka kişisel veri girmesin).
 pub fn sablon_gecerli(s: &str) -> Result<(), String> {
     if !s.contains("{no}") {
         return Err("şablonda {no} (fiş numarası) bulunmalı".into());
     }
-    let kalan = s.replace("{no}", "");
+    let kalan = s.replace("{no}", "").replace("{takip}", "");
     if let Some(i) = kalan.find('{') {
         let son = kalan[i..]
             .find('}')
             .map(|j| i + j + 1)
             .unwrap_or(kalan.len());
         return Err(format!(
-            "şablonda yalnız {{no}} kullanılabilir (KVKK); bulunan: {}",
+            "şablonda yalnız {{no}} ve {{takip}} kullanılabilir (KVKK); bulunan: {}",
             &kalan[i..son]
         ));
     }
@@ -68,8 +69,23 @@ pub fn sablon_gecerli(s: &str) -> Result<(), String> {
 }
 
 pub fn hazir_mesaji(sablon: &str, fis_no: &str) -> Result<String, String> {
+    hazir_mesaji_takipli(sablon, fis_no, None)
+}
+
+/// Takip adresi verilirse `{takip}` yerine konur; şablonda `{takip}` yoksa sona kısa bir cümleyle eklenir.
+/// Adres verilmezse `{takip}` geçen cümle parçası bırakılmaz (yer tutucu boşalır).
+pub fn hazir_mesaji_takipli(
+    sablon: &str,
+    fis_no: &str,
+    takip: Option<&str>,
+) -> Result<String, String> {
     sablon_gecerli(sablon)?;
-    Ok(sablon.replace("{no}", fis_no))
+    let m = sablon.replace("{no}", fis_no);
+    Ok(match takip {
+        Some(t) if m.contains("{takip}") => m.replace("{takip}", t),
+        Some(t) => format!("{m} Ürününüzün durumunu buradan izleyebilirsiniz: {t}"),
+        None => m.replace("{takip}", "").trim().to_string(),
+    })
 }
 
 /// `05321234567` / `+90 532 123 45 67` -> `905321234567`.
@@ -129,6 +145,17 @@ impl Kuyruk<'_> {
         sablon: &str,
         tarih: &str,
     ) -> Result<Option<Mesaj>, String> {
+        self.hazir_ekle_takipli(fis_no, telefon, sablon, tarih, None)
+    }
+
+    pub fn hazir_ekle_takipli(
+        &self,
+        fis_no: &str,
+        telefon: &str,
+        sablon: &str,
+        tarih: &str,
+        takip: Option<&str>,
+    ) -> Result<Option<Mesaj>, String> {
         if !taa_ayar::ozellik_acik(OZELLIK, true) {
             return Err(taa_ayar::kapali_mesaji(OZELLIK));
         }
@@ -139,7 +166,7 @@ impl Kuyruk<'_> {
             id: format!("M-{}", self.mesajlar()?.len() + 1),
             fis_no: fis_no.into(),
             telefon: wa_telefon(telefon)?,
-            metin: hazir_mesaji(sablon, fis_no)?,
+            metin: hazir_mesaji_takipli(sablon, fis_no, takip)?,
             tarih: tarih.into(),
             durum: Durum::Bekliyor,
         };
@@ -180,6 +207,18 @@ impl Kuyruk<'_> {
 /// Fiş "hazır" olunca: izin varsa mesajı kuyruğa yazar; sonucu kısa metin olarak döndürür.
 /// Şablon `dizin/bildirim-sablonu.txt` varsa o, yoksa varsayılandır; kuyruk `dizin/bildirimler.jsonl`.
 pub fn hazir_bildir(dizin: &Path, fis_no: &str, telefon: &str, izin: bool, tarih: &str) -> String {
+    hazir_bildir_takipli(dizin, fis_no, telefon, izin, tarih, None)
+}
+
+/// Aynısı; `takip` müşteri takip sayfasının adresidir (mesaja eklenir).
+pub fn hazir_bildir_takipli(
+    dizin: &Path,
+    fis_no: &str,
+    telefon: &str,
+    izin: bool,
+    tarih: &str,
+    takip: Option<&str>,
+) -> String {
     if !izin {
         return "müşteri bilgilendirme izni vermemiş".into();
     }
@@ -187,7 +226,7 @@ pub fn hazir_bildir(dizin: &Path, fis_no: &str, telefon: &str, izin: bool, tarih
         .map(|s| s.trim().to_string())
         .unwrap_or_else(|_| VARSAYILAN_SABLON.to_string());
     let yol = dizin.join("bildirimler.jsonl");
-    match (Kuyruk { yol: &yol }).hazir_ekle(fis_no, telefon, &sablon, tarih) {
+    match (Kuyruk { yol: &yol }).hazir_ekle_takipli(fis_no, telefon, &sablon, tarih, takip) {
         Ok(Some(m)) => format!("hazır mesajı kuyruğa yazıldı ({})", m.id),
         Ok(None) => "hazır mesajı zaten kuyrukta".into(),
         Err(e) => e,
@@ -251,5 +290,22 @@ mod testler {
             .unwrap();
         assert_eq!(k.isle(&Sahte(true), "2026-11-05").unwrap(), (1, 0));
         assert_eq!(k.mesajlar().unwrap()[1].durum, Durum::Gonderildi);
+    }
+
+    #[test]
+    fn takip_adresi_mesaja_eklenir() {
+        let t = "https://takip.example/t/abcdefghjkmnpqrs";
+        let m = hazir_mesaji_takipli(VARSAYILAN_SABLON, "F-1", Some(t)).unwrap();
+        assert!(
+            m.starts_with("Tadilat fişiniz F-1 hazır.") && m.ends_with(t),
+            "{m}"
+        );
+        let m = hazir_mesaji_takipli("Fiş {no} hazır. Durum: {takip}", "F-2", Some(t)).unwrap();
+        assert_eq!(m, format!("Fiş F-2 hazır. Durum: {t}"));
+        assert_eq!(
+            hazir_mesaji_takipli("Fiş {no} hazır. {takip}", "F-3", None).unwrap(),
+            "Fiş F-3 hazır."
+        );
+        assert!(sablon_gecerli("Fiş {no} {ad}").is_err());
     }
 }

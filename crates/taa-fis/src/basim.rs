@@ -350,9 +350,30 @@ pub fn escpos_nushalar_tam(
     qr: &str,
     aydinlatma: Option<&str>,
 ) -> Vec<u8> {
+    escpos_nushalar_takipli(f, genislik, qr, aydinlatma, None)
+}
+
+/// Müşteri takip karekodu (Yusuf 2026-11-26): MÜŞTERİ nüshasında personel karekodu yerine takip sayfasının
+/// adresi basılır; üstünde kısa açıklama, altında (varsa) yedek adres yazılır. Terzihane nüshası değişmez.
+#[derive(Debug, Clone, Copy)]
+pub struct Takip<'a> {
+    pub adres: &'a str,
+    pub yedek: Option<&'a str>,
+    pub cumle: &'a str,
+}
+
+pub fn escpos_nushalar_takipli(
+    f: &Fis,
+    genislik: usize,
+    qr: &str,
+    aydinlatma: Option<&str>,
+    takip: Option<&Takip>,
+) -> Vec<u8> {
     let mut b = Vec::new();
     for etiket in nusha_etiketleri(nusha_sayisi()) {
-        b.extend(escpos_nusha_tam(f, genislik, etiket, qr, aydinlatma));
+        b.extend(escpos_nusha_takipli(
+            f, genislik, etiket, qr, aydinlatma, takip,
+        ));
     }
     b
 }
@@ -423,6 +444,17 @@ pub fn escpos_nusha_tam(
     qr: &str,
     aydinlatma: Option<&str>,
 ) -> Vec<u8> {
+    escpos_nusha_takipli(f, genislik, nusha, qr, aydinlatma, None)
+}
+
+pub fn escpos_nusha_takipli(
+    f: &Fis,
+    genislik: usize,
+    nusha: &str,
+    qr: &str,
+    aydinlatma: Option<&str>,
+    takip: Option<&Takip>,
+) -> Vec<u8> {
     const KUCUK: usize = 60; // Font B: 80 mm kâğıtta 64 sütun sığar, 60 güvenli sınır
     let g = genislik.max(24);
     let mut b = vec![0x1B, 0x40, 0x1B, 0x74, 13]; // başlat, kod sayfası 13 = CP857
@@ -476,8 +508,31 @@ pub fn escpos_nusha_tam(
         }
         b.extend([0x1B, 0x4D, 0]);
     }
-    b.extend(qr_baytlari(qr.as_bytes()));
-    b.extend(*b"\n");
+    match takip.filter(|_| nusha.starts_with("MÜŞTERİ")) {
+        Some(t) => {
+            b.extend([0x1B, 0x61, 1, 0x1B, 0x45, 1]); // ortala, kalın
+            b.extend(sar(t.cumle, g).join("\n").chars().map(cp857));
+            b.extend(*b"\n");
+            b.extend([0x1B, 0x45, 0, 0x1B, 0x61, 0]);
+            b.extend(qr_baytlari(t.adres.as_bytes()));
+            b.extend(*b"\n");
+            if let Some(y) = t.yedek {
+                b.extend([0x1B, 0x61, 1, 0x1B, 0x4D, 1]); // ortala, küçük yazı
+                b.extend(
+                    sar(&format!("Açılmazsa: {y}"), KUCUK)
+                        .join("\n")
+                        .chars()
+                        .map(cp857),
+                );
+                b.extend(*b"\n");
+                b.extend([0x1B, 0x4D, 0, 0x1B, 0x61, 0]);
+            }
+        }
+        None => {
+            b.extend(qr_baytlari(qr.as_bytes()));
+            b.extend(*b"\n");
+        }
+    }
     if let Some(url) = aydinlatma {
         if nusha.starts_with("MÜŞTERİ") && taa_ayar::ozellik_acik("fis-aydinlatma", true) {
             b.extend([0x1B, 0x4D, 1]); // küçük yazı (Font B)
