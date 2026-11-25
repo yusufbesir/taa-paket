@@ -386,6 +386,45 @@ pub fn yoneticiye_basvur(
     }
 }
 
+/// `durum` kararı (Fable D1): saklı oturum sunucuya sorulmadan kabul edilmez.
+/// - Sunucu yetkiyi verdiyse (canlı) oturum taze roller/izinler/programlar/geçerlilikle döner (depoya yazılmalı).
+/// - Sunucu oturumu reddettiyse (401 `oturum`: süresi doldu, iptal, hesap kapalı) `Err((true, _))`: depodan silinmeli.
+/// - Cihaz reddi (401 `cihaz*` / 403) `Err((false, _))`: oturum silinmez ama program açılmaz.
+/// - Sunucuya ulaşılamadıysa çevrimdışı: yalnız `gecerlilik` sonuna kadar (boşsa hiç) kabul edilir.
+///
+/// `simdi` ISO (`taa_kuyruk::zaman::simdi()` biçimi); `canli` sunucudan yetki alır (POST /v1/yetki, kısa süre sınırı).
+pub fn oturum_dogrula(
+    o: &Oturum,
+    simdi: &str,
+    canli: impl FnOnce() -> Result<Yetki, KimlikHata>,
+) -> Result<Oturum, (bool, KimlikHata)> {
+    match canli() {
+        Ok(y) => {
+            let mut t = o.clone();
+            t.sube_id = y.sube_id;
+            t.roller = y.roller;
+            t.izinler = y.izinler;
+            t.programlar = y.programlar;
+            t.gecerlilik = y.gecerlilik;
+            t.uyari_sayisi = 0;
+            Ok(t)
+        }
+        Err(KimlikHata::GirisReddi { kod: 401, mesaj }) if !mesaj.contains("cihaz") => Err((
+            true,
+            KimlikHata::GirisReddi { kod: 401, mesaj },
+        )),
+        Err(e @ KimlikHata::GirisReddi { kod: 401 | 403, .. }) => Err((false, e)),
+        Err(_) if !o.gecerlilik.is_empty() && simdi < o.gecerlilik.as_str() => Ok(o.clone()),
+        Err(_) => Err((
+            false,
+            KimlikHata::YetkiYok(
+                "sunucuya ulaşılamadı ve oturumun çevrimdışı süresi doldu. Öneri: ağa bağlanıp yeniden giriş yapın"
+                    .into(),
+            ),
+        )),
+    }
+}
+
 /// Oturum deposu: sunucu başına bir oturum.
 pub trait OturumDeposu {
     fn kaydet(&self, o: &Oturum) -> Result<(), KimlikHata>;

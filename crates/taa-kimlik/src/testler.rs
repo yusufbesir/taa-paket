@@ -424,3 +424,94 @@ fn yoneticiye_basvuru() {
         Err(KimlikHata::GirisReddi { kod: 429, .. })
     ));
 }
+
+// ---- Fable D1: durum saklı oturumu sunucuya sormadan kabul etmez ----
+fn d1_oturum(gecerlilik: &str) -> Oturum {
+    Oturum {
+        sunucu: "https://s".into(),
+        kullanici: "ayse".into(),
+        sube_id: json!(1),
+        roller: vec!["personel".into()],
+        izinler: vec![],
+        programlar: vec!["terzitakip".into()],
+        gecerlilik: gecerlilik.into(),
+        zaman: "2026-11-25T10:00:00Z".into(),
+        uyari_sayisi: 0,
+        oturum: "gizli".into(),
+    }
+}
+
+fn d1_yetki(programlar: &[&str]) -> Yetki {
+    Yetki {
+        kullanici: "ayse".into(),
+        sube_id: json!(1),
+        roller: vec!["personel".into()],
+        izinler: vec![],
+        programlar: programlar.iter().map(|p| p.to_string()).collect(),
+        gecerlilik: "2026-12-02T10:00:00Z".into(),
+        alinma: "2026-11-25T10:00:00Z".into(),
+        dogrulandi: true,
+    }
+}
+
+#[test]
+fn d1_canli_yanit_programlari_tazeler() {
+    let o = d1_oturum("2026-11-26T00:00:00Z");
+    let t = oturum_dogrula(&o, "2026-11-25T12:00:00Z", || Ok(d1_yetki(&["tutaa"]))).unwrap();
+    assert_eq!(
+        t.programlar,
+        vec!["tutaa".to_string()],
+        "yetki kalktıysa program listesi düşer"
+    );
+    assert_eq!(t.gecerlilik, "2026-12-02T10:00:00Z");
+    assert_eq!(t.anahtar(), "gizli");
+}
+
+#[test]
+fn d1_sunucu_oturumu_reddederse_silinir() {
+    let o = d1_oturum("2026-11-26T00:00:00Z");
+    let red = |m: &str| {
+        let m = m.to_string();
+        oturum_dogrula(&o, "2026-11-25T12:00:00Z", move || {
+            Err(KimlikHata::GirisReddi { kod: 401, mesaj: m })
+        })
+    };
+    assert!(matches!(
+        red(r#"{"hata":"oturum","ileti":"Oturum geçersiz ya da süresi doldu"}"#),
+        Err((true, _))
+    ));
+    assert!(
+        matches!(red(r#"{"hata":"cihaz_yok"}"#), Err((false, _))),
+        "cihaz reddi oturumu silmez"
+    );
+    let r = oturum_dogrula(&o, "2026-11-25T12:00:00Z", || {
+        Err(KimlikHata::GirisReddi {
+            kod: 403,
+            mesaj: "cihaz_onaysiz".into(),
+        })
+    });
+    assert!(matches!(r, Err((false, _))));
+}
+
+#[test]
+fn d1_cevrimdisi_yalniz_gecerlilik_sonuna_kadar() {
+    let ulasilamadi = || Err(KimlikHata::Baglanti("bağlanılamadı".into()));
+    let o = d1_oturum("2026-11-26T00:00:00Z");
+    assert!(oturum_dogrula(&o, "2026-11-25T12:00:00Z", ulasilamadi).is_ok());
+    assert!(matches!(
+        oturum_dogrula(&o, "2026-11-26T00:00:00Z", ulasilamadi),
+        Err((false, _))
+    ));
+    assert!(matches!(
+        oturum_dogrula(&o, "2026-11-27T00:00:00Z", ulasilamadi),
+        Err((false, _))
+    ));
+    let eski = d1_oturum("");
+    assert!(
+        matches!(
+            oturum_dogrula(&eski, "2026-11-25T12:00:00Z", ulasilamadi),
+            Err((false, _))
+        ),
+        "geçerlilik bilinmiyorsa çevrimdışı kabul yok"
+    );
+}

@@ -34,6 +34,9 @@ Kullanım:
   Cihaz anahtarı (<kök>\\cihaz\\cihaz.key, taa-cihaz uret) varsa her istek onunla imzalanır (X-TAA-* başlıkları).
 Parola ve oturum anahtarı hiçbir dosyaya, depoya ya da ekrana yazılmaz.";
 
+/// `durum` sunucuya sorarken bağlantı kurma sınırı (saniye); programların açılışı beklemesin.
+const DURUM_BAGLANTI_SN: u64 = 3;
+
 fn veri_kok_ortamdan() -> Option<PathBuf> {
     let ev = |a: &str| std::env::var(a).ok().filter(|s| !s.trim().is_empty());
     if let Some(k) = ev("TAA_VERI_KOK") {
@@ -284,7 +287,43 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
             Ok(0)
         }
         Some("durum") => {
-            let o = depo.oku(&sunucu).map_err(kh)?;
+            let sakli = depo.oku(&sunucu).map_err(kh)?;
+            // Fable D1: sakli oturum sunucuya sorulur (kısa süre sınırı). Sunucu reddederse silinir; ulaşılamazsa
+            // yalnız çevrimdışı geçerlilik sonuna kadar kabul edilir. Yanıt çevrimdışı yetki belgesini de tazeler.
+            let anahtar = sunucu_anahtari_oku(&kok).ok().flatten();
+            let canli = || -> Result<taa_kimlik::Yetki, KimlikHata> {
+                if sunucu_acik {
+                    let h =
+                        hedef(sertifika.as_deref()).map_err(|(_, m)| KimlikHata::Baglanti(m))?;
+                    let g = sakli
+                        .gonderici_taban(
+                            &h.taban,
+                            h.sertifika.as_deref(),
+                            cihaz_imzalayici(&kok).ok().flatten(),
+                        )?
+                        .baglanti_suresi(DURUM_BAGLANTI_SN);
+                    yetki_al(&g, &kok, &sunucu, anahtar.as_ref())
+                } else {
+                    match taa_kimlik::yedekli_gonderici(&kok, Some(&sakli), sertifika.as_deref())? {
+                        Some(y) => yetki_al(&y, &kok, &sunucu, anahtar.as_ref()),
+                        None => Err(KimlikHata::Baglanti("sunucu yolu yok".into())),
+                    }
+                }
+            };
+            let o = match taa_kimlik::oturum_dogrula(&sakli, &taa_kuyruk::zaman::simdi(), canli) {
+                Ok(o) => {
+                    if o != sakli {
+                        let _ = depo.kaydet(&o);
+                    }
+                    o
+                }
+                Err((sil, e)) => {
+                    if sil {
+                        let _ = depo.cikis(&sunucu);
+                    }
+                    return Err((5, format!("oturum geçerli değil: {e}")));
+                }
+            };
             if json {
                 println!("{}", o.ozet());
             } else {
@@ -337,6 +376,27 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
             Ok(if red.is_empty() { 0 } else { 7 })
         }
         Some("cikis") => {
+            // Sunucudaki oturum da kapatılır (POST /v1/cikis, kısa süre sınırı); ulaşılamazsa yerel kayıt yine silinir
+            // ve sunucudaki oturum kendi süresinde (12 saat) biter.
+            if let Ok(o) = depo.oku(&sunucu) {
+                let gonder = || -> Result<(), String> {
+                    let h = hedef(sertifika.as_deref()).map_err(|(_, m)| m)?;
+                    let g = o
+                        .gonderici_taban(
+                            &h.taban,
+                            h.sertifika.as_deref(),
+                            cihaz_imzalayici(&kok).ok().flatten(),
+                        )
+                        .map_err(|e| e.to_string())?
+                        .baglanti_suresi(DURUM_BAGLANTI_SN);
+                    taa_kimlik::Gonderici::gonder(&g, "/v1/cikis", &serde_json::json!({}))
+                        .map(|_| ())
+                        .map_err(|e| e.to_string())
+                };
+                if let Err(e) = gonder() {
+                    eprintln!("uyarı: sunucudaki oturum kapatılamadı ({e}); yerel oturum yine de silindi.");
+                }
+            }
             depo.cikis(&sunucu).map_err(kh)?;
             if json {
                 println!("{}", serde_json::json!({"durum": "cikis"}));
