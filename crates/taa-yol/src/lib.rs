@@ -17,6 +17,8 @@
 //! Ulaşılabilirlik denemesi: `GET /v1/saglik`. Sunucudan **herhangi bir HTTP yanıtı** (401/403 dahil) "ulaşıldı"
 //! sayılır; yalnız ağ hatası/zaman aşımı "ulaşılamadı"dır. Böylece sağlık ucu olmayan sunucu da seçilir.
 
+pub mod otomatik;
+
 #[cfg(test)]
 mod testler;
 

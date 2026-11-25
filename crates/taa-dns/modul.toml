@@ -1,0 +1,14 @@
+# Sahip: Yusuf. yazan: [Claude#dinamik-adres 2026-11-25]
+# taa-dns modül tanımı. Yalnız sunucu PC'sinde çalışır; belirteç <veri kökü>/anahtarlar/dns-token dosyasındadır
+# (komut satırına, günlüğe, hata iletisine yazılmaz).
+ad = "taa-dns"
+surum = "0.1.0"
+arayuz = "1"
+gerektirir = { "taa-dosya" = "1" }
+ozellikler = ["dns"]
+program = "ortak"
+sunar = ["dns.guncelle@1"]
+ister = []
+veri_sahibi = ["dns"]
+veri_okur = []
+ayar_alani = "moduller.taa-dns"

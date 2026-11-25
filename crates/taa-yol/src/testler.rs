@@ -301,3 +301,121 @@ fn yedekli_kur_listeden_ve_sondan_siralar() {
     assert_eq!(g.adaylar[1].0, "dogrudan");
     let _ = std::fs::remove_dir_all(&kok);
 }
+
+mod otomatik_testler {
+    use crate::otomatik::*;
+    use crate::*;
+    use serde_json::json;
+    use taa_kuyruk::{GonderHata, Gonderici};
+
+    #[test]
+    fn duyuru_yalniz_ozel_adres() {
+        for iyi in [
+            "https://192.168.1.250",
+            "https://10.8.0.1",
+            "https://172.20.3.4:8443",
+            "https://100.114.254.55",
+            "https://desktop-mr12inl",
+            "https://desktop-mr12inl.local",
+            "https://desktop-mr12inl.tail29ecb1.ts.net",
+        ] {
+            assert!(duyuru_gecerli(iyi), "{iyi}");
+        }
+        for kotu in [
+            "https://195.155.171.106",
+            "https://sunucu.ornek.com",
+            "http://192.168.1.2",
+            "https://192.168.1.2/yol",
+            "https://user@192.168.1.2",
+            "https://[::1]",
+            "https://",
+            "https://a b",
+            "https://192.168.1.2:",
+            "https://-x",
+        ] {
+            assert!(!duyuru_gecerli(kotu), "{kotu}");
+        }
+    }
+
+    fn liste() -> Yollar {
+        let mut y = Yollar::yeni("merkez").unwrap();
+        y.ekle(Yol::yeni("yerel", "https://192.168.1.19", None).unwrap())
+            .unwrap();
+        y.ekle(Yol::yeni("vpn", "https://10.8.0.1", None).unwrap())
+            .unwrap();
+        y
+    }
+
+    #[test]
+    fn birlestir_basa_koyar_eskiyi_siler_elleye_dokunmaz() {
+        let mut y = liste();
+        let a = vec![
+            "https://192.168.1.250".to_string(),
+            "https://195.155.171.106".to_string(), // genel: atılır
+            "https://desktop-mr12inl".to_string(),
+            "https://192.168.1.250".to_string(), // tekrar
+            "https://10.8.0.1".to_string(),      // elle yolda var: atılır
+        ];
+        assert!(duyuru_birlestir(&mut y, &a).unwrap());
+        let adlar: Vec<_> = y.yollar.iter().map(|v| v.ad.as_str()).collect();
+        assert_eq!(adlar, ["oto-1", "oto-2", "yerel", "vpn"]);
+        assert_eq!(y.yollar[0].taban, "https://192.168.1.250");
+        // aynı duyuru: değişmez
+        assert!(!duyuru_birlestir(&mut y, &a).unwrap());
+        // adres değişti: eski oto silinir
+        assert!(duyuru_birlestir(&mut y, &["https://192.168.1.30".to_string()]).unwrap());
+        let adlar: Vec<_> = y.yollar.iter().map(|v| v.ad.as_str()).collect();
+        assert_eq!(adlar, ["oto-1", "yerel", "vpn"]);
+        // boş duyuru: oto yollar kalkar
+        assert!(duyuru_birlestir(&mut y, &[]).unwrap());
+        assert_eq!(y.yollar.len(), 2);
+    }
+
+    #[test]
+    fn en_cok_dort_adres() {
+        let mut y = liste();
+        let a: Vec<String> = (10..20).map(|i| format!("https://192.168.5.{i}")).collect();
+        duyuru_birlestir(&mut y, &a).unwrap();
+        assert_eq!(
+            y.yollar.iter().filter(|v| v.ad.starts_with("oto-")).count(),
+            OTO_EN_COK
+        );
+    }
+
+    struct Sahte(Result<serde_json::Value, GonderHata>);
+    impl Gonderici for Sahte {
+        fn gonder(
+            &self,
+            _u: &str,
+            _g: &serde_json::Value,
+        ) -> Result<serde_json::Value, GonderHata> {
+            unreachable!()
+        }
+        fn al(&self, uc: &str) -> Result<serde_json::Value, GonderHata> {
+            assert_eq!(uc, BILGI_UCU);
+            self.0.clone()
+        }
+    }
+
+    #[test]
+    fn guncelle_dosyayi_yazar_404te_dokunmaz() {
+        let kok = taa_dosya::gecici_klasor().unwrap();
+        yollar_yaz(&kok, &liste()).unwrap();
+        let g = Sahte(Ok(
+            json!({"adresler": ["https://192.168.1.250", 5, "https://x.com"]}),
+        ));
+        let (d, n) = guncelle(&kok, &g).unwrap();
+        assert!(d);
+        assert_eq!(n, 1);
+        let y = yollar_oku(&kok).unwrap().unwrap();
+        assert_eq!(y.yollar[0].ad, "oto-1");
+        let g404 = Sahte(Err(GonderHata::Reddedildi {
+            kod: 404,
+            mesaj: "yok".into(),
+        }));
+        assert_eq!(guncelle(&kok, &g404).unwrap(), (false, 0));
+        assert_eq!(yollar_oku(&kok).unwrap().unwrap(), y);
+        let gag = Sahte(Err(GonderHata::Ulasilamadi("x".into())));
+        assert!(guncelle(&kok, &gag).is_err());
+    }
+}

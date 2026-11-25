@@ -72,3 +72,10 @@ eklenmesi sunucu başlığından istendi; olmasa da seçim çalışır (401 de "
 - Henüz yedekli DEĞİL: `taa-cati` ve `taa-cihaz` (yönetim komutları, her çalıştırmada başta yol seçer ama komut sırasında yol değiştirmez) ve `taa-guncelle` (yayın kaynağı ayrı: `kaynak_url`).
 - Yol ekleme: `sunucu-yollari.json` listesine (sunucu başlığı) tailscale zaten eklendi; cloudflare gelince listeye girer, istemci kodu değişmez.
 - Not: 5xx ve zaman aşımı da "ulaşılamadı" sayıldığı için aynı kayıt başka yoldan tekrar gelebilir; sunucu kayıtları kimlikle tekilleştirir.
+
+## Dinamik adres (2026-11-25, Yusuf: "dinamik sunucu adresi yapmak mümkün mü?")
+Sunucu dizüstü dolaşır; LAN IP'si değişir. Dört katman birlikte (hepsi alan adsız ve ücretsiz çalışır):
+1. **Bilgisayar adı yolu:** `taa-yol ekle --ad ad-yerel --taban https://desktop-mr12inl` (IP yok; aynı ağda ad çözülür). Caddy sertifikasına bu ad da girmeli (Caddyfile'a `https://desktop-mr12inl` ve `https://<ad>.local` eklenir; PC işi, ayrı onay).
+2. **Tailscale adı:** `taa-yol ekle --ad tailscale --taban https://desktop-mr12inl.tail29ecb1.ts.net --sertifika sunucu-ca.pem` (sunucu hangi ağa giderse gitsin sabit; sertifikaya bu ad da eklenmeli).
+3. **Sunucu adresini bildirir:** `taa-yol guncelle` (elle ya da zamanlanmış) `GET /v1/yol-bilgisi` yanıtındaki `{"adresler":[…]}` listesini `oto-*` yollar olarak başa yazar. Yalnız özel/yerel adresler kabul edilir. Sunucu ucu tutaa deposunda.
+4. **DNS (genel IP için):** `taa-dns` sunucu PC'sinde sağlayıcıya (DuckDNS ya da kendi adresiniz) genel IP'yi bildirir; ad hep sunucuyu gösterir. Kullanım: `taa-dns ayarla --saglayici duckdns --alan taa-yusuf`; belirteci Yusuf `anahtarlar\dns-token` dosyasına yazar; `taa-dns guncelle`, `taa-dns zamanla kur`. Sonra yol listesine `taa-yol ekle --ad duckdns --taban https://taa-yusuf.duckdns.org --sertifika sunucu-ca.pem` (sertifikada bu ad olmalı, ya da Caddy Let's Encrypt ile alır ve `sistem` seçilir). Not: dolaşan dizüstünde modem port yönlendirmesi her ağda gerekir; bu katman yalnız sabit ağda anlamlıdır.

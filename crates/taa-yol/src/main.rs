@@ -14,6 +14,8 @@ Kullanım (--kok <veri kökü> | TAA_VERI_KOK; --json):
   taa-yol kaldir --ad <ad>
   taa-yol one-al --ad <ad>                   (öncelik: başa alır)
   taa-yol dene                               (sırayla GET /v1/saglik; ilk ulaşılanı yazar ve son.json'a kaydeder)
+  taa-yol guncelle                           (ulaşılan yoldan GET /v1/yol-bilgisi: sunucunun güncel yerel adreslerini
+                                              oto-1.. yolları olarak listenin başına yazar; elle eklenenlere dokunmaz)
 Dosya: <kök>\\yol\\sunucu-yollari.json. Sertifika verilmezse <kök>\\anahtarlar\\sunucu-ca.pem (Caddy iç CA kökü);
 'sistem' = işletim sistemi kökleri (Let's Encrypt, Cloudflare).";
 
@@ -197,6 +199,37 @@ fn calistir(args: &[String], json: bool) -> Result<(), Hata> {
                 );
             } else {
                 println!("ulaşılan yol: {} → {}", v.ad, v.taban);
+            }
+        }
+        Some("guncelle") => {
+            let y = yollar_oku(&kok)
+                .map_err(yh)?
+                .ok_or_else(|| (5, "yol listesi yok.".to_string()))?;
+            let v = sec(&kok, &y, &CurlDeneyici).map_err(yh)?;
+            let mut g = taa_kuyruk::CurlGonderici::yeni(&v.taban)
+                .map_err(|e| (2, e.to_string()))?
+                .baglanti_suresi(taa_yol::DENEME_BAGLANTI_SN);
+            if let Some(c) = v.sertifika_yolu(&kok) {
+                g = g.sertifika(&c);
+            }
+            let (degisti, n) = taa_yol::otomatik::guncelle(&kok, &g).map_err(yh)?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({"yol": v.ad, "degisti": degisti, "oto_yol": n})
+                );
+            } else {
+                println!(
+                    "yol: {} → {}; {} otomatik yol ({}).",
+                    v.ad,
+                    v.taban,
+                    n,
+                    if degisti {
+                        "güncellendi"
+                    } else {
+                        "değişmedi"
+                    }
+                );
             }
         }
         None => return Err((2, "komut gerekli. Öneri: taa-yol --yardim".into())),

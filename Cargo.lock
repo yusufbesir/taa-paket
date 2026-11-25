@@ -795,6 +795,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "taa-dns"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "taa-dosya",
+]
+
+[[package]]
 name = "taa-donustur"
 version = "1.6.0"
 dependencies = [
