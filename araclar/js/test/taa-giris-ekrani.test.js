@@ -92,7 +92,7 @@ test('Hesap menüsü: rozet, açılır menü, onaylı çıkış (Yusuf 11-25)', 
     await p.click('#taa-giris-menu [data-ortak=cikis]');
     await p.waitForFunction(() => window.cikislar.length === 1);
     assert.deepStrictEqual(await p.evaluate(() => [window.cikti, window.cikislar[0], document.getElementById('taa-giris-hesap'), document.getElementById('taa-giris-menu')]),
-      [1, { neden: 'cikis', kullanici: '' }, null, null]);
+      [1, { neden: 'cikis', kullanici: '', ileti: '' }, null, null]);
   } finally { await b.close(); }
 });
 
@@ -132,11 +132,11 @@ test('Hesap menüsü: Kullanıcı değiştir ve Ctrl+L kilit adı dolu girişe d
     await p.click('#taa-giris-hesap');
     await p.click('#taa-giris-menu [data-ortak=degistir]');
     await p.waitForFunction(() => window.cikislar.length === 1);
-    assert.deepStrictEqual(await p.evaluate(() => window.cikislar[0]), { neden: 'degistir', kullanici: '' });
+    assert.deepStrictEqual(await p.evaluate(() => window.cikislar[0]), { neden: 'degistir', kullanici: '', ileti: '' });
     await menuKur(p);
     await p.keyboard.press('Control+l');
     await p.waitForFunction(() => window.cikislar.length === 1);
-    assert.deepStrictEqual(await p.evaluate(() => [window.cikti, window.cikislar[0]]), [1, { neden: 'kilit', kullanici: 'ayse' }]);
+    assert.deepStrictEqual(await p.evaluate(() => [window.cikti, window.cikislar[0]]), [1, { neden: 'kilit', kullanici: 'ayse', ileti: '' }]);
     // Kilit sonrası giriş ekranı adı dolu ve kilitli metniyle açılır; giriş açıkken Ctrl+L bir şey yapmaz.
     await p.evaluate(() => TaaGirisEkrani.ac(document.body, { kullanici: 'ayse', kilitli: true, api: { giris: async () => ({ tamam: false }) } }));
     assert.strictEqual(await p.inputValue('.taa-giris input[name=kullanici]'), 'ayse');
@@ -158,5 +158,40 @@ test('Hesap menüsü: hedef öğeye yerleşir, HTML yorumlanmaz, eski çıkış 
     await p.evaluate(() => TaaGirisEkrani.cikisDugmesi({ api: { cikis: async () => ({}) }, oturum: { kullanici: '<b>x</b>' }, ogeler: [{ ad: '<i>y</i>', tikla() {} }] }));
     await p.click('#taa-giris-hesap');
     assert.deepStrictEqual(await p.evaluate(() => [document.querySelector('#taa-giris-hesap b b'), document.querySelector('#taa-giris-menu i'), document.querySelector('#taa-giris-menu').textContent.includes('<i>y</i>')]), [null, null, true]);
+  } finally { await b.close(); }
+});
+
+test('Hesap menüsü: çıkış sürerken ikinci Ctrl+L yeniden çalışmaz; tam kapanmazsa ileti (Fable #88)', { skip: !pw && 'playwright yok' }, async () => {
+  const b = await pw.chromium.launch();
+  try {
+    const p = await kur(b);
+    await p.evaluate(() => {
+      window.cikti = 0; window.cikislar = [];
+      const api = { cikis: () => { window.cikti++; return new Promise((r) => setTimeout(() => r({ tamam: false }), 150)); } };
+      TaaGirisEkrani.hesapMenusu({ api, oturum: { kullanici: 'ayse' }, cikinca: (n) => window.cikislar.push(n) });
+    });
+    await p.keyboard.press('Control+l');
+    await p.keyboard.press('Control+l');
+    await p.evaluate(() => document.getElementById('taa-giris-hesap') && document.getElementById('taa-giris-hesap').click());
+    await p.waitForFunction(() => window.cikislar.length === 1);
+    await new Promise((r) => setTimeout(r, 250));
+    const [cikti, n] = await p.evaluate(() => [window.cikti, window.cikislar]);
+    assert.strictEqual(cikti, 1, 'cikis bir kez gider');
+    assert.strictEqual(n.length, 1, 'cikinca bir kez çalışır');
+    assert.strictEqual(n[0].neden, 'kilit');
+    assert.match(n[0].ileti, /tam kapatılamadı/);
+    await p.evaluate((ileti) => TaaGirisEkrani.ac(document.body, { kullanici: 'ayse', kilitli: true, ileti, api: { giris: async () => ({ tamam: false }) } }), n[0].ileti);
+    assert.match(await p.textContent('.taa-giris .tg-ileti'), /tam kapatılamadı/);
+  } finally { await b.close(); }
+});
+
+test('gizli açılış: ekran görünmez ama arka kilitli; goster() açar ve odaklar', { skip: !pw && 'playwright yok' }, async () => {
+  const b = await pw.chromium.launch();
+  try {
+    const p = await kur(b, '<button id="arka">Arka</button>');
+    await p.evaluate(() => { window.e = TaaGirisEkrani.ac(document.body, { gizli: true, api: { giris: async () => ({ tamam: false }) } }); });
+    assert.deepStrictEqual(await p.evaluate(() => [getComputedStyle(document.querySelector('.taa-giris')).visibility, document.getElementById('arka').inert]), ['hidden', true]);
+    await p.evaluate(() => { window.e.goster(); window.e.goster(); });
+    assert.deepStrictEqual(await p.evaluate(() => [getComputedStyle(document.querySelector('.taa-giris')).visibility, document.activeElement.name]), ['visible', 'kullanici']);
   } finally { await b.close(); }
 });

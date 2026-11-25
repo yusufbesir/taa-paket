@@ -15,12 +15,14 @@
   'use strict';
   const STIL_ID = 'taa-giris-stil';
   const STIL = `
-.taa-giris{position:fixed;inset:0;display:grid;place-items:center;padding:16px;z-index:2147483647;
+.taa-giris{transition:opacity .25s ease;position:fixed;inset:0;display:grid;place-items:center;padding:16px;z-index:2147483647;
   background:var(--taa-arka,#0f1420);color:var(--taa-yazi,#e8ecf3);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
 .taa-giris *{box-sizing:border-box}
 .taa-giris .tg-kart{width:min(420px,100%);background:var(--taa-panel,#171e2c);border:1px solid var(--taa-cizgi,#2a3346);
   border-radius:var(--taa-r,14px);padding:28px 26px;box-shadow:0 18px 50px rgba(0,0,0,.25)}
 .taa-giris h1{margin:0 0 4px;font-size:22px;font-weight:600}
+.taa-giris.tg-gizli{visibility:hidden;opacity:0}
+@media (prefers-reduced-motion:reduce){.taa-giris{transition:none}}
 .taa-giris .tg-alt{margin:0 0 20px;color:var(--taa-soluk,#9aa5b8);font-size:13px}
 .taa-giris label{display:block;margin:0 0 14px;font-size:13px;color:var(--taa-soluk,#9aa5b8)}
 .taa-giris input{display:block;width:100%;margin-top:6px;padding:11px 12px;font:inherit;color:inherit;
@@ -209,8 +211,13 @@
       odak('[data-tamam]');
     }
 
-    girisGoster();
-    return { kapat };
+    // ileti: açılışta gösterilecek tek satır (ör. hesap menüsünden gelen 'oturum tam kapatılamadı' uyarısı).
+    girisGoster(s.ileti ? { metin: String(s.ileti), tur: 'hata' } : undefined);
+    const ilkOdak = () => odak(sonKullanici ? 'input[name=parola]' : 'input[name=kullanici]');
+    // gizli: true → ekran kurulur, arka sayfa kilitlenir ama görünmez; programın açılış animasyonu bitince goster() çağrılır.
+    if (s.gizli) kap.classList.add('tg-gizli'); else ilkOdak();
+    const goster = () => { if (kap.isConnected && kap.classList.contains('tg-gizli')) { kap.classList.remove('tg-gizli'); ilkOdak(); } };
+    return { kapat, goster };
   }
 
   // Girişte hesap uyarısı varsa (başka bilgisayardan deneme, başvuruyla şifre değişikliği) program bunu gösterir.
@@ -240,6 +247,7 @@
   // Her üç çıkış yolu ortak oturumu kapatır (taa-kimlik cikis; sunucudaki oturum da) ve cikinca({ neden, kullanici }) çağrılır:
   //   neden 'degistir' → boş giriş ekranı; 'kilit' → kullanıcı adı dolu giriş (ac(..., { kullanici, kilitli: true }));
   //   'cikis' → boş giriş ekranı. Program giriş ekranını kendisi açar.
+//   ileti doluysa (çıkış tam olmadıysa) ac(..., { ileti }) ile girişte gösterilir.
   // secenek: { api, oturum, cikinca, hedef?, programAdi?, surum?, girisZamani?, ogeler? }
   //   hedef: düğmenin konacağı öğe (ör. kenar çubuğunun altı); yoksa ekranın sol altına sabitlenir.
   //   ogeler: [{ ad, kisayol?, tehlike?, tikla() } | { ayrac: true } | { ad, alt: [{ ad, secili?, tikla() }] }]
@@ -280,7 +288,7 @@
       kisayolKuruldu = true;
       belge.addEventListener('keydown', (e) => {
         if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === 'l' || e.key === 'L') && etkinMenu
-          && etkinMenu.d.isConnected && !belge.querySelector('.taa-giris')) {
+          && etkinMenu.d.isConnected && !etkinMenu.cikiyor && !belge.querySelector('.taa-giris')) {
           e.preventDefault();
           cik(etkinMenu, 'kilit');
         }
@@ -312,7 +320,7 @@
       });
       if (islem.length) html += '<hr>';
       html += `<button type="button" role="menuitem" tabindex="-1" data-ortak="degistir">Kullanıcı değiştir</button>
-        <button type="button" role="menuitem" tabindex="-1" data-ortak="kilit">Ekranı kilitle<kbd>Ctrl+L</kbd></button>
+        <button type="button" role="menuitem" tabindex="-1" data-ortak="kilit" title="Oturum kapanır; bu bilgisayardaki öteki TAA programlarından da çıkılır. Geri girmek için sunucu bağlantısı gerekir.">Ekranı kilitle<kbd>Ctrl+L</kbd></button>
         <hr><button type="button" role="menuitem" tabindex="-1" data-ortak="cikis" class="tg-tehlike">Çıkış yap</button>`;
       const alt = [s.programAdi, s.surum ? 'sürüm ' + s.surum : ''].filter(Boolean).join(' · ');
       if (alt) html += `<div class="tg-surum">${esc(alt)}</div>`;
@@ -345,7 +353,7 @@
         else if (e.key === 'Escape') { e.preventDefault(); menuKapat(belge, true); }
         else if (e.key === 'Tab') menuKapat(belge, false);
       });
-      setTimeout(() => belge.addEventListener('pointerdown', disTik, true), 0);
+      setTimeout(() => { if (m.isConnected) belge.addEventListener('pointerdown', disTik, true); }, 0);
       const ilk = ogeler()[0]; if (ilk) ilk.focus();
     }
     function disTik(e) {
@@ -366,13 +374,19 @@
 
   async function cik(ayar, neden) {
     const { s, api, belge, d, ad } = ayar;
+    if (ayar.cikiyor) return; // yeniden giriş yok: ikinci Ctrl+L ya da çift tık çıkışı iki kez çalıştırmaz
+    ayar.cikiyor = true;
     menuKapat(belge, false);
     d.disabled = true;
-    try { await api.cikis(); } catch (_) { /* yerel kayıt araçta silinir; yine de giriş istenir */ }
+    let ileti = '';
+    try {
+      const y = await api.cikis();
+      if (y && y.tamam === false) ileti = 'Oturum bu bilgisayarda tam kapatılamadı; program yeniden açılınca kendiliğinden girebilir.';
+    } catch (_) { ileti = 'Oturum bu bilgisayarda tam kapatılamadı; program yeniden açılınca kendiliğinden girebilir.'; }
     d.remove();
     girisZamani = null;
     if (etkinMenu === ayar) etkinMenu = null;
-    if (typeof s.cikinca === 'function') s.cikinca({ neden, kullanici: neden === 'kilit' ? ad : '' });
+    if (typeof s.cikinca === 'function') s.cikinca({ neden, kullanici: neden === 'kilit' ? ad : '', ileti });
   }
 
   // Eski ad (T3): aynı menüyü kurar.
