@@ -39,6 +39,7 @@ Her komut --json alır (makine okunur). Çıkış: 0 tamam, 2 doğrulama/kullan�
 Ayrıntı: docs/T1-TASARIM.md §1.4, docs/paket-zip.md, docs/T3-TASARIM.md.";
 
 fn main() -> ExitCode {
+    taa_hata::kur_varsayilan("taa-kur", env!("CARGO_PKG_VERSION"));
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     if args.is_empty()
         || matches!(

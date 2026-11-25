@@ -35,6 +35,8 @@ pub const IZIN_UCU: &str = "/v1/izin";
 pub const CIHAZ_UCU: &str = "/v1/cihaz";
 pub const PROGRAM_YETKI_UCU: &str = "/v1/program-yetki";
 pub const OLAY_UCU: &str = "/v1/olay";
+/// Hata raporları (taa-hata; sunucu: GET /v1/hata-raporu, `gunluk.gor`).
+pub const HATA_RAPORU_UCU: &str = "/v1/hata-raporu";
 pub const SUBE_UCU: &str = "/v1/sube";
 pub const YENIDEN_DOGRULA_UCU: &str = "/v1/yeniden-dogrula";
 /// Program bazlı yönetici PIN'i (sunucu: tutaa/sunucu `yonetici_pin.rs`). PIN yalnız buradan belirlenir.
@@ -486,6 +488,18 @@ impl<'a> Cati<'a> {
 
     pub fn olaylar(&self, s: &OlaySuzgeci) -> Result<Vec<Value>, CatiHata> {
         let uc = format!("{OLAY_UCU}{}", s.sorgu()?);
+        self.liste(IZIN_GUNLUK, &uc)
+    }
+
+    /// Son hata/çökme raporları (isteğe bağlı program süzgeci), en yeniden eskiye.
+    pub fn hata_raporlari(&self, program: Option<&str>) -> Result<Vec<Value>, CatiHata> {
+        let uc = match program {
+            Some(p) => format!(
+                "{HATA_RAPORU_UCU}?program={}&limit=100",
+                tanitici("program", p)?
+            ),
+            None => format!("{HATA_RAPORU_UCU}?limit=100"),
+        };
         self.liste(IZIN_GUNLUK, &uc)
     }
 

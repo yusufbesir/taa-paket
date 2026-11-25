@@ -23,4 +23,13 @@ fn main() {
     let surum = env::var("TAA_KUR_SURUM").unwrap_or_else(|_| env::var("CARGO_PKG_VERSION").unwrap());
     kod.push_str(&format!("pub const SURUM: &str = {surum:?};\n"));
     fs::write(PathBuf::from(env::var("OUT_DIR").unwrap()).join("dosyalar.rs"), kod).unwrap();
+    // HD exe simgesi (16–256 px, alfa kanallı Geçme Temel). [Claude#kurucu-arayuz coPLkm 2026-11-17]
+    println!("cargo:rerun-if-changed=../crates/taa-kur-tema/src/simge.rs");
+    if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        let msvc = env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc");
+        let nesne = PathBuf::from(env::var("OUT_DIR").unwrap())
+            .join(if msvc { "taa-kurucu-simge.obj" } else { "taa-kurucu-simge.o" });
+        fs::write(&nesne, taa_kur_tema::simge::rsrc_nesnesi(&taa_kur_tema::simge::ICO_BOYUTLARI)).unwrap();
+        println!("cargo:rustc-link-arg-bins={}", nesne.display());
+    }
 }

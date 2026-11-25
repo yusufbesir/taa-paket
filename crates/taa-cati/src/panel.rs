@@ -254,6 +254,10 @@ pub fn api(
             let d = sorgu_degeri(sorgu, "durum").filter(|d| !d.is_empty());
             dizi(c.eslestirmeler(d))
         }
+        ("GET", "/api/hatalar") => {
+            let p = sorgu_degeri(sorgu, "program").filter(|d| !d.is_empty());
+            dizi(c.hata_raporlari(p))
+        }
         ("GET", "/api/gunluk") => {
             let sayi = |ad: &str| sorgu_degeri(sorgu, ad).and_then(|v| v.parse::<i64>().ok());
             let f = OlaySuzgeci {
@@ -558,6 +562,15 @@ mod testler {
         );
         assert!(g.son().1.starts_with("/v1/olay?islem=giris"));
         assert!(g.son().1.contains("limit=20"));
+        api(
+            &c,
+            &g,
+            "GET",
+            "/api/hatalar",
+            "program=taa-kur",
+            &Value::Null,
+        );
+        assert_eq!(g.son().1, "/v1/hata-raporu?program=taa-kur&limit=100");
     }
 
     #[test]

@@ -92,6 +92,7 @@ fn calistir(a: &[String]) -> Result<(), String> {
 }
 
 fn main() -> ExitCode {
+    taa_hata::kur_varsayilan("taa-yedek", env!("CARGO_PKG_VERSION"));
     let a: Vec<String> = std::env::args().skip(1).collect();
     match calistir(&a) {
         Ok(()) => ExitCode::SUCCESS,
