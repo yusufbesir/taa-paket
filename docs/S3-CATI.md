@@ -2,12 +2,12 @@
 
 Karar (Yusuf 2026-11-06 21:40): Çatı programı tüm TAA paket programlarını denetler, **yalnızca sunucu bilgisayarında**
 çalışır ve diğer programlardaki yetkilendirmeyi yapar. Kurallar: yol haritası §2 (K1–K13). Sunucu uçları:
-`/mnt/project-files/tutaa/API-SOZLESMESI.md` "Yönetim uçları" (tutaa PR #23).
+`/mnt/project-files/tutaa/API-SOZLESMESI.md` "Yönetim uçları" (taa-sunucu; eski tutaa PR #23).
 
 ## Ne yapar
 - `taa-cati` komut satırı (v0; pencere sonraki adım). Her istek **cihaz imzası + Bearer** taşır; oturum taa-kimlik
   deposundan (Windows: Kimlik Bilgisi Yöneticisi), cihaz anahtarı `<kök>\cihaz\` (yoksa hata: `taa-cihaz uret`, sunucuda
-  `tutaa-sunucu merkez-cihaz`).
+  `taa-sunucu merkez-cihaz`).
 - **Varsayılan reddet (K1):** komut, oturumun izin listesinde gerekli izin yoksa sunucuya gitmeden çıkış 7 verir;
   rol adı tek başına izin vermez: `yonetici` de sunucunun açtığı tam `izinler` listesiyle gelir (K4 miras sunucuda);
   var olmayan izin adı her zaman reddedilir. Sunucu yine her istekte denetler (K6). [düzeltme: sunucu başlığı Windows denemesi, 2026-11-06 23:18]
@@ -25,7 +25,7 @@ Karar (Yusuf 2026-11-06 21:40): Çatı programı tüm TAA paket programlarını 
 ```
 set TAA_SUNUCU=https://sunucu.terziademaltun.com
 set TAA_VERI_KOK=D:\TAA\veri
-taa-cihaz uret --ad "Merkez sunucu"          (sunucuda: tutaa-sunucu merkez-cihaz ed25519:<hex> "Merkez sunucu")
+taa-cihaz uret --ad "Merkez sunucu"          (sunucuda: taa-sunucu merkez-cihaz ed25519:<hex> "Merkez sunucu")
 echo parola | taa-kimlik giris --kullanici yonetici
 echo parola | taa-cati dogrula
 taa-cati cihaz liste --durum bekliyor

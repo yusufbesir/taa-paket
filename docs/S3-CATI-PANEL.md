@@ -59,7 +59,7 @@ Ekip turu v2 (Fable 5.2, GPT-6 Astra, Gemini 3.1 Pro), `/mnt/project-files/arayu
   text/plain 415, büyük gövde 413, oturum yokken kod 5, `/api/kapat` süreci kapatır.
 - Windows: `cargo clippy --target x86_64-pc-windows-gnu --release -D warnings` temiz. **Windows'ta elle denenmedi.**
 
-## Yönetici PIN'i (sunucu sözleşmesi, tutaa `sunucu/src/yonetici_pin.rs`)
+## Yönetici PIN'i (sunucu sözleşmesi, taa-sunucu `src/yonetici_pin.rs`)
 - `GET /v1/yonetici-pin` → `[{program, sube_id, belirlendi, guncellendi, guncelleyen}]` (PIN ve karma hiç dönmez).
 - `POST /v1/yonetici-pin {program, sube_id?, pin}`, `POST /v1/yonetici-pin/kaldir {program, sube_id?}`: `program.yonet` + taze parola.
 - `POST /v1/yonetici-pin/dogrula {program, pin}` (programlar): şube cihazdan; 200 `{gecerli, belirlendi}`;
@@ -67,7 +67,7 @@ Ekip turu v2 (Fable 5.2, GPT-6 Astra, Gemini 3.1 Pro), `/mnt/project-files/arayu
 - PIN 4–8 rakam; 0000 ve 1234/9876 gibi düz sıralar reddedilir (Çatı da aynı kuralı önceden uygular). argon2id ile saklanır.
   Program adları sunucudaki program yetkisi adlarıdır (ör. `terzitakip`).
 
-## Onay bekleyenler (KM2, sunucu: tutaa `sunucu/src/hesap.rs`, `eslestirme.rs`)
+## Onay bekleyenler (KM2, sunucu: taa-sunucu `src/hesap.rs`, `eslestirme.rs`)
 
 - `/api/hesaplar?durum=` → `GET /v1/kullanici?durum=` (varsayılan onay_bekliyor); `/api/hesap/onayla {id, roller, kisi_id?, gercek_ad?}`, `/api/hesap/islem {id, islem: reddet|askiya-al|geri-ac|kilit-ac}`, `/api/hesap/gecici-kod {id}` → `{kod, bitis}` (kod yalnız ekranda bir kez; hiçbir yerde saklanmaz).
 - `/api/eslestirmeler?durum=` → `GET /v1/eslestirme`; `/api/eslestirme/onay {id, sayi}`, `/api/eslestirme/red {id}`. Sayı listede gelmez; kişiden öğrenilir, 3 yanlışta istek düşer.

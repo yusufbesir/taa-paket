@@ -11,7 +11,7 @@ use taa_cati::{hata_kodu, yonetici_baglantisi_hedef, Cati, CatiHata, OlaySuzgeci
 
 const YARDIM: &str = "\
 taa-cati — TAA Çatı: merkez sunucunun yönetimi (yalnız sunucu PC'sinde; yönetici oturumu + cihaz imzası gerekir).
-Önce: taa-cihaz uret · sunucuda: tutaa-sunucu merkez-cihaz · sonra: taa-kimlik giris --kullanici <yönetici>
+Önce: taa-cihaz uret · sunucuda: taa-sunucu merkez-cihaz · sonra: taa-kimlik giris --kullanici <yönetici>
 Kullanım (ortak seçenekler: --sunucu <https://adres> | TAA_SUNUCU | yol listesi (taa-yol), --kok <veri kökü> | TAA_VERI_KOK, --sertifika <pem>, --json):
   taa-cati dogrula                                  parola stdin'den; yazma komutları için 15 dk pencere açar
   taa-cati kullanici liste

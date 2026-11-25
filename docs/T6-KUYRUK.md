@@ -3,7 +3,7 @@
 
 Kaynak: Yusuf 2026-11-06 10:15 "Merkez sunucu: PostgreSQL" kararı ve 10:16 "ücretsiz olmalı".
 Plan: `/mnt/project-files/planlar/MERKEZ-SUNUCU-UCRETSIZ.md`. Sunucu sözleşmesi: Tutaa `API-SOZLESMESI.md`
-("Çevrimdışı kuyruk: istemci `no` ile idempotent gönderir"). Sunucu kodu Tutaa deposunun işidir; bu crate istemci tarafıdır.
+("Çevrimdışı kuyruk: istemci `no` ile idempotent gönderir"). Sunucu kodu taa-sunucu deposunun işidir; bu crate istemci tarafıdır.
 
 ## Ne yapar
 Programlar sunucuya gidecek kaydı önce yerel kuyruğa yazar; sunucu yoksa ya da ağ kesikse kayıt birikir.
