@@ -8,6 +8,7 @@
 // Kullanım:
 //   index.html içine: script etiketiyle taa/taa-giris-ekrani.js yüklenir (satır içine gömülebilir; dosyada kapanan script etiketi yok).
 //   TaaGirisEkrani.ac(document.body, { programAdi: 'Tutaa', girildi: (oturum) => { ... } });
+//   Hedef ya document.body ya da boş, yalnız girişe ayrılmış bir kapsayıcı olmalı (hedefin içindeki başka öğeler inert yapılmaz).
 // Akış: giriş → (kilit / şifremi unuttum) "Yöneticiye başvur" → iki haneli doğrulama sayısı ekranda büyük gösterilir.
 // Şifre alanları ekran kapanınca boşaltılır; hiçbir şey localStorage'a yazılmaz.
 (function (kok) {
@@ -67,8 +68,9 @@
     kap.setAttribute('aria-labelledby', 'taa-giris-baslik');
     hedef.appendChild(kap);
     // Arkadaki sayfa kullanılamaz: gövdenin diğer çocukları (sonradan eklenenler dahil) ekran kapanana dek inert.
+    // Ekranı içeren öğe (hedef gövde değilse) inert yapılmaz.
     const inertler = [];
-    const inertYap = (e) => { if (e !== kap && e.nodeType === 1 && !e.inert && e.tagName !== 'SCRIPT' && e.tagName !== 'STYLE') { e.inert = true; inertler.push(e); } };
+    const inertYap = (e) => { if (e !== kap && e.nodeType === 1 && !e.contains(kap) && !e.inert && e.tagName !== 'SCRIPT' && e.tagName !== 'STYLE') { e.inert = true; inertler.push(e); } };
     const govde = belge.body;
     if (govde) Array.from(govde.children).forEach(inertYap);
     const gozcu = govde && typeof MutationObserver === 'function'
