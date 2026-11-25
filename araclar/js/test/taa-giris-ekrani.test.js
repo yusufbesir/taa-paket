@@ -105,7 +105,7 @@ test('Hesap menüsü: klavye, Esc, dışarı tık, program öğeleri', { skip: !
     await p.keyboard.press('Enter');
     const odak = () => p.evaluate(() => document.activeElement.textContent.trim());
     assert.strictEqual(await odak(), 'Ayarlar', 'ilk öğe odakta');
-    await p.keyboard.press('ArrowDown'); assert.strictEqual(await odak(), 'Açık');
+    await p.keyboard.press('ArrowDown'); assert.strictEqual(await odak(), 'TemaAçık›', 'çekmece kapalı: tek satır, seçili tema görünür');
     await p.keyboard.press('ArrowUp'); await p.keyboard.press('ArrowUp');
     assert.strictEqual(await odak(), 'Çıkış yap', 'yukarı ok başa dolanır');
     await p.keyboard.press('Home'); assert.strictEqual(await odak(), 'Ayarlar');
@@ -117,8 +117,8 @@ test('Hesap menüsü: klavye, Esc, dışarı tık, program öğeleri', { skip: !
     await p.click('#dis');
     assert.strictEqual(await p.evaluate(() => document.getElementById('taa-giris-menu')), null, 'dışarı tık kapatır');
     await p.click('#taa-giris-hesap');
+    await p.click('#taa-giris-menu .tg-cekmece');
     await p.click('#taa-giris-menu >> text=Koyu');
-    await p.click('#taa-giris-hesap');
     await p.click('#taa-giris-menu >> text=Ayarlar');
     assert.deepStrictEqual(await p.evaluate(() => [window.tiklanan, document.getElementById('taa-giris-menu'), window.cikti]), [['koyu', 'ayarlar'], null, 0]);
   } finally { await b.close(); }
@@ -193,5 +193,35 @@ test('gizli açılış: ekran görünmez ama arka kilitli; goster() açar ve oda
     assert.deepStrictEqual(await p.evaluate(() => [getComputedStyle(document.querySelector('.taa-giris')).visibility, document.getElementById('arka').inert]), ['hidden', true]);
     await p.evaluate(() => { window.e.goster(); window.e.goster(); });
     assert.deepStrictEqual(await p.evaluate(() => [getComputedStyle(document.querySelector('.taa-giris')).visibility, document.activeElement.name]), ['visible', 'kullanici']);
+  } finally { await b.close(); }
+});
+
+test('Hesap menüsü: Tema çekmecesi (Yusuf 11-26)', { skip: !pw && 'playwright yok' }, async () => {
+  const b = await pw.chromium.launch();
+  try {
+    const p = await kur(b);
+    await menuKur(p);
+    await p.click('#taa-giris-hesap');
+    const c = '#taa-giris-menu .tg-cekmece';
+    const durum = () => p.evaluate((c) => { const e = document.querySelector(c); return [e.getAttribute('aria-expanded'), e.nextElementSibling.hidden, e.querySelector('.tg-secili').textContent, document.activeElement.textContent.trim()]; }, c);
+    assert.deepStrictEqual((await durum()).slice(0, 3), ['false', true, 'Açık'], 'kapalı, seçili ad görünür');
+    // Klavye: sağ ok açar ve seçili olana odaklanır; sol ok kapatır, odak satıra döner.
+    await p.focus(c);
+    await p.keyboard.press('ArrowRight');
+    assert.deepStrictEqual(await durum(), ['true', false, 'Açık', 'Açık']);
+    await p.keyboard.press('ArrowDown'); assert.strictEqual((await durum())[3], 'Koyu');
+    await p.keyboard.press('ArrowLeft');
+    assert.deepStrictEqual(await durum(), ['false', true, 'Açık', 'TemaAçık›']);
+    // Esc çekmecedeyken yalnız çekmeceyi kapatır.
+    await p.keyboard.press('Enter'); await p.keyboard.press('Escape');
+    assert.deepStrictEqual((await durum()).slice(0, 2), ['false', true]);
+    assert.ok(await p.evaluate(() => !!document.getElementById('taa-giris-menu')), 'menü açık kalır');
+    // Seçim: işaret ve ad güncellenir, çekmece kapanır, menü açık kalır, tikla çağrılır.
+    await p.keyboard.press('Enter'); await p.keyboard.press('ArrowDown'); await p.keyboard.press('Enter');
+    assert.deepStrictEqual(await durum(), ['false', true, 'Koyu', 'TemaKoyu›']);
+    assert.deepStrictEqual(await p.evaluate(() => [window.tiklanan, document.querySelector('#taa-giris-menu [role=menuitemradio][aria-checked=true]').textContent, !!document.getElementById('taa-giris-menu')]), [['koyu'], 'Koyu', true]);
+    // Menü ekranda kalır (çekmece açılınca yeniden yerleşir).
+    await p.click(c);
+    assert.ok(await p.evaluate(() => { const r = document.getElementById('taa-giris-menu').getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }));
   } finally { await b.close(); }
 });
