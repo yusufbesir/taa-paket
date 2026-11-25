@@ -8,6 +8,7 @@
 // Kullanım:
 //   index.html içine: script etiketiyle taa/taa-giris-ekrani.js yüklenir (satır içine gömülebilir; dosyada kapanan script etiketi yok).
 //   TaaGirisEkrani.ac(document.body, { programAdi: 'Tutaa', girildi: (oturum) => { ... } });
+//   Hedef ya document.body ya da boş, yalnız girişe ayrılmış bir kapsayıcı olmalı (hedefin içindeki başka öğeler inert yapılmaz).
 // Akış: giriş → (kilit / şifremi unuttum) "Yöneticiye başvur" → iki haneli doğrulama sayısı ekranda büyük gösterilir.
 // Şifre alanları ekran kapanınca boşaltılır; hiçbir şey localStorage'a yazılmaz.
 (function (kok) {
