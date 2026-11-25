@@ -515,3 +515,68 @@ fn d1_cevrimdisi_yalniz_gecerlilik_sonuna_kadar() {
         "geçerlilik bilinmiyorsa çevrimdışı kabul yok"
     );
 }
+
+#[test]
+fn e3_ret_turu_ileti_metnine_degil_hata_koduna_bakar() {
+    let o = d1_oturum("2026-11-26T00:00:00Z");
+    let r = oturum_dogrula(&o, "2026-11-25T12:00:00Z", || {
+        Err(KimlikHata::GirisReddi {
+            kod: 401,
+            mesaj: r#"HTTP 401 {"hata":"oturum","ileti":"cihaz için oturum süresi doldu"}"#.into(),
+        })
+    });
+    assert!(
+        matches!(r, Err((true, _))),
+        "ileti 'cihaz' içerse de kod oturum"
+    );
+    let r = oturum_dogrula(&o, "2026-11-25T12:00:00Z", || {
+        Err(KimlikHata::GirisReddi {
+            kod: 401,
+            mesaj: "gövdesiz ret".into(),
+        })
+    });
+    assert!(matches!(r, Err((false, _))), "kod yoksa silinmez");
+    assert_eq!(
+        sunucu_hata_kodu(r#"x {"hata":"cihaz_yok"} y"#).as_deref(),
+        Some("cihaz_yok")
+    );
+    assert_eq!(sunucu_hata_kodu("yok"), None);
+}
+
+#[test]
+fn e1_yanit_vermeyen_sunucuda_butce_icinde_cevrimdisi_kabul() {
+    // Bağlantıyı kabul edip hiç yanıt vermeyen sunucu.
+    let dinle = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let adres = format!("http://{}", dinle.local_addr().unwrap());
+    let tut = std::thread::spawn(move || {
+        let mut acik = Vec::new();
+        for _ in 0..2 {
+            if let Ok((s, _)) = dinle.accept() {
+                acik.push(s);
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_secs(5));
+    });
+    let o = d1_oturum("2999-01-01T00:00:00Z");
+    let bas = std::time::Instant::now();
+    let kok = std::env::temp_dir().join(format!("taa-kimlik-e1-{}", std::process::id()));
+    let t = oturum_dogrula(&o, "2026-11-25T12:00:00Z", move || {
+        butceli(std::time::Duration::from_secs(1), move || {
+            let g = CurlGonderici::yeni(&adres)
+                .and_then(|g| g.oturum("gizli"))
+                .map_err(|e| KimlikHata::Baglanti(e.to_string()))?;
+            yetki_al(&g, &kok, "https://s", None)
+        })
+    });
+    assert!(
+        bas.elapsed() < std::time::Duration::from_secs(3),
+        "bütçe aşılmadı: {:?}",
+        bas.elapsed()
+    );
+    assert_eq!(
+        t.unwrap().programlar,
+        vec!["terzitakip".to_string()],
+        "çevrimdışı geçerli oturum korunur"
+    );
+    drop(tut);
+}

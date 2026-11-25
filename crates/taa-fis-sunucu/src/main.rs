@@ -104,6 +104,38 @@ fn main() {
             .as_reader()
             .take(FOTO_SINIRI as u64 + 1)
             .read_to_end(&mut govde);
+        // Ortak giriş (taa-kimlik aracı; ağa çıkabilir, en çok birkaç sn) ayrı iş parçacığında: tek iş parçacıklı
+        // sunucu bu sürede telefon isteklerini bekletmesin (Fable E2). Kapı aynı: yalnız bu bilgisayardaki program.
+        if r.method() == &tiny_http::Method::Post && yerel && masaustu {
+            if let Some(islem) = r.url().strip_prefix("/api/giris/").map(str::to_string) {
+                let bul = uyg.kimlik_bulucu;
+                std::thread::spawn(move || {
+                    let y = match taa_fis_sunucu::ortak_giris::yanitla(
+                        bul,
+                        taa_fis_sunucu::cati_pin::PROGRAM,
+                        &islem,
+                        &govde,
+                    ) {
+                        Some(v) => (200, v.to_string()),
+                        None => (404, r#"{"hata":"bulunamadı"}"#.to_string()),
+                    };
+                    let mut cevap = tiny_http::Response::from_string(y.1).with_status_code(y.0);
+                    for (a, d) in [
+                        ("Content-Type", "application/json; charset=utf-8"),
+                        ("X-Content-Type-Options", "nosniff"),
+                        ("Cache-Control", "no-store"),
+                        ("X-Frame-Options", "DENY"),
+                        ("Referrer-Policy", "no-referrer"),
+                    ] {
+                        if let Ok(h) = tiny_http::Header::from_bytes(a.as_bytes(), d.as_bytes()) {
+                            cevap.add_header(h);
+                        }
+                    }
+                    let _ = r.respond(cevap);
+                });
+                continue;
+            }
+        }
         let y = uyg.isle(&Istek {
             metot: r.method().as_str().to_string(),
             yol: r.url().to_string(),

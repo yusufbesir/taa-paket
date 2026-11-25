@@ -34,8 +34,57 @@ Kullanım:
   Cihaz anahtarı (<kök>\\cihaz\\cihaz.key, taa-cihaz uret) varsa her istek onunla imzalanır (X-TAA-* başlıkları).
 Parola ve oturum anahtarı hiçbir dosyaya, depoya ya da ekrana yazılmaz.";
 
-/// `durum` sunucuya sorarken bağlantı kurma sınırı (saniye); programların açılışı beklemesin.
+/// `durum` ve `cikis` için sunucuya sorma bütçesi (tüm yollar dahil, Fable E1); programların açılışı beklemesin.
+const AG_BUTCESI: std::time::Duration = std::time::Duration::from_secs(5);
+/// Tek yolda bağlantı kurma sınırı (saniye).
 const DURUM_BAGLANTI_SN: u64 = 3;
+
+/// `durum`/`cikis` için ağ bilgisi (sahipli: bütçeli iş parçacığına taşınır).
+struct Ag {
+    kok: PathBuf,
+    sunucu: String,
+    sunucu_acik: bool,
+    sertifika: Option<PathBuf>,
+}
+
+impl Ag {
+    fn yeni(kok: &Path, sunucu: &str, sunucu_acik: bool, sertifika: Option<&Path>) -> Ag {
+        Ag {
+            kok: kok.to_path_buf(),
+            sunucu: sunucu.to_string(),
+            sunucu_acik,
+            sertifika: sertifika.map(Path::to_path_buf),
+        }
+    }
+
+    /// Oturumla imzalı gönderici: açık sunucu verildiyse ona, yoksa yol listesinden yedekli.
+    fn gonderici(
+        &self,
+        o: &taa_kimlik::Oturum,
+    ) -> Result<Box<dyn taa_kimlik::Gonderici>, KimlikHata> {
+        if !self.sunucu_acik {
+            if let Some(y) =
+                taa_kimlik::yedekli_gonderici(&self.kok, Some(o), self.sertifika.as_deref())?
+            {
+                return Ok(Box::new(y));
+            }
+        }
+        let h = taa_yol::hedef_coz_curl(
+            &self.kok,
+            self.sunucu_acik.then_some(self.sunucu.as_str()),
+            self.sertifika.as_deref(),
+        )
+        .map_err(|e| KimlikHata::Baglanti(e.to_string()))?;
+        let g = o
+            .gonderici_taban(
+                &h.taban,
+                h.sertifika.as_deref(),
+                cihaz_imzalayici(&self.kok).ok().flatten(),
+            )?
+            .baglanti_suresi(DURUM_BAGLANTI_SN);
+        Ok(Box::new(g))
+    }
+}
 
 fn veri_kok_ortamdan() -> Option<PathBuf> {
     let ev = |a: &str| std::env::var(a).ok().filter(|s| !s.trim().is_empty());
@@ -288,27 +337,17 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
         }
         Some("durum") => {
             let sakli = depo.oku(&sunucu).map_err(kh)?;
-            // Fable D1: sakli oturum sunucuya sorulur (kısa süre sınırı). Sunucu reddederse silinir; ulaşılamazsa
-            // yalnız çevrimdışı geçerlilik sonuna kadar kabul edilir. Yanıt çevrimdışı yetki belgesini de tazeler.
+            // Fable D1: sakli oturum sunucuya sorulur. Sunucu reddederse silinir; ulaşılamazsa yalnız çevrimdışı
+            // geçerlilik sonuna kadar kabul edilir. Yanıt çevrimdışı yetki belgesini de tazeler.
+            // Fable E1: tüm yollar dahil toplam bütçe AG_BUTCESI; aşılırsa ulaşılamadı sayılır.
             let anahtar = sunucu_anahtari_oku(&kok).ok().flatten();
-            let canli = || -> Result<taa_kimlik::Yetki, KimlikHata> {
-                if sunucu_acik {
-                    let h =
-                        hedef(sertifika.as_deref()).map_err(|(_, m)| KimlikHata::Baglanti(m))?;
-                    let g = sakli
-                        .gonderici_taban(
-                            &h.taban,
-                            h.sertifika.as_deref(),
-                            cihaz_imzalayici(&kok).ok().flatten(),
-                        )?
-                        .baglanti_suresi(DURUM_BAGLANTI_SN);
-                    yetki_al(&g, &kok, &sunucu, anahtar.as_ref())
-                } else {
-                    match taa_kimlik::yedekli_gonderici(&kok, Some(&sakli), sertifika.as_deref())? {
-                        Some(y) => yetki_al(&y, &kok, &sunucu, anahtar.as_ref()),
-                        None => Err(KimlikHata::Baglanti("sunucu yolu yok".into())),
-                    }
-                }
+            let ag = Ag::yeni(&kok, &sunucu, sunucu_acik, sertifika.as_deref());
+            let o2 = sakli.clone();
+            let canli = move || {
+                taa_kimlik::butceli(AG_BUTCESI, move || {
+                    let g = ag.gonderici(&o2)?;
+                    yetki_al(g.as_ref(), &ag.kok, &ag.sunucu, anahtar.as_ref())
+                })
             };
             let o = match taa_kimlik::oturum_dogrula(&sakli, &taa_kuyruk::zaman::simdi(), canli) {
                 Ok(o) => {
@@ -379,21 +418,15 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
             // Sunucudaki oturum da kapatılır (POST /v1/cikis, kısa süre sınırı); ulaşılamazsa yerel kayıt yine silinir
             // ve sunucudaki oturum kendi süresinde (12 saat) biter.
             if let Ok(o) = depo.oku(&sunucu) {
-                let gonder = || -> Result<(), String> {
-                    let h = hedef(sertifika.as_deref()).map_err(|(_, m)| m)?;
-                    let g = o
-                        .gonderici_taban(
-                            &h.taban,
-                            h.sertifika.as_deref(),
-                            cihaz_imzalayici(&kok).ok().flatten(),
-                        )
-                        .map_err(|e| e.to_string())?
-                        .baglanti_suresi(DURUM_BAGLANTI_SN);
-                    taa_kimlik::Gonderici::gonder(&g, "/v1/cikis", &serde_json::json!({}))
+                // Fable E4: yedekli yol listesi de kullanılır; E1: toplam bütçe.
+                let ag = Ag::yeni(&kok, &sunucu, sunucu_acik, sertifika.as_deref());
+                let sonuc = taa_kimlik::butceli(AG_BUTCESI, move || {
+                    let g = ag.gonderici(&o)?;
+                    g.gonder("/v1/cikis", &serde_json::json!({}))
                         .map(|_| ())
-                        .map_err(|e| e.to_string())
-                };
-                if let Err(e) = gonder() {
+                        .map_err(|e| KimlikHata::Baglanti(e.to_string()))
+                });
+                if let Err(e) = sonuc {
                     eprintln!("uyarı: sunucudaki oturum kapatılamadı ({e}); yerel oturum yine de silindi.");
                 }
             }
