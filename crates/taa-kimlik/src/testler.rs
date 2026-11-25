@@ -604,3 +604,14 @@ fn e5_cevrimdisi_uc_gun_siniri() {
     );
     assert_eq!(yetki::VARSAYILAN_GUN, 3, "gecerliliksiz belge de 3 gün");
 }
+
+/// Giydir başlığının bulgusu (11-26): "-" ile başlayan ad seçenek sanılmasın diye reddedilir.
+#[test]
+fn kullanici_tire_ile_baslayamaz() {
+    assert!(crate::kullanici_gecerli("ayse"));
+    assert!(crate::kullanici_gecerli("ayse-k"));
+    assert!(!crate::kullanici_gecerli("-ayse"));
+    assert!(!crate::kullanici_gecerli("--sunucu"));
+    assert!(!crate::kullanici_gecerli(""));
+    assert!(!crate::kullanici_gecerli("a b"));
+}
