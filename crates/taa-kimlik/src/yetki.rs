@@ -1,7 +1,7 @@
 // Sahip: Yusuf. yazan: [Claude#taa-kimlik-S3a 2026-11-06]
 //! Yetki belgesi: sunucunun imzaladığı `{kullanici, cihaz?, sube_id, roller, izinler, programlar, gecerlilik, imza}`
 //! (API-SOZLESMESI "Cihaz kimliği"; yol haritası §2 K1–K13). Girişten sonra `POST /v1/yetki {}` ile alınır ve
-//! `<kök>/kimlik/yetki-<sunucu>.json` olarak saklanır: internet yokken program 7 gün bu belgeyle açılır.
+//! `<kök>/kimlik/yetki-<sunucu>.json` olarak saklanır: internet yokken program 3 gün (son sunucu temasından; Yusuf 11-25) bu belgeyle açılır.
 //! Doğrulama: sunucu genel anahtarı `<kök>/anahtarlar/sunucu.pub` (taa-imza `ed25519:<hex>`); anahtar varsa imzasız
 //! ya da yanlış imzalı belge reddedilir, yoksa belge "doğrulanmadı" uyarısıyla kabul edilir (sunucu kurulana kadar).
 //! Varsayılan: reddet (K1) — belge yok/süresi geçmiş/bozuk → yetki yok.
@@ -17,7 +17,7 @@ pub const SUNUCU_ANAHTAR_DOSYASI: &str = "sunucu.pub";
 pub const ANAHTAR_KLASORU: &str = "anahtarlar";
 pub const YETKI_KLASORU: &str = "kimlik";
 /// Belgede `gecerlilik` yoksa alınma anından itibaren bu kadar gün geçerli sayılır.
-pub const VARSAYILAN_GUN: i64 = 7;
+pub const VARSAYILAN_GUN: i64 = 3;
 
 /// Çözülmüş yetki belgesi (imza doğrulanmış ya da anahtar yokken "dogrulandi=false").
 #[derive(Debug, Clone, PartialEq, Eq)]
