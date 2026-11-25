@@ -3,6 +3,13 @@
 
 ## Yayınlanmamış
 
+### Dinamik sunucu adresi (taa-yol otomatik güncelleme, taa-dns)
+
+- **Sorun:** sunucu dizüstü dolaşır; yol listesindeki `yerel` IP'si (192.168.1.19) eskiyince "hiçbir sunucu yoluna ulaşılamadı" oluşuyordu.
+- **taa-yol `guncelle`:** ulaşılan yoldan `GET /v1/yol-bilgisi` ile sunucunun güncel yerel adreslerini alır, `oto-1..oto-4` yolları olarak listenin başına yazar; elle eklenen yollara dokunmaz. Duyurulan adres yalnız özel/yerel olabilir (RFC1918, Tailscale 100.64/10, `.local`, `.ts.net`, tek etiketli bilgisayar adı); genel IP/alan adı ve `http://` yok sayılır. Sunucu ucu henüz yoksa (404) liste değişmez.
+- **taa-dns (yeni):** DuckDNS ya da kendi güncelleme adresi (`{alan}`/`{token}`/`{ip}` şablonu); belirteç `anahtarlar\dns-token` dosyasında, curl'e standart girdi ile verilir, çıktıda/iletide/`son.json`'da yok; `zamanla kur|kaldir|durum` (5 dk, pencere açmaz).
+- Testler: taa-yol 13→17 (duyuru süzgeci, birleştirme, 404/ağ hatası), taa-dns 6. **Sınır:** gerçek DuckDNS'e ve Windows'ta denenmedi; sunucu tarafındaki `/v1/yol-bilgisi` ayrı PR (tutaa).
+
 ### Terzi Takip: main birleştirmesi (çifte kod eşleştirme yeni ekranlarda, taa-hata)
 
 - **Çifte kod eşleştirme (PR #68) yeni arayüze taşındı:** eski `/yonetim` sayfası masaüstü **Telefonlar** ekranına yönlenir; o ekranda (yönetici PIN'iyle açılır) karekod + 6 haneli KOD 1, altında "Telefonda görünen 4 haneli kodu yazın" alanı ve **Onayla** düğmesi, sonuç iletisi ve süre bilgisi var. Bekleyen telefon olunca ekran bunu yazar ve alana kaydırır (`/api/yonetim/cihazlar` artık `bekleyen` sayısını döner; kod dönmez). Telefon sitesinde KOD 1 girilince belirteç verilmez; KOD 2 büyük gösterilir, 5 dk geri sayım, `GET /api/eslestir/<id>` yoklanır, `tamam` gelince belirteç `taa_tok`'a yazılır ve "Ana Ekrana Ekle" yönlendirmesi çıkar; 410'da "Eşleştirme iptal oldu ya da 5 dakikalık süre doldu…" iletisiyle ilk adıma döner.
