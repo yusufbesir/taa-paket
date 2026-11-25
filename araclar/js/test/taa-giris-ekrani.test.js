@@ -36,3 +36,14 @@ test('giriş açıkken arka sayfa kullanılamaz', { skip: !pw && 'playwright yok
     assert.deepStrictEqual(await p.evaluate(() => [document.querySelector('.taa-giris'), document.getElementById('arka').inert, document.getElementById('sonra').inert]), [null, false, false]);
   } finally { await b.close(); }
 });
+
+test('hedef gövde değilse ekranı taşıyan öğe inert olmaz', { skip: !pw && 'playwright yok' }, async () => {
+  const b = await pw.chromium.launch();
+  try {
+    const p = await b.newPage();
+    await p.setContent('<main id="kap"></main><button id="arka">Arka</button>');
+    await p.addScriptTag({ path: path.join(__dirname, '..', 'taa-giris-ekrani.js') });
+    await p.evaluate(() => TaaGirisEkrani.ac(document.getElementById('kap'), { api: { giris: async () => ({ tamam: false }) } }));
+    assert.deepStrictEqual(await p.evaluate(() => [document.getElementById('kap').inert, document.getElementById('arka').inert]), [false, true]);
+  } finally { await b.close(); }
+});

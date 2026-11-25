@@ -67,8 +67,9 @@
     kap.setAttribute('aria-labelledby', 'taa-giris-baslik');
     hedef.appendChild(kap);
     // Arkadaki sayfa kullanılamaz: gövdenin diğer çocukları (sonradan eklenenler dahil) ekran kapanana dek inert.
+    // Ekranı içeren öğe (hedef gövde değilse) inert yapılmaz.
     const inertler = [];
-    const inertYap = (e) => { if (e !== kap && e.nodeType === 1 && !e.inert && e.tagName !== 'SCRIPT' && e.tagName !== 'STYLE') { e.inert = true; inertler.push(e); } };
+    const inertYap = (e) => { if (e !== kap && e.nodeType === 1 && !e.contains(kap) && !e.inert && e.tagName !== 'SCRIPT' && e.tagName !== 'STYLE') { e.inert = true; inertler.push(e); } };
     const govde = belge.body;
     if (govde) Array.from(govde.children).forEach(inertYap);
     const gozcu = govde && typeof MutationObserver === 'function'
