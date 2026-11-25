@@ -10,6 +10,7 @@ mod ek_uclar;
 mod hesap_uclari;
 pub mod kisi;
 pub mod kurulum;
+pub mod ortak_giris;
 pub mod pencere;
 pub mod sayfalar;
 mod yonetici;
@@ -106,6 +107,8 @@ pub struct Uygulama {
     /// Kişi listesi ve şube kodunu TAA Çatı'dan çeken taraf (bkz. `kurulum`).
     pub cati: std::sync::Arc<dyn kurulum::CatiKaynagi>,
     /// TAA programlarının ortak veri kökü (TAA Kur `sube.json`'u buraya yazar). Testlerde None.
+    /// TAA ortak giriş aracı (taa-kimlik) bulucusu; testler sahte araç verir.
+    pub kimlik_bulucu: ortak_giris::KimlikBulucu,
     pub kok: Option<PathBuf>,
     /// (eşleştirme kodu, bitiş, telefonun bağlanacağı kişi)
     kodlar: Mutex<Vec<(String, u64, String)>>,
@@ -187,6 +190,7 @@ impl Uygulama {
             pin: Box::new(cati_pin::Yapilandirilmamis),
             cati: std::sync::Arc::new(kurulum::Yapilandirilmamis),
             kok: None,
+            kimlik_bulucu: ortak_giris::kimlik_yolu,
             kodlar: Mutex::new(Vec::new()),
             yanlis: Mutex::new((0, 0)),
             yonetici_oturum: Mutex::new(Vec::new()),
@@ -300,6 +304,7 @@ impl Uygulama {
                 }
                 Yanit::yonlendir("/masaustu#telefonlar")
             }
+            ("POST", ["api", "giris", islem]) => self.ortak_giris(i, islem),
             ("POST", ["api", "yonetici", "giris"]) => self.yonetici_giris(i),
             ("POST", ["api", "yonetici", "cikis"]) => self.yonetici_cikis(i),
             ("GET", ["api", "yonetici", "durum"]) => self.yonetici_durum(i),
