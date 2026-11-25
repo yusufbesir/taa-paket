@@ -47,3 +47,26 @@ test('hedef gövde değilse ekranı taşıyan öğe inert olmaz', { skip: !pw &&
     assert.deepStrictEqual(await p.evaluate(() => [document.getElementById('kap').inert, document.getElementById('arka').inert]), [false, true]);
   } finally { await b.close(); }
 });
+
+test('Çıkış düğmesi oturumu kapatır ve girişi yeniden açtırır (Fable T3)', { skip: !pw && 'playwright yok' }, async () => {
+  const b = await pw.chromium.launch();
+  try {
+    const p = await b.newPage();
+    await p.setContent('<main>program</main>');
+    await p.addScriptTag({ path: path.join(__dirname, '..', 'taa-giris-ekrani.js') });
+    await p.evaluate(() => {
+      window.cikti = 0; window.yeniden = 0;
+      const api = { cikis: async () => { window.cikti++; return { tamam: true }; } };
+      TaaGirisEkrani.cikisDugmesi({ api, oturum: { kullanici: 'ayse' }, cikinca: () => { window.yeniden++; } });
+      TaaGirisEkrani.cikisDugmesi({ api, oturum: { kullanici: 'ayse' }, cikinca: () => { window.yeniden++; } });
+    });
+    assert.strictEqual(await p.locator('.tg-cikis').count(), 1, 'ikinci çağrı yeni düğme eklemez');
+    assert.strictEqual(await p.textContent('.tg-cikis'), 'Çıkış · ayse');
+    await p.click('.tg-cikis');
+    await p.waitForFunction(() => window.yeniden === 1);
+    assert.deepStrictEqual(await p.evaluate(() => [window.cikti, document.querySelector('.tg-cikis')]), [1, null]);
+    // Kullanıcı adı HTML olarak yorumlanmaz.
+    await p.evaluate(() => TaaGirisEkrani.cikisDugmesi({ api: { cikis: async () => ({}) }, oturum: { kullanici: '<b>x</b>' } }));
+    assert.strictEqual(await p.evaluate(() => document.querySelector('.tg-cikis b')), null);
+  } finally { await b.close(); }
+});

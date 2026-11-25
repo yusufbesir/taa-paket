@@ -58,16 +58,26 @@
     document.body.appendChild(d);
   }
 
+  // Ortak bilgisayarda giren kişi kalıcı olmasın: köşede "Çıkış" düğmesi (basınca giriş yeniden istenir).
+  function cikisGoster(oturum) {
+    if (window.TaaGirisEkrani && window.TaaGirisEkrani.cikisDugmesi) {
+      window.TaaGirisEkrani.cikisDugmesi({ api: api, oturum: oturum, cikinca: girisAc });
+    }
+  }
+
+  function girildi(oturum) { uyariGoster(oturum); cikisGoster(oturum); }
+
   function girisAc() {
+    var d = document.getElementById('taa-giris-cikis'); if (d) d.remove();
     if (document.querySelector('.taa-giris')) return;   // zaten açık
     if (!window.TaaGirisEkrani) { kilitle(); return; }
-    window.TaaGirisEkrani.ac(document.body, { programAdi: 'TAA Terzi Takip', api: api, girildi: uyariGoster });
+    window.TaaGirisEkrani.ac(document.body, { programAdi: 'TAA Terzi Takip', api: api, girildi: girildi });
   }
 
   function denetle() {
     return api.baslangic().then(function (b) {
       if (!b || !b.arac) return;          // taa-kimlik kurulu değil: eski davranış
-      if (b.oturum) return;               // geçerli oturum var
+      if (b.oturum) { cikisGoster(b.oturum); return; }   // geçerli oturum var
       girisAc();
     }).catch(function () { girisAc(); }); // emin olunamıyorsa giriş istenir
   }

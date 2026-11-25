@@ -34,6 +34,58 @@ Kullanım:
   Cihaz anahtarı (<kök>\\cihaz\\cihaz.key, taa-cihaz uret) varsa her istek onunla imzalanır (X-TAA-* başlıkları).
 Parola ve oturum anahtarı hiçbir dosyaya, depoya ya da ekrana yazılmaz.";
 
+/// `durum` ve `cikis` için sunucuya sorma bütçesi (tüm yollar dahil, Fable E1); programların açılışı beklemesin.
+const AG_BUTCESI: std::time::Duration = std::time::Duration::from_secs(5);
+/// Tek yolda bağlantı kurma sınırı (saniye).
+const DURUM_BAGLANTI_SN: u64 = 3;
+
+/// `durum`/`cikis` için ağ bilgisi (sahipli: bütçeli iş parçacığına taşınır).
+struct Ag {
+    kok: PathBuf,
+    sunucu: String,
+    sunucu_acik: bool,
+    sertifika: Option<PathBuf>,
+}
+
+impl Ag {
+    fn yeni(kok: &Path, sunucu: &str, sunucu_acik: bool, sertifika: Option<&Path>) -> Ag {
+        Ag {
+            kok: kok.to_path_buf(),
+            sunucu: sunucu.to_string(),
+            sunucu_acik,
+            sertifika: sertifika.map(Path::to_path_buf),
+        }
+    }
+
+    /// Oturumla imzalı gönderici: açık sunucu verildiyse ona, yoksa yol listesinden yedekli.
+    fn gonderici(
+        &self,
+        o: &taa_kimlik::Oturum,
+    ) -> Result<Box<dyn taa_kimlik::Gonderici>, KimlikHata> {
+        if !self.sunucu_acik {
+            if let Some(y) =
+                taa_kimlik::yedekli_gonderici(&self.kok, Some(o), self.sertifika.as_deref())?
+            {
+                return Ok(Box::new(y));
+            }
+        }
+        let h = taa_yol::hedef_coz_curl(
+            &self.kok,
+            self.sunucu_acik.then_some(self.sunucu.as_str()),
+            self.sertifika.as_deref(),
+        )
+        .map_err(|e| KimlikHata::Baglanti(e.to_string()))?;
+        let g = o
+            .gonderici_taban(
+                &h.taban,
+                h.sertifika.as_deref(),
+                cihaz_imzalayici(&self.kok).ok().flatten(),
+            )?
+            .baglanti_suresi(DURUM_BAGLANTI_SN);
+        Ok(Box::new(g))
+    }
+}
+
 fn veri_kok_ortamdan() -> Option<PathBuf> {
     let ev = |a: &str| std::env::var(a).ok().filter(|s| !s.trim().is_empty());
     if let Some(k) = ev("TAA_VERI_KOK") {
@@ -284,7 +336,33 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
             Ok(0)
         }
         Some("durum") => {
-            let o = depo.oku(&sunucu).map_err(kh)?;
+            let sakli = depo.oku(&sunucu).map_err(kh)?;
+            // Fable D1: sakli oturum sunucuya sorulur. Sunucu reddederse silinir; ulaşılamazsa yalnız çevrimdışı
+            // geçerlilik sonuna kadar kabul edilir. Yanıt çevrimdışı yetki belgesini de tazeler.
+            // Fable E1: tüm yollar dahil toplam bütçe AG_BUTCESI; aşılırsa ulaşılamadı sayılır.
+            let anahtar = sunucu_anahtari_oku(&kok).ok().flatten();
+            let ag = Ag::yeni(&kok, &sunucu, sunucu_acik, sertifika.as_deref());
+            let o2 = sakli.clone();
+            let canli = move || {
+                taa_kimlik::butceli(AG_BUTCESI, move || {
+                    let g = ag.gonderici(&o2)?;
+                    yetki_al(g.as_ref(), &ag.kok, &ag.sunucu, anahtar.as_ref())
+                })
+            };
+            let o = match taa_kimlik::oturum_dogrula(&sakli, &taa_kuyruk::zaman::simdi(), canli) {
+                Ok(o) => {
+                    if o != sakli {
+                        let _ = depo.kaydet(&o);
+                    }
+                    o
+                }
+                Err((sil, e)) => {
+                    if sil {
+                        let _ = depo.cikis(&sunucu);
+                    }
+                    return Err((5, format!("oturum geçerli değil: {e}")));
+                }
+            };
             if json {
                 println!("{}", o.ozet());
             } else {
@@ -337,6 +415,21 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
             Ok(if red.is_empty() { 0 } else { 7 })
         }
         Some("cikis") => {
+            // Sunucudaki oturum da kapatılır (POST /v1/cikis, kısa süre sınırı); ulaşılamazsa yerel kayıt yine silinir
+            // ve sunucudaki oturum kendi süresinde (12 saat) biter.
+            if let Ok(o) = depo.oku(&sunucu) {
+                // Fable E4: yedekli yol listesi de kullanılır; E1: toplam bütçe.
+                let ag = Ag::yeni(&kok, &sunucu, sunucu_acik, sertifika.as_deref());
+                let sonuc = taa_kimlik::butceli(AG_BUTCESI, move || {
+                    let g = ag.gonderici(&o)?;
+                    g.gonder("/v1/cikis", &serde_json::json!({}))
+                        .map(|_| ())
+                        .map_err(|e| KimlikHata::Baglanti(e.to_string()))
+                });
+                if let Err(e) = sonuc {
+                    eprintln!("uyarı: sunucudaki oturum kapatılamadı ({e}); yerel oturum yine de silindi.");
+                }
+            }
             depo.cikis(&sunucu).map_err(kh)?;
             if json {
                 println!("{}", serde_json::json!({"durum": "cikis"}));
