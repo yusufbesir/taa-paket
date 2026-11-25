@@ -6,6 +6,7 @@
 use std::io::{BufRead, Read};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::atomic::{AtomicU16, Ordering};
 use taa_kimlik::{
     cihaz_imzalayici, giris_dogrulayarak, kuyrugu_gonder_hedef, sunucu_anahtari_oku,
     varsayilan_depo, yetki_al, yetki_oku, CurlGonderici, KimlikHata,
@@ -16,6 +17,8 @@ taa-kimlik — merkez sunucuya giriş ve oturum saklama (Windows Kimlik Bilgisi 
 Kullanım:
   taa-kimlik giris  --sunucu <https://adres> --kullanici <ad> [--kod <kod>] [--sertifika <pem>] [--json]   (parola stdin'den)
   taa-kimlik durum  --sunucu <https://adres> [--json]
+  taa-kimlik basvur --kullanici <ad> [--sunucu] [--json]   (yeni şifre stdin'den; boş satır = yalnız kilit açma)
+               Yöneticiye başvuru: çıktı iki haneli doğrulama sayısıdır; kişi bunu yöneticiye söyler.
   taa-kimlik cikis  --sunucu <https://adres>
   taa-kimlik gonder --sunucu <https://adres> [--kok <veri kökü>] [--sertifika <pem>] [--en-cok N] [--json]
   --sunucu yoksa <kök>\\yol\\sunucu-yollari.json'daki yollar sırayla denenir (taa-yol); oturum anahtarı listenin
@@ -45,6 +48,10 @@ fn veri_kok_ortamdan() -> Option<PathBuf> {
     ev("HOME").map(|h| PathBuf::from(h).join(".local/share/TAA/veri"))
 }
 
+/// Son sunucu reddinin HTTP kodu (423 kilit, 429 sınır, 403 onay bekliyor…); `--json` hata çıktısına `http` olarak eklenir.
+/// Programlar (JS köprüsü) iletiye değil bu koda bakarak "Yöneticiye başvur" düğmesini gösterir.
+static SON_HTTP: AtomicU16 = AtomicU16::new(0);
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.is_empty()
@@ -59,7 +66,12 @@ fn main() -> ExitCode {
         Ok(kod) => ExitCode::from(kod),
         Err((kod, m)) => {
             if args.iter().any(|a| a == "--json") {
-                eprintln!("{}", serde_json::json!({"hata": m, "kod": kod}));
+                let http = SON_HTTP.load(Ordering::Relaxed);
+                let mut v = serde_json::json!({"hata": m, "kod": kod});
+                if http != 0 {
+                    v["http"] = serde_json::json!(http);
+                }
+                eprintln!("{v}");
             } else {
                 eprintln!("{m}");
             }
@@ -69,6 +81,9 @@ fn main() -> ExitCode {
 }
 
 fn hata_kodu(e: &KimlikHata) -> u8 {
+    if let KimlikHata::GirisReddi { kod, .. } = e {
+        SON_HTTP.store(*kod, Ordering::Relaxed);
+    }
     match e {
         KimlikHata::GecersizGirdi(_) => 2,
         KimlikHata::GirisReddi { .. } => 4,
@@ -248,8 +263,16 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
                 Err(e) => eprintln!("uyarı: yetki belgesi alınamadı: {e}"),
             }
             if json {
-                println!("{}", o.ozet());
+                let mut v = o.ozet();
+                v["uyari_sayisi"] = serde_json::json!(o.uyari_sayisi);
+                println!("{v}");
             } else {
+                if o.uyari_sayisi > 0 {
+                    println!(
+                        "uyarı: hesabınızla ilgili {} yeni uyarı var (başka bilgisayardan deneme ya da şifre değişikliği).",
+                        o.uyari_sayisi
+                    );
+                }
                 println!(
                     "giriş tamam: {} @ {} (şube {}, roller {})",
                     o.kullanici,
@@ -322,6 +345,52 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
             }
             Ok(0)
         }
+        Some("basvur") => {
+            let k = kullanici.ok_or_else(|| (2, "basvur için --kullanici gerekli.".to_string()))?;
+            // Yeni şifre (varsa) standart girdiden; boş satır ya da girdi yoksa yalnız kilit başvurusu.
+            let mut yeni = String::new();
+            let stdin = std::io::stdin();
+            let _ = stdin.lock().read_line(&mut yeni);
+            let _ = stdin.lock().read_to_end(&mut Vec::new());
+            let yeni = yeni.trim_end_matches(['\n', '\r']);
+            let h = hedef(sertifika.as_deref())?;
+            let yedekli = if sunucu_acik {
+                None
+            } else {
+                taa_kimlik::yedekli_gonderici(&kok, None, sertifika.as_deref()).map_err(kh)?
+            };
+            let mut g = CurlGonderici::yeni(&h.taban).map_err(|e| (2, e.to_string()))?;
+            if let Some(c) = &h.sertifika {
+                g = g.sertifika(c);
+            }
+            // Başvuru yalnız onaylı mağaza bilgisayarından: istek cihaz anahtarıyla imzalanır.
+            match cihaz_imzalayici(&kok).map_err(kh)? {
+                Some(i) => g = g.imzalayici(i),
+                None => {
+                    return Err((
+                        5,
+                        "bu bilgisayar sunucuya kayıtlı değil (cihaz anahtarı yok). Öneri: yöneticiden bilgisayarı onaylamasını isteyin."
+                            .into(),
+                    ))
+                }
+            }
+            let gonderici: &dyn taa_kimlik::Gonderici = match &yedekli {
+                Some(y) => y,
+                None => &g,
+            };
+            let sayi =
+                taa_kimlik::yoneticiye_basvur(gonderici, &k, Some(yeni).filter(|p| !p.is_empty()))
+                    .map_err(kh)?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({"durum": "iletildi", "dogrulama_sayisi": sayi})
+                );
+            } else {
+                println!("Başvurunuz yöneticiye iletildi. Yöneticiye şu sayıyı söyleyin: {sayi}");
+            }
+            Ok(0)
+        }
         Some("gonder") => {
             let h = hedef(sertifika.as_deref())?;
             let yedekli = if sunucu_acik {
@@ -377,7 +446,10 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
             2,
             format!("bilinmeyen komut: {k}. Öneri: taa-kimlik --yardim"),
         )),
-        None => Err((2, "komut gerekli: giris | durum | cikis | gonder".into())),
+        None => Err((
+            2,
+            "komut gerekli: giris | basvur | durum | yetki | cikis | gonder".into(),
+        )),
     }
 }
 

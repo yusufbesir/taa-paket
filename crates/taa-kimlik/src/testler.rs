@@ -54,8 +54,15 @@ fn giris_sozlesmesi() {
     assert!(!o.ozet().to_string().contains("abc.def"));
     // kod boşsa gönderilmez
     let g2 = Sahte::yeni(Ok(json!({"oturum": "x"})));
-    giris(&g2, "https://s", "ali", "p", Some("  ")).unwrap();
+    let o2 = giris(&g2, "https://s", "ali", "p", Some("  ")).unwrap();
     assert!(g2.cagrilar.borrow()[0].1.get("kod").is_none());
+    assert_eq!(o.uyari_sayisi, 0);
+    assert_eq!(o2.uyari_sayisi, 0, "eski sunucu: uyarı alanı yok");
+    // KM2: girişte görülmemiş hesap uyarısı sayısı okunur; depoya yazılmaz.
+    let g3 = Sahte::yeni(Ok(json!({"oturum": "y", "uyari_sayisi": 3})));
+    let o3 = giris(&g3, "https://s", "ali", "p", None).unwrap();
+    assert_eq!(o3.uyari_sayisi, 3);
+    assert!(o3.ozet().get("uyari_sayisi").is_none());
 }
 
 #[test]
