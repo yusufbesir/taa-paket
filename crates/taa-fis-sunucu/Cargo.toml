@@ -1,5 +1,5 @@
 # taa-fis-sunucu: TaaFiş yerel ağ sunucusu (telefon sayfası, QR eşleştirme, yazdırma). Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-04].
-# Yeni bağımlılıklar: tiny_http (sade senkron HTTP), qrcode (eşleştirme karekodu), getrandom (belirteç), sha2 (zaten çalışma alanında).
+# Yeni bağımlılıklar: taa-havuz (kişi listesi TAA Çatı/havuzdan, rehber.*), tiny_http (sade senkron HTTP), qrcode (eşleştirme karekodu), getrandom (belirteç), sha2 (zaten çalışma alanında).
 [package]
 name = "taa-fis-sunucu"
 version = "0.1.0"
@@ -16,6 +16,11 @@ path = "src/lib.rs"
 name = "taa-fis-sunucu"
 path = "src/main.rs"
 
+# Masaüstü başlatıcı: sunucu çalışmıyorsa başlatır, Edge uygulama penceresinde /masaustu'yu açar.
+[[bin]]
+name = "taa-terzi-takip"
+path = "src/baslatici.rs"
+
 [dependencies]
 taa-hata = { path = "../taa-hata" }
 serde = { version = "1", features = ["derive"] }
@@ -31,3 +36,7 @@ taa-bildirim = { path = "../taa-bildirim" }
 taa-telegram = { path = "../taa-telegram" }
 taa-takip = { path = "../taa-takip" }
 taa-terzi = { path = "../taa-terzi" }
+taa-kimlik = { path = "../taa-kimlik" }
+taa-kuyruk = { path = "../taa-kuyruk" }
+taa-havuz = { path = "../taa-havuz" }
+taa-yol = { path = "../taa-yol" }

@@ -1,0 +1,15 @@
+# Sahip: Yusuf. yazan: [Claude#terzi-takip-android 2026-11-17]
+# Derleme çıktıları ve yerel ayarlar
+.gradle/
+build/
+app/build/
+local.properties
+.idea/
+*.iml
+.kotlin/
+captures/
+dist/
+# İmza anahtarı ve şifreleri ASLA depoya girmez
+keystore.properties
+*.jks
+*.keystore

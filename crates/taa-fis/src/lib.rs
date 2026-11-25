@@ -98,6 +98,15 @@ pub struct Fis {
     pub satis_danismani: String,
     #[serde(default)]
     pub olcu_alan: String,
+    /// Kişi kaydındaki kimlikler (ör. "K-1a2b3c4d" ya da "U-…"). Yeni fişte ad yerine bunlar saklanır;
+    /// eski satırlarda boştur ve ad alanları geçerlidir.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub satis_danismani_id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub olcu_alan_id: String,
+    /// Fişi düzenleyen kişinin kimliği (fişe basılmaz).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub duzenleyen_id: String,
     /// Kargo ile gönderilecek mi? Fişte büyük yazılır (not kâğıdı düşebildiği için).
     #[serde(default)]
     pub kargo: bool,
@@ -163,6 +172,15 @@ pub struct Girdi {
     pub satis_danismani: String,
     #[serde(default)]
     pub olcu_alan: String,
+    /// Kişi kaydındaki kimlikler (ör. "K-1a2b3c4d" ya da "U-…"). Yeni fişte ad yerine bunlar saklanır;
+    /// eski satırlarda boştur ve ad alanları geçerlidir.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub satis_danismani_id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub olcu_alan_id: String,
+    /// Fişi düzenleyen kişinin kimliği (fişe basılmaz).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub duzenleyen_id: String,
     /// Kargo ile gönderilecek mi? Fişte büyük yazılır (not kâğıdı düşebildiği için).
     #[serde(default)]
     pub kargo: bool,
@@ -230,7 +248,8 @@ pub fn dogrula(
     if g.musteri.trim().is_empty() {
         return Err("müşteri adı gerekli".into());
     }
-    if g.satis_danismani.trim().is_empty() || g.olcu_alan.trim().is_empty() {
+    let dolu = |ad: &str, id: &str| !ad.trim().is_empty() || !id.trim().is_empty();
+    if !dolu(&g.satis_danismani, &g.satis_danismani_id) || !dolu(&g.olcu_alan, &g.olcu_alan_id) {
         return Err("satış danışmanı ve ölçü alan kişi yazılmalı".into());
     }
     if !saat_gecerli(&g.teslim_saati) {
@@ -336,6 +355,9 @@ mod testler {
             usta: "Hasan".into(),
             satis_danismani: "Mert".into(),
             olcu_alan: "Kadir Y.".into(),
+            satis_danismani_id: String::new(),
+            olcu_alan_id: String::new(),
+            duzenleyen_id: String::new(),
             kargo: false,
             kargo_notu: String::new(),
             kargo_ad: String::new(),
@@ -634,6 +656,9 @@ mod testler {
             usta: "".into(),
             satis_danismani: "Mert".into(),
             olcu_alan: "Kadir Y.".into(),
+            satis_danismani_id: String::new(),
+            olcu_alan_id: String::new(),
+            duzenleyen_id: String::new(),
             kargo: false,
             kargo_notu: String::new(),
             kargo_ad: String::new(),
@@ -697,6 +722,11 @@ mod testler {
         let mut g = girdi();
         g.olcu_alan = " ".into();
         assert!(dogrula(&g, &kat(), true, true).is_err());
+        // Kişi kaydı kimliği adın yerini tutar (yeni fişlerde ad boş, kimlik dolu).
+        g.olcu_alan_id = "K-0000abcd".into();
+        g.satis_danismani = String::new();
+        g.satis_danismani_id = "K-0000abce".into();
+        assert!(dogrula(&g, &kat(), true, true).is_ok());
         let mut g = girdi();
         g.teslim_saati = "25:00".into();
         assert!(dogrula(&g, &kat(), true, true).is_err());

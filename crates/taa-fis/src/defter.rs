@@ -312,6 +312,9 @@ impl Defter<'_> {
             usta: g.usta.trim().into(),
             satis_danismani: g.satis_danismani.trim().into(),
             olcu_alan: g.olcu_alan.trim().into(),
+            satis_danismani_id: g.satis_danismani_id.trim().into(),
+            olcu_alan_id: g.olcu_alan_id.trim().into(),
+            duzenleyen_id: g.duzenleyen_id.trim().into(),
             kargo,
             kargo_notu: g.kargo_notu.trim().into(),
             kargo_ad: if kargo {

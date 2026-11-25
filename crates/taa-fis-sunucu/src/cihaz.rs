@@ -9,6 +9,9 @@ pub struct Cihaz {
     pub ad: String,
     pub token_sha256: String,
     pub tarih: String,
+    /// Kişisel telefon (kullanıcı girişi): fişi düzenleyen her zaman bu kişidir. Boş = mağaza telefonu.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub kisi_id: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -88,7 +91,7 @@ impl Kayitci {
             .collect())
     }
 
-    pub fn ekle(&self, ad: &str, token: &str, tarih: &str) -> Result<Cihaz, String> {
+    pub fn ekle(&self, ad: &str, token: &str, tarih: &str, kisi_id: &str) -> Result<Cihaz, String> {
         let ad = ad.trim();
         if ad.is_empty() || ad.chars().count() > 40 {
             return Err("telefon adı 1-40 karakter olmalı".into());
@@ -104,6 +107,7 @@ impl Kayitci {
             ad: ad.into(),
             token_sha256: sha256_hex(token),
             tarih: tarih.into(),
+            kisi_id: kisi_id.into(),
         };
         let s = serde_json::to_string(&Kayit::Cihaz(c.clone())).map_err(|e| e.to_string())?;
         taa_dosya::satir_ekle(&self.yol, &s).map_err(|e| e.to_string())?;
