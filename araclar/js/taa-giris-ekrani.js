@@ -43,7 +43,15 @@
 .taa-giris .tg-secim button{flex:1;background:none;color:inherit;border:1px solid var(--taa-cizgi,#2a3346)}
 .taa-giris .tg-secim button[aria-pressed="true"]{border-color:var(--taa-vurgu,#f3a83b);color:var(--taa-vurgu,#f3a83b)}
 @media (prefers-reduced-motion:no-preference){.taa-giris .tg-kart{animation:taaGirisGel .22s cubic-bezier(.2,0,0,1)}}
-@keyframes taaGirisGel{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}`;
+@keyframes taaGirisGel{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.tg-cikis{position:fixed;left:12px;bottom:12px;z-index:2147482000;display:inline-flex;align-items:center;gap:6px;margin:0;
+  padding:6px 12px;min-height:0;height:auto;font:13px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif;cursor:pointer;
+  color:var(--taa-yazi,#e8ecf3);background:var(--taa-panel,#171e2c);border:1px solid var(--taa-cizgi,#2a3346);
+  border-radius:999px;box-shadow:0 4px 14px rgba(0,0,0,.18);opacity:.85;text-transform:none;letter-spacing:normal;transform:none}
+.tg-cikis:hover,.tg-cikis:focus-visible{opacity:1;background:var(--taa-panel,#171e2c);color:var(--taa-yazi,#e8ecf3)}
+.tg-cikis:focus-visible{outline:2px solid var(--taa-vurgu,#f3a83b);outline-offset:2px}
+.tg-cikis[disabled]{cursor:progress;opacity:.6}
+@media print{.tg-cikis{display:none}}`;
 
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -183,5 +191,36 @@
     ? `Hesabınızla ilgili ${oturum.uyari_sayisi} yeni uyarı var: başka bir bilgisayardan giriş denemesi ya da şifre değişikliği. Siz değilseniz yöneticinize haber verin.`
     : '');
 
-  kok.TaaGirisEkrani = { ac, uyariMetni };
+  // Ortak bilgisayarda giren kişi kalıcı olmasın (Fable T3): köşede küçük "Çıkış" düğmesi. Basınca ortak oturum
+  // kapanır (taa-kimlik cikis; sunucudaki oturum da) ve `cikinca` çağrılır (program giriş ekranını yeniden açar).
+  // Yeniden çağrılırsa var olan düğme güncellenir. secenek: { api, oturum, cikinca }.
+  function cikisDugmesi(secenek) {
+    const s = secenek || {};
+    const api = s.api || (kok && kok.taaGiris);
+    const belge = (kok && kok.document) || document;
+    if (!api || typeof api.cikis !== 'function' || !belge.body) return null;
+    stilEkle(belge);
+    let d = belge.getElementById('taa-giris-cikis');
+    if (!d) {
+      d = belge.createElement('button');
+      d.id = 'taa-giris-cikis';
+      d.type = 'button';
+      d.className = 'tg-cikis';
+      belge.body.appendChild(d);
+    }
+    const ad = s.oturum && s.oturum.kullanici ? String(s.oturum.kullanici) : '';
+    d.textContent = ad ? 'Çıkış · ' + ad : 'Çıkış';
+    d.title = ad ? ad + ' hesabından çık' : 'Hesaptan çık';
+    d.setAttribute('aria-label', d.title);
+    d.disabled = false;
+    d.onclick = async () => {
+      d.disabled = true;
+      try { await api.cikis(); } catch (_) { /* yerel kayıt araçta silinir; yine de giriş istenir */ }
+      d.remove();
+      if (typeof s.cikinca === 'function') s.cikinca();
+    };
+    return d;
+  }
+
+  kok.TaaGirisEkrani = { ac, uyariMetni, cikisDugmesi };
 })(typeof window !== 'undefined' ? window : globalThis);
