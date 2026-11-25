@@ -29,17 +29,22 @@ function taaKok(env) {
   return path.join(env.XDG_DATA_HOME || path.join(env.HOME || os.homedir(), '.local', 'share'), 'TAA');
 }
 
-function kimlikYolu(env) {
+// `paketli`: kurulu (paketlenmiş) programda TAA_KIMLIK / TAA_KOK ortam değişkenleri yok sayılır;
+// yalnız sabit TAA kökü kullanılır (D:\Programlar\TAA; yazma izni yalnız yöneticide, TAA Kur ayarlar).
+function kimlikYolu(env, paketli) {
   env = env || process.env;
+  if (paketli) env = { HOME: env.HOME, XDG_DATA_HOME: env.XDG_DATA_HOME };
   const exe = process.platform === 'win32' ? 'taa-kimlik.exe' : 'taa-kimlik';
   if (env.TAA_KIMLIK) return fs.existsSync(env.TAA_KIMLIK) ? env.TAA_KIMLIK : null;
   const kok = taaKok(env);
   try {
     const kayit = JSON.parse(fs.readFileSync(path.join(kok, 'kayit.json'), 'utf8'));
     const secili = kayit && kayit.paketler && kayit.paketler['taa-kimlik'] && kayit.paketler['taa-kimlik'].secili;
-    if (typeof secili === 'string' && /^[0-9a-z.+-]{1,32}$/.test(secili)) {
-      const y = path.join(kok, 'depo', 'taa-kimlik', secili, 'bin', exe);
-      if (fs.existsSync(y)) return y;
+    // Sürüm adı rakamla başlar, '..' içermez; çözülen yol <kök>/depo/taa-kimlik altında kalmalı.
+    if (typeof secili === 'string' && /^[0-9][0-9a-z.+-]{0,31}$/.test(secili) && !secili.includes('..')) {
+      const taban = path.resolve(kok, 'depo', 'taa-kimlik');
+      const y = path.resolve(taban, secili, 'bin', exe);
+      if (y.startsWith(taban + path.sep) && fs.existsSync(y)) return y;
     }
   } catch (_) { /* kayıt yok ya da bozuk: aşağıdaki yedek */ }
   const yanimda = path.join(kok, 'bin', exe);
@@ -61,7 +66,7 @@ function jsonSatir(metin) {
 function calistir(args, girdi, secenek) {
   const s = secenek || {};
   const env = s.env || process.env;
-  const exe = kimlikYolu(env);
+  const exe = kimlikYolu(env, s.paketli === true);
   if (!exe) return Promise.resolve({ kod: -1, cikti: null, hata: null });
   return new Promise((coz) => {
     let cikti = '';
@@ -149,11 +154,9 @@ async function giris(istek, secenek) {
     roller: Array.isArray(o.roller) ? o.roller : [], izinler: Array.isArray(o.izinler) ? o.izinler : [],
     programlar: Array.isArray(o.programlar) ? o.programlar : [], uyari_sayisi: Number(o.uyari_sayisi) || 0,
   };
-  // Program bu kişiye/şubeye kapalıysa açılmaz (liste boşsa eski sunucu: açık sayılır).
-  if (s.program && oturum.programlar.length && !oturum.programlar.includes(s.program)) {
-    await calistir(['cikis', ...sunucuArg(s)], null, s);
-    return red('program_kapali');
-  }
+  // Program bu kişiye/şubeye kapalıysa açılmaz. Boş liste = hiçbir program açık değil (ret).
+  // Çıkış yapılmaz: ortak oturum başka programlarda sürer, yalnız bu program reddedilir.
+  if (!programAcik(oturum, s.program)) return red('program_kapali');
   return { tamam: true, oturum };
 }
 
@@ -176,19 +179,32 @@ async function basvur(istek, secenek) {
   };
 }
 
+// Süren oturum. Program verilmişse ve bu programa kapalıysa null (giriş ekranı açılır).
 async function durum(secenek) {
   const s = secenek || {};
   const r = await calistir(['durum', ...sunucuArg(s)], null, s);
   if (r.kod !== 0 || !r.cikti) return null;
   const o = r.cikti;
-  return { kullanici: o.kullanici, sube_id: o.sube_id == null ? null : o.sube_id, roller: o.roller || [], izinler: o.izinler || [], programlar: o.programlar || [] };
+  const oturum = {
+    kullanici: o.kullanici, sube_id: o.sube_id == null ? null : o.sube_id,
+    roller: Array.isArray(o.roller) ? o.roller : [], izinler: Array.isArray(o.izinler) ? o.izinler : [],
+    programlar: Array.isArray(o.programlar) ? o.programlar : [],
+  };
+  return programAcik(oturum, s.program) ? oturum : null;
+}
+
+// Program adı yoksa (ör. Çatı'nın genel denetimi) denetim yapılmaz; varsa listede olmalı. Liste yoksa ya da boşsa kapalı.
+function programAcik(oturum, program) {
+  if (!program) return true;
+  return Array.isArray(oturum.programlar) && oturum.programlar.includes(program);
 }
 
 // Çevrimdışı izin kararı (imzalı yetki belgesi). Varsayılan: reddet.
 async function yetki(istek, secenek) {
   const s = secenek || {};
   const args = ['yetki', ...sunucuArg(s)];
-  const program = istek && istek.program;
+  // Program ana süreçte sabitlenmişse (s.program) renderer'dan gelen değer yok sayılır.
+  const program = s.program || (istek && istek.program);
   const izin = istek && istek.izin;
   if (program) { if (!PROGRAM_RE.test(program)) return { izinli: false }; args.push('--program', program); }
   if (izin) { if (!/^[a-z0-9-]{1,32}\.[a-z0-9_.-]{1,64}$/.test(izin)) return { izinli: false }; args.push('--izin', izin); }
@@ -203,26 +219,45 @@ async function cikis(secenek) {
 }
 
 // ---- Electron bağlantısı ----
-const KANAL = { giris: 'taa-giris:giris', basvur: 'taa-giris:basvur', durum: 'taa-giris:durum', yetki: 'taa-giris:yetki', cikis: 'taa-giris:cikis' };
+const KANAL = { baslangic: 'taa-giris:baslangic', giris: 'taa-giris:giris', basvur: 'taa-giris:basvur', durum: 'taa-giris:durum', yetki: 'taa-giris:yetki', cikis: 'taa-giris:cikis' };
 
+// Açılış kararı: araç kurulu mu, bu programa açık süren oturum var mı. Araç yoksa program eski davranışını sürdürür.
+async function baslangic(secenek) {
+  const s = secenek || {};
+  if (!kimlikYolu(s.env || process.env, s.paketli === true)) return { arac: false, oturum: null };
+  return { arac: true, oturum: await durum(s) };
+}
+
+// Varsayılan gönderen denetimi: yalnız pencerenin kendi ana çerçevesi ve yerel (file:) sayfa.
+function gonderenVarsayilan(olay) {
+  const f = olay && olay.senderFrame;
+  const url = f && typeof f.url === 'string' ? f.url : '';
+  if (!f || !olay.sender || f !== olay.sender.mainFrame || !url.startsWith('file:')) throw new Error('taa-giris: yetkisiz gönderen');
+}
+
+// secenek: { program, paketli, sunucu, denetle(olay) } — denetle fırlatırsa çağrı reddedilir.
 function ipcKur(ipcMain, secenek) {
   const s = Object.assign({}, secenek);
   if (s.program && !PROGRAM_RE.test(s.program)) throw new Error('taa-giris: program adı geçersiz');
-  ipcMain.handle(KANAL.giris, (_o, i) => giris(i, s));
-  ipcMain.handle(KANAL.basvur, (_o, i) => basvur(i, s));
-  ipcMain.handle(KANAL.durum, () => durum(s));
-  ipcMain.handle(KANAL.yetki, (_o, i) => yetki(i, s));
-  ipcMain.handle(KANAL.cikis, () => cikis(s));
+  const denetle = typeof s.denetle === 'function' ? s.denetle : gonderenVarsayilan;
+  const kur = (kanal, is) => ipcMain.handle(kanal, (olay, i) => { denetle(olay); return is(i && typeof i === 'object' ? i : {}); });
+  kur(KANAL.baslangic, () => baslangic(s));
+  kur(KANAL.giris, (i) => giris(i, s));
+  kur(KANAL.basvur, (i) => basvur(i, s));
+  kur(KANAL.durum, () => durum(s));
+  kur(KANAL.yetki, (i) => yetki(i, s));
+  kur(KANAL.cikis, () => cikis(s));
 }
 
 function preloadKur(contextBridge, ipcRenderer) {
   contextBridge.exposeInMainWorld('taaGiris', {
     giris: (kullanici, parola) => ipcRenderer.invoke(KANAL.giris, { kullanici, parola }),
     basvur: (kullanici, yeniParola) => ipcRenderer.invoke(KANAL.basvur, { kullanici, yeniParola }),
+    baslangic: () => ipcRenderer.invoke(KANAL.baslangic),
     durum: () => ipcRenderer.invoke(KANAL.durum),
     yetki: (izin) => ipcRenderer.invoke(KANAL.yetki, { izin }),
     cikis: () => ipcRenderer.invoke(KANAL.cikis),
   });
 }
 
-module.exports = { kimlikYolu, calistir, giris, basvur, durum, yetki, cikis, ipcKur, preloadKur, KANAL, ILETI, _durumBul: durumBul };
+module.exports = { kimlikYolu, calistir, baslangic, giris, basvur, durum, yetki, cikis, ipcKur, preloadKur, KANAL, ILETI, _durumBul: durumBul };

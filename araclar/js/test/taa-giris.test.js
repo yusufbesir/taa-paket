@@ -27,9 +27,9 @@ let girdi = ''; process.stdin.on('data', (b) => girdi += b).on('end', () => {
   if (s === 'baglanti') hata(3, { hata: 'ulaşılamadı', kod: 3 });
   if (s === 'cihaz') hata(5, { hata: 'bu bilgisayar sunucuya kayıtlı değil (cihaz anahtarı yok).', kod: 5 });
   if (s === 'parola') hata(4, { hata: 'giriş reddedildi (400): {"hata":"parola","ileti":"Şifre en az 8 karakter olmalı"}', kod: 4, http: 400 });
-  if (komut === 'giris') yaz({ kullanici: 'ali', sube_id: 2, roller: ['kasa'], izinler: ['tutaa.kullan'], programlar: s === 'kapali' ? ['taarkod'] : ['tutaa'], uyari_sayisi: 2 });
+  if (komut === 'giris') yaz({ kullanici: 'ali', sube_id: 2, roller: ['kasa'], izinler: ['tutaa.kullan'], programlar: s === 'kapali' ? ['taarkod'] : s === 'bos' ? [] : ['tutaa'], uyari_sayisi: 2 });
   else if (komut === 'basvur') yaz({ durum: 'iletildi', dogrulama_sayisi: '07' });
-  else if (komut === 'durum') yaz({ kullanici: 'ali', sube_id: 2, roller: ['kasa'] });
+  else if (komut === 'durum') yaz({ kullanici: 'ali', sube_id: 2, roller: ['kasa'], programlar: s === 'kapali' ? ['taarkod'] : s === 'bos' ? [] : ['tutaa'] });
   else if (komut === 'yetki') { if (s === 'yetkisiz') { yaz({ sonuc: 'yetkisiz', neden: ['izin yok'] }); process.exit(7); } yaz({ sonuc: 'izinli' }); }
   else if (komut === 'cikis') yaz({ durum: 'cikis' });
 });
@@ -53,7 +53,12 @@ test('kimlikYolu: TAA_KIMLIK, kayit.json seçili sürüm, yoksa null', () => {
   assert.strictEqual(g.kimlikYolu({ TAA_KOK: kok }), path.join(bin, exe));
   fs.writeFileSync(path.join(kok, 'kayit.json'), JSON.stringify({ paketler: { 'taa-kimlik': { secili: '../../x' } } }));
   assert.strictEqual(g.kimlikYolu({ TAA_KOK: kok }), null, 'yol kaçışı kabul edilmez');
+  for (const kotu of ['..', '.', '0/../..', '0..', 'a1']) {
+    fs.writeFileSync(path.join(kok, 'kayit.json'), JSON.stringify({ paketler: { 'taa-kimlik': { secili: kotu } } }));
+    assert.strictEqual(g.kimlikYolu({ TAA_KOK: kok }), null, kotu);
+  }
   assert.strictEqual(g.kimlikYolu({ TAA_KIMLIK: path.join(kok, 'yok') }), null);
+  assert.strictEqual(g.kimlikYolu({ TAA_KIMLIK: path.join(bin, exe), TAA_KOK: kok }, true) === path.join(bin, exe), false, 'paketli: ortam yok sayılır');
 });
 
 test('araç yoksa kişiye anlaşılır ileti', async () => {
@@ -72,11 +77,24 @@ test('giriş: şifre yalnız stdin ile gider, oturum ve uyarı sayısı döner',
   assert.ok(!JSON.stringify(r).includes('Gizli'), 'şifre sonuçta yok');
 });
 
-test('giriş: program kapalıysa çıkış yapılır ve reddedilir', { skip: !posix }, async () => {
-  const o = ortam('kapali');
-  const r = await g.giris({ kullanici: 'ali', parola: 'p' }, { env: o.env, program: 'tutaa' });
-  assert.deepStrictEqual([r.tamam, r.durum], [false, 'program_kapali']);
-  assert.strictEqual(o.cagri().args[0], 'cikis');
+test('giriş: program kapalıysa ya da liste boşsa reddedilir, ortak oturum kapatılmaz', { skip: !posix }, async () => {
+  for (const s of ['kapali', 'bos']) {
+    const o = ortam(s);
+    const r = await g.giris({ kullanici: 'ali', parola: 'p' }, { env: o.env, program: 'tutaa' });
+    assert.deepStrictEqual([r.tamam, r.durum], [false, 'program_kapali'], s);
+    assert.strictEqual(o.cagri().args[0], 'giris', 'cikis çağrılmadı');
+  }
+  const t = await g.giris({ kullanici: 'ali', parola: 'p' }, { env: ortam('bos').env });
+  assert.strictEqual(t.tamam, true, 'program verilmezse denetim yok');
+});
+
+test('durum ve baslangic program denetimi yapar', { skip: !posix }, async () => {
+  assert.strictEqual((await g.durum({ env: ortam().env, program: 'tutaa' })).kullanici, 'ali');
+  assert.strictEqual(await g.durum({ env: ortam('kapali').env, program: 'tutaa' }), null);
+  assert.strictEqual(await g.durum({ env: ortam('bos').env, program: 'tutaa' }), null);
+  assert.deepStrictEqual(await g.baslangic({ env: { TAA_KIMLIK: '/yok' } }), { arac: false, oturum: null });
+  const b = await g.baslangic({ env: ortam().env, program: 'tutaa' });
+  assert.deepStrictEqual([b.arac, b.oturum.kullanici], [true, 'ali']);
 });
 
 test('giriş ret durumları HTTP koduna göre ayrılır', { skip: !posix }, async () => {
@@ -117,18 +135,31 @@ test('durum, yetki, çıkış', { skip: !posix }, async () => {
   assert.deepStrictEqual((await g.durum({ env: o.env })).kullanici, 'ali');
   assert.strictEqual((await g.yetki({ izin: 'fis.sil' }, { env: o.env })).izinli, true);
   assert.deepStrictEqual(o.cagri().args, ['yetki', '--izin', 'fis.sil', '--json']);
+  await g.yetki({ program: 'baska', izin: 'fis.sil' }, { env: o.env, program: 'tutaa' });
+  assert.deepStrictEqual(o.cagri().args, ['yetki', '--program', 'tutaa', '--izin', 'fis.sil', '--json'], 'program ana süreçte sabit');
   assert.strictEqual((await g.yetki({ izin: 'fis.sil' }, { env: ortam('yetkisiz').env })).izinli, false);
   assert.strictEqual((await g.yetki({ izin: 'bozuk izin' }, { env: o.env })).izinli, false, 'bozuk izin adı araca gitmez');
   assert.strictEqual((await g.cikis({ env: o.env })).tamam, true);
   assert.strictEqual(await g.durum({ env: ortam('baglanti').env }), null);
 });
 
-test('ipcKur kanalları ve program adı denetimi', () => {
-  const kanallar = [];
-  g.ipcKur({ handle: (k) => kanallar.push(k) }, { program: 'tutaa' });
-  assert.deepStrictEqual(kanallar.sort(), Object.values(g.KANAL).sort());
+test('ipcKur kanalları, gönderen denetimi ve program adı', async () => {
+  const kanallar = {};
+  g.ipcKur({ handle: (k, f) => { kanallar[k] = f; } }, { program: 'tutaa', env: { TAA_KIMLIK: '/yok' } });
+  assert.deepStrictEqual(Object.keys(kanallar).sort(), Object.values(g.KANAL).sort());
+  const ana = { url: 'file:///app/index.html' };
+  const iyi = { sender: { mainFrame: ana }, senderFrame: ana };
+  assert.deepStrictEqual(await kanallar[g.KANAL.baslangic](iyi), { arac: false, oturum: null });
+  const alt = { sender: { mainFrame: ana }, senderFrame: { url: 'file:///app/index.html' } };
+  assert.throws(() => kanallar[g.KANAL.giris](alt, {}), /yetkisiz/);
+  const uzak = { sender: { mainFrame: { url: 'https://x' } }, senderFrame: null };
+  uzak.senderFrame = uzak.sender.mainFrame;
+  assert.throws(() => kanallar[g.KANAL.durum](uzak), /yetkisiz/);
+  const ozel = {};
+  g.ipcKur({ handle: (k, f) => { ozel[k] = f; } }, { denetle: () => { throw new Error('hayır'); } });
+  assert.throws(() => ozel[g.KANAL.cikis]({}), /hayır/);
   assert.throws(() => g.ipcKur({ handle: () => {} }, { program: 'Tutaa!' }));
   let acik;
   g.preloadKur({ exposeInMainWorld: (ad, api) => { acik = [ad, Object.keys(api).sort()]; } }, { invoke: () => {} });
-  assert.deepStrictEqual(acik, ['taaGiris', ['basvur', 'cikis', 'durum', 'giris', 'yetki']]);
+  assert.deepStrictEqual(acik, ['taaGiris', ['baslangic', 'basvur', 'cikis', 'durum', 'giris', 'yetki']]);
 });
