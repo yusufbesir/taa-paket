@@ -101,6 +101,9 @@ pub struct Oturum {
     /// İzin listesinin çevrimdışı geçerlilik sonu (ISO); boşsa sınırsız.
     pub gecerlilik: String,
     pub zaman: String,
+    /// Girişte sunucunun bildirdiği görülmemiş hesap uyarısı sayısı (yabancı deneme, başvuruyla şifre değişikliği).
+    /// Yalnız giriş yanıtından gelir; depoya yazılmaz.
+    pub uyari_sayisi: i64,
     oturum: String,
 }
 
@@ -165,6 +168,7 @@ impl Oturum {
             programlar: roller_coz(v.get("programlar")),
             gecerlilik: al("gecerlilik").unwrap_or_default(),
             zaman: al("zaman").unwrap_or_default(),
+            uyari_sayisi: 0,
             oturum: al("oturum")?,
         })
     }
@@ -327,6 +331,10 @@ pub fn giris_dogrulayarak(
             .unwrap_or_default()
             .to_string(),
         zaman: taa_kuyruk::zaman::simdi(),
+        uyari_sayisi: yanit
+            .get("uyari_sayisi")
+            .and_then(Value::as_i64)
+            .unwrap_or(0),
         oturum,
     })
 }
