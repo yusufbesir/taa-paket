@@ -286,6 +286,10 @@ impl Uygulama {
                 Yanit::tur("application/manifest+json", sayfalar::MANIFEST.as_bytes())
             }
             ("GET", ["simge.svg"]) => Yanit::tur("image/svg+xml", sayfalar::SIMGE.as_bytes()),
+            // Windows görev çubuğu/Başlat ve Edge --app penceresi keskin simge için çok boyutlu .ico ve PNG ister.
+            ("GET", ["simge.ico"]) => Yanit::tur("image/x-icon", sayfalar::SIMGE_ICO),
+            ("GET", ["simge-192.png"]) => Yanit::tur("image/png", sayfalar::SIMGE_192),
+            ("GET", ["simge-512.png"]) => Yanit::tur("image/png", sayfalar::SIMGE_512),
             // Chromium/Edge geliştirici araçları açıkken bu adresi kendiliğinden ister (otomatik çalışma klasörü);
             // 404 konsolda "Failed to load resource" satırı bırakıyordu. Boş yanıt: klasör önerilmez.
             ("GET", [".well-known", "appspecific", "com.chrome.devtools.json"]) => {
@@ -2197,6 +2201,14 @@ mod testler {
                 .unwrap()
                 .contains("/simge.svg")
         );
+        let ico = u.isle(&ist("GET", "/simge.ico", None, "", false));
+        assert_eq!(ico.kod, 200);
+        assert_eq!(&ico.govde[..4], &[0, 0, 1, 0]);
+        for yol in ["/simge-192.png", "/simge-512.png"] {
+            let p = u.isle(&ist("GET", yol, None, "", false));
+            assert_eq!(p.kod, 200);
+            assert_eq!(&p.govde[1..4], b"PNG");
+        }
     }
 
     struct SahtePin(std::sync::Mutex<Vec<String>>);

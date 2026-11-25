@@ -14,7 +14,12 @@ const TELEFON_HTML: &str = include_str!("sayfa/telefon.html");
 /// Uygulama simgesi (Yaka), PWA bildirgesi ve sekme simgesi.
 pub const SIMGE: &str = include_str!("sayfa/simge.svg");
 
-pub const MANIFEST: &str = r##"{"name":"TAA Terzi Takip","short_name":"Terzi Takip","lang":"tr","start_url":"/telefon","scope":"/","display":"standalone","background_color":"#FFFFFF","theme_color":"#0B3BD6","icons":[{"src":"/simge.svg","sizes":"any","type":"image/svg+xml","purpose":"any"}]}"##;
+/// Yaka simgesi, çok boyutlu .ico (16, 20, 24, 32, 40, 48, 64, 96, 128, 256 px) ve PWA PNG'leri (SVG'den üretildi).
+pub const SIMGE_ICO: &[u8] = include_bytes!("sayfa/simge.ico");
+pub const SIMGE_192: &[u8] = include_bytes!("sayfa/simge-192.png");
+pub const SIMGE_512: &[u8] = include_bytes!("sayfa/simge-512.png");
+
+pub const MANIFEST: &str = r##"{"name":"TAA Terzi Takip","short_name":"Terzi Takip","lang":"tr","start_url":"/telefon","scope":"/","display":"standalone","background_color":"#FFFFFF","theme_color":"#0B3BD6","icons":[{"src":"/simge.svg","sizes":"any","type":"image/svg+xml","purpose":"any"},{"src":"/simge-192.png","sizes":"192x192","type":"image/png","purpose":"any"},{"src":"/simge-512.png","sizes":"512x512","type":"image/png","purpose":"any"}]}"##;
 
 /// TAA ortak giriş ekranı: çalışma alanındaki tek kaynaktan derlemede gömülür (kopya yok, kayma olmaz).
 pub const GIRIS_EKRANI_JS: &str = include_str!("../../../araclar/js/taa-giris-ekrani.js");
