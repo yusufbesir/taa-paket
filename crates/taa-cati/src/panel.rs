@@ -354,6 +354,10 @@ pub fn api(
             (Some(id), Some(islem)) => deger(c.kullanici_durum_islemi(id, islem)),
             _ => girdi("id ve işlem gerekli"),
         },
+        ("POST", "/api/hesap/basvuru-onayla") => match (i(govde, "id"), s(govde, "sayi")) {
+            (Some(id), Some(sayi)) => deger(c.basvuru_onayla(id, sayi)),
+            _ => girdi("id ve sayı gerekli"),
+        },
         ("POST", "/api/eslestirme/onay") => match (i(govde, "id"), s(govde, "sayi")) {
             (Some(id), Some(sayi)) => deger(c.eslestirme_onayla(id, sayi)),
             _ => girdi("id ve sayı gerekli"),
@@ -689,7 +693,6 @@ mod testler {
             "askiya-al",
             "geri-ac",
             "kilit-ac",
-            "basvuru-onayla",
             "basvuru-reddet",
         ] {
             assert_eq!(
@@ -706,6 +709,22 @@ mod testler {
             );
             assert_eq!(g.son().1, format!("/v1/kullanici/7/{islem}"));
         }
+        assert_eq!(
+            api(
+                &c,
+                &g,
+                "POST",
+                "/api/hesap/basvuru-onayla",
+                "",
+                &json!({"id": 7, "sayi": " 05 "})
+            )
+            .0,
+            200
+        );
+        assert_eq!(
+            (g.son().1.as_str(), &g.son().2),
+            ("/v1/kullanici/7/basvuru-onayla", &json!({"sayi": "05"}))
+        );
         assert_eq!(
             api(
                 &c,
@@ -753,6 +772,34 @@ mod testler {
             .0,
             400
         );
+        assert_eq!(
+            api(
+                &c,
+                &g,
+                "POST",
+                "/api/hesap/islem",
+                "",
+                &json!({"id": 7, "islem": "basvuru-onayla"})
+            )
+            .0,
+            400,
+            "başvuru onayı sayısız gitmez"
+        );
+        for kotu in ["5", "x1", "100"] {
+            assert_eq!(
+                api(
+                    &c,
+                    &g,
+                    "POST",
+                    "/api/hesap/basvuru-onayla",
+                    "",
+                    &json!({"id": 7, "sayi": kotu})
+                )
+                .0,
+                400,
+                "{kotu}"
+            );
+        }
         for kotu in ["4", "4a", "123"] {
             assert_eq!(
                 api(

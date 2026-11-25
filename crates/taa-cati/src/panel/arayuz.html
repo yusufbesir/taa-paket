@@ -340,7 +340,7 @@ let bt;function bildir(m,hata){const b=$('#bildirim');b.textContent=m;b.classLis
 const hataBildir=e=>bildir(e.message||String(e),true);
 
 // ---- durum ----
-let oturum=null,saglik=null,veri={cihazlar:[],kullanicilar:[],subeler:[],yetkiler:[],roller:[],olaylar:[],pinler:[],hesaplar:[],basvurular:[],eslestirmeler:[],hatalar:[],uyari:{yeni:0,denemeler:[]}};
+let oturum=null,saglik=null,veri={cihazlar:[],kullanicilar:[],subeler:[],yetkiler:[],roller:[],olaylar:[],pinler:[],hesaplar:[],basvurular:[],eslestirmeler:[],hatalar:[],uyari:{yeni:0,denemeler:[],sifre_degisiklikleri:[]}};
 let suzgec='bekliyor',arama='',sor=null,gunlukIslem='',gunlukSon=null;
 const izinli=i=>!!(oturum&&oturum.izinler&&oturum.izinler.includes(i));
 const EKRANLAR=[
@@ -408,10 +408,14 @@ const SAYFA={
     const b=bekleyen();
     const kart=(e,d,a,r)=>`<div class="kart istat"><div class="etiket"><span class="nokta" style="background:var(--${r})"></span>${e}</div><div class="deger">${d}</div><div class="ayr">${a}</div></div>`;
     const olaylar=veri.olaylar.slice(0,6);
-    const u=veri.uyari,yeniler=u.denemeler.filter(d=>d.yeni);
+    const u=veri.uyari,yeniler=u.denemeler.filter(d=>d.yeni),sifreYeni=(u.sifre_degisiklikleri||[]).filter(d=>d.yeni);
+    const denemeSay=yeniler.reduce((t,d)=>t+(+d.deneme||0),0);
     // Yusuf 11-17: hesabıma başka bilgisayardan girmeye çalışan olursa bana uyarı gelir (hesap kilitlenmez).
-    const serit=u.yeni?`<div class="uyari-serit" role="alert"><h2><span class="nokta"></span>Hesabınıza başka bir bilgisayardan ${u.yeni} hatalı giriş denemesi</h2>
-      <p class="muted">Bu bilgisayarlar daha önce hesabınızla oturum açmadı. Hesabınız kilitlenmedi. Siz değilseniz şifrenizi değiştirin ve bilgisayarı Cihazlar'dan iptal etmeyi düşünün.</p>
+    // Fable Y2: şifre yöneticiye başvuruyla değiştiyse de hesap sahibi uyarılır.
+    const serit=u.yeni?`<div class="uyari-serit" role="alert">${sifreYeni.length?`<h2><span class="nokta"></span>Şifreniz yöneticiye başvuruyla değiştirildi</h2>
+      <p class="muted">${sifreYeni.map(d=>`${esc(zaman(d.zaman))} · ${esc(subeAd(d.sube_id))}`).join('<br>')}. Bunu siz istemediyseniz hemen yöneticinize haber verin ve şifrenizi değiştirin.</p>`:''}
+      ${denemeSay?`<h2><span class="nokta"></span>Hesabınıza başka bir bilgisayardan ${denemeSay} hatalı giriş denemesi</h2>
+      <p class="muted">Bu bilgisayarlar daha önce hesabınızla oturum açmadı. Hesabınız kilitlenmedi. Siz değilseniz şifrenizi değiştirin ve bilgisayarı Cihazlar'dan iptal etmeyi düşünün.</p>`:''}
       ${yeniler.map(d=>`<div class="satir"><div class="ana"><b>${esc(d.cihaz_adi||'Adsız cihaz')}</b><span>${esc(subeAd(d.sube_id))} · ${esc(d.gun)} · son deneme ${esc(zaman(d.son))}</span></div><span class="etk hata">${d.deneme} deneme</span></div>`).join('')}
       <div class="arac" style="margin-top:8px"><span style="flex:1"></span><button class="dugme" data-uyari-gordum>Gördüm</button></div></div>`:'';
     return ust('Genel bakış','Merkez sunucunun durumu · 30 saniyede bir yenilenir')+serit+`
@@ -439,7 +443,9 @@ const SAYFA={
         :`<span class="onay-sec">${rolSec(id)}${subeSec(id,h.istenen_sube)}</span><button class="dugme" data-hesap-duzenle="${id}">Düzenle</button><button class="dugme tehlike" data-sor="reddet:${id}">Reddet</button><button class="dugme birincil" data-hesap-onayla="${id}">Onayla</button>`;
       return `<div class="satir"><div class="ana"><b>${esc(h.gercek_ad||h.gorunen_ad)}</b><span><span class="mono">${esc(h.ad)}</span> · fişte ${esc(h.gorunen_ad)} · ${esc(subeAd(h.istenen_sube))} · başvuru ${esc(zaman(h.kayit_zamani))}</span></div>${sag}</div>`};
     const basvuru=h=>{const id=+h.id,sifre=h.basvuru_turu==='sifre';
-      return `<div class="satir"><div class="ana"><b>${esc(h.gercek_ad||h.gorunen_ad)}</b><span><span class="mono">${esc(h.ad)}</span> · ${sifre?'Şifresini unuttu, yeni şifre belirledi':'Hesabı kilitlendi, açılmasını istiyor'} · ${esc(subeAd(h.basvuru_sube))} · ${esc(zaman(h.basvuru_zamani))}</span></div><button class="dugme tehlike" data-hesap-islem="basvuru-reddet" data-id="${id}">Reddet</button><button class="dugme birincil" data-hesap-islem="basvuru-onayla" data-id="${id}">${sifre?'Yeni şifreyi onayla':'Kilidi aç'}</button></div>`};
+      // Fable Y1: aynı hesaba birden çok başvuru geldiyse ya da başvuru kişinin şubesinden gelmediyse yönetici uyarılır.
+      const dikkat=[(+h.basvuru_adet||0)>1?`Bu hesaba ${+h.basvuru_adet} başvuru geldi; yalnız sonuncusu geçerli. Güvenli yol: reddedin ve kişiden yeniden başvurmasını isteyin`:'',h.sube_uyumsuz?'Başvuru kişinin çalıştığı şubeden gelmedi':''].filter(Boolean);
+      return `<div class="satir"><div class="ana"><b>${esc(h.gercek_ad||h.gorunen_ad)}</b><span><span class="mono">${esc(h.ad)}</span> · ${sifre?'Şifresini unuttu, yeni şifre belirledi':'Hesabı kilitlendi, açılmasını istiyor'} · ${esc(subeAd(h.basvuru_sube))} · ${esc(zaman(h.basvuru_zamani))}</span>${dikkat.map(t=>`<div class="not uyari" role="status">${esc(t)}</div>`).join('')}</div><button class="dugme tehlike" data-hesap-islem="basvuru-reddet" data-id="${id}">Reddet</button><button class="dugme birincil" data-basvuru-onay="${id}" data-ad="${esc(h.gercek_ad||h.gorunen_ad)}" data-dikkat="${dikkat.length?1:''}">${sifre?'Yeni şifreyi onayla':'Kilidi aç'}</button></div>`};
     const eslestirme=x=>{const id=+x.id;
       return `<div class="satir"><div class="ana"><b>${esc(x.cihaz_adi)}${x.kisi?' · '+esc(x.kisi):''}</b><span>${esc(x.sube_ad||subeAd(x.sube_id))}${x.magaza_bilgisayari?' · '+esc(x.magaza_bilgisayari):''} · ${esc(zaman(x.bitis).slice(11,16))}'e kadar</span></div><button class="dugme tehlike" data-eslestirme-red="${id}">Reddet</button><button class="dugme birincil" data-eslestirme-onay="${id}" data-ad="${esc(x.cihaz_adi)}">Onayla</button></div>`};
     return ust('Onay bekleyenler','Kendi kaydını yapan personel ve telefon eşleştirme istekleri · onaysız hesap giremez')+`
@@ -654,6 +660,11 @@ document.addEventListener('click',async e=>{
       const id=+ds.id,is=ds.hesapIslem;d.disabled=true;
       await api('/api/hesap/islem',{id,islem:is});sor=null;await yukle('onay');await yukle('kullanici');ciz();
       bildir({'basvuru-onayla':'Başvuru onaylandı; kişi giriş yapabilir','basvuru-reddet':'Başvuru reddedildi',reddet:'Başvuru reddedildi','askiya-al':'Hesap askıya alındı; oturumları kesildi','geri-ac':'Hesap yeniden açıldı','kilit-ac':'Kilit açıldı'}[is]);return}
+    if(ds.basvuruOnay){
+      const id=+ds.basvuruOnay;
+      formAc('Başvuruyu onayla',`<div>${esc(ds.ad)}</div><label class="alan">Kişinin ekranında görünen iki haneli sayı<input class="girdi mono sayi-gir" name="sayi" inputmode="numeric" pattern="[0-9]{2}" minlength="2" maxlength="2" required autocomplete="off"></label><div class="muted" style="font-size:12px">Sayıyı kişinin kendisine sorun (yüz yüze ya da tanıdığınız telefondan). Tutmazsa onaylanmaz; 3 yanlışta başvuru düşer ve kişi yeniden başvurur.${ds.dikkat?' Bu başvuruda uyarı var: kişiyle mutlaka görüşün.':''}</div>`,
+        async f=>{await api('/api/hesap/basvuru-onayla',{id,sayi:f.sayi.value.trim()});await yukle('onay');await yukle('kullanici');ciz();bildir('Başvuru onaylandı; kişi giriş yapabilir')},'Onayla');
+      return}
     if(ds.eslestirmeOnay){
       const id=+ds.eslestirmeOnay;
       formAc('Telefonu onayla',`<div>${esc(ds.ad)}</div><label class="alan">Telefonda görünen iki haneli sayı<input class="girdi mono sayi-gir" name="sayi" inputmode="numeric" pattern="[0-9]{2}" minlength="2" maxlength="2" required autocomplete="off"></label><div class="muted" style="font-size:12px">Sayı tutmazsa onaylanmaz; 3 yanlışta istek reddedilir.</div>`,

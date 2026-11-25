@@ -617,8 +617,8 @@ impl<'a> Cati<'a> {
         )
     }
 
-    /// `islem`: reddet | askiya-al | geri-ac | kilit-ac | basvuru-onayla | basvuru-reddet. Taze parola ister.
-    /// `basvuru-onayla`: şifre başvurusunda personelin yazdığı yeni şifre geçerli olur, kilit açılır.
+    /// `islem`: reddet | askiya-al | geri-ac | kilit-ac | basvuru-reddet. Taze parola ister.
+    /// Başvuru onayı ayrı: [`Self::basvuru_onayla`] (doğrulama sayısı ister).
     pub fn kullanici_durum_islemi(
         &self,
         kullanici_id: i64,
@@ -626,7 +626,7 @@ impl<'a> Cati<'a> {
     ) -> Result<Value, CatiHata> {
         if !matches!(
             islem,
-            "reddet" | "askiya-al" | "geri-ac" | "kilit-ac" | "basvuru-onayla" | "basvuru-reddet"
+            "reddet" | "askiya-al" | "geri-ac" | "kilit-ac" | "basvuru-reddet"
         ) {
             return Err(CatiHata::GecersizGirdi(format!(
                 "işlem geçersiz: {islem:?}"
@@ -636,6 +636,21 @@ impl<'a> Cati<'a> {
             IZIN_KULLANICI,
             &format!("{KULLANICI_UCU}/{kullanici_id}/{islem}"),
             json!({}),
+        )
+    }
+
+    /// `POST /v1/kullanici/{id}/basvuru-onayla {sayi}` — yöneticiye başvuruyu, başvuranın ekranında görünen iki
+    /// haneli sayıyla onaylar (Fable Y1): şifre başvurusunda yeni şifre geçerli olur, kilit açılır. Sayı tutmazsa
+    /// sunucu 400 `sayi_yanlis` döner; 3 yanlışta başvuru düşer (409 `basvuru_dustu`). Taze parola ister.
+    pub fn basvuru_onayla(&self, kullanici_id: i64, sayi: &str) -> Result<Value, CatiHata> {
+        let sayi = sayi.trim();
+        if sayi.len() != 2 || !sayi.bytes().all(|b| b.is_ascii_digit()) {
+            return Err(CatiHata::GecersizGirdi("sayı iki rakam olmalı".into()));
+        }
+        self.yaz(
+            IZIN_KULLANICI,
+            &format!("{KULLANICI_UCU}/{kullanici_id}/basvuru-onayla"),
+            json!({ "sayi": sayi }),
         )
     }
 

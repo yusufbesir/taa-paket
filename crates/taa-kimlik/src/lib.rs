@@ -347,11 +347,14 @@ fn giris_hatasi(e: GonderHata) -> KimlikHata {
 /// kilitlenen (şifresiz) personel yöneticiye başvurur; yönetici TAA Çatı'da onaylar. Yalnız onaylı mağaza
 /// bilgisayarından (cihaz imzalı gönderici). Sunucu her zaman aynı yanıtı verir (adın var olup olmadığı sızmaz).
 /// Yeni şifre yalnız gövdede gider, hiçbir yere yazılmaz.
+///
+/// Dönen iki haneli doğrulama sayısı (Fable Y1) kişinin ekranında gösterilir; kişi bunu yöneticiye söyler,
+/// yönetici Çatı'da bu sayıyla onaylar. Sayı saklanmaz, günlüğe yazılmaz.
 pub fn yoneticiye_basvur(
     g: &dyn Gonderici,
     kullanici: &str,
     yeni_parola: Option<&str>,
-) -> Result<(), KimlikHata> {
+) -> Result<String, KimlikHata> {
     if !kullanici_gecerli(kullanici) {
         return Err(KimlikHata::GecersizGirdi(format!(
             "kullanıcı adı boş/çok uzun/boşluklu olamaz (en çok {KULLANICI_EN_COK})"
@@ -366,9 +369,13 @@ pub fn yoneticiye_basvur(
         }
         govde["yeni_parola"] = Value::String(p.to_string());
     }
-    g.gonder(BASVURU_UCU, &govde)
-        .map(|_| ())
-        .map_err(giris_hatasi)
+    let v = g.gonder(BASVURU_UCU, &govde).map_err(giris_hatasi)?;
+    match v.get("dogrulama_sayisi").and_then(Value::as_str) {
+        Some(s) if s.len() == 2 && s.bytes().all(|b| b.is_ascii_digit()) => Ok(s.to_string()),
+        _ => Err(KimlikHata::Baglanti(
+            "sunucu yanıtında doğrulama sayısı yok (sunucu güncel değil)".into(),
+        )),
+    }
 }
 
 /// Oturum deposu: sunucu başına bir oturum.

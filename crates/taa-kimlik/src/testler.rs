@@ -371,8 +371,12 @@ fn yetki_belgesi_imza_sure_ve_dosya() {
 
 #[test]
 fn yoneticiye_basvuru() {
-    let g = Sahte::yeni(Ok(json!({"durum": "iletildi"})));
-    yoneticiye_basvur(&g, "ali", Some("Yeni-Sifre-2026")).unwrap();
+    let g = Sahte::yeni(Ok(json!({"durum": "iletildi", "dogrulama_sayisi": "07"})));
+    assert_eq!(
+        yoneticiye_basvur(&g, "ali", Some("Yeni-Sifre-2026")).unwrap(),
+        "07",
+        "ekranda gösterilecek sayı"
+    );
     yoneticiye_basvur(&g, "ali", None).unwrap();
     yoneticiye_basvur(&g, "ali", Some("")).unwrap();
     let c = g.cagrilar.borrow();
@@ -397,6 +401,14 @@ fn yoneticiye_basvuru() {
         yoneticiye_basvur(&g, "ali", Some("a\nb")),
         Err(KimlikHata::GecersizGirdi(_))
     ));
+    let eski = Sahte::yeni(Ok(json!({"durum": "iletildi"})));
+    assert!(
+        matches!(
+            yoneticiye_basvur(&eski, "ali", None),
+            Err(KimlikHata::Baglanti(_))
+        ),
+        "sayısız yanıt sessizce kabul edilmez"
+    );
     let sinir = Sahte::yeni(Err(GonderHata::Ulasilamadi(
         "HTTP 429: {\"hata\":\"basvuru_sinir\"}".into(),
     )));
