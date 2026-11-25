@@ -241,8 +241,11 @@ fn roller_coz(v: Option<&Value>) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// Kullanıcı adı: boş değil, en çok KULLANICI_EN_COK bayt, boşluk/denetim karakteri yok ve "-" ile başlamaz
+/// (komut satırında seçenek sanılmasın; köprüler adı argüman olarak geçirir).
 pub fn kullanici_gecerli(k: &str) -> bool {
     !k.is_empty()
+        && !k.starts_with('-')
         && k.len() <= KULLANICI_EN_COK
         && !k.chars().any(|c| c.is_control() || c.is_whitespace())
 }
