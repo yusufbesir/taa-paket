@@ -14,7 +14,7 @@
   'use strict';
   const STIL_ID = 'taa-giris-stil';
   const STIL = `
-.taa-giris{position:fixed;inset:0;display:grid;place-items:center;padding:16px;z-index:9999;
+.taa-giris{position:fixed;inset:0;display:grid;place-items:center;padding:16px;z-index:2147483647;
   background:var(--taa-arka,#0f1420);color:var(--taa-yazi,#e8ecf3);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
 .taa-giris *{box-sizing:border-box}
 .taa-giris .tg-kart{width:min(420px,100%);background:var(--taa-panel,#171e2c);border:1px solid var(--taa-cizgi,#2a3346);
@@ -66,10 +66,23 @@
     kap.setAttribute('aria-modal', 'true');
     kap.setAttribute('aria-labelledby', 'taa-giris-baslik');
     hedef.appendChild(kap);
+    // Arkadaki sayfa kullanılamaz: gövdenin diğer çocukları (sonradan eklenenler dahil) ekran kapanana dek inert.
+    const inertler = [];
+    const inertYap = (e) => { if (e !== kap && e.nodeType === 1 && !e.inert && e.tagName !== 'SCRIPT' && e.tagName !== 'STYLE') { e.inert = true; inertler.push(e); } };
+    const govde = belge.body;
+    if (govde) Array.from(govde.children).forEach(inertYap);
+    const gozcu = govde && typeof MutationObserver === 'function'
+      ? new MutationObserver((l) => l.forEach((m) => m.addedNodes.forEach(inertYap))) : null;
+    if (gozcu) gozcu.observe(govde, { childList: true });
     const programAdi = esc(s.programAdi || 'TAA');
     let sonKullanici = '';
 
-    const kapat = () => { kap.querySelectorAll('input[type=password]').forEach((i) => { i.value = ''; }); kap.remove(); };
+    const kapat = () => {
+      kap.querySelectorAll('input[type=password]').forEach((i) => { i.value = ''; });
+      if (gozcu) gozcu.disconnect();
+      inertler.forEach((e) => { e.inert = false; });
+      kap.remove();
+    };
     const ileti = (metin, tur) => { const e = kap.querySelector('.tg-ileti'); if (e) { e.textContent = metin || ''; e.className = 'tg-ileti tg-' + (tur || 'hata'); } };
     const odak = (sec) => { const e = kap.querySelector(sec); if (e) e.focus(); };
 
