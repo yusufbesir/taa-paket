@@ -15,6 +15,10 @@ publish = false
 [dependencies]
 taa-kur-tema = { path = "../crates/taa-kur-tema" }
 
+# HD exe simgesi: build.rs, taa-kur-tema ile .rsrc nesnesi üretir (rc.exe/windres gerekmez). [Claude#kurucu-arayuz 2026-11-17]
+[build-dependencies]
+taa-kur-tema = { path = "../crates/taa-kur-tema" }
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", default-features = false, features = [
     "Win32_Foundation",

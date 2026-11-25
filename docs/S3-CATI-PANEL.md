@@ -18,7 +18,7 @@ doğrulama, silme yok). TAA Sunucu hizmetine dokunulmaz.
 |---|---|---|
 | Genel bakış | — | sunucu sağlığı (`/v1/saglik`), bekleyen cihazlar, son olaylar, oturum |
 | Cihazlar | `cihaz.yonet` | bekleyen/onaylı/iptal süzgeci, arama, onayla (istenen şubeyle), iptal (satır içi onay) |
-| Kullanıcılar | `kullanici.yonet` | liste, ekle (rol + şube), parola değiştir, hesabı kapat (silme yok) |
+| Kullanıcılar | `kullanici.yonet` | liste, ekle (ad soyad, isteğe bağlı fişte görünen ad = boşsa yıldızlı maske, rol + şube; şifre kalıcı), kilidi aç, askıya al/geri aç, hesabı kapat (silme yok). Şifre değiştirme ve geçici kod yok: unutan personel programdan yöneticiye başvurur, başvuru "Onay bekleyenler"de onaylanır |
 | Şubeler | `kullanici.yonet` | liste, ekle |
 | Program yetkileri | `program.yonet` | program × şube anahtarları; soluk anahtar genel kuraldan gelir; role özel kurallar komut satırında |
 | Yönetici PIN'leri | `program.yonet` | program başına genel PIN ve şubeye özel PIN; belirle/değiştir/kaldır (taze parola). PIN yalnız buradan belirlenir; programlar (TerziTakip, Tutaa…) sunucuda yalnız doğrular |
@@ -66,6 +66,12 @@ Ekip turu v2 (Fable 5.2, GPT-6 Astra, Gemini 3.1 Pro), `/mnt/project-files/arayu
   cihaz+program başına 5 yanlış = 5 dk kilit, 423 `{hata:"kilitli", kalan_sn}`.
 - PIN 4–8 rakam; 0000 ve 1234/9876 gibi düz sıralar reddedilir (Çatı da aynı kuralı önceden uygular). argon2id ile saklanır.
   Program adları sunucudaki program yetkisi adlarıdır (ör. `terzitakip`).
+
+## Onay bekleyenler (KM2, sunucu: tutaa `sunucu/src/hesap.rs`, `eslestirme.rs`)
+
+- `/api/hesaplar?durum=` → `GET /v1/kullanici?durum=` (varsayılan onay_bekliyor); `/api/hesap/onayla {id, roller, kisi_id?, gercek_ad?}`, `/api/hesap/islem {id, islem: reddet|askiya-al|geri-ac|kilit-ac}`, `/api/hesap/gecici-kod {id}` → `{kod, bitis}` (kod yalnız ekranda bir kez; hiçbir yerde saklanmaz).
+- `/api/eslestirmeler?durum=` → `GET /v1/eslestirme`; `/api/eslestirme/onay {id, sayi}`, `/api/eslestirme/red {id}`. Sayı listede gelmez; kişiden öğrenilir, 3 yanlışta istek düşer.
+- Yazma işlemleri taze parola ister (428 → parola sorulur).
 
 ## Sınırlar
 - Kasa onayları ekranı yok (Çatı kitaplığında kasa uçları yok; ayrı adım).

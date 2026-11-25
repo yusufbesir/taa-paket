@@ -240,6 +240,24 @@ pub fn api(
         ("GET", "/api/subeler") => dizi(c.subeler()),
         ("GET", "/api/yetkiler") => dizi(c.program_yetkileri()),
         ("GET", "/api/pinler") => dizi(c.yonetici_pinleri()),
+        ("GET", "/api/hesaplar") => {
+            let d = sorgu_degeri(sorgu, "durum")
+                .filter(|d| !d.is_empty())
+                .unwrap_or("onay_bekliyor");
+            dizi(c.kullanicilar_durumlu(d))
+        }
+        ("GET", "/api/uyarilar") => match c.uyarilar() {
+            Ok(v) => tamam(v),
+            Err(e) => hata(e),
+        },
+        ("GET", "/api/eslestirmeler") => {
+            let d = sorgu_degeri(sorgu, "durum").filter(|d| !d.is_empty());
+            dizi(c.eslestirmeler(d))
+        }
+        ("GET", "/api/hatalar") => {
+            let p = sorgu_degeri(sorgu, "program").filter(|d| !d.is_empty());
+            dizi(c.hata_raporlari(p))
+        }
         ("GET", "/api/gunluk") => {
             let sayi = |ad: &str| sorgu_degeri(sorgu, ad).and_then(|v| v.parse::<i64>().ok());
             let f = OlaySuzgeci {
@@ -272,13 +290,12 @@ pub fn api(
             None => girdi("kimlik gerekli"),
         },
         ("POST", "/api/kullanici/ekle") => {
-            let (Some(ad), Some(gad), Some(p)) =
-                (s(govde, "ad"), s(govde, "gorunen_ad"), s(govde, "parola"))
-            else {
-                return girdi("ad, görünen ad ve parola gerekli");
+            let (Some(ad), Some(p)) = (s(govde, "ad"), s(govde, "parola")) else {
+                return girdi("kullanıcı adı ve parola gerekli");
             };
+            let gad = s(govde, "gorunen_ad").unwrap_or("");
             match rol_listesi(govde) {
-                Ok(r) => deger(c.kullanici_ekle(ad, gad, p, &r)),
+                Ok(r) => deger(c.kullanici_ekle(ad, gad, s(govde, "gercek_ad"), p, &r)),
                 Err(e) => hata(e),
             }
         }
@@ -295,10 +312,6 @@ pub fn api(
         ("POST", "/api/kullanici/kapat") => match i(govde, "id") {
             Some(id) => deger(c.kullanici_kapat(id)),
             None => girdi("id gerekli"),
-        },
-        ("POST", "/api/kullanici/parola") => match (i(govde, "id"), s(govde, "parola")) {
-            (Some(id), Some(p)) => deger(c.parola_degistir(id, p)),
-            _ => girdi("id ve yeni parola gerekli"),
         },
         ("POST", "/api/yetki") => {
             let (Some(p), Some(acik)) = (
@@ -322,6 +335,38 @@ pub fn api(
             Some(p) => deger(c.yonetici_pin_kaldir(p, i(govde, "sube_id"))),
             None => girdi("program gerekli"),
         },
+        ("POST", "/api/hesap/onayla") => {
+            let Some(id) = i(govde, "id") else {
+                return girdi("id gerekli");
+            };
+            match rol_listesi(govde) {
+                Ok(r) => deger(c.kullanici_onayla(
+                    id,
+                    &r,
+                    s(govde, "kisi_id"),
+                    s(govde, "gercek_ad"),
+                    s(govde, "gorunen_ad"),
+                )),
+                Err(e) => hata(e),
+            }
+        }
+        ("POST", "/api/hesap/islem") => match (i(govde, "id"), s(govde, "islem")) {
+            (Some(id), Some(islem)) => deger(c.kullanici_durum_islemi(id, islem)),
+            _ => girdi("id ve işlem gerekli"),
+        },
+        ("POST", "/api/hesap/basvuru-onayla") => match (i(govde, "id"), s(govde, "sayi")) {
+            (Some(id), Some(sayi)) => deger(c.basvuru_onayla(id, sayi)),
+            _ => girdi("id ve sayı gerekli"),
+        },
+        ("POST", "/api/eslestirme/onay") => match (i(govde, "id"), s(govde, "sayi")) {
+            (Some(id), Some(sayi)) => deger(c.eslestirme_onayla(id, sayi)),
+            _ => girdi("id ve sayı gerekli"),
+        },
+        ("POST", "/api/eslestirme/red") => match i(govde, "id") {
+            Some(id) => deger(c.eslestirme_reddet(id)),
+            None => girdi("id gerekli"),
+        },
+        ("POST", "/api/uyari/goruldu") => deger(c.uyari_goruldu()),
         ("POST", "/api/sube/ekle") => match (s(govde, "kod"), s(govde, "ad")) {
             (Some(k), Some(a)) => deger(c.sube_ekle(k, a)),
             _ => girdi("kod ve ad gerekli"),
@@ -521,6 +566,15 @@ mod testler {
         );
         assert!(g.son().1.starts_with("/v1/olay?islem=giris"));
         assert!(g.son().1.contains("limit=20"));
+        api(
+            &c,
+            &g,
+            "GET",
+            "/api/hatalar",
+            "program=taa-kur",
+            &Value::Null,
+        );
+        assert_eq!(g.son().1, "/v1/hata-raporu?program=taa-kur&limit=100");
     }
 
     #[test]
@@ -601,6 +655,165 @@ mod testler {
                 &json!({"program": "terzitakip", "pin": kotu}),
             );
             assert_eq!(d, 400, "{kotu}");
+        }
+        assert_eq!(g.sayi(), n);
+    }
+
+    #[test]
+    fn km2_hesap_ve_eslestirme_uclari() {
+        let g = Sahte::yeni();
+        let c = Cati::izinsiz_denetimle(&g);
+        api(&c, &g, "GET", "/api/hesaplar", "", &Value::Null);
+        assert_eq!(g.son().1, "/v1/kullanici?durum=onay_bekliyor");
+        api(&c, &g, "GET", "/api/hesaplar", "durum=askida", &Value::Null);
+        assert_eq!(g.son().1, "/v1/kullanici?durum=askida");
+        assert_eq!(
+            api(&c, &g, "GET", "/api/hesaplar", "durum=x", &Value::Null).0,
+            400
+        );
+        api(&c, &g, "GET", "/api/eslestirmeler", "", &Value::Null);
+        assert_eq!(g.son().1, "/v1/eslestirme?durum=bekliyor");
+        // Sahte gönderici dizi döndürür: uyarı ucu nesne bekler, biçim bozuksa 500 (sessizce boş gösterilmez).
+        let (d, v) = api(&c, &g, "GET", "/api/uyarilar", "", &Value::Null);
+        assert_eq!((d, g.son().1.as_str()), (500, "/v1/uyari"), "{v}");
+        assert_eq!(
+            api(&c, &g, "POST", "/api/uyari/goruldu", "", &json!({})).0,
+            200
+        );
+        assert_eq!(g.son().1, "/v1/uyari/goruldu");
+        let govde = json!({"id": 7, "roller": [{"rol": "kasa", "sube_id": 2}], "kisi_id": "TT-12", "gercek_ad": " Ayşe Kaya "});
+        assert_eq!(api(&c, &g, "POST", "/api/hesap/onayla", "", &govde).0, 200);
+        assert_eq!(g.son().1, "/v1/kullanici/7/onayla");
+        assert_eq!(
+            g.son().2,
+            json!({"roller": [{"rol": "kasa", "sube_id": 2}], "kisi_id": "TT-12", "gercek_ad": "Ayşe Kaya"})
+        );
+        for islem in [
+            "reddet",
+            "askiya-al",
+            "geri-ac",
+            "kilit-ac",
+            "basvuru-reddet",
+        ] {
+            assert_eq!(
+                api(
+                    &c,
+                    &g,
+                    "POST",
+                    "/api/hesap/islem",
+                    "",
+                    &json!({"id": 7, "islem": islem})
+                )
+                .0,
+                200
+            );
+            assert_eq!(g.son().1, format!("/v1/kullanici/7/{islem}"));
+        }
+        assert_eq!(
+            api(
+                &c,
+                &g,
+                "POST",
+                "/api/hesap/basvuru-onayla",
+                "",
+                &json!({"id": 7, "sayi": " 05 "})
+            )
+            .0,
+            200
+        );
+        assert_eq!(
+            (g.son().1.as_str(), &g.son().2),
+            ("/v1/kullanici/7/basvuru-onayla", &json!({"sayi": "05"}))
+        );
+        assert_eq!(
+            api(
+                &c,
+                &g,
+                "POST",
+                "/api/eslestirme/onay",
+                "",
+                &json!({"id": 3, "sayi": "47"})
+            )
+            .0,
+            200
+        );
+        assert_eq!(
+            (g.son().1, g.son().2),
+            ("/v1/eslestirme/3/onay".to_string(), json!({"sayi": "47"}))
+        );
+        assert_eq!(
+            api(&c, &g, "POST", "/api/eslestirme/red", "", &json!({"id": 3})).0,
+            200
+        );
+        assert_eq!(g.son().1, "/v1/eslestirme/3/red");
+        // Sunucuya hiç gitmeyenler: rolsüz onay, bilinmeyen işlem, bozuk sayı.
+        let n = g.sayi();
+        assert_eq!(
+            api(
+                &c,
+                &g,
+                "POST",
+                "/api/hesap/onayla",
+                "",
+                &json!({"id": 7, "roller": []})
+            )
+            .0,
+            400
+        );
+        assert_eq!(
+            api(
+                &c,
+                &g,
+                "POST",
+                "/api/hesap/islem",
+                "",
+                &json!({"id": 7, "islem": "sil"})
+            )
+            .0,
+            400
+        );
+        assert_eq!(
+            api(
+                &c,
+                &g,
+                "POST",
+                "/api/hesap/islem",
+                "",
+                &json!({"id": 7, "islem": "basvuru-onayla"})
+            )
+            .0,
+            400,
+            "başvuru onayı sayısız gitmez"
+        );
+        for kotu in ["5", "x1", "100"] {
+            assert_eq!(
+                api(
+                    &c,
+                    &g,
+                    "POST",
+                    "/api/hesap/basvuru-onayla",
+                    "",
+                    &json!({"id": 7, "sayi": kotu})
+                )
+                .0,
+                400,
+                "{kotu}"
+            );
+        }
+        for kotu in ["4", "4a", "123"] {
+            assert_eq!(
+                api(
+                    &c,
+                    &g,
+                    "POST",
+                    "/api/eslestirme/onay",
+                    "",
+                    &json!({"id": 3, "sayi": kotu})
+                )
+                .0,
+                400,
+                "{kotu}"
+            );
         }
         assert_eq!(g.sayi(), n);
     }

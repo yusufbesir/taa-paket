@@ -7,6 +7,7 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 description = "TAA kurulum yöneticisi: paket kurma, sürüm seçme, geri dönme, doğrulama"
+build = "build.rs"
 
 [lib]
 name = "taa_kur"
@@ -21,6 +22,7 @@ name = "taa-kur-pencere"
 path = "src/pencere_main.rs"
 
 [dependencies]
+taa-hata = { path = "../taa-hata" }
 taa-ayar = { path = "../taa-ayar" }
 taa-dosya = { path = "../taa-dosya" }
 taa-imza = { path = "../taa-imza" }
@@ -40,6 +42,10 @@ sha2 = "0.10"
 zip = { version = "9.3.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 # T3 (Yusuf onaylı): kök\kur.toml okumak için. Yalnız ayrıştırma; yazma/biçimleme özellikleri kapalı.
 toml = { version = "0.8", default-features = false, features = ["parse"] }
+
+# HD exe simgesi (2026-11-17, Claude#kurucu-arayuz): build.rs simge kaynağını aynı crate'le üretir; yeni dış bağımlılık yok.
+[build-dependencies]
+taa-kur-tema = { path = "../taa-kur-tema" }
 
 # T3-pencere: Win32 penceresi doğrudan windows-sys ile (Yusuf onayladı; zip'in dolaylı sürümüyle aynı, 0.61). Yalnız Windows.
 [target.'cfg(windows)'.dependencies]

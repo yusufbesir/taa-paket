@@ -18,6 +18,8 @@ mod kartlar;
 #[cfg(windows)]
 mod cizim;
 #[cfg(windows)]
+mod hd;
+#[cfg(windows)]
 mod pencere;
 #[cfg_attr(not(windows), allow(dead_code))]
 mod secim;
