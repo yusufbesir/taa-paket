@@ -81,6 +81,31 @@ fn giris_hatalari() {
         Err(KimlikHata::GirisReddi { kod: 401, mesaj }) => assert_eq!(mesaj, "yanlış parola"),
         d => panic!("{d:?}"),
     }
+    // KM2: kilit, sınır ve onay bekleme durumları anlaşılır iletiyle döner; 429 "sunucu kapalı" gibi görünmez.
+    let kilit = Sahte::yeni(Err(GonderHata::Reddedildi {
+        kod: 423,
+        mesaj: r#"{"hata":"hesap_kilitli"}"#.into(),
+    }));
+    let e = giris(&kilit, "https://s", "ali", "p", None).unwrap_err();
+    assert!(e.to_string().contains("Yöneticiye başvur"), "{e}");
+    let sinir = Sahte::yeni(Err(GonderHata::Ulasilamadi(
+        r#"HTTP 429: {"hata":"cihaz_bekliyor"}. Öneri: sunucu toparlanınca yeniden deneyin."#
+            .into(),
+    )));
+    match giris(&sinir, "https://s", "ali", "p", None) {
+        Err(e @ KimlikHata::GirisReddi { kod: 429, .. }) => {
+            assert!(e.to_string().contains("bir saat sonra"), "{e}")
+        }
+        d => panic!("{d:?}"),
+    }
+    let bekliyor = Sahte::yeni(Err(GonderHata::Reddedildi {
+        kod: 403,
+        mesaj: r#"{"hata":"hesap_onay_bekliyor"}"#.into(),
+    }));
+    assert!(giris(&bekliyor, "https://s", "ali", "p", None)
+        .unwrap_err()
+        .to_string()
+        .contains("onayı bekliyor"));
     let yok = Sahte::yeni(Err(GonderHata::Ulasilamadi("ağ yok".into())));
     assert!(matches!(
         giris(&yok, "https://s", "ali", "p", None),
@@ -342,4 +367,41 @@ fn yetki_belgesi_imza_sure_ve_dosya() {
     std::fs::create_dir_all(kok2.join("anahtarlar")).unwrap();
     std::fs::write(kok2.join("anahtarlar/sunucu.pub"), "bozuk").unwrap();
     assert!(sunucu_anahtari_oku(&kok2).is_err());
+}
+
+#[test]
+fn yoneticiye_basvuru() {
+    let g = Sahte::yeni(Ok(json!({"durum": "iletildi"})));
+    yoneticiye_basvur(&g, "ali", Some("Yeni-Sifre-2026")).unwrap();
+    yoneticiye_basvur(&g, "ali", None).unwrap();
+    yoneticiye_basvur(&g, "ali", Some("")).unwrap();
+    let c = g.cagrilar.borrow();
+    assert_eq!(
+        c[0],
+        (
+            BASVURU_UCU.to_string(),
+            json!({"kullanici": "ali", "yeni_parola": "Yeni-Sifre-2026"})
+        )
+    );
+    assert_eq!(c[1].1, json!({"kullanici": "ali"}));
+    assert_eq!(
+        c[2].1,
+        json!({"kullanici": "ali"}),
+        "boş şifre gönderilmez (yalnız kilit başvurusu)"
+    );
+    assert!(matches!(
+        yoneticiye_basvur(&g, "", None),
+        Err(KimlikHata::GecersizGirdi(_))
+    ));
+    assert!(matches!(
+        yoneticiye_basvur(&g, "ali", Some("a\nb")),
+        Err(KimlikHata::GecersizGirdi(_))
+    ));
+    let sinir = Sahte::yeni(Err(GonderHata::Ulasilamadi(
+        "HTTP 429: {\"hata\":\"basvuru_sinir\"}".into(),
+    )));
+    assert!(matches!(
+        yoneticiye_basvur(&sinir, "ali", None),
+        Err(KimlikHata::GirisReddi { kod: 429, .. })
+    ));
 }

@@ -97,6 +97,9 @@ main{flex:1;min-width:0;padding:32px;display:flex;flex-direction:column;gap:20px
 
 .ekran{display:flex;flex-direction:column;gap:20px;animation:gir var(--dur) var(--ease)}
 @keyframes gir{from{opacity:0;transform:var(--enter)}}
+.uyari-serit{border:1px solid color-mix(in srgb,var(--err) 45%,var(--line));background:color-mix(in srgb,var(--err) 9%,var(--panel));border-radius:var(--r);padding:14px 18px;margin-bottom:16px}
+.uyari-serit h2{display:flex;align-items:center;gap:10px;margin:0 0 6px;font-size:15px}.uyari-serit h2 .nokta{width:9px;height:9px;border-radius:50%;background:var(--err)}
+.uyari-serit p{margin:0 0 8px;font-size:13px}
 .kart{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:18px}
 .izgara4{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}
 .istat .etiket{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:12px;font-weight:500;letter-spacing:.04em}
@@ -223,6 +226,9 @@ dialog .dugmeler{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
 #tanitim .noktalar i.aktif{background:var(--accent)}
 #tanitim .dugmeler{display:flex;gap:10px;justify-content:center}
 .pin-durum{font-size:12px}
+.onay-sec{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.onay-sec .girdi{width:auto;min-width:120px;padding:6px 8px;font-size:13px}
+.sayi-gir{font-size:28px;letter-spacing:.3em;text-align:center;width:6ch;margin:0 auto;display:block}
 .pin-durum.var{color:var(--ok)}.pin-durum.yok{color:var(--muted)}
 @media (prefers-reduced-motion:reduce){:root:not(.hareket-normal) *,:root:not(.hareket-normal) *::before,:root:not(.hareket-normal) *::after{animation:none!important;transition:none!important}}
 :root.az-hareket *,:root.az-hareket *::before,:root.az-hareket *::after{animation:none!important;transition:none!important}
@@ -290,6 +296,13 @@ dialog .dugmeler{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
 const $=s=>document.querySelector(s);
 const kok=document.documentElement;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// Görünen ad (sunucudaki ile aynı, Yusuf 11-17): ad soyadın yıldızlı maskesi. "Mehmet Ali Kaya" → "M*** A*** K***"
+const gorunenOneri=g=>String(g??'').trim().split(/\s+/).filter(Boolean).map(w=>w[0].toLocaleUpperCase('tr')+'***').join(' ');
+// Formda ad soyad yazılırken görünen ad, elle değiştirilmediyse öneriyle dolar.
+document.addEventListener('input',e=>{const t=e.target;
+  if(t.matches?.('[data-oneri-hedef]')){t.dataset.elle='1';return}
+  if(!t.matches?.('[data-oneri-kaynak]'))return;
+  const h=t.form?.querySelector('[data-oneri-hedef]');if(h&&!h.dataset.elle)h.value=gorunenOneri(t.value)});
 const tr=s=>String(s??'').toLocaleLowerCase('tr');
 const zaman=z=>z?String(z).replace('T',' ').replace(/(\.\d+)?Z$/,'').slice(0,16):'-';
 
@@ -327,17 +340,18 @@ let bt;function bildir(m,hata){const b=$('#bildirim');b.textContent=m;b.classLis
 const hataBildir=e=>bildir(e.message||String(e),true);
 
 // ---- durum ----
-let oturum=null,saglik=null,veri={cihazlar:[],kullanicilar:[],subeler:[],yetkiler:[],roller:[],olaylar:[],pinler:[],hatalar:[]};
+let oturum=null,saglik=null,veri={cihazlar:[],kullanicilar:[],subeler:[],yetkiler:[],roller:[],olaylar:[],pinler:[],hesaplar:[],basvurular:[],eslestirmeler:[],hatalar:[],uyari:{yeni:0,denemeler:[]}};
 let suzgec='bekliyor',arama='',sor=null,gunlukIslem='',gunlukSon=null;
 const izinli=i=>!!(oturum&&oturum.izinler&&oturum.izinler.includes(i));
 const EKRANLAR=[
-  ['genel','Genel bakış','◐',null],['cihazlar','Cihazlar','▣','cihaz.yonet'],['kullanicilar','Kullanıcılar','◍','kullanici.yonet'],
+  ['genel','Genel bakış','◐',null],['onaylar','Onay bekleyenler','✓','kullanici.yonet'],['cihazlar','Cihazlar','▣','cihaz.yonet'],['kullanicilar','Kullanıcılar','◍','kullanici.yonet'],
   ['subeler','Şubeler','⌂','kullanici.yonet'],['yetkiler','Program yetkileri','▦','program.yonet'],['pinler','Yönetici PIN\'leri','✱','program.yonet'],['gunluk','Günlük','≡','gunluk.gor'],['hatalar','Hatalar','⚠','gunluk.gor'],['ayarlar','Ayarlar','⚙',null]
 ];
 const BILINEN=['terzitakip','tutaa','taarkod','taadon','taa-etiket','taa-giydir','taa-video'];
 const PROGRAM_AD={terzitakip:'TerziTakip',tutaa:'Tutaa',taarkod:'TaaRkod',taadon:'TaaDön','taa-etiket':'TAA Etiket','taa-giydir':'TAA Giydir','taa-video':'TAA Video Yapıcı'};
 const gorunur=()=>EKRANLAR.filter(e=>!e[3]||izinli(e[3]));
 const bekleyen=()=>veri.cihazlar.filter(c=>c.durum==='bekliyor').length;
+const onayBekleyen=()=>veri.hesaplar.length+veri.basvurular.length+veri.eslestirmeler.length;
 const subeAd=id=>{if(id==null||id==='')return 'Merkez';const s=veri.subeler.find(x=>x.id===id);return s?s.ad:'Şube '+id};
 
 async function yukle(ne){
@@ -346,9 +360,11 @@ async function yukle(ne){
   if(ne==='hepsi'||ne==='cihaz')isler.push(al('cihazlar','/api/cihazlar','cihaz.yonet'));
   if(ne==='hepsi'||ne==='sube')isler.push(al('subeler','/api/subeler','kullanici.yonet'));
   if(ne==='hepsi'||ne==='kullanici')isler.push(al('kullanicilar','/api/kullanicilar','kullanici.yonet'),al('roller','/api/roller','kullanici.yonet'));
+  if(ne==='hepsi'||ne==='onay')isler.push(al('hesaplar','/api/hesaplar','kullanici.yonet'),al('basvurular','/api/hesaplar?durum=basvuru','kullanici.yonet'),al('eslestirmeler','/api/eslestirmeler','cihaz.yonet'));
   if(ne==='hepsi'||ne==='yetki')isler.push(al('yetkiler','/api/yetkiler','program.yonet'));
   if(ne==='hepsi'||ne==='pin')isler.push(al('pinler','/api/pinler','program.yonet'));
   if(ne==='hepsi'||ne==='gunluk')isler.push(al('olaylar','/api/gunluk?limit=50'+(gunlukIslem?'&islem='+encodeURIComponent(gunlukIslem):''),'gunluk.gor'));
+  if(ne==='hepsi'||ne==='uyari')isler.push(api('/api/uyarilar').then(v=>{if(v&&Array.isArray(v.denemeler))veri.uyari=v}).catch(()=>{}));
   if(ne==='hepsi'||ne==='hatalar')isler.push(al('hatalar','/api/hatalar','gunluk.gor'));
   if(ne==='hepsi')isler.push(istek('/api/saglik').then(v=>saglik=v).catch(()=>saglik={ulasildi:false}));
   await Promise.all(isler);
@@ -357,7 +373,7 @@ async function yukle(ne){
 // ---- parçalar ----
 function menu(aktif){
   $('#menu-ogeler').innerHTML=gorunur().map(([id,ad,ik])=>{
-    const n=id==='cihazlar'?bekleyen():0;
+    const n=id==='cihazlar'?bekleyen():id==='onaylar'?onayBekleyen():id==='genel'?(veri.uyari.yeni||0):0;
     return `<button class="oge" data-git="${id}" ${id===aktif?'aria-current="page"':''}><span class="ik" aria-hidden="true">${ik}</span><span class="ad">${ad}</span>${n?`<span class="rozet" aria-label="${n} bekleyen">${n}</span>`:''}</button>`;
   }).join('');
   $('#menu-alt').innerHTML=oturum?`<span class="mono">${esc(oturum.kullanici)}</span>`:'';
@@ -392,7 +408,13 @@ const SAYFA={
     const b=bekleyen();
     const kart=(e,d,a,r)=>`<div class="kart istat"><div class="etiket"><span class="nokta" style="background:var(--${r})"></span>${e}</div><div class="deger">${d}</div><div class="ayr">${a}</div></div>`;
     const olaylar=veri.olaylar.slice(0,6);
-    return ust('Genel bakış','Merkez sunucunun durumu · 30 saniyede bir yenilenir')+`
+    const u=veri.uyari,yeniler=u.denemeler.filter(d=>d.yeni);
+    // Yusuf 11-17: hesabıma başka bilgisayardan girmeye çalışan olursa bana uyarı gelir (hesap kilitlenmez).
+    const serit=u.yeni?`<div class="uyari-serit" role="alert"><h2><span class="nokta"></span>Hesabınıza başka bir bilgisayardan ${u.yeni} hatalı giriş denemesi</h2>
+      <p class="muted">Bu bilgisayarlar daha önce hesabınızla oturum açmadı. Hesabınız kilitlenmedi. Siz değilseniz şifrenizi değiştirin ve bilgisayarı Cihazlar'dan iptal etmeyi düşünün.</p>
+      ${yeniler.map(d=>`<div class="satir"><div class="ana"><b>${esc(d.cihaz_adi||'Adsız cihaz')}</b><span>${esc(subeAd(d.sube_id))} · ${esc(d.gun)} · son deneme ${esc(zaman(d.son))}</span></div><span class="etk hata">${d.deneme} deneme</span></div>`).join('')}
+      <div class="arac" style="margin-top:8px"><span style="flex:1"></span><button class="dugme" data-uyari-gordum>Gördüm</button></div></div>`:'';
+    return ust('Genel bakış','Merkez sunucunun durumu · 30 saniyede bir yenilenir')+serit+`
     <div class="izgara4">
       ${kart('SUNUCU',saglik&&saglik.ulasildi?'Çalışıyor':'Ulaşılamadı',saglik&&saglik.ulasildi?'sağlık ucu yanıt verdi':esc(saglik&&saglik.hata||'bağlantı yok'),saglik&&saglik.ulasildi?'ok':'err')}
       ${izinli('cihaz.yonet')?kart('BEKLEYEN CİHAZ',b,b?'onayınızı bekliyor':'hepsi sonuçlandı',b?'warn':'ok'):''}
@@ -404,6 +426,28 @@ const SAYFA={
         ${b?veri.cihazlar.filter(c=>c.durum==='bekliyor').map(cihazSatir).join(''):'<p class="muted">Tüm cihaz istekleri sonuçlandı.</p>'}</div>`:'<div></div>'}
       ${izinli('gunluk.gor')?`<div class="kart"><h2>Son olaylar</h2>${olaylar.length?olaylar.map(o=>`<div class="olay"><span class="mono muted" style="font-size:12px;white-space:nowrap">${esc(zaman(o.zaman).slice(11))}</span><div><b>${esc(o.islem)}</b><span>${esc(subeAd(o.sube_id))}${o.ayrinti?' · '+esc(typeof o.ayrinti==='string'?o.ayrinti:JSON.stringify(o.ayrinti)):''}</span></div></div>`).join(''):'<p class="muted">Olay yok.</p>'}</div>`:''}
     </div>`;
+  },
+  onaylar(){
+    // Öneri en az yetkili rol: personel; yoksa yönetici olmayan ilk rol (yönetici asla önerilmez).
+    const adaylar=['personel','kasa','kasiyer'],yoneticiDisi=veri.roller.filter(r=>r.ad!=='yonetici');
+    const varsayilanRol=(adaylar.map(a=>veri.roller.find(r=>r.ad===a)).find(Boolean)||yoneticiDisi[yoneticiDisi.length-1]||{}).ad||'';
+    const rolSec=id=>`<select class="girdi" data-onay-rol="${id}" aria-label="Rol">${veri.roller.map(r=>`<option value="${esc(r.ad)}" ${r.ad===varsayilanRol?'selected':''}>${esc(r.ad)}</option>`).join('')}</select>`;
+    const subeSec=(id,sec)=>`<select class="girdi" data-onay-sube="${id}" aria-label="Şube"><option value="">Tüm şubeler</option>${veri.subeler.map(x=>`<option value="${+x.id}" ${x.id===sec?'selected':''}>${esc(x.ad)}</option>`).join('')}</select>`;
+    const hesap=h=>{const id=+h.id;
+      const sag=sor===('reddet:'+id)
+        ?`<span class="onayla-kutu">Başvuru reddedilir. <button class="dugme" data-vazgec>Vazgeç</button><button class="dugme tehlike dolu" data-hesap-islem="reddet" data-id="${id}">Evet, reddet</button></span>`
+        :`<span class="onay-sec">${rolSec(id)}${subeSec(id,h.istenen_sube)}</span><button class="dugme" data-hesap-duzenle="${id}">Düzenle</button><button class="dugme tehlike" data-sor="reddet:${id}">Reddet</button><button class="dugme birincil" data-hesap-onayla="${id}">Onayla</button>`;
+      return `<div class="satir"><div class="ana"><b>${esc(h.gercek_ad||h.gorunen_ad)}</b><span><span class="mono">${esc(h.ad)}</span> · fişte ${esc(h.gorunen_ad)} · ${esc(subeAd(h.istenen_sube))} · başvuru ${esc(zaman(h.kayit_zamani))}</span></div>${sag}</div>`};
+    const basvuru=h=>{const id=+h.id,sifre=h.basvuru_turu==='sifre';
+      return `<div class="satir"><div class="ana"><b>${esc(h.gercek_ad||h.gorunen_ad)}</b><span><span class="mono">${esc(h.ad)}</span> · ${sifre?'Şifresini unuttu, yeni şifre belirledi':'Hesabı kilitlendi, açılmasını istiyor'} · ${esc(subeAd(h.basvuru_sube))} · ${esc(zaman(h.basvuru_zamani))}</span></div><button class="dugme tehlike" data-hesap-islem="basvuru-reddet" data-id="${id}">Reddet</button><button class="dugme birincil" data-hesap-islem="basvuru-onayla" data-id="${id}">${sifre?'Yeni şifreyi onayla':'Kilidi aç'}</button></div>`};
+    const eslestirme=x=>{const id=+x.id;
+      return `<div class="satir"><div class="ana"><b>${esc(x.cihaz_adi)}${x.kisi?' · '+esc(x.kisi):''}</b><span>${esc(x.sube_ad||subeAd(x.sube_id))}${x.magaza_bilgisayari?' · '+esc(x.magaza_bilgisayari):''} · ${esc(zaman(x.bitis).slice(11,16))}'e kadar</span></div><button class="dugme tehlike" data-eslestirme-red="${id}">Reddet</button><button class="dugme birincil" data-eslestirme-onay="${id}" data-ad="${esc(x.cihaz_adi)}">Onayla</button></div>`};
+    return ust('Onay bekleyenler','Kendi kaydını yapan personel ve telefon eşleştirme istekleri · onaysız hesap giremez')+`
+    <div class="arac"><span class="muted">${veri.hesaplar.length} hesap · ${veri.basvurular.length} başvuru · ${veri.eslestirmeler.length} telefon</span><span style="flex:1"></span><button class="dugme" data-yenile="onay">Yenile</button></div>
+    <div class="kart"><h2>Onay bekleyen hesaplar</h2>${veri.hesaplar.length?veri.hesaplar.map(hesap).join(''):'<p class="muted">Bekleyen başvuru yok. Personel mağaza bilgisayarından kullanıcı adı, ad soyad ve şifreyle kayıt olur.</p>'}</div>
+    ${izinli('kullanici.yonet')?`<div class="kart"><h2>Yöneticiye başvurular</h2>${veri.basvurular.length?veri.basvurular.map(basvuru).join(''):'<p class="muted">Bekleyen başvuru yok. Şifresini unutan ya da hesabı kilitlenen personel programdaki "Yöneticiye başvur" ile buraya düşer.</p>'}</div>`:''}
+    ${izinli('cihaz.yonet')?`<div class="kart"><h2>Telefon eşleştirme istekleri</h2>${veri.eslestirmeler.length?veri.eslestirmeler.map(eslestirme).join(''):'<p class="muted">Bekleyen telefon yok. Mağazada çift kodla eşleştirme yapılamıyorsa istek buraya düşer.</p>'}</div>`:''}
+    <div class="ipucu"><span class="nokta"></span>Rol ve şube kaydın yapıldığı mağazaya göre önerilir. Onaylanmayan başvuru 7 gün sonra düşer. Telefon onayı için kişiden telefonunda görünen iki haneli sayıyı isteyin.</div>`;
   },
   cihazlar(){
     const say=d=>veri.cihazlar.filter(c=>c.durum===d).length;
@@ -421,14 +465,18 @@ const SAYFA={
   },
   kullanicilar(){
     const rolYazi=u=>(u.roller||[]).map(r=>typeof r==='string'?r:(r.rol+(r.sube_id!=null?' · '+subeAd(r.sube_id):''))).join(', ')||'-';
+    const liste=veri.kullanicilar.filter(u=>!['onay_bekliyor','reddedildi'].includes(u.durum));
+    const DURUM={aktif:['ok','Etkin'],askida:['uy','Askıda'],kaldirildi:['hata','Kapalı']};
     return ust('Kullanıcılar','Silme yok; ayrılan personelin hesabı kapatılır')+`
-    <div class="arac"><span class="muted">${veri.kullanicilar.length} kullanıcı</span><span style="flex:1"></span><button class="dugme birincil" data-kullanici-ekle>Kullanıcı ekle</button></div>
-    <div class="kart tablo-kap">${veri.kullanicilar.length?`<table><thead><tr><th>Ad</th><th>Kullanıcı adı</th><th>Roller</th><th>Durum</th><th></th></tr></thead><tbody>
-    ${veri.kullanicilar.map(u=>{const etkin=u.aktif!==false;const id=+u.id;
+    <div class="arac"><span class="muted">${liste.length} kullanıcı</span><span style="flex:1"></span><button class="dugme birincil" data-kullanici-ekle>Kullanıcı ekle</button></div>
+    <div class="kart tablo-kap">${liste.length?`<table><thead><tr><th>Ad</th><th>Kullanıcı adı</th><th>Roller</th><th>Durum</th><th></th></tr></thead><tbody>
+    ${liste.map(u=>{const durum=u.durum||(u.aktif===false?'kaldirildi':'aktif');const id=+u.id;const [renk,yazi]=DURUM[durum]||['hata',durum];
       const islem=sor===('kapat:'+id)
-        ?`<span class="onayla-kutu">Hesap kapanır. <button class="dugme" data-vazgec>Vazgeç</button><button class="dugme tehlike dolu" data-kapat-kesin="${id}">Evet, kapat</button></span>`
-        :`<button class="dugme" data-parola="${id}">Parola değiştir</button>${etkin?` <button class="dugme tehlike" data-kapat="${id}">Kapat</button>`:''}`;
-      return `<tr><td>${esc(u.gorunen_ad)}</td><td class="mono" style="font-size:12px">${esc(u.ad)}</td><td style="font-size:13px">${esc(rolYazi(u))}</td><td><span class="etk ${etkin?'ok':'hata'}">${etkin?'Etkin':'Kapalı'}</span></td><td style="text-align:right;white-space:nowrap">${islem}</td></tr>`}).join('')}
+        ?`<span class="onayla-kutu">Hesap kapanır, açık oturumları hemen kesilir. <button class="dugme" data-vazgec>Vazgeç</button><button class="dugme tehlike dolu" data-kapat-kesin="${id}">Evet, kapat</button></span>`
+        :u.ad===(oturum&&oturum.kullanici)?'<span class="muted" style="font-size:12px">Siz</span>'
+        :durum==='aktif'?`${u.kilitli?`<button class="dugme" data-hesap-islem="kilit-ac" data-id="${id}">Kilidi aç</button> `:''}<button class="dugme" data-hesap-islem="askiya-al" data-id="${id}">Askıya al</button> <button class="dugme tehlike" data-kapat="${id}">Kapat</button>`
+        :durum==='askida'?`<button class="dugme birincil" data-hesap-islem="geri-ac" data-id="${id}">Geri aç</button> <button class="dugme tehlike" data-kapat="${id}">Kapat</button>`:'';
+      return `<tr><td>${esc(u.gorunen_ad)}${u.gercek_ad&&u.gercek_ad!==u.gorunen_ad?`<div class="muted" style="font-size:12px">${esc(u.gercek_ad)}</div>`:''}</td><td class="mono" style="font-size:12px">${esc(u.ad)}</td><td style="font-size:13px">${esc(rolYazi(u))}</td><td><span class="etk ${renk}">${yazi}</span>${u.kilitli?' <span class="etk uy">Kilitli</span>':''}${u.basvuru_turu?' <span class="etk uy">Başvuru bekliyor</span>':''}</td><td style="text-align:right;white-space:nowrap">${islem}</td></tr>`}).join('')}
     </tbody></table>`:bosDurum('Kullanıcı yok.')}</div>`;
   },
   subeler(){
@@ -582,26 +630,53 @@ document.addEventListener('click',async e=>{
     if('vazgec' in ds){sor=null;ciz();return}
     if(ds.iptal){sor='iptal:'+ds.iptal;ciz();return}
     if(ds.kapat){sor='kapat:'+ds.kapat;ciz();return}
+    if(ds.sor){sor=ds.sor;ciz();return}
+    if(ds.hesapOnayla){
+      const id=+ds.hesapOnayla;d.disabled=true;
+      const rol=$(`[data-onay-rol="${id}"]`).value,sb=sayi($(`[data-onay-sube="${id}"]`).value);
+      await api('/api/hesap/onayla',{id,roller:[{rol,sube_id:sb}]});await yukle('onay');await yukle('kullanici');ciz();bildir('Hesap onaylandı; kişi artık giriş yapabilir');return}
+    if(ds.hesapDuzenle){
+      const id=+ds.hesapDuzenle,h=veri.hesaplar.find(x=>+x.id===id);if(!h)return;
+      formAc('Başvuruyu onayla',`
+        <div class="muted" style="font-size:13px"><span class="mono">${esc(h.ad)}</span> · ${esc(subeAd(h.istenen_sube))}</div>
+        <label class="alan">Ad soyad (yalnız yöneticiler görür)<input class="girdi" name="gercek_ad" maxlength="100" value="${esc(h.gercek_ad||'')}" required data-oneri-kaynak></label>
+        <label class="alan">Fişte görünen ad (ad soyadın maskesi)<input class="girdi" name="gorunen_ad" maxlength="100" value="${esc(h.gorunen_ad||gorunenOneri(h.gercek_ad))}" data-oneri-hedef></label>
+        <label class="alan">Rol<select class="girdi" name="rol" required>${veri.roller.map(r=>`<option value="${esc(r.ad)}" ${r.ad===$(`[data-onay-rol="${id}"]`).value?'selected':''}>${esc(r.ad)}</option>`).join('')}</select></label>
+        <label class="alan">Şube<select class="girdi" name="sube_id"><option value="">Tüm şubeler</option>${veri.subeler.map(x=>`<option value="${+x.id}" ${x.id===h.istenen_sube?'selected':''}>${esc(x.ad)} (${esc(x.kod)})</option>`).join('')}</select></label>
+        <label class="alan">Var olan kişiye bağla (isteğe bağlı)<input class="girdi mono" name="kisi_id" maxlength="64" pattern="[A-Za-z0-9_\-]{4,64}" placeholder="ör. K-000012" spellcheck="false" autocapitalize="none"></label>
+        <div class="muted" style="font-size:12px">Kişi kaydı zaten varsa (ör. yalnız Telegram kullanan usta) kimliğini yazın; boş bırakırsanız yeni kişi açılır.</div>`,
+        async f=>{const r=await api('/api/hesap/onayla',{id,roller:[{rol:f.rol.value,sube_id:sayi(f.sube_id.value)}],kisi_id:f.kisi_id.value.trim()||null,gercek_ad:f.gercek_ad.value.trim(),gorunen_ad:f.gorunen_ad.value.trim()||null});
+          await yukle('onay');await yukle('kullanici');ciz();
+          // Fable K6: kişi kimliği daha önce kapatılmış bir hesaba aitse yönetici bilgilendirilir.
+          bildir(r&&r.uyari==='kaldirilmis_kisi'?'Hesap onaylandı. Dikkat: bu kişi kimliği daha önce kapatılmış bir hesapta kullanılmıştı':'Hesap onaylandı')},'Onayla');
+      return}
+    if(ds.hesapIslem){
+      const id=+ds.id,is=ds.hesapIslem;d.disabled=true;
+      await api('/api/hesap/islem',{id,islem:is});sor=null;await yukle('onay');await yukle('kullanici');ciz();
+      bildir({'basvuru-onayla':'Başvuru onaylandı; kişi giriş yapabilir','basvuru-reddet':'Başvuru reddedildi',reddet:'Başvuru reddedildi','askiya-al':'Hesap askıya alındı; oturumları kesildi','geri-ac':'Hesap yeniden açıldı','kilit-ac':'Kilit açıldı'}[is]);return}
+    if(ds.eslestirmeOnay){
+      const id=+ds.eslestirmeOnay;
+      formAc('Telefonu onayla',`<div>${esc(ds.ad)}</div><label class="alan">Telefonda görünen iki haneli sayı<input class="girdi mono sayi-gir" name="sayi" inputmode="numeric" pattern="[0-9]{2}" minlength="2" maxlength="2" required autocomplete="off"></label><div class="muted" style="font-size:12px">Sayı tutmazsa onaylanmaz; 3 yanlışta istek reddedilir.</div>`,
+        async f=>{await api('/api/eslestirme/onay',{id,sayi:f.sayi.value.trim()});await yukle('onay');ciz();bildir('Telefon onaylandı; mağaza bilgisayarı eşleştirmeyi tamamlar')},'Onayla');
+      return}
+    if(ds.eslestirmeRed){d.disabled=true;await api('/api/eslestirme/red',{id:+ds.eslestirmeRed});await yukle('onay');ciz();bildir('Eşleştirme reddedildi');return}
+    if('uyariGordum' in ds){d.disabled=true;await api('/api/uyari/goruldu',{});await yukle('uyari');ciz();bildir('Uyarılar görüldü olarak işaretlendi');return}
     if(ds.yenile){d.disabled=true;await yukle(ds.yenile);ciz();bildir('Yenilendi');return}
     if(ds.onayla){d.disabled=true;await api('/api/cihaz/onay',{kimlik:ds.onayla,sube_id:sayi(ds.sube)});await yukle('cihaz');ciz();bildir('Cihaz onaylandı');return}
     if(ds.iptalKesin){d.disabled=true;await api('/api/cihaz/iptal',{kimlik:ds.iptalKesin});sor=null;await yukle('cihaz');ciz();bildir('Cihaz iptal edildi');return}
-    if(ds.kapatKesin){d.disabled=true;await api('/api/kullanici/kapat',{id:+ds.kapatKesin});sor=null;await yukle('kullanici');ciz();bildir('Hesap kapatıldı');return}
+    if(ds.kapatKesin){d.disabled=true;await api('/api/kullanici/kapat',{id:+ds.kapatKesin});sor=null;await yukle('kullanici');ciz();bildir('Hesap kapatıldı; oturumları kesildi');return}
     if(ds.yetki!==undefined&&d.getAttribute('role')==='switch'){
       const yeni=d.getAttribute('aria-checked')!=='true';d.disabled=true;
       await api('/api/yetki',{program:ds.yetki,acik:yeni,sube_id:sayi(ds.sube)});await yukle('yetki');ciz();bildir(yeni?'Program açıldı':'Program kapatıldı');return}
     if('kullaniciEkle' in ds){
       formAc('Kullanıcı ekle',`
-        <label class="alan">Ad soyad<input class="girdi" name="gorunen_ad" required maxlength="120"></label>
+        <label class="alan">Ad soyad (yalnız yöneticiler görür)<input class="girdi" name="gercek_ad" maxlength="100" data-oneri-kaynak></label>
+        <label class="alan">Fişte görünen ad (boşsa ad soyadın maskesi)<input class="girdi" name="gorunen_ad" maxlength="100" placeholder="ör. A*** Y***" data-oneri-hedef></label>
         <label class="alan">Kullanıcı adı<input class="girdi" name="ad" required maxlength="64" pattern="[a-z0-9][a-z0-9_.\\-]*" title="küçük harf, rakam, nokta, tire" autocapitalize="none" spellcheck="false"></label>
         <label class="alan">Parola (en az 8 karakter)<input class="girdi" name="parola" type="password" minlength="8" required autocomplete="new-password"></label>
         <label class="alan">Rol<select class="girdi" name="rol" required>${veri.roller.map(r=>`<option value="${esc(r.ad)}">${esc(r.ad)}</option>`).join('')}</select></label>
         <label class="alan">Şube${subeSecici('sube_id',null)}</label>`,
-        async f=>{await api('/api/kullanici/ekle',{ad:f.ad.value.trim(),gorunen_ad:f.gorunen_ad.value.trim(),parola:f.parola.value,roller:[{rol:f.rol.value,sube_id:sayi(f.sube_id.value)}]});f.reset();await yukle('kullanici');ciz();bildir('Kullanıcı eklendi')},'Ekle');
-      return}
-    if(ds.parola){
-      const id=+ds.parola;
-      formAc('Parola değiştir',`<label class="alan">Yeni parola (en az 8 karakter)<input class="girdi" name="yeni" type="password" minlength="8" required autocomplete="new-password"></label>`,
-        async f=>{await api('/api/kullanici/parola',{id,parola:f.yeni.value});f.reset();bildir('Parola değişti')});
+        async f=>{await api('/api/kullanici/ekle',{ad:f.ad.value.trim(),gorunen_ad:f.gorunen_ad.value.trim(),gercek_ad:f.gercek_ad.value.trim()||null,parola:f.parola.value,roller:[{rol:f.rol.value,sube_id:sayi(f.sube_id.value)}]});f.reset();await yukle('kullanici');ciz();bildir('Kullanıcı eklendi')},'Ekle');
       return}
     if('subeEkle' in ds){
       formAc('Şube ekle',`<label class="alan">Kod<input class="girdi" name="kod" required maxlength="64" pattern="[a-z0-9][a-z0-9_.\\-]*" title="küçük harf ve rakam, ör. 12" spellcheck="false"></label><label class="alan">Ad<input class="girdi" name="ad" required maxlength="120"></label>`,

@@ -3,6 +3,15 @@
 
 ## Yayınlanmamış
 
+### TAA Çatı: onay bekleyen hesaplar ve telefon eşleştirme onayı (KM2)
+
+- Yeni ekran "Onay bekleyenler": mağaza bilgisayarından kendi kaydını yapan personel tek dokunuşla onaylanır (rol en az yetkili olandan, şube kaydın yapıldığı mağazadan önerilir; yönetici asla önerilmez), "Düzenle" ile ad soyad düzeltilir ve var olan kişiye bağlanır, başvuru reddedilir. Telefon eşleştirme istekleri telefonda görünen iki haneli sayıyla onaylanır ya da reddedilir. Menüde bekleyen sayısı rozeti.
+- Kullanıcılar ekranı: Etkin/Askıda/Kapalı durumu, Kilitli ve Geçici kod etiketleri; Geçici kod (bir kez gösterilir), Kilidi aç, Askıya al / Geri aç. Kendi satırınızda işlem yok.
+- Yusuf 11-17 kuralları: fişte görünen ad, ad soyadın yıldızlı maskesi (ör. M*** K***); geçici şifre ve geçici kod kalktı. Şifresini unutan ya da hesabı kilitlenen personel programdan "Yöneticiye başvur"ur; başvurular "Onay bekleyenler" ekranında ("Yeni şifreyi onayla" / "Kilidi aç" / "Reddet"). Bir bilgisayarda saatte 5 hatalı deneme sınırı, bir hesaba aynı gün 10 hatalı girişte hesap kilidi (sunucuda). "Kullanıcı ekle"de ayrı "Ad soyad" ve isteğe bağlı "Fişte görünen ad"; CLI `kullanici ekle --ad-soyad`, `kullanici parola` kalktı.
+- Yusuf 11-17 (2): hesabı yalnız sahibinin kendi bilgisayarlarındaki (daha önce oturum açtığı) hatalar kilitler; başka bilgisayardan denemeler hesabı kilitlemez, hesap sahibine uyarı olur. Çatı "Genel bakış"ta kendi hesabına yapılan yabancı denemeleri kırmızı şeritte gösterir (bilgisayar, şube, gün, deneme sayısı) ve "Gördüm" ile sayacı sıfırlar; menüde rozet. `Cati::uyarilar()`, `Cati::uyari_goruldu()`, panel `GET /api/uyarilar`, `POST /api/uyari/goruldu`.
+- taa-kimlik: girişte 423 (hesap kilitli: "Yöneticiye başvur"), 429 (bilgisayar saatlik sınırı ya da `cihaz_mesgul`; artık "sunucu kapalı" gibi görünmez) ve 403 `hesap_onay_bekliyor` için anlaşılır ileti; yeni `yoneticiye_basvur(g, kullanici, yeni_parola?)` (`POST /v1/yonetici-basvuru`). Çatı onayında kapatılmış kişi kimliği uyarısı (Fable K6).
+- Sunucu uçları tutaa deposunda (KM2 sözleşmesi sürüm 2: planlar/SOZLESME-KM2-HESAP-VE-GIRIS-2026-11-17.md).
+
 ### TAA Çatı: açık/koyu temalar, Görünüm ayarı, tanıtım ve yönetici PIN'leri
 
 - Görünüm (TAA Kurucu'nun yeni kavramlarıyla): 3 tema × açık/koyu (6 palet), `cati/gorunum.json` (sürümlü, atomik), temaya özel vurgu rengi ve okunabilirlik düzeltmesi (`taa-kur-tema` kontrast hesabı), hareket Sistem/Azalt/Normal, ilk açılışta 3 sahnelik tanıtım. Tercih artık tarayıcıda değil veri kökünde. Logo Üç Çatı olarak kaldı.

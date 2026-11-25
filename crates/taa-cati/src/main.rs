@@ -15,11 +15,10 @@ taa-cati — TAA Çatı: merkez sunucunun yönetimi (yalnız sunucu PC'sinde; y�
 Kullanım (ortak seçenekler: --sunucu <https://adres> | TAA_SUNUCU | yol listesi (taa-yol), --kok <veri kökü> | TAA_VERI_KOK, --sertifika <pem>, --json):
   taa-cati dogrula                                  parola stdin'den; yazma komutları için 15 dk pencere açar
   taa-cati kullanici liste
-  taa-cati kullanici ekle --ad <ad> --gorunen-ad <Ad Soyad> --rol <rol>[ --sube <id>] [--rol ... ]   (parola stdin'den)
+  taa-cati kullanici ekle --ad <ad> [--gorunen-ad <A*** Y***>] [--ad-soyad <Ayşe Yılmaz>] --rol <rol>[ --sube <id>] [--rol ... ]   (parola stdin'den; görünen ad boşsa ad soyadın maskesi)
   taa-cati kullanici rol        --id <no> --rol <rol> [--sube <id>]
   taa-cati kullanici rol-kaldir --id <no> --rol <rol> [--sube <id>]
   taa-cati kullanici kapat      --id <no>                           (silme yok)
-  taa-cati kullanici parola     --id <no>                           (yeni parola stdin'den)
   taa-cati rol liste | izin liste
   taa-cati cihaz liste [--durum bekliyor|onayli|iptal]
   taa-cati cihaz onay  --kimlik <16 hex> [--sube <id>]              (--sube yoksa merkez cihazı)
@@ -83,6 +82,7 @@ struct Secenekler {
     sertifika: Option<PathBuf>,
     ad: Option<String>,
     gorunen_ad: Option<String>,
+    gercek_ad: Option<String>,
     roller: Vec<String>,
     subeler: Vec<Option<i64>>,
     id: Option<i64>,
@@ -129,6 +129,7 @@ fn ayristir(args: &[String]) -> Result<Secenekler, Hata> {
             "--sertifika" => s.sertifika = Some(PathBuf::from(deger(&mut i, a)?)),
             "--ad" => s.ad = Some(deger(&mut i, a)?),
             "--gorunen-ad" => s.gorunen_ad = Some(deger(&mut i, a)?),
+            "--ad-soyad" => s.gercek_ad = Some(deger(&mut i, a)?),
             "--kod" => s.kod = Some(deger(&mut i, a)?),
             "--rol" => {
                 s.roller.push(deger(&mut i, a)?);
@@ -285,13 +286,17 @@ fn calistir(args: &[String], json: bool) -> Result<(), Hata> {
         ),
         (Some("kullanici"), Some("ekle"), None) => {
             let ad = gerek("--ad", &s.ad)?;
-            let gad = gerek("--gorunen-ad", &s.gorunen_ad)?;
+            let gad = s.gorunen_ad.clone().unwrap_or_default();
             let roller: Vec<RolAtama> = (0..s.roller.len())
                 .filter(|i| !s.roller[*i].is_empty())
                 .map(rol_atama)
                 .collect::<Result<_, _>>()?;
             let p = parola_oku("parola")?;
-            bas(json, &c.kullanici_ekle(&ad, &gad, &p, &roller).map_err(ch)?);
+            bas(
+                json,
+                &c.kullanici_ekle(&ad, &gad, s.gercek_ad.as_deref(), &p, &roller)
+                    .map_err(ch)?,
+            );
         }
         (Some("kullanici"), Some("rol"), None) => {
             bas(json, &c.rol_ver(id()?, &rol_atama(0)?).map_err(ch)?)
@@ -301,11 +306,6 @@ fn calistir(args: &[String], json: bool) -> Result<(), Hata> {
         }
         (Some("kullanici"), Some("kapat"), None) => {
             bas(json, &c.kullanici_kapat(id()?).map_err(ch)?)
-        }
-        (Some("kullanici"), Some("parola"), None) => {
-            let i = id()?;
-            let p = parola_oku("yeni parola")?;
-            bas(json, &c.parola_degistir(i, &p).map_err(ch)?);
         }
         (Some("rol"), Some("liste"), None) => tablo(
             json,
