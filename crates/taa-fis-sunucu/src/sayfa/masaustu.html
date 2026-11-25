@@ -493,6 +493,9 @@ html[data-tema="tebesir"] .imza-cizgi{width:190px}
 html[data-tema="tebesir"] .gez[aria-current="page"]{background:var(--tk-panel2);color:var(--tk-tx)}
 html[data-tema="tebesir"] .gez[aria-current="page"]::after{content:"";position:absolute;left:var(--tk-g3);right:var(--tk-g3);bottom:1px;height:6px;background:var(--tk-ac);opacity:1}
 html[data-tema="tebesir"] .cubuk,html[data-tema="tebesir"] .dc{background:var(--tk-panel)}
+/* Pencere başlık çubuğu rengi (theme-color) üst bantla aynı: bant --tk-panel2, Tebeşir ve Çivit'te --tk-panel */
+html[data-ortam="masaustu"]{--tk-baslik:var(--tk-panel2)}
+html[data-tema="tebesir"],html[data-tema="civit"]{--tk-baslik:var(--tk-panel)}
 html[data-tema="tebesir"] .gezinti{background:var(--tk-bg);border-right-color:var(--tk-panel2)}
 html[data-tema="tebesir"] .kart,html[data-tema="tebesir"] .gun{border-color:transparent}
 html[data-tema="tebesir"] .gun[data-bugun]{border-color:var(--tk-ac)}

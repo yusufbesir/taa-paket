@@ -54,7 +54,7 @@
     /* Pencere başlık çubuğu (Edge/Chrome uygulama penceresi) üst bantla (--tk-panel2) aynı renkte olsun.
        <head> aşamasında da çalışır: renk jetonu :root'tan okunur, body'ye gerek yoktur. */
     var meta = document.querySelector('meta[name="theme-color"]');
-    var bant = hex(jeton('--tk-panel2')) || hex(jeton('--tk-bg'));
+    var bant = hex(jeton('--tk-baslik')) || hex(jeton('--tk-panel2')) || hex(jeton('--tk-bg'));
     if (meta && bant) meta.setAttribute('content', bant);
     return { tema: ad, koyu: kok.dataset.ton === 'koyu' || !!SABIT_KOYU[ad], vurguDustu: kayitli && !sonuc.tamam };
   }
