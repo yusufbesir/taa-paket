@@ -304,7 +304,16 @@ impl Uygulama {
                 }
                 Yanit::yonlendir("/masaustu#telefonlar")
             }
-            ("POST", ["api", "giris", islem]) => self.ortak_giris(i, islem),
+            ("POST", ["api", "giris", islem]) => {
+                // Ortak giriş yalnız bu bilgisayardaki masaüstü programdan (telefonlar eşleştirme belirteciyle çalışır).
+                if !i.yerel || !i.masaustu {
+                    return Yanit::hata(403, "yalnız bu bilgisayardaki programdan");
+                }
+                match ortak_giris::yanitla(self.kimlik_bulucu, cati_pin::PROGRAM, islem, &i.govde) {
+                    Some(v) => Yanit::json(200, v),
+                    None => Yanit::hata(404, "bulunamadı"),
+                }
+            }
             ("POST", ["api", "yonetici", "giris"]) => self.yonetici_giris(i),
             ("POST", ["api", "yonetici", "cikis"]) => self.yonetici_cikis(i),
             ("GET", ["api", "yonetici", "durum"]) => self.yonetici_durum(i),
@@ -2573,6 +2582,44 @@ mod testler {
         let l = json_of(&u.isle(&pc("GET", "/api/kisiler", "")));
         assert_eq!(l["kisiler"][0]["id"], "k-cati-1");
         assert_eq!(l["kisiler"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn ortak_giris_yalniz_bu_bilgisayardaki_programdan() {
+        fn yok() -> Option<PathBuf> {
+            None
+        }
+        let mut u = uyg();
+        u.kimlik_bulucu = yok;
+        let gonder = |yerel: bool, masaustu: bool, islem: &str| {
+            let y = u.isle(&Istek {
+                metot: "POST".into(),
+                yol: format!("/api/giris/{islem}"),
+                govde: b"{}".to_vec(),
+                yerel,
+                masaustu,
+                ..Default::default()
+            });
+            (
+                y.kod,
+                serde_json::from_slice::<serde_json::Value>(&y.govde).unwrap_or_default(),
+            )
+        };
+        assert_eq!(
+            gonder(true, true, "baslangic"),
+            (200, json!({"arac": false, "oturum": null}))
+        );
+        assert_eq!(
+            gonder(false, true, "baslangic").0,
+            403,
+            "telefondan/ağdan olmaz"
+        );
+        assert_eq!(
+            gonder(true, false, "baslangic").0,
+            403,
+            "başlıksız (başka site) olmaz"
+        );
+        assert_eq!(gonder(true, true, "bilinmeyen").0, 404);
     }
 
     #[test]

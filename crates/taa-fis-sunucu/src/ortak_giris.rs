@@ -1,21 +1,22 @@
-//! TAA ortak giriş (KM1) masaüstü uçları: `POST /api/giris/{baslangic,giris,basvur,durum,cikis}`.
-//! Electron programlarındaki `araclar/js/taa-giris.js` köprüsünün Rust karşılığı: aynı `taa-kimlik` aracını çalıştırır
+//! taa-giris.rs v1 — kaynak: yusufbesir/taa-paket/crates/taa-fis-sunucu/src/ortak_giris.rs; Rust programları
+//! kopyalar, elle düzenlemez (yalnız std + serde_json; programa özgü hiçbir şey içermez).
+//!
+//! TAA ortak giriş (KM1), yerel HTTP arayüzlü Rust programları için: `POST /api/giris/<islem>` uçlarının gövdesi.
+//! Electron programlarındaki `araclar/js/taa-giris.js` köprüsünün karşılığı: aynı `taa-kimlik` aracını çalıştırır
 //! (cihaz imzası, yedekli yollar, sunucu imzası doğrulaması, Windows Kimlik Bilgisi Yöneticisi orada), aynı durum
 //! adlarını ve iletileri döndürür; ekran aynı `taa-giris-ekrani.js` dosyasıdır (sayfaya gömülür).
-//! Uçlar YALNIZ bu bilgisayardaki masaüstü programdan (loopback + `X-TAA-Masaustu`) çalışır; telefonlar kendi
-//! eşleştirme belirteçleriyle çalışmayı sürdürür.
+//! Program yalnız bu bilgisayardan ve kendi özel başlığıyla gelen istekleri buraya geçirmelidir.
 //! Şifre yalnız aracın standart girdisine yazılır; hiçbir yere kaydedilmez, günlüğe ve hata iletisine girmez.
 //! Yazan: [Claude#ortak-giris 2026-11-25].
 
-use super::*;
+use serde_json::json;
 use std::io::{Read, Write};
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-/// Sunucudaki program yetkisi adı (program_yetkisi.program; Çatı PIN'i de aynı adı kullanır).
-pub const PROGRAM: &str = cati_pin::PROGRAM;
-/// Araç bu sürede bitmezse durdurulur ve "sunucuya ulaşılamadı" sayılır. Sunucu tek iş parçacıklı olduğundan
-/// Electron köprüsündeki 30 sn yerine daha kısa tutulur.
+/// Araç bu sürede bitmezse durdurulur ve "sunucuya ulaşılamadı" sayılır (tek iş parçacıklı sunucular
+/// için Electron köprüsündeki 30 sn'den kısa).
 const SURE: Duration = Duration::from_secs(20);
 const CIKTI_EN_COK: u64 = 64 * 1024;
 
@@ -249,10 +250,10 @@ fn liste(v: &serde_json::Value) -> serde_json::Value {
 }
 
 /// Program listede değilse (liste yok ya da boşsa da) kapalı.
-fn program_acik(oturum: &serde_json::Value) -> bool {
+fn program_acik(oturum: &serde_json::Value, program: &str) -> bool {
     oturum["programlar"]
         .as_array()
-        .is_some_and(|l| l.iter().any(|p| p.as_str() == Some(PROGRAM)))
+        .is_some_and(|l| l.iter().any(|p| p.as_str() == Some(program)))
 }
 
 fn oturum_ozeti(o: &serde_json::Value, uyari: bool) -> serde_json::Value {
@@ -274,12 +275,12 @@ fn kullanici_gecerli(k: &str) -> bool {
 }
 
 /// Süren oturum; bu programa kapalıysa ya da yoksa null.
-fn durum(bul: KimlikBulucu) -> serde_json::Value {
+fn durum(bul: KimlikBulucu, program: &str) -> serde_json::Value {
     let r = calistir(bul, &["durum"], None);
     match r.cikti {
         Some(o) if r.kod == 0 => {
             let v = oturum_ozeti(&o, false);
-            if program_acik(&v) {
+            if program_acik(&v, program) {
                 v
             } else {
                 serde_json::Value::Null
@@ -289,21 +290,23 @@ fn durum(bul: KimlikBulucu) -> serde_json::Value {
     }
 }
 
-impl Uygulama {
-    /// `POST /api/giris/<islem>`: yalnız bu bilgisayardaki masaüstü programdan.
-    pub(crate) fn ortak_giris(&self, i: &Istek, islem: &str) -> Yanit {
-        if !i.yerel || !i.masaustu {
-            return Yanit::hata(403, "yalnız bu bilgisayardaki programdan");
-        }
-        let bul = self.kimlik_bulucu;
-        let v: serde_json::Value = serde_json::from_slice(&i.govde).unwrap_or_else(|_| json!({}));
+/// `POST /api/giris/<islem>` gövdesi (islem: baslangic, giris, basvur, durum, cikis). Yanıt her zaman 200 ile
+/// gönderilecek JSON'dur; bilinmeyen işlemde None (404). `program`: sunucudaki program yetkisi adı.
+pub fn yanitla(
+    bul: KimlikBulucu,
+    program: &str,
+    islem: &str,
+    govde: &[u8],
+) -> Option<serde_json::Value> {
+    {
+        let v: serde_json::Value = serde_json::from_slice(govde).unwrap_or_else(|_| json!({}));
         let yaz = |k: &str| v[k].as_str().unwrap_or("").to_string();
         let sonuc = match islem {
             "baslangic" => match bul() {
                 None => json!({ "arac": false, "oturum": null }),
-                Some(_) => json!({ "arac": true, "oturum": durum(bul) }),
+                Some(_) => json!({ "arac": true, "oturum": durum(bul, program) }),
             },
-            "durum" => durum(bul),
+            "durum" => durum(bul, program),
             "giris" => {
                 let k = yaz("kullanici").trim().to_string();
                 let parola = yaz("parola");
@@ -315,7 +318,7 @@ impl Uygulama {
                         Some(o) if r.kod == 0 => {
                             let oturum = oturum_ozeti(o, true);
                             // Çıkış yapılmaz: ortak oturum başka programlarda sürer, yalnız bu program reddedilir.
-                            if program_acik(&oturum) {
+                            if program_acik(&oturum, program) {
                                 json!({ "tamam": true, "oturum": oturum })
                             } else {
                                 red("program_kapali")
@@ -361,9 +364,9 @@ impl Uygulama {
                 }
             }
             "cikis" => json!({ "tamam": calistir(bul, &["cikis"], None).kod == 0 }),
-            _ => return Yanit::hata(404, "bulunamadı"),
+            _ => return None,
         };
-        Yanit::json(200, sonuc)
+        Some(sonuc)
     }
 }
 
@@ -446,18 +449,22 @@ mod testler {
 
     #[test]
     fn bos_ya_da_eksik_program_listesi_kapali() {
-        assert!(!program_acik(&json!({})));
-        assert!(!program_acik(&json!({"programlar": []})));
-        assert!(!program_acik(&json!({"programlar": ["tutaa"]})));
+        assert!(!program_acik(&json!({}), "terzitakip"));
+        assert!(!program_acik(&json!({"programlar": []}), "terzitakip"));
+        assert!(!program_acik(
+            &json!({"programlar": ["tutaa"]}),
+            "terzitakip"
+        ));
         assert!(program_acik(
-            &json!({"programlar": ["tutaa", "terzitakip"]})
+            &json!({"programlar": ["tutaa", "terzitakip"]}),
+            "terzitakip"
         ));
     }
 
     // ---- Uçtan uca: sahte taa-kimlik aracıyla (yalnız Unix; kabuk betiği) ----
     #[cfg(unix)]
     fn sahte_dizin() -> PathBuf {
-        std::env::temp_dir().join(format!("taa-fis-sahte-kimlik-{}", std::process::id()))
+        std::env::temp_dir().join(format!("taa-giris-sahte-kimlik-{}", std::process::id()))
     }
     #[cfg(unix)]
     fn sahte_bul() -> Option<PathBuf> {
@@ -467,55 +474,22 @@ mod testler {
         None
     }
 
-    fn post(
-        u: &Uygulama,
-        islem: &str,
-        govde: serde_json::Value,
-        yerel: bool,
-        masaustu: bool,
-    ) -> (u16, serde_json::Value) {
-        let y = u.isle(&Istek {
-            metot: "POST".into(),
-            yol: format!("/api/giris/{islem}"),
-            govde: govde.to_string().into_bytes(),
-            yerel,
-            masaustu,
-            ..Default::default()
-        });
-        (y.kod, serde_json::from_slice(&y.govde).unwrap_or_default())
+    fn post(bul: KimlikBulucu, islem: &str, govde: serde_json::Value) -> serde_json::Value {
+        yanitla(bul, "terzitakip", islem, govde.to_string().as_bytes())
+            .unwrap_or_else(|| json!("YOK"))
     }
 
     #[test]
-    fn arac_yoksa_eski_davranis_ve_yalniz_masaustu() {
-        let d = std::env::temp_dir().join(format!("taa-fis-giris-yok-{}", std::process::id()));
-        let mut u = Uygulama::yeni(d, None, "http://127.0.0.1:8787".into());
-        u.kimlik_bulucu = arac_yok;
+    fn arac_yoksa_eski_davranis() {
         assert_eq!(
-            post(&u, "baslangic", json!({}), true, true),
-            (200, json!({"arac": false, "oturum": null}))
+            post(arac_yok, "baslangic", json!({})),
+            json!({"arac": false, "oturum": null})
         );
         assert_eq!(
-            post(
-                &u,
-                "giris",
-                json!({"kullanici": "a", "parola": "b"}),
-                true,
-                true
-            )
-            .1["durum"],
+            post(arac_yok, "giris", json!({"kullanici": "a", "parola": "b"}))["durum"],
             "arac_yok"
         );
-        assert_eq!(
-            post(&u, "baslangic", json!({}), false, true).0,
-            403,
-            "telefondan/ağdan olmaz"
-        );
-        assert_eq!(
-            post(&u, "baslangic", json!({}), true, false).0,
-            403,
-            "başlıksız (başka site) olmaz"
-        );
-        assert_eq!(post(&u, "bilinmeyen", json!({}), true, true).0, 404);
+        assert_eq!(post(arac_yok, "bilinmeyen", json!({})), json!("YOK"));
     }
 
     #[cfg(unix)]
@@ -546,76 +520,52 @@ exit 1
         let yol = dz.join("taa-kimlik");
         std::fs::write(&yol, betik).unwrap();
         std::fs::set_permissions(&yol, std::fs::Permissions::from_mode(0o700)).unwrap();
-        let mut u = Uygulama::yeni(dz.join("veri"), None, "http://127.0.0.1:8787".into());
-        u.kimlik_bulucu = sahte_bul;
+        let u = sahte_bul;
 
         assert_eq!(
-            post(&u, "baslangic", json!({}), true, true).1,
+            post(u, "baslangic", json!({})),
             json!({"arac": true, "oturum": null})
         );
-        let (_, v) = post(
-            &u,
-            "giris",
-            json!({"kullanici": "ayse", "parola": "yanlis"}),
-            true,
-            true,
-        );
+        let v = post(u, "giris", json!({"kullanici": "ayse", "parola": "yanlis"}));
         assert_eq!(
             (v["tamam"].clone(), v["durum"].clone()),
             (json!(false), json!("hatali"))
         );
-        let (_, v) = post(
-            &u,
-            "giris",
-            json!({"kullanici": "ayse", "parola": "a\nb"}),
-            true,
-            true,
+        assert_eq!(
+            post(u, "giris", json!({"kullanici": "ayse", "parola": "a\nb"}))["durum"],
+            "girdi"
         );
-        assert_eq!(v["durum"], "girdi");
-        let (_, v) = post(
-            &u,
+        let v = post(
+            u,
             "giris",
             json!({"kullanici": "ayse", "parola": "Dogru-sifre1"}),
-            true,
-            true,
         );
         assert_eq!(v["tamam"], true);
         assert_eq!(v["oturum"]["uyari_sayisi"], 2);
-        let (_, v) = post(&u, "baslangic", json!({}), true, true);
+        let v = post(u, "baslangic", json!({}));
         assert_eq!(
             v["oturum"]["kullanici"], "ayse",
             "süren oturum ekranı açtırmaz"
         );
         // Programı kapalı kişi: giriş reddedilir, ortak oturum kapatılmaz (başka programlarda sürer).
-        let (_, v) = post(
-            &u,
+        let v = post(
+            u,
             "giris",
             json!({"kullanici": "kasiyer", "parola": "Dogru-sifre1"}),
-            true,
-            true,
         );
         assert_eq!(v["durum"], "program_kapali");
         assert!(dz.join("oturum").exists(), "ret çıkış yapmaz");
         assert_eq!(
-            post(&u, "durum", json!({}), true, true).1,
+            post(u, "durum", json!({})),
             serde_json::Value::Null,
             "kapalı programda süren oturum yok sayılır"
         );
-        let (_, v) = post(
-            &u,
-            "basvur",
-            json!({"kullanici": "ayse", "yeniParola": ""}),
-            true,
-            true,
-        );
+        let v = post(u, "basvur", json!({"kullanici": "ayse", "yeniParola": ""}));
         assert_eq!(
             (v["dogrulama_sayisi"].clone(), v["tur"].clone()),
             (json!("42"), json!("kilit"))
         );
-        assert_eq!(
-            post(&u, "cikis", json!({}), true, true).1,
-            json!({"tamam": true})
-        );
+        assert_eq!(post(u, "cikis", json!({})), json!({"tamam": true}));
         assert!(!dz.join("oturum").exists());
         // Şifre komut satırına hiç girmez (yalnız standart girdi).
         let args = std::fs::read_to_string(dz.join("argumanlar")).unwrap();
