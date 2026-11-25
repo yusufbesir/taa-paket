@@ -77,6 +77,10 @@
 .tg-menu kbd{margin-left:auto;font:12px ui-monospace,Consolas,monospace;color:var(--taa-soluk,#9aa5b8)}
 .tg-menu .tg-tehlike{color:var(--taa-hata,#f06a5f)}
 .tg-menu .tg-alt-menu{padding-left:16px}
+.tg-menu .tg-alt-menu[hidden]{display:none}
+.tg-menu .tg-cekmece .tg-secili{margin-left:auto;color:var(--taa-soluk,#9aa5b8);font-size:13px}
+.tg-menu .tg-cekmece .tg-ok2{display:inline-block;margin-left:8px;color:var(--taa-soluk,#9aa5b8);transition:transform .15s ease}
+.tg-menu .tg-cekmece[aria-expanded="true"] .tg-ok2{transform:rotate(90deg)}
 .tg-menu [aria-checked="true"]::after{content:"✓";margin-left:auto;color:var(--taa-vurgu,#f3a83b)}
 .tg-menu .tg-surum{padding:6px 10px 4px;font-size:11px;color:var(--taa-soluk,#9aa5b8)}
 @media print{.tg-hesap,.tg-menu{display:none}}`;
@@ -311,8 +315,10 @@
         if (!o) return;
         if (o.ayrac) { html += '<hr>'; return; }
         if (Array.isArray(o.alt)) {
-          html += `<div role="group" aria-label="${esc(o.ad)}"><div class="tg-surum" aria-hidden="true">${esc(o.ad)}</div><div class="tg-alt-menu">`;
-          o.alt.forEach((a) => { islem.push(a.tikla); html += `<button type="button" role="menuitemradio" tabindex="-1" aria-checked="${a.secili ? 'true' : 'false'}" data-i="${islem.length - 1}">${esc(a.ad)}</button>`; });
+          // Çekmece (Yusuf 11-26): kapalıyken tek satır "Tema · Çivit ›"; Enter/tık/sağ ok açar, sol ok/Esc kapatır.
+          const secili = o.alt.find((a) => a && a.secili);
+          html += `<div class="tg-grup"><button type="button" role="menuitem" tabindex="-1" class="tg-cekmece" aria-haspopup="true" aria-expanded="false">${esc(o.ad)}<span class="tg-secili">${secili ? esc(secili.ad) : ''}</span><span class="tg-ok2" aria-hidden="true">›</span></button><div class="tg-alt-menu" role="group" aria-label="${esc(o.ad)}" hidden>`;
+          o.alt.forEach((a) => { if (!a) return; islem.push(a.tikla); html += `<button type="button" role="menuitemradio" tabindex="-1" aria-checked="${a.secili ? 'true' : 'false'}" data-i="${islem.length - 1}">${esc(a.ad)}</button>`; });
           html += '</div></div>';
           return;
         }
@@ -326,21 +332,42 @@
       if (alt) html += `<div class="tg-surum">${esc(alt)}</div>`;
       m.innerHTML = html;
       belge.body.appendChild(m);
-      // Düğmenin üstüne aç; yer yoksa altına. Sola yasla, ekrandan taşma.
-      const r = d.getBoundingClientRect();
-      const g = belge.documentElement.clientWidth, y = belge.documentElement.clientHeight;
-      const mr = m.getBoundingClientRect();
-      m.style.left = Math.max(8, Math.min(r.left, g - mr.width - 8)) + 'px';
-      m.style.top = (r.top - mr.height - 6 >= 8 ? r.top - mr.height - 6 : Math.min(r.bottom + 6, y - mr.height - 8)) + 'px';
+      // Düğmenin üstüne aç; yer yoksa altına. Sola yasla, ekrandan taşma. Çekmece açılıp kapanınca yeniden yerleşir.
+      const yerlestir = () => {
+        const r = d.getBoundingClientRect();
+        const g = belge.documentElement.clientWidth, y = belge.documentElement.clientHeight;
+        const mr = m.getBoundingClientRect();
+        m.style.left = Math.max(8, Math.min(r.left, g - mr.width - 8)) + 'px';
+        m.style.top = Math.max(8, r.top - mr.height - 6 >= 8 ? r.top - mr.height - 6 : Math.min(r.bottom + 6, y - mr.height - 8)) + 'px';
+      };
+      yerlestir();
+      const cekmece = (c, ac) => {
+        const l = c.nextElementSibling;
+        c.setAttribute('aria-expanded', ac ? 'true' : 'false');
+        l.hidden = !ac;
+        yerlestir();
+        if (ac) { const sec = l.querySelector('[aria-checked="true"]') || l.querySelector('[role=menuitemradio]'); if (sec) sec.focus(); } else c.focus();
+      };
       d.setAttribute('aria-expanded', 'true');
-      const ogeler = () => Array.from(m.querySelectorAll('[role=menuitem],[role=menuitemradio]'));
+      const ogeler = () => Array.from(m.querySelectorAll('[role=menuitem],[role=menuitemradio]')).filter((e) => !e.closest('[hidden]'));
       m.addEventListener('click', (e) => {
         const b = e.target.closest('button'); if (!b) return;
         if (b.dataset.ortak === 'cikis' && !b.dataset.onay) {
           b.dataset.onay = '1'; b.textContent = 'Emin misiniz? Çıkmak için yeniden basın'; b.focus(); return;
         }
         if (b.dataset.ortak) { cik(ayar, b.dataset.ortak); return; }
+        if (b.classList.contains('tg-cekmece')) { cekmece(b, b.getAttribute('aria-expanded') !== 'true'); return; }
         const f = islem[Number(b.dataset.i)];
+        if (b.getAttribute('role') === 'menuitemradio') {
+          // Seçim: işaret ve satırdaki ad güncellenir, çekmece kapanır; menü açık kalır.
+          const l = b.parentNode;
+          l.querySelectorAll('[role=menuitemradio]').forEach((x) => x.setAttribute('aria-checked', x === b ? 'true' : 'false'));
+          const c = l.previousElementSibling;
+          c.querySelector('.tg-secili').textContent = b.textContent;
+          cekmece(c, false);
+          if (typeof f === 'function') f();
+          return;
+        }
         menuKapat(belge, true);
         if (typeof f === 'function') f();
       });
@@ -350,6 +377,11 @@
         else if (e.key === 'ArrowUp') { e.preventDefault(); l[(i - 1 + l.length) % l.length].focus(); }
         else if (e.key === 'Home') { e.preventDefault(); l[0].focus(); }
         else if (e.key === 'End') { e.preventDefault(); l[l.length - 1].focus(); }
+        else if (e.key === 'ArrowRight' && belge.activeElement.classList.contains('tg-cekmece')) { e.preventDefault(); cekmece(belge.activeElement, true); }
+        else if ((e.key === 'ArrowLeft' || e.key === 'Escape') && belge.activeElement.getAttribute('role') === 'menuitemradio') {
+          e.preventDefault(); cekmece(belge.activeElement.parentNode.previousElementSibling, false);
+        }
+        else if (e.key === 'ArrowLeft' && belge.activeElement.classList.contains('tg-cekmece')) { e.preventDefault(); cekmece(belge.activeElement, false); }
         else if (e.key === 'Escape') { e.preventDefault(); menuKapat(belge, true); }
         else if (e.key === 'Tab') menuKapat(belge, false);
       });
