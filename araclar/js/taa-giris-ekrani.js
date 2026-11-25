@@ -1,5 +1,5 @@
 // Sahip: Yusuf. yazan: [Claude#KM2-hesap-giris 2026-11-25]
-// taa-giris-ekrani.js v1 — kaynak: yusufbesir/taa-paket/araclar/js/taa-giris-ekrani.js; programlar kopyalar, elle düzenlemez.
+// taa-giris-ekrani.js v2 — kaynak: yusufbesir/taa-paket/araclar/js/taa-giris-ekrani.js; programlar kopyalar, elle düzenlemez.
 // TAA ortak giriş ekranı (renderer, tarayıcı tarafı; Node yok). window.taaGiris (taa-giris.js preloadKur) üzerinden çalışır.
 // Sınıf adları tg- önekli: programın kendi .ana/.kart gibi kurallarıyla çakışmaz.
 // Görünüm programın temasına uyar: renkler CSS değişkenlerinden okunur (--taa-arka, --taa-panel, --taa-yazi, --taa-soluk,
@@ -15,12 +15,14 @@
   'use strict';
   const STIL_ID = 'taa-giris-stil';
   const STIL = `
-.taa-giris{position:fixed;inset:0;display:grid;place-items:center;padding:16px;z-index:2147483647;
+.taa-giris{transition:opacity .25s ease;position:fixed;inset:0;display:grid;place-items:center;padding:16px;z-index:2147483647;
   background:var(--taa-arka,#0f1420);color:var(--taa-yazi,#e8ecf3);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
 .taa-giris *{box-sizing:border-box}
 .taa-giris .tg-kart{width:min(420px,100%);background:var(--taa-panel,#171e2c);border:1px solid var(--taa-cizgi,#2a3346);
   border-radius:var(--taa-r,14px);padding:28px 26px;box-shadow:0 18px 50px rgba(0,0,0,.25)}
 .taa-giris h1{margin:0 0 4px;font-size:22px;font-weight:600}
+.taa-giris.tg-gizli{visibility:hidden;opacity:0}
+@media (prefers-reduced-motion:reduce){.taa-giris{transition:none}}
 .taa-giris .tg-alt{margin:0 0 20px;color:var(--taa-soluk,#9aa5b8);font-size:13px}
 .taa-giris label{display:block;margin:0 0 14px;font-size:13px;color:var(--taa-soluk,#9aa5b8)}
 .taa-giris input{display:block;width:100%;margin-top:6px;padding:11px 12px;font:inherit;color:inherit;
@@ -44,14 +46,40 @@
 .taa-giris .tg-secim button[aria-pressed="true"]{border-color:var(--taa-vurgu,#f3a83b);color:var(--taa-vurgu,#f3a83b)}
 @media (prefers-reduced-motion:no-preference){.taa-giris .tg-kart{animation:taaGirisGel .22s cubic-bezier(.2,0,0,1)}}
 @keyframes taaGirisGel{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-.tg-cikis{position:fixed;left:12px;bottom:12px;z-index:2147482000;display:inline-flex;align-items:center;gap:6px;margin:0;
-  padding:6px 12px;min-height:0;height:auto;font:13px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif;cursor:pointer;
-  color:var(--taa-yazi,#e8ecf3);background:var(--taa-panel,#171e2c);border:1px solid var(--taa-cizgi,#2a3346);
-  border-radius:999px;box-shadow:0 4px 14px rgba(0,0,0,.18);opacity:.85;text-transform:none;letter-spacing:normal;transform:none}
-.tg-cikis:hover,.tg-cikis:focus-visible{opacity:1;background:var(--taa-panel,#171e2c);color:var(--taa-yazi,#e8ecf3)}
-.tg-cikis:focus-visible{outline:2px solid var(--taa-vurgu,#f3a83b);outline-offset:2px}
-.tg-cikis[disabled]{cursor:progress;opacity:.6}
-@media print{.tg-cikis{display:none}}`;
+.tg-hesap{position:fixed;left:12px;bottom:12px;z-index:2147482000;display:flex;align-items:center;gap:10px;margin:0;
+  padding:6px 10px 6px 6px;min-height:0;height:auto;max-width:260px;font:13px/1.25 system-ui,-apple-system,"Segoe UI",sans-serif;
+  cursor:pointer;text-align:left;color:var(--taa-yazi,#e8ecf3);background:var(--taa-panel,#171e2c);
+  border:1px solid var(--taa-cizgi,#2a3346);border-radius:calc(var(--taa-r,14px) - 4px);box-shadow:0 4px 14px rgba(0,0,0,.18);
+  text-transform:none;letter-spacing:normal;transform:none}
+.tg-hesap.tg-yerinde{position:static;width:100%;max-width:none;box-shadow:none;background:none;border-color:transparent}
+.tg-hesap:hover,.tg-hesap[aria-expanded="true"]{background:var(--taa-panel,#171e2c);border-color:var(--taa-cizgi,#2a3346);color:var(--taa-yazi,#e8ecf3)}
+.tg-hesap:focus-visible,.tg-menu [role=menuitem]:focus-visible,.tg-menu [role=menuitemradio]:focus-visible{outline:2px solid var(--taa-vurgu,#f3a83b);outline-offset:1px}
+.tg-rozet{flex:none;display:grid;place-items:center;width:32px;height:32px;border-radius:50%;font-weight:700;font-size:13px;
+  background:var(--taa-vurgu,#f3a83b);color:var(--taa-vurgu-yazi,#1a1205)}
+.tg-kim{display:grid;min-width:0}
+.tg-kim b,.tg-kim span{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.tg-kim b{font-weight:600}
+.tg-kim span{font-size:12px;color:var(--taa-soluk,#9aa5b8)}
+.tg-ok{margin-left:auto;color:var(--taa-soluk,#9aa5b8);font-size:11px}
+.tg-menu{position:fixed;z-index:2147482500;min-width:260px;max-width:min(320px,calc(100vw - 16px));max-height:calc(100vh - 16px);overflow:auto;
+  margin:0;padding:6px;font:14px/1.35 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--taa-yazi,#e8ecf3);
+  background:var(--taa-panel,#171e2c);border:1px solid var(--taa-cizgi,#2a3346);border-radius:calc(var(--taa-r,14px) - 2px);
+  box-shadow:0 18px 50px rgba(0,0,0,.3)}
+.tg-menu *{box-sizing:border-box}
+.tg-menu .tg-ust{display:flex;gap:10px;align-items:center;padding:8px 8px 10px}
+.tg-menu .tg-ust .tg-rozet{width:40px;height:40px;font-size:15px}
+.tg-menu .tg-sure{display:block;font-size:12px;color:var(--taa-soluk,#9aa5b8)}
+.tg-menu hr{border:0;border-top:1px solid var(--taa-cizgi,#2a3346);margin:4px 2px}
+.tg-menu [role=menuitem],.tg-menu [role=menuitemradio]{display:flex;align-items:center;gap:10px;width:100%;margin:0;padding:8px 10px;min-height:0;height:auto;
+  font:inherit;text-align:left;color:inherit;background:none;border:0;border-radius:calc(var(--taa-r,14px) - 8px);cursor:pointer;
+  box-shadow:none;text-transform:none;letter-spacing:normal;transform:none}
+.tg-menu [role=menuitem]:hover,.tg-menu [role=menuitem]:focus,.tg-menu [role=menuitemradio]:hover,.tg-menu [role=menuitemradio]:focus{background:var(--taa-arka,#0f1420);outline:none}
+.tg-menu kbd{margin-left:auto;font:12px ui-monospace,Consolas,monospace;color:var(--taa-soluk,#9aa5b8)}
+.tg-menu .tg-tehlike{color:var(--taa-hata,#f06a5f)}
+.tg-menu .tg-alt-menu{padding-left:16px}
+.tg-menu [aria-checked="true"]::after{content:"✓";margin-left:auto;color:var(--taa-vurgu,#f3a83b)}
+.tg-menu .tg-surum{padding:6px 10px 4px;font-size:11px;color:var(--taa-soluk,#9aa5b8)}
+@media print{.tg-hesap,.tg-menu{display:none}}`;
 
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -85,7 +113,8 @@
       ? new MutationObserver((l) => l.forEach((m) => m.addedNodes.forEach(inertYap))) : null;
     if (gozcu) gozcu.observe(govde, { childList: true });
     const programAdi = esc(s.programAdi || 'TAA');
-    let sonKullanici = '';
+    let sonKullanici = s.kullanici ? String(s.kullanici) : '';
+    const altMetin = s.kilitli && sonKullanici ? 'Ekran kilitli. Devam etmek için şifrenizi yazın.' : 'TAA hesabınızla giriş yapın';
 
     const kapat = () => {
       kap.querySelectorAll('input[type=password]').forEach((i) => { i.value = ''; });
@@ -98,7 +127,7 @@
 
     function girisGoster(ilk) {
       kap.innerHTML = `<form class="tg-kart" novalidate>
-        <h1 id="taa-giris-baslik">${programAdi}</h1><p class="tg-alt">TAA hesabınızla giriş yapın</p>
+        <h1 id="taa-giris-baslik">${programAdi}</h1><p class="tg-alt">${esc(altMetin)}</p>
         <label>Kullanıcı adı<input name="kullanici" autocomplete="username" autocapitalize="off" spellcheck="false" maxlength="64" required value="${esc(sonKullanici)}"></label>
         <label>Şifre<input name="parola" type="password" autocomplete="current-password" maxlength="128" required></label>
         <p class="tg-ileti" role="status" aria-live="polite"></p>
@@ -182,8 +211,13 @@
       odak('[data-tamam]');
     }
 
-    girisGoster();
-    return { kapat };
+    // ileti: açılışta gösterilecek tek satır (ör. hesap menüsünden gelen 'oturum tam kapatılamadı' uyarısı).
+    girisGoster(s.ileti ? { metin: String(s.ileti), tur: 'hata' } : undefined);
+    const ilkOdak = () => odak(sonKullanici ? 'input[name=parola]' : 'input[name=kullanici]');
+    // gizli: true → ekran kurulur, arka sayfa kilitlenir ama görünmez; programın açılış animasyonu bitince goster() çağrılır.
+    if (s.gizli) kap.classList.add('tg-gizli'); else ilkOdak();
+    const goster = () => { if (kap.isConnected && kap.classList.contains('tg-gizli')) { kap.classList.remove('tg-gizli'); ilkOdak(); } };
+    return { kapat, goster };
   }
 
   // Girişte hesap uyarısı varsa (başka bilgisayardan deneme, başvuruyla şifre değişikliği) program bunu gösterir.
@@ -191,36 +225,172 @@
     ? `Hesabınızla ilgili ${oturum.uyari_sayisi} yeni uyarı var: başka bir bilgisayardan giriş denemesi ya da şifre değişikliği. Siz değilseniz yöneticinize haber verin.`
     : '');
 
-  // Ortak bilgisayarda giren kişi kalıcı olmasın (Fable T3): köşede küçük "Çıkış" düğmesi. Basınca ortak oturum
-  // kapanır (taa-kimlik cikis; sunucudaki oturum da) ve `cikinca` çağrılır (program giriş ekranını yeniden açar).
-  // Yeniden çağrılırsa var olan düğme güncellenir. secenek: { api, oturum, cikinca }.
-  function cikisDugmesi(secenek) {
+  const ROL_ADI = { yonetici: 'Yönetici', kasa: 'Kasa', personel: 'Personel', usta: 'Usta' };
+  const basHarf = (ad) => (String(ad || '?').replace(/[^\p{L}\p{N}]/gu, ' ').trim().split(/\s+/).slice(0, 2)
+    .map((p) => p[0]).join('') || '?').toLocaleUpperCase('tr-TR');
+  const rolMetni = (o) => {
+    const r = (o && Array.isArray(o.roller) ? o.roller : []).map((x) => ROL_ADI[x] || x);
+    const sube = o && o.sube_id != null ? 'Şube ' + o.sube_id : '';
+    return [r.join(', '), sube].filter(Boolean).join(' · ');
+  };
+  const sureMetni = (ms) => {
+    const dk = Math.max(0, Math.floor(ms / 60000));
+    return dk < 1 ? 'az önce' : dk < 60 ? dk + ' dk' : Math.floor(dk / 60) + ' sa ' + (dk % 60) + ' dk';
+  };
+  let girisZamani = null; // { kullanici, zaman }: bu pencerede ilk görülen giriş (oturum süresi için)
+  let kisayolKuruldu = false;
+  let etkinMenu = null;   // son kurulan hesap menüsünün seçenekleri (Ctrl+L için)
+
+  // Hesap menüsü (Yusuf 11-26): sol altta baş harf rozeti + ad + rol/şube; tıklayınca yukarı açılan menü.
+  // Ortak öğeler: oturum süresi, Kullanıcı değiştir, Ekranı kilitle (Ctrl+L), onaylı Çıkış yap, sürüm.
+  // Program kendi öğelerini `ogeler` ile ekler (Ayarlar, Tema alt menüsü, Kısayollar, Yönetici kipinden çık…).
+  // Her üç çıkış yolu ortak oturumu kapatır (taa-kimlik cikis; sunucudaki oturum da) ve cikinca({ neden, kullanici }) çağrılır:
+  //   neden 'degistir' → boş giriş ekranı; 'kilit' → kullanıcı adı dolu giriş (ac(..., { kullanici, kilitli: true }));
+  //   'cikis' → boş giriş ekranı. Program giriş ekranını kendisi açar.
+//   ileti doluysa (çıkış tam olmadıysa) ac(..., { ileti }) ile girişte gösterilir.
+  // secenek: { api, oturum, cikinca, hedef?, programAdi?, surum?, girisZamani?, ogeler? }
+  //   hedef: düğmenin konacağı öğe (ör. kenar çubuğunun altı); yoksa ekranın sol altına sabitlenir.
+  //   ogeler: [{ ad, kisayol?, tehlike?, tikla() } | { ayrac: true } | { ad, alt: [{ ad, secili?, tikla() }] }]
+  // Yeniden çağrılırsa var olan düğme güncellenir.
+  function hesapMenusu(secenek) {
     const s = secenek || {};
     const api = s.api || (kok && kok.taaGiris);
     const belge = (kok && kok.document) || document;
     if (!api || typeof api.cikis !== 'function' || !belge.body) return null;
     stilEkle(belge);
-    let d = belge.getElementById('taa-giris-cikis');
+    menuKapat(belge);
+    const oturum = s.oturum || {};
+    const ad = oturum.kullanici ? String(oturum.kullanici) : '';
+    if (s.girisZamani) girisZamani = { kullanici: ad, zaman: Number(s.girisZamani) };
+    else if (!girisZamani || girisZamani.kullanici !== ad) girisZamani = { kullanici: ad, zaman: Date.now() };
+
+    let d = belge.getElementById('taa-giris-hesap');
+    const eski = belge.getElementById('taa-giris-cikis'); if (eski) eski.remove();
     if (!d) {
       d = belge.createElement('button');
-      d.id = 'taa-giris-cikis';
+      d.id = 'taa-giris-hesap';
       d.type = 'button';
-      d.className = 'tg-cikis';
-      belge.body.appendChild(d);
+      d.setAttribute('aria-haspopup', 'menu');
     }
-    const ad = s.oturum && s.oturum.kullanici ? String(s.oturum.kullanici) : '';
-    d.textContent = ad ? 'Çıkış · ' + ad : 'Çıkış';
-    d.title = ad ? ad + ' hesabından çık' : 'Hesaptan çık';
-    d.setAttribute('aria-label', d.title);
+    const kap = s.hedef && s.hedef.nodeType === 1 ? s.hedef : belge.body;
+    if (d.parentNode !== kap) kap.appendChild(d);
+    d.className = 'tg-hesap' + (kap === belge.body ? '' : ' tg-yerinde');
+    d.setAttribute('aria-expanded', 'false');
     d.disabled = false;
-    d.onclick = async () => {
-      d.disabled = true;
-      try { await api.cikis(); } catch (_) { /* yerel kayıt araçta silinir; yine de giriş istenir */ }
-      d.remove();
-      if (typeof s.cikinca === 'function') s.cikinca();
-    };
+    d.innerHTML = `<span class="tg-rozet" aria-hidden="true">${esc(basHarf(ad))}</span>
+      <span class="tg-kim"><b>${esc(ad || 'Hesap')}</b><span>${esc(rolMetni(oturum))}</span></span><span class="tg-ok" aria-hidden="true">▴</span>`;
+    d.setAttribute('aria-label', (ad ? ad + ' hesabı' : 'Hesap') + ' menüsü');
+    d.onclick = () => (belge.getElementById('taa-giris-menu') ? menuKapat(belge, true) : menuAc());
+
+    const ayar = { s, api, belge, d, ad, oturum };
+    etkinMenu = ayar;
+    if (!kisayolKuruldu) {
+      kisayolKuruldu = true;
+      belge.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === 'l' || e.key === 'L') && etkinMenu
+          && etkinMenu.d.isConnected && !etkinMenu.cikiyor && !belge.querySelector('.taa-giris')) {
+          e.preventDefault();
+          cik(etkinMenu, 'kilit');
+        }
+      });
+    }
+
+    function menuAc() {
+      const m = belge.createElement('div');
+      m.id = 'taa-giris-menu';
+      m.className = 'tg-menu';
+      m.setAttribute('role', 'menu');
+      m.setAttribute('aria-label', 'Hesap');
+      const sure = girisZamani ? sureMetni(Date.now() - girisZamani.zaman) : '';
+      let html = `<div class="tg-ust" role="presentation"><span class="tg-rozet" aria-hidden="true">${esc(basHarf(ad))}</span>
+        <span class="tg-kim"><b>${esc(ad || 'Hesap')}</b><span>${esc(rolMetni(oturum))}</span>
+        <span class="tg-sure">${sure ? 'Oturum açık · ' + esc(sure) : ''}</span></span></div><hr>`;
+      const islem = [];
+      const oge = (o, ek) => { islem.push(o.tikla); return `<button type="button" role="menuitem" tabindex="-1" data-i="${islem.length - 1}"${ek || ''}${o.tehlike ? ' class="tg-tehlike"' : ''}>${esc(o.ad)}${o.kisayol ? '<kbd>' + esc(o.kisayol) + '</kbd>' : ''}</button>`; };
+      (Array.isArray(s.ogeler) ? s.ogeler : []).forEach((o) => {
+        if (!o) return;
+        if (o.ayrac) { html += '<hr>'; return; }
+        if (Array.isArray(o.alt)) {
+          html += `<div role="group" aria-label="${esc(o.ad)}"><div class="tg-surum" aria-hidden="true">${esc(o.ad)}</div><div class="tg-alt-menu">`;
+          o.alt.forEach((a) => { islem.push(a.tikla); html += `<button type="button" role="menuitemradio" tabindex="-1" aria-checked="${a.secili ? 'true' : 'false'}" data-i="${islem.length - 1}">${esc(a.ad)}</button>`; });
+          html += '</div></div>';
+          return;
+        }
+        html += oge(o);
+      });
+      if (islem.length) html += '<hr>';
+      html += `<button type="button" role="menuitem" tabindex="-1" data-ortak="degistir">Kullanıcı değiştir</button>
+        <button type="button" role="menuitem" tabindex="-1" data-ortak="kilit" title="Oturum kapanır; bu bilgisayardaki öteki TAA programlarından da çıkılır. Geri girmek için sunucu bağlantısı gerekir.">Ekranı kilitle<kbd>Ctrl+L</kbd></button>
+        <hr><button type="button" role="menuitem" tabindex="-1" data-ortak="cikis" class="tg-tehlike">Çıkış yap</button>`;
+      const alt = [s.programAdi, s.surum ? 'sürüm ' + s.surum : ''].filter(Boolean).join(' · ');
+      if (alt) html += `<div class="tg-surum">${esc(alt)}</div>`;
+      m.innerHTML = html;
+      belge.body.appendChild(m);
+      // Düğmenin üstüne aç; yer yoksa altına. Sola yasla, ekrandan taşma.
+      const r = d.getBoundingClientRect();
+      const g = belge.documentElement.clientWidth, y = belge.documentElement.clientHeight;
+      const mr = m.getBoundingClientRect();
+      m.style.left = Math.max(8, Math.min(r.left, g - mr.width - 8)) + 'px';
+      m.style.top = (r.top - mr.height - 6 >= 8 ? r.top - mr.height - 6 : Math.min(r.bottom + 6, y - mr.height - 8)) + 'px';
+      d.setAttribute('aria-expanded', 'true');
+      const ogeler = () => Array.from(m.querySelectorAll('[role=menuitem],[role=menuitemradio]'));
+      m.addEventListener('click', (e) => {
+        const b = e.target.closest('button'); if (!b) return;
+        if (b.dataset.ortak === 'cikis' && !b.dataset.onay) {
+          b.dataset.onay = '1'; b.textContent = 'Emin misiniz? Çıkmak için yeniden basın'; b.focus(); return;
+        }
+        if (b.dataset.ortak) { cik(ayar, b.dataset.ortak); return; }
+        const f = islem[Number(b.dataset.i)];
+        menuKapat(belge, true);
+        if (typeof f === 'function') f();
+      });
+      m.addEventListener('keydown', (e) => {
+        const l = ogeler(); const i = l.indexOf(belge.activeElement);
+        if (e.key === 'ArrowDown') { e.preventDefault(); l[(i + 1) % l.length].focus(); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); l[(i - 1 + l.length) % l.length].focus(); }
+        else if (e.key === 'Home') { e.preventDefault(); l[0].focus(); }
+        else if (e.key === 'End') { e.preventDefault(); l[l.length - 1].focus(); }
+        else if (e.key === 'Escape') { e.preventDefault(); menuKapat(belge, true); }
+        else if (e.key === 'Tab') menuKapat(belge, false);
+      });
+      setTimeout(() => { if (m.isConnected) belge.addEventListener('pointerdown', disTik, true); }, 0);
+      const ilk = ogeler()[0]; if (ilk) ilk.focus();
+    }
+    function disTik(e) {
+      const m = belge.getElementById('taa-giris-menu');
+      if (m && !m.contains(e.target) && !d.contains(e.target)) menuKapat(belge, false);
+    }
+    ayar.disTik = disTik;
     return d;
   }
 
-  kok.TaaGirisEkrani = { ac, uyariMetni, cikisDugmesi };
+  function menuKapat(belge, odakGeri) {
+    const m = belge.getElementById('taa-giris-menu');
+    if (m) m.remove();
+    const d = belge.getElementById('taa-giris-hesap');
+    if (d) { d.setAttribute('aria-expanded', 'false'); if (odakGeri) d.focus(); }
+    if (etkinMenu && etkinMenu.disTik) belge.removeEventListener('pointerdown', etkinMenu.disTik, true);
+  }
+
+  async function cik(ayar, neden) {
+    const { s, api, belge, d, ad } = ayar;
+    if (ayar.cikiyor) return; // yeniden giriş yok: ikinci Ctrl+L ya da çift tık çıkışı iki kez çalıştırmaz
+    ayar.cikiyor = true;
+    menuKapat(belge, false);
+    d.disabled = true;
+    let ileti = '';
+    try {
+      const y = await api.cikis();
+      if (y && y.tamam === false) ileti = 'Oturum bu bilgisayarda tam kapatılamadı; program yeniden açılınca kendiliğinden girebilir.';
+    } catch (_) { ileti = 'Oturum bu bilgisayarda tam kapatılamadı; program yeniden açılınca kendiliğinden girebilir.'; }
+    d.remove();
+    girisZamani = null;
+    if (etkinMenu === ayar) etkinMenu = null;
+    if (typeof s.cikinca === 'function') s.cikinca({ neden, kullanici: neden === 'kilit' ? ad : '', ileti });
+  }
+
+  // Eski ad (T3): aynı menüyü kurar.
+  const cikisDugmesi = hesapMenusu;
+
+  kok.TaaGirisEkrani = { ac, uyariMetni, hesapMenusu, cikisDugmesi };
 })(typeof window !== 'undefined' ? window : globalThis);
