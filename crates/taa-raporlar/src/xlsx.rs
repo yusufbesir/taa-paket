@@ -37,7 +37,8 @@ fn xml_kac(s: &str) -> String {
             '>' => o.push_str("&gt;"),
             '"' => o.push_str("&quot;"),
             // XML 1.0'da geçersiz denetim karakterleri atılır (sekme/satır sonu kalır).
-            c if (c as u32) < 0x20 && !matches!(c, '\t' | '\n' | '\r') => {}
+            c if ((c as u32) < 0x20 && !matches!(c, '\t' | '\n' | '\r'))
+                || matches!(c as u32, 0xFFFE | 0xFFFF) => {}
             c => o.push(c),
         }
     }
@@ -172,8 +173,13 @@ pub fn xlsx_yaz(sayfalar: &[Sayfa]) -> Vec<u8> {
     let mut kullanilan: Vec<String> = vec![];
     for (i, s) in sayfalar.iter().enumerate() {
         let mut ad = sayfa_adi(&s.ad);
+        let taban = ad.clone();
+        let mut sira = 2usize;
         while kullanilan.iter().any(|k| k.eq_ignore_ascii_case(&ad)) {
-            ad = format!("{}{}", ad.chars().take(28).collect::<String>(), i + 1);
+            let sonek = format!("~{sira}");
+            let uzun = 31 - sonek.chars().count();
+            ad = format!("{}{sonek}", taban.chars().take(uzun).collect::<String>());
+            sira += 1;
         }
         kullanilan.push(ad.clone());
         let n = i + 1;
@@ -208,6 +214,11 @@ pub fn xlsx_yaz(sayfalar: &[Sayfa]) -> Vec<u8> {
 #[cfg(test)]
 mod testler {
     use super::*;
+
+    #[test]
+    fn xml_gecersiz_unicode_atilir() {
+        assert_eq!(xml_kac("a\u{FFFE}b\u{1}c"), "abc");
+    }
 
     #[test]
     fn crc32_bilinen_deger() {

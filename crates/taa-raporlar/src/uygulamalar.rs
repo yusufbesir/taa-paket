@@ -436,7 +436,7 @@ fn kasa_donemi(
         .map(|k| str_(k.get("v").unwrap_or(&Value::Null), "id"))
         .collect();
     let mut gunluk: std::collections::BTreeMap<String, i64> = Default::default();
-    let (mut n, mut fark, mut sayilan) = (0u64, 0i64, 0i64);
+    let (mut n, mut fark, mut sayilan, mut tasti) = (0u64, 0i64, 0i64, false);
     for k in kayitlar.iter().filter(|k| str_(k, "tur") == "kapanis") {
         let v = k.get("v").unwrap_or(&Value::Null);
         if iptal.contains(&str_(v, "id")) || !donem.icinde(&str_(v, "tarih")) {
@@ -447,9 +447,17 @@ fn kasa_donemi(
             v.get("sayilan_kurus").and_then(Value::as_i64).unwrap_or(0),
             v.get("fark_kurus").and_then(Value::as_i64).unwrap_or(0),
         );
-        sayilan += sy;
-        fark += fk;
-        *gunluk.entry(str_(v, "tarih")).or_default() += sy;
+        match (sayilan.checked_add(sy), fark.checked_add(fk)) {
+            (Some(a), Some(b)) => {
+                sayilan = a;
+                fark = b;
+            }
+            _ => {
+                tasti = true;
+            }
+        }
+        let g = gunluk.entry(str_(v, "tarih")).or_default();
+        *g = g.saturating_add(sy);
     }
     let eksik: Vec<String> = donem
         .gunler()
@@ -469,6 +477,18 @@ fn kasa_donemi(
         ],
         uyarilar: vec![],
     };
+    if tasti {
+        b.durum = Durum::Hata;
+        let metin =
+            "Kasa toplamları sayı sınırını aştı; toplamlar güvenilmez, kayıtları kontrol edin."
+                .to_string();
+        b.uyarilar.push(metin.clone());
+        yorumlar.push(Yorum {
+            seviye: Seviye::Uyari,
+            bolum: "kasa".into(),
+            metin,
+        });
+    }
     if !eksik.is_empty() {
         let ilk: Vec<&str> = eksik.iter().take(5).map(String::as_str).collect();
         let metin = format!(
@@ -677,7 +697,9 @@ pub fn paket_raporu(
 
 fn hucre(s: &str) -> String {
     // Excel'de formül olarak çalışmasın: =, +, -, @ ile başlayanın önüne kesme konur.
-    let s = if s.starts_with(['=', '+', '-', '@']) {
+    // Baştaki boşluk/denetim karakterini atan içe aktarıcılar için de korunur.
+    let ilk = s.trim_start_matches(|c: char| c.is_whitespace() || c.is_control());
+    let s = if ilk.starts_with(['=', '+', '-', '@']) {
         format!("'{s}")
     } else {
         s.to_string()
@@ -835,6 +857,13 @@ impl PaketRaporu {
 #[cfg(test)]
 mod testler {
     use super::*;
+
+    #[test]
+    fn hucre_bastaki_bosluktan_sonra_formul_korunur() {
+        assert!(hucre(" =1+1").starts_with("'"));
+        assert!(hucre("\t@x").starts_with("'"));
+        assert_eq!(hucre("normal"), "normal");
+    }
 
     fn gecici(ad: &str) -> std::path::PathBuf {
         let d = std::env::temp_dir().join(format!("taa-uyg-{}-{ad}", std::process::id()));
