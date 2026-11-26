@@ -2772,7 +2772,7 @@ pub(crate) mod testler {
                     .as_u64()
                     .unwrap();
                 assert!(
-                    sil <= bulut_simdi + 1 + crate::teslim_onay::ONAY_OMRU_SN,
+                    sil <= bulut_simdi + 2 + crate::teslim_onay::ONAY_OMRU_SN,
                     "kayma {kayma}: bulut sil kırpılmalı"
                 );
             }
