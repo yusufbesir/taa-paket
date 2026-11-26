@@ -72,7 +72,7 @@
     if (sonHesap === ad && document.getElementById('taa-giris-hesap')) return;
     sonHesap = ad;
     var k = function () { return window.TerziKopru || {}; };
-    window.TaaGirisEkrani.hesapMenusu({
+    var kurulan = window.TaaGirisEkrani.hesapMenusu({
       api: api, oturum: oturum, cikinca: girisAc,
       hedef: document.querySelector('.gez-alt'), programAdi: 'TAA Terzi Takip',
       get ogeler() {
@@ -84,13 +84,18 @@
           { ad: 'Klavye kısayolları', kisayol: 'F1', tikla: function () { if (k().kisayollar) k().kisayollar(); } },
           { ad: 'Yardım ve sürüm', tikla: function () { if (k().yardim) k().yardim(); } }
         ];
+        // Yönetici kipi: kapalıyken PIN akışı açılır, açıkken yönetici oturumu düşer (ortak oturum sürer).
+        liste.push({ ayrac: true });
         if (k().yoneticiAcik && k().yoneticiAcik()) {
-          liste.push({ ayrac: true });
           liste.push({ ad: 'Yönetici kipinden çık', tikla: function () { k().yoneticiKilitle(); } });
+        } else {
+          liste.push({ ad: 'Yönetici girişi', tikla: function () { if (k().git) k().git('telefonlar'); } });
         }
         return liste;
       }
     });
+    // Menü kurulduysa kenar çubuğundaki yedek Ayarlar/Yönetici girişi satırları gizlenir (masaustu.html CSS).
+    if (kurulan) { var pen = document.querySelector('.pencere'); if (pen) pen.dataset.hesap = 'var'; }
   }
 
   function girildi(oturum) { uyariGoster(oturum); cikisGoster(oturum); }

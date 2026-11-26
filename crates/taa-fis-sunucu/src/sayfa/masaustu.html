@@ -100,6 +100,9 @@ kbd{font:600 max(12px,.75em) var(--tk-fm);padding:1px 6px;border:1px solid curre
 .gez-baslik{padding:var(--tk-g3) var(--tk-g3) var(--tk-g1);font-weight:700;color:var(--tk-mut)}
 .gez-alt{margin-top:auto;display:grid;gap:var(--tk-g1)}
 .pencere[data-yon="kapali"] .yon-acik,.pencere[data-yon="acik"] .yon-kapali{display:none}
+/* Hesap menüsü kurulduysa Ayarlar ve Yönetici girişi menüdedir; yönetici yokken "Yönetim" başlığı da görünmez */
+.pencere[data-hesap="var"] .gez-yedek{display:none}
+.pencere[data-hesap="var"][data-yon="kapali"] .gez-yonetim{display:none}
 
 /* ana alan ve ekranlar */
 .ana-alan{grid-area:3/2/4/3;overflow:auto;padding:calc(var(--tk-g5)*var(--tk-yogunluk)) var(--tk-g5);position:relative}
@@ -685,13 +688,15 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
     <button class="gez" data-git="fisler" title="Fişler (Ctrl+F)"><svg class="sm"><use href="#i-liste"/></svg><span class="ad">Fişler</span><kbd>Ctrl+F</kbd></button>
     <button class="gez" data-git="ac" title="Fiş aç, okut (F2)"><svg class="sm"><use href="#i-kod"/></svg><span class="ad">Fiş aç</span><kbd>F2</kbd></button>
     <button class="gez" data-git="kurulum" id="gez-kurulum" title="İlk kurulum: şube ve kişiler" hidden><svg class="sm"><use href="#i-ayar"/></svg><span class="ad">İlk kurulum</span></button>
-    <div class="gez-baslik kucuk">Yönetim</div>
-    <button class="gez yon-kapali" data-git="telefonlar" data-yonetim title="Yönetici girişi"><svg class="sm"><use href="#i-kilit"/></svg><span class="ad">Yönetici girişi</span></button>
+    <div class="gez-baslik kucuk gez-yonetim">Yönetim</div>
+    <button class="gez yon-kapali gez-yedek" data-git="telefonlar" data-yonetim title="Yönetici girişi"><svg class="sm"><use href="#i-kilit"/></svg><span class="ad">Yönetici girişi</span></button>
     <button class="gez yon-acik" data-git="telefonlar" title="Telefonlar"><svg class="sm"><use href="#i-tel"/></svg><span class="ad">Telefonlar</span></button>
     <button class="gez yon-acik" data-git="personel" title="Personel ve usta"><svg class="sm"><use href="#i-kisi"/></svg><span class="ad">Personel ve usta</span></button>
     <button class="gez yon-acik" data-git="puan" title="Usta puanı"><svg class="sm"><use href="#i-puan"/></svg><span class="ad">Usta puanı</span></button>
+    <!-- Hesap menüsü buraya yerleşir (taa-giris-baslat.js). Menü kurulunca Ayarlar ve Yönetici girişi/kipinden çık
+         menüde olur, aşağıdaki .gez-yedek satırları gizlenir; TAA giriş aracı yoksa yedek satırlar görünür kalır. -->
     <div class="gez-alt">
-      <button class="gez" data-git="ayarlar" title="Ayarlar"><svg class="sm"><use href="#i-ayar"/></svg><span class="ad">Ayarlar</span></button>
+      <button class="gez gez-yedek" data-git="ayarlar" title="Ayarlar"><svg class="sm"><use href="#i-ayar"/></svg><span class="ad">Ayarlar</span></button>
     </div>
   </nav>
 
