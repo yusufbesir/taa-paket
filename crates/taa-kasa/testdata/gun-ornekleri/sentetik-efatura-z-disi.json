@@ -1,0 +1,10 @@
+{
+  "_aciklama": "SENTETİK örnek: e-fatura satışı Z'ye girmiyor ve kredi çeki Z'den düşülüyor varsayımı (ayar açık). Gerçek örnekle doğrulanırsa varsayılan değişir.",
+  "sentetik": true,
+  "z_formulu": {"efatura_dusulur": true, "kredi_ceki_dusulur": true},
+  "ciro": {"nakit": 80000, "ziraat_pos": 20000, "kredi_ceki": 4000, "efatura_pos": 6000},
+  "doviz": [],
+  "masraf_kurus": 0,
+  "beklenen_genel_toplam_kurus": 110000,
+  "beklenen_z_toplam_kurus": 100000
+}
