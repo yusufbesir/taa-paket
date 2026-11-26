@@ -38,3 +38,6 @@ Verimlilikte ani düşüş (son 7 gün, önceki 90 güne göre ≥2 sapma), yeni
 
 ## Yapılmadı
 Kalem başı QR etiketi, zor durum sorusunun okutmada sorulması (`zor` dizisi uçta var, ekranda yok), KVKK aydınlatma metni (avukat).
+
+## Usta Puan ayrı program değildir (Yusuf 2026-11-26)
+"Usta Puan diye bir uygulama olmasına gerek yok." Puanlar TerziTakip verisinden, TAA Çatı > Raporlar > TerziTakip bölümünde yalnız yöneticiye görünür. `usta-puan` özelliği varsayılan KAPALI kalır (avukat görüşüne kadar gölge mod: kayıt toplanır, rapor puanı hesaplanmaz).

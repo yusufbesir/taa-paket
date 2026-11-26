@@ -17,6 +17,7 @@ mod testler;
 
 pub mod gorunum;
 pub mod panel;
+pub mod raporlar_api;
 
 pub use taa_kimlik::{KimlikHata, Oturum};
 pub use taa_kuyruk::{GonderHata, Gonderici};

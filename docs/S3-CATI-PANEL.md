@@ -22,6 +22,7 @@ doğrulama, silme yok). TAA Sunucu hizmetine dokunulmaz.
 | Şubeler | `kullanici.yonet` | liste, ekle |
 | Program yetkileri | `program.yonet` | program × şube anahtarları; soluk anahtar genel kuraldan gelir; role özel kurallar komut satırında |
 | Yönetici PIN'leri | `program.yonet` | program başına genel PIN ve şubeye özel PIN; belirle/değiştir/kaldır (taze parola). PIN yalnız buradan belirlenir; programlar (TerziTakip, Tutaa…) sunucuda yalnız doğrular |
+| Raporlar | `yonetici` rolü | tüm TAA uygulamalarından rapor (TerziTakip, TAA Kasa, Tutaa, TAA Etiket, TaaRkod, TaaDön, TAA Giydir, Video Yapıcı, paket): özet, yorumlar, bölümler; Excel (CSV) indir, Yazdır/PDF. Usta puanı ayrı program değil: TerziTakip raporunda (ham sayılar; puan hesabı TerziTakip yönetici ekranında), yalnız `usta-puan` açıksa (varsayılan kapalı, avukat görüşüne kadar gölge mod) |
 | Günlük | `gunluk.gor` | olaylar, işleme göre süzgeç, daha eski olaylar |
 | Ayarlar > Görünüm | — | 3 tema × açık/koyu (Temaya göre/Açık/Koyu/Sistem), temaya özel vurgu rengi, hareket (Sistem/Azalt/Normal), tanıtımı yeniden göster, varsayılana dön; çıkış, paneli kapat |
 
@@ -77,3 +78,13 @@ Ekip turu v2 (Fable 5.2, GPT-6 Astra, Gemini 3.1 Pro), `/mnt/project-files/arayu
 - Kasa onayları ekranı yok (Çatı kitaplığında kasa uçları yok; ayrı adım).
 - Role özel program yetkisi ve rol kaldırma yalnız komut satırında.
 - İşlemler sırayla işlenir (tek iş parçacığı); yavaş sunucu yanıtı sırasında diğer istekler bekler.
+
+
+## Raporlar (Yusuf 2026-11-26)
+"TAA Çatı altında Raporlar bölümü olsun; tüm uygulamalardan rapor çekilebilsin; bunu yalnızca yöneticiler yapabilsin."
+- Uçlar (yalnız GET, yerel panel): `/api/raporlar/liste`, `/api/raporlar?uygulama=<kimlik|hepsi>&tarih=YYYY-AA-GG`, `/api/raporlar/csv?...` (indirme).
+- Yetki: oturumda `yonetici` rolü şart; yoksa 403 ve hiçbir veri okunmaz (menüde de görünmez). Giriş yoksa 401. Karar `taa_cati::raporlar_api::yanit` içindedir (testli).
+- Veri: yerel veri kökünden salt okunur (`taa_raporlar::uygulamalar`); PC'den çıkmaz, yapay zekâya gitmez. Her uygulamanın veri alanı için sahip, dosya, kayıt, boyut, son değişim; `taa-rapor` bölümleri (fiş, kasa, bildirim, katalog, pano, yedek) ve `taa-raporlar` yorum motoru (eşikler `<kök>\raporlar\esikler.json`). Kişisel veri alanlarında (kimlik) yalnız sayı.
+- TerziTakip fiş sunucusu `--veri` klasörü başka yerdeyse panel `--fis-klasoru <klasör>` ile başlatılır (fisler.jsonl, usta puanı).
+- Çıktı: ekran, CSV (UTF-8 BOM, `;`, Excel açar; `=`/`+`/`-`/`@` ile başlayan hücre formül olarak çalışmasın diye önüne `'` konur), PDF için tarayıcının yazdır penceresi (menü ve düğmeler yazdırmada gizlenir).
+- Sınırlar: dönem süzgeci (bugün/7/30 gün), şube karşılaştırması, "ciro girilmedi" / "kasa ile ciro uyuşmuyor" kuralları ve grafikler sonraki adımdır; gerçek .xlsx üretimi dış bağımlılık gerektirdiğinden yapılmadı (CSV Excel'de açılır). Raporlar yerel dosyalardan okunduğu için yönetici denetimi paneldedir; dosyaları doğrudan okuyan biri için engel işletim sistemi izinleridir.

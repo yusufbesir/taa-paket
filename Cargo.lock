@@ -775,10 +775,13 @@ version = "0.1.0"
 dependencies = [
  "getrandom 0.3.4",
  "serde_json",
+ "taa-ayar",
  "taa-hata",
  "taa-kimlik",
  "taa-kur-tema",
  "taa-kuyruk",
+ "taa-rapor",
+ "taa-raporlar",
  "taa-yol",
  "tiny_http",
 ]
@@ -1035,6 +1038,7 @@ name = "taa-raporlar"
 version = "0.1.0"
 dependencies = [
  "serde_json",
+ "taa-ayar",
  "taa-dosya",
  "taa-hata",
  "taa-kimlik",
