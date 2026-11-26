@@ -157,6 +157,7 @@ async function giris(istek, secenek) {
   // Program bu kişiye/şubeye kapalıysa açılmaz. Boş liste = hiçbir program açık değil (ret).
   // Çıkış yapılmaz: ortak oturum başka programlarda sürer, yalnız bu program reddedilir.
   if (!programAcik(oturum, s.program)) return red('program_kapali');
+  kilitSil(s); // başarılı giriş (kilit açma dahil) bu programın kilit işaretini kaldırır
   return { tamam: true, oturum };
 }
 
@@ -215,17 +216,58 @@ async function yetki(istek, secenek) {
 async function cikis(secenek) {
   const s = secenek || {};
   const r = await calistir(['cikis', ...sunucuArg(s)], null, s);
+  kilitSil(s);
   return { tamam: r.kod === 0 };
 }
 
+// ---- Ekran kilidi (Yusuf 11-26: "Kilit yayını durdurmasın") ----
+// Kilit oturumu kapatmaz (sunucudaki oturum ve ona bağlı yayın belirteçleri sürer); yalnız bu programın arayüzü kilitlenir.
+// Program kapatılıp açılınca kilit atlanmasın diye işaret programın veri klasörüne yazılır; baslangic işaret varken
+// oturumu vermez (giriş ekranı kullanıcı adı dolu, kilitli açılır). İşareti başarılı giriş ya da çıkış kaldırır.
+// Kullanıcı adı renderer'dan alınmaz: süren oturumdan okunur.
+function kilitDosyasi(s) {
+  if (s && s.kilitDosyasi) return String(s.kilitDosyasi);
+  let d = s && s.veriKlasoru;
+  if (!d) { try { d = require('electron').app.getPath('userData'); } catch (_) { return null; } }
+  return d ? path.join(String(d), 'taa-giris-kilit.json') : null;
+}
+function kilitOku(s) {
+  const y = kilitDosyasi(s);
+  if (!y) return null;
+  try {
+    const v = JSON.parse(fs.readFileSync(y, 'utf8'));
+    return v && typeof v.kullanici === 'string' && KULLANICI_RE.test(v.kullanici) ? v : null;
+  } catch (_) { return null; }
+}
+function kilitSil(s) {
+  const y = kilitDosyasi(s);
+  if (y) { try { fs.unlinkSync(y); } catch (_) { /* yoksa sorun değil */ } }
+}
+async function kilitle(secenek) {
+  const s = secenek || {};
+  const oturum = await durum(s);
+  if (!oturum || !KULLANICI_RE.test(String(oturum.kullanici || ''))) return { tamam: false };
+  const y = kilitDosyasi(s);
+  if (!y) return { tamam: false, kullanici: oturum.kullanici };
+  try {
+    fs.mkdirSync(path.dirname(y), { recursive: true });
+    fs.writeFileSync(y, JSON.stringify({ kullanici: oturum.kullanici, zaman: Date.now() }), { mode: 0o600 });
+  } catch (_) { return { tamam: false, kullanici: oturum.kullanici }; }
+  return { tamam: true, kullanici: oturum.kullanici };
+}
+
 // ---- Electron bağlantısı ----
-const KANAL = { baslangic: 'taa-giris:baslangic', giris: 'taa-giris:giris', basvur: 'taa-giris:basvur', durum: 'taa-giris:durum', yetki: 'taa-giris:yetki', cikis: 'taa-giris:cikis' };
+const KANAL = { baslangic: 'taa-giris:baslangic', giris: 'taa-giris:giris', basvur: 'taa-giris:basvur', durum: 'taa-giris:durum', yetki: 'taa-giris:yetki', cikis: 'taa-giris:cikis', kilitle: 'taa-giris:kilitle' };
 
 // Açılış kararı: araç kurulu mu, bu programa açık süren oturum var mı. Araç yoksa program eski davranışını sürdürür.
 async function baslangic(secenek) {
   const s = secenek || {};
   if (!kimlikYolu(s.env || process.env, s.paketli === true)) return { arac: false, oturum: null };
-  return { arac: true, oturum: await durum(s) };
+  const oturum = await durum(s);
+  const k = kilitOku(s);
+  if (oturum && k && k.kullanici === oturum.kullanici) return { arac: true, oturum: null, kilitli: { kullanici: k.kullanici } };
+  if (k) kilitSil(s); // oturum yok ya da başka kullanıcı: eski işaret geçersiz
+  return { arac: true, oturum };
 }
 
 // Varsayılan gönderen denetimi: yalnız pencerenin kendi ana çerçevesi ve yerel (file:) sayfa.
@@ -235,7 +277,7 @@ function gonderenVarsayilan(olay) {
   if (!f || !olay.sender || f !== olay.sender.mainFrame || !url.startsWith('file:')) throw new Error('taa-giris: yetkisiz gönderen');
 }
 
-// secenek: { program, paketli, sunucu, denetle(olay) } — denetle fırlatırsa çağrı reddedilir.
+// secenek: { program, paketli, sunucu, denetle(olay), veriKlasoru?, kilitDosyasi? } — denetle fırlatırsa çağrı reddedilir.
 function ipcKur(ipcMain, secenek) {
   const s = Object.assign({}, secenek);
   if (s.program && !PROGRAM_RE.test(s.program)) throw new Error('taa-giris: program adı geçersiz');
@@ -247,6 +289,7 @@ function ipcKur(ipcMain, secenek) {
   kur(KANAL.durum, () => durum(s));
   kur(KANAL.yetki, (i) => yetki(i, s));
   kur(KANAL.cikis, () => cikis(s));
+  kur(KANAL.kilitle, () => kilitle(s));
 }
 
 function preloadKur(contextBridge, ipcRenderer) {
@@ -257,7 +300,8 @@ function preloadKur(contextBridge, ipcRenderer) {
     durum: () => ipcRenderer.invoke(KANAL.durum),
     yetki: (izin) => ipcRenderer.invoke(KANAL.yetki, { izin }),
     cikis: () => ipcRenderer.invoke(KANAL.cikis),
+    kilitle: () => ipcRenderer.invoke(KANAL.kilitle),
   });
 }
 
-module.exports = { kimlikYolu, calistir, baslangic, giris, basvur, durum, yetki, cikis, ipcKur, preloadKur, KANAL, ILETI, _durumBul: durumBul };
+module.exports = { kimlikYolu, calistir, baslangic, giris, basvur, durum, yetki, cikis, kilitle, ipcKur, preloadKur, KANAL, ILETI, _durumBul: durumBul };

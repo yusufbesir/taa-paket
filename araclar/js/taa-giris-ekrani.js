@@ -118,7 +118,8 @@
     if (gozcu) gozcu.observe(govde, { childList: true });
     const programAdi = esc(s.programAdi || 'TAA');
     let sonKullanici = s.kullanici ? String(s.kullanici) : '';
-    const altMetin = s.kilitli && sonKullanici ? 'Ekran kilitli. Devam etmek için şifrenizi yazın.' : 'TAA hesabınızla giriş yapın';
+    let kilitKipi = !!(s.kilitli && sonKullanici);
+    const kilitliKullanici = kilitKipi ? sonKullanici : '';
 
     const kapat = () => {
       kap.querySelectorAll('input[type=password]').forEach((i) => { i.value = ''; });
@@ -130,18 +131,19 @@
     const odak = (sec) => { const e = kap.querySelector(sec); if (e) e.focus(); };
 
     function girisGoster(ilk) {
+      const altMetin = kilitKipi ? 'Ekran kilitli. Devam etmek için şifrenizi yazın.' : 'TAA hesabınızla giriş yapın';
       kap.innerHTML = `<form class="tg-kart" novalidate>
         <h1 id="taa-giris-baslik">${programAdi}</h1><p class="tg-alt">${esc(altMetin)}</p>
-        <label>Kullanıcı adı<input name="kullanici" autocomplete="username" autocapitalize="off" spellcheck="false" maxlength="64" required value="${esc(sonKullanici)}"></label>
+        <label>Kullanıcı adı<input name="kullanici" autocomplete="username" autocapitalize="off" spellcheck="false" maxlength="64" required value="${esc(sonKullanici)}"${kilitKipi ? ' readonly aria-readonly="true"' : ''}></label>
         <label>Şifre<input name="parola" type="password" autocomplete="current-password" maxlength="128" required></label>
         <p class="tg-ileti" role="status" aria-live="polite"></p>
         <button class="tg-ana" type="submit">Giriş yap</button>
-        <button class="tg-bag" type="button" data-basvur>Şifremi unuttum ya da hesabım kilitli</button></form>`;
+        <button class="tg-bag" type="button" data-basvur>Şifremi unuttum ya da hesabım kilitli</button>${kilitKipi ? '<button class="tg-bag" type="button" data-baska>Başka kullanıcıyla gir</button>' : ''}</form>`;
       if (ilk) ileti(ilk.metin, ilk.tur);
       const f = kap.querySelector('form');
       f.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const kullanici = f.kullanici.value.trim();
+        const kullanici = kilitKipi ? kilitliKullanici : f.kullanici.value.trim();
         const parola = f.parola.value;
         if (!kullanici || !parola) { ileti('Kullanıcı adını ve şifreyi yazın.'); return; }
         sonKullanici = kullanici;
@@ -151,11 +153,28 @@
         try { r = await api.giris(kullanici, parola); } catch (_) { r = { tamam: false, ileti: 'Giriş yapılamadı. Yeniden deneyin.' }; }
         f.parola.value = '';
         d.disabled = false;
-        if (r && r.tamam) { kapat(); if (typeof s.girildi === 'function') s.girildi(r.oturum); return; }
+        if (r && r.tamam) {
+          const acildi = kilitKipi && r.oturum && r.oturum.kullanici === kilitliKullanici;
+          kapat();
+          if (acildi) olay(belge, 'taa-giris:kilit-acildi', { kullanici: kilitliKullanici });
+          if (typeof s.girildi === 'function') s.girildi(r.oturum);
+          return;
+        }
         ileti((r && r.ileti) || 'Giriş yapılamadı.');
         if (r && r.durum === 'kilitli') { const b = f.querySelector('[data-basvur]'); b.textContent = 'Yöneticiye başvur'; b.focus(); } else odak('input[name=parola]');
       });
       f.querySelector('[data-basvur]').addEventListener('click', () => basvurGoster());
+      // Kilitliyken başka kullanıcı: önce gerçek çıkış (ortak oturum ve yayın belirteçleri kapanır), sonra boş giriş.
+      const baska = f.querySelector('[data-baska]');
+      if (baska) baska.addEventListener('click', async () => {
+        baska.disabled = true;
+        let ilk;
+        try { const y = await api.cikis(); if (y && y.tamam === false) ilk = { metin: 'Oturum bu bilgisayarda tam kapatılamadı.', tur: 'hata' }; }
+        catch (_) { ilk = { metin: 'Oturum bu bilgisayarda tam kapatılamadı.', tur: 'hata' }; }
+        olay(belge, 'taa-giris:cikildi', { kullanici: kilitliKullanici });
+        kilitKipi = false; sonKullanici = '';
+        girisGoster(ilk);
+      });
       odak(sonKullanici ? 'input[name=parola]' : 'input[name=kullanici]');
     }
 
@@ -242,17 +261,27 @@
     return dk < 1 ? 'az önce' : dk < 60 ? dk + ' dk' : Math.floor(dk / 60) + ' sa ' + (dk % 60) + ' dk';
   };
   let girisZamani = null; // { kullanici, zaman }: bu pencerede ilk görülen giriş (oturum süresi için)
+  // Programların dinleyebileceği olaylar (belge üzerinde, CustomEvent): taa-giris:kilitlendi, taa-giris:kilit-acildi,
+  // taa-giris:cikildi. detail: { kullanici }.
+  function olay(belge, ad, detay) {
+    try { belge.dispatchEvent(new (belge.defaultView || kok).CustomEvent(ad, { detail: detay })); } catch (_) { /* eski ortam */ }
+  }
+
   let kisayolKuruldu = false;
   let etkinMenu = null;   // son kurulan hesap menüsünün seçenekleri (Ctrl+L için)
 
   // Hesap menüsü (Yusuf 11-26): sol altta baş harf rozeti + ad + rol/şube; tıklayınca yukarı açılan menü.
   // Ortak öğeler: oturum süresi, Kullanıcı değiştir, Ekranı kilitle (Ctrl+L), onaylı Çıkış yap, sürüm.
   // Program kendi öğelerini `ogeler` ile ekler (Ayarlar, Tema alt menüsü, Kısayollar, Yönetici kipinden çık…).
-  // Her üç çıkış yolu ortak oturumu kapatır (taa-kimlik cikis; sunucudaki oturum da) ve cikinca({ neden, kullanici }) çağrılır:
+  // Kullanıcı değiştir ve Çıkış yap ortak oturumu kapatır (taa-kimlik cikis; sunucudaki oturum da).
+  // Ekranı kilitle (Yusuf 11-26 "Kilit yayını durdurmasın") oturumu KAPATMAZ: api.kilitle varsa ana süreç kilit işaretini
+  //   yazar (program yeniden açılınca da kilitli açılır), yoksa yalnız arayüz kilitlenir. 'taa-giris:kilitlendi' olayı ve
+  //   s.kilitlenince({ kullanici }) çağrılır. Kilit ekranında kullanıcı adı değişmez; "Başka kullanıcıyla gir" gerçek çıkış yapar.
+  // Hepsinde cikinca({ neden, kullanici, ileti }) çağrılır:
   //   neden 'degistir' → boş giriş ekranı; 'kilit' → kullanıcı adı dolu giriş (ac(..., { kullanici, kilitli: true }));
   //   'cikis' → boş giriş ekranı. Program giriş ekranını kendisi açar.
 //   ileti doluysa (çıkış tam olmadıysa) ac(..., { ileti }) ile girişte gösterilir.
-  // secenek: { api, oturum, cikinca, hedef?, programAdi?, surum?, girisZamani?, ogeler? }
+  // secenek: { api, oturum, cikinca, kilitlenince?, hedef?, programAdi?, surum?, girisZamani?, ogeler? }
   //   hedef: düğmenin konacağı öğe (ör. kenar çubuğunun altı); yoksa ekranın sol altına sabitlenir.
   //   ogeler: [{ ad, kisayol?, tehlike?, tikla() } | { ayrac: true } | { ad, alt: [{ ad, secili?, tikla() }] }]
   //     ya da her açılışta çağrılan bir işlev (ör. yönetici kipine göre değişen öğeler için).
@@ -329,7 +358,7 @@
       });
       if (islem.length) html += '<hr>';
       html += `<button type="button" role="menuitem" tabindex="-1" data-ortak="degistir">Kullanıcı değiştir</button>
-        <button type="button" role="menuitem" tabindex="-1" data-ortak="kilit" title="Oturum kapanır; bu bilgisayardaki öteki TAA programlarından da çıkılır. Geri girmek için sunucu bağlantısı gerekir.">Ekranı kilitle<kbd>Ctrl+L</kbd></button>
+        <button type="button" role="menuitem" tabindex="-1" data-ortak="kilit" title="Ekran kilitlenir; oturum açık kalır, süren işler (yayın gibi) durmaz. Açmak için şifre gerekir.">Ekranı kilitle<kbd>Ctrl+L</kbd></button>
         <hr><button type="button" role="menuitem" tabindex="-1" data-ortak="cikis" class="tg-tehlike">Çıkış yap</button>`;
       const alt = [s.programAdi, s.surum ? 'sürüm ' + s.surum : ''].filter(Boolean).join(' · ');
       if (alt) html += `<div class="tg-surum">${esc(alt)}</div>`;
@@ -414,13 +443,25 @@
     menuKapat(belge, false);
     d.disabled = true;
     let ileti = '';
-    try {
-      const y = await api.cikis();
-      if (y && y.tamam === false) ileti = 'Oturum bu bilgisayarda tam kapatılamadı; program yeniden açılınca kendiliğinden girebilir.';
-    } catch (_) { ileti = 'Oturum bu bilgisayarda tam kapatılamadı; program yeniden açılınca kendiliğinden girebilir.'; }
+    if (neden === 'kilit') {
+      // Oturum kapanmaz. Kilit işareti yazılamazsa yalnız arayüz kilitlenir (program yeniden açılınca kilit kalmaz).
+      if (typeof api.kilitle === 'function') {
+        try { const y = await api.kilitle(); if (!y || y.tamam !== true) ileti = 'Ekran kilitlendi; ancak program yeniden açılırsa kilit kalmayabilir.'; }
+        catch (_) { ileti = 'Ekran kilitlendi; ancak program yeniden açılırsa kilit kalmayabilir.'; }
+      }
+    } else {
+      try {
+        const y = await api.cikis();
+        if (y && y.tamam === false) ileti = 'Oturum bu bilgisayarda tam kapatılamadı; program yeniden açılınca kendiliğinden girebilir.';
+      } catch (_) { ileti = 'Oturum bu bilgisayarda tam kapatılamadı; program yeniden açılınca kendiliğinden girebilir.'; }
+      girisZamani = null;
+    }
     d.remove();
-    girisZamani = null;
     if (etkinMenu === ayar) etkinMenu = null;
+    if (neden === 'kilit') {
+      olay(belge, 'taa-giris:kilitlendi', { kullanici: ad });
+      if (typeof s.kilitlenince === 'function') { try { s.kilitlenince({ kullanici: ad }); } catch (_) { /* program hatası kilidi bozmasın */ } }
+    } else olay(belge, 'taa-giris:cikildi', { kullanici: ad });
     if (typeof s.cikinca === 'function') s.cikinca({ neden, kullanici: neden === 'kilit' ? ad : '', ileti });
   }
 

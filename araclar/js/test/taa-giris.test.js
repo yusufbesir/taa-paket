@@ -161,5 +161,33 @@ test('ipcKur kanalları, gönderen denetimi ve program adı', async () => {
   assert.throws(() => g.ipcKur({ handle: () => {} }, { program: 'Tutaa!' }));
   let acik;
   g.preloadKur({ exposeInMainWorld: (ad, api) => { acik = [ad, Object.keys(api).sort()]; } }, { invoke: () => {} });
-  assert.deepStrictEqual(acik, ['taaGiris', ['baslangic', 'basvur', 'cikis', 'durum', 'giris', 'yetki']]);
+  assert.deepStrictEqual(acik, ['taaGiris', ['baslangic', 'basvur', 'cikis', 'durum', 'giris', 'kilitle', 'yetki']]);
+});
+
+test('ekran kilidi: oturum kapanmaz, işaret yeniden açılışta kilitli başlatır; giriş ve çıkış kaldırır (Yusuf 11-26)', { skip: !posix }, async () => {
+  const o = ortam();
+  const kilitDosyasi = path.join(o.kok, 'veri', 'taa-giris-kilit.json');
+  const s = { env: o.env, program: 'tutaa', kilitDosyasi };
+  const k = await g.kilitle(s);
+  assert.deepStrictEqual(k, { tamam: true, kullanici: 'ali' });
+  assert.strictEqual(o.cagri().args[0], 'durum', 'kilit cikis çağırmaz; kullanıcı süren oturumdan okunur');
+  assert.strictEqual(JSON.parse(fs.readFileSync(kilitDosyasi, 'utf8')).kullanici, 'ali');
+  assert.deepStrictEqual(await g.baslangic(s), { arac: true, oturum: null, kilitli: { kullanici: 'ali' } }, 'yeniden açılış kilitli');
+  const r = await g.giris({ kullanici: 'ali', parola: 'p' }, s);
+  assert.strictEqual(r.tamam, true);
+  assert.strictEqual(fs.existsSync(kilitDosyasi), false, 'başarılı giriş kilidi kaldırır');
+  assert.strictEqual((await g.baslangic(s)).oturum.kullanici, 'ali');
+  await g.kilitle(s);
+  await g.giris({ kullanici: 'ali', parola: 'p' }, { ...s, env: ortam('hatali').env });
+  assert.strictEqual(fs.existsSync(kilitDosyasi), true, 'hatalı şifre kilidi kaldırmaz');
+  await g.cikis(s);
+  assert.strictEqual(fs.existsSync(kilitDosyasi), false, 'çıkış kilidi kaldırır');
+  // Oturum yoksa kilitlenmez; başka kullanıcıya ait eski işaret geçersizdir ve silinir.
+  assert.deepStrictEqual(await g.kilitle({ ...s, env: ortam('cihaz').env }), { tamam: false });
+  fs.mkdirSync(path.dirname(kilitDosyasi), { recursive: true });
+  fs.writeFileSync(kilitDosyasi, JSON.stringify({ kullanici: 'veli' }));
+  assert.strictEqual((await g.baslangic(s)).oturum.kullanici, 'ali');
+  assert.strictEqual(fs.existsSync(kilitDosyasi), false);
+  fs.writeFileSync(kilitDosyasi, JSON.stringify({ kullanici: 'bozuk ad' }));
+  assert.strictEqual((await g.baslangic(s)).oturum.kullanici, 'ali', 'bozuk işaret yok sayılır');
 });
