@@ -136,11 +136,14 @@ test('Hesap menüsü: Kullanıcı değiştir ve Ctrl+L kilit adı dolu girişe d
     await menuKur(p);
     await p.keyboard.press('Control+l');
     await p.waitForFunction(() => window.cikislar.length === 1);
-    assert.deepStrictEqual(await p.evaluate(() => [window.cikti, window.cikislar[0]]), [1, { neden: 'kilit', kullanici: 'ayse', ileti: '' }]);
-    // Kilit sonrası giriş ekranı adı dolu ve kilitli metniyle açılır; giriş açıkken Ctrl+L bir şey yapmaz.
+    // Kilit oturumu kapatmaz (Yusuf 11-26 "Kilit yayını durdurmasın"): cikis gitmez, olay yayılır.
+    assert.deepStrictEqual(await p.evaluate(() => [window.cikti, window.cikislar[0]]), [0, { neden: 'kilit', kullanici: 'ayse', ileti: '' }]);
+    // Kilit sonrası giriş ekranı adı dolu (değiştirilemez) ve kilitli metniyle açılır; giriş açıkken Ctrl+L bir şey yapmaz.
     await p.evaluate(() => TaaGirisEkrani.ac(document.body, { kullanici: 'ayse', kilitli: true, api: { giris: async () => ({ tamam: false }) } }));
     assert.strictEqual(await p.inputValue('.taa-giris input[name=kullanici]'), 'ayse');
+    assert.strictEqual(await p.evaluate(() => document.querySelector('.taa-giris input[name=kullanici]').readOnly), true);
     assert.match(await p.textContent('.taa-giris'), /Ekran kilitli/);
+    assert.ok(await p.$('.taa-giris [data-baska]'), 'Başka kullanıcıyla gir var');
     await menuKur(p);
     await p.keyboard.press('Control+l');
     await new Promise((r) => setTimeout(r, 100));
@@ -161,27 +164,58 @@ test('Hesap menüsü: hedef öğeye yerleşir, HTML yorumlanmaz, eski çıkış 
   } finally { await b.close(); }
 });
 
-test('Hesap menüsü: çıkış sürerken ikinci Ctrl+L yeniden çalışmaz; tam kapanmazsa ileti (Fable #88)', { skip: !pw && 'playwright yok' }, async () => {
+test('Hesap menüsü: kilit sürerken ikinci Ctrl+L yeniden çalışmaz; işaret yazılamazsa ileti (Fable #88)', { skip: !pw && 'playwright yok' }, async () => {
   const b = await pw.chromium.launch();
   try {
     const p = await kur(b);
     await p.evaluate(() => {
-      window.cikti = 0; window.cikislar = [];
-      const api = { cikis: () => { window.cikti++; return new Promise((r) => setTimeout(() => r({ tamam: false }), 150)); } };
-      TaaGirisEkrani.hesapMenusu({ api, oturum: { kullanici: 'ayse' }, cikinca: (n) => window.cikislar.push(n) });
+      window.cikti = 0; window.kilit = 0; window.cikislar = []; window.olaylar = []; window.kanca = [];
+      document.addEventListener('taa-giris:kilitlendi', (e) => window.olaylar.push(e.detail));
+      const api = { cikis: async () => { window.cikti++; return { tamam: true }; },
+        kilitle: () => { window.kilit++; return new Promise((r) => setTimeout(() => r({ tamam: false }), 150)); } };
+      TaaGirisEkrani.hesapMenusu({ api, oturum: { kullanici: 'ayse' }, cikinca: (n) => window.cikislar.push(n), kilitlenince: (k) => window.kanca.push(k) });
     });
     await p.keyboard.press('Control+l');
     await p.keyboard.press('Control+l');
     await p.evaluate(() => document.getElementById('taa-giris-hesap') && document.getElementById('taa-giris-hesap').click());
     await p.waitForFunction(() => window.cikislar.length === 1);
     await new Promise((r) => setTimeout(r, 250));
-    const [cikti, n] = await p.evaluate(() => [window.cikti, window.cikislar]);
-    assert.strictEqual(cikti, 1, 'cikis bir kez gider');
+    const [cikti, kilit, n, olaylar, kanca] = await p.evaluate(() => [window.cikti, window.kilit, window.cikislar, window.olaylar, window.kanca]);
+    assert.strictEqual(cikti, 0, 'kilit oturumu kapatmaz');
+    assert.strictEqual(kilit, 1, 'kilitle bir kez gider');
     assert.strictEqual(n.length, 1, 'cikinca bir kez çalışır');
     assert.strictEqual(n[0].neden, 'kilit');
-    assert.match(n[0].ileti, /tam kapatılamadı/);
+    assert.match(n[0].ileti, /kilit kalmayabilir/);
+    assert.deepStrictEqual([olaylar, kanca], [[{ kullanici: 'ayse' }], [{ kullanici: 'ayse' }]]);
     await p.evaluate((ileti) => TaaGirisEkrani.ac(document.body, { kullanici: 'ayse', kilitli: true, ileti, api: { giris: async () => ({ tamam: false }) } }), n[0].ileti);
-    assert.match(await p.textContent('.taa-giris .tg-ileti'), /tam kapatılamadı/);
+    assert.match(await p.textContent('.taa-giris .tg-ileti'), /kilit kalmayabilir/);
+  } finally { await b.close(); }
+});
+
+test('Kilit ekranı: aynı kullanıcıyla açılınca olay; ad değiştirilemez; Başka kullanıcıyla gir gerçek çıkış yapar', { skip: !pw && 'playwright yok' }, async () => {
+  const b = await pw.chromium.launch();
+  try {
+    const p = await kur(b);
+    await p.evaluate(() => {
+      window.giden = []; window.cikti = 0; window.acildi = []; window.cikildi = []; window.girdi = null;
+      document.addEventListener('taa-giris:kilit-acildi', (e) => window.acildi.push(e.detail));
+      document.addEventListener('taa-giris:cikildi', (e) => window.cikildi.push(e.detail));
+      const api = { giris: async (k) => { window.giden.push(k); return { tamam: true, oturum: { kullanici: k } }; }, cikis: async () => { window.cikti++; return { tamam: true }; } };
+      window.api = api;
+      TaaGirisEkrani.ac(document.body, { kullanici: 'ayse', kilitli: true, api, girildi: (o) => { window.girdi = o; } });
+    });
+    // readonly alan elle değiştirilse bile kilitli kullanıcı gider
+    await p.evaluate(() => { document.querySelector('.taa-giris input[name=kullanici]').value = 'veli'; });
+    await p.fill('.taa-giris input[name=parola]', 'Gizli-1234');
+    await p.click('.taa-giris .tg-ana');
+    await p.waitForFunction(() => window.girdi !== null);
+    assert.deepStrictEqual(await p.evaluate(() => [window.giden, window.acildi, window.cikti]), [['ayse'], [{ kullanici: 'ayse' }], 0]);
+    await p.evaluate(() => TaaGirisEkrani.ac(document.body, { kullanici: 'ayse', kilitli: true, api: window.api }));
+    await p.click('.taa-giris [data-baska]');
+    await p.waitForFunction(() => window.cikti === 1);
+    assert.deepStrictEqual(await p.evaluate(() => [window.cikildi, document.querySelector('.taa-giris input[name=kullanici]').value,
+      document.querySelector('.taa-giris input[name=kullanici]').readOnly, !!document.querySelector('.taa-giris [data-baska]')]),
+      [[{ kullanici: 'ayse' }], '', false, false]);
   } finally { await b.close(); }
 });
 
