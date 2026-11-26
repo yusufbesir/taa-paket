@@ -18,8 +18,32 @@ pub struct Cihaz {
 #[serde(tag = "tur", content = "v", rename_all = "lowercase")]
 enum Kayit {
     Cihaz(Cihaz),
-    Kapat { id: String, tarih: String },
+    Kapat {
+        id: String,
+        tarih: String,
+    },
+    /// Cihaz adı yalnız mağaza bilgisayarındaki programdan (yönetici) değişir.
+    Ad {
+        id: String,
+        ad: String,
+        tarih: String,
+    },
+    /// Yönetici bir cihaza yetki verir ya da geri alır (mağaza PC'si için id "PC").
+    Yetki {
+        id: String,
+        yetki: String,
+        ver: bool,
+        tarih: String,
+    },
 }
+
+/// Cihaza verilebilen yetkiler: (anahtar, açıklama, mağaza PC'sinde varsayılan, telefonda varsayılan).
+pub const YETKILER: &[(&str, &str, bool, bool)] = &[(
+    "duzelt",
+    "Fiş düzeltme: sonradan işlem ekleme/çıkarma, kargo ↔ mağaza, teslim tarihi, fiş bağlama",
+    true,
+    false,
+)];
 
 pub struct Kayitci {
     pub yol: PathBuf,
@@ -88,7 +112,86 @@ impl Kayitci {
                 }
             })
             .filter(|c| !kapali.contains(&c.id.as_str()))
+            .map(|mut c| {
+                for x in &k {
+                    if let Kayit::Ad { id, ad, .. } = x {
+                        if *id == c.id {
+                            c.ad = ad.clone();
+                        }
+                    }
+                }
+                c
+            })
             .collect())
+    }
+
+    /// Cihaz adını değiştirir (yalnız yönetici, mağaza bilgisayarından çağrılır).
+    pub fn ad_degistir(&self, id: &str, ad: &str, tarih: &str) -> Result<(), String> {
+        let ad = ad.trim();
+        if ad.is_empty() || ad.chars().count() > 40 || ad.chars().any(char::is_control) {
+            return Err("cihaz adı 1-40 karakter olmalı".into());
+        }
+        if !self.aktifler()?.iter().any(|c| c.id == id) {
+            return Err(format!("aktif cihaz yok: {id}"));
+        }
+        let s = serde_json::to_string(&Kayit::Ad {
+            id: id.into(),
+            ad: ad.into(),
+            tarih: tarih.into(),
+        })
+        .map_err(|e| e.to_string())?;
+        taa_dosya::satir_ekle(&self.yol, &s).map_err(|e| e.to_string())
+    }
+
+    /// Yetki ver/geri al. id: aktif cihaz ya da "PC" (mağaza bilgisayarı).
+    pub fn yetki_ata(&self, id: &str, yetki: &str, ver: bool, tarih: &str) -> Result<(), String> {
+        if !YETKILER.iter().any(|(k, ..)| *k == yetki) {
+            return Err(format!("bilinmeyen yetki: {yetki}"));
+        }
+        if id != crate::PC_ID && !self.aktifler()?.iter().any(|c| c.id == id) {
+            return Err(format!("aktif cihaz yok: {id}"));
+        }
+        let s = serde_json::to_string(&Kayit::Yetki {
+            id: id.into(),
+            yetki: yetki.into(),
+            ver,
+            tarih: tarih.into(),
+        })
+        .map_err(|e| e.to_string())?;
+        taa_dosya::satir_ekle(&self.yol, &s).map_err(|e| e.to_string())
+    }
+
+    /// Cihazın yetkisi var mı? Son kayıt geçerli; kayıt yoksa varsayılan (PC: açık, telefon: kapalı).
+    pub fn yetki_var(&self, id: &str, yetki: &str) -> bool {
+        let Some((_, _, pc, tel)) = YETKILER.iter().find(|(k, ..)| *k == yetki) else {
+            return false;
+        };
+        let mut v = if id == crate::PC_ID { *pc } else { *tel };
+        if let Ok(k) = self.oku() {
+            for x in &k {
+                if let Kayit::Yetki {
+                    id: i,
+                    yetki: y,
+                    ver,
+                    ..
+                } = x
+                {
+                    if i == id && y == yetki {
+                        v = *ver;
+                    }
+                }
+            }
+        }
+        v
+    }
+
+    /// Cihazın açık yetkileri (liste ekranı için).
+    pub fn yetkileri(&self, id: &str) -> Vec<&'static str> {
+        YETKILER
+            .iter()
+            .map(|(k, ..)| *k)
+            .filter(|k| self.yetki_var(id, k))
+            .collect()
     }
 
     pub fn ekle(&self, ad: &str, token: &str, tarih: &str, kisi_id: &str) -> Result<Cihaz, String> {

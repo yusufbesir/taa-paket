@@ -578,9 +578,15 @@ mod testler {
             let m = duz_metin_nusha(&f, 42, e);
             if e.starts_with("MÜŞTERİ") {
                 // kısa müşteri nüshası: adres yok, kargo uyarısı var
-                assert!(m.contains("KARGO İLE GÖNDERİLECEK") && !m.contains("Çankaya"), "{e}");
+                assert!(
+                    m.contains("KARGO İLE GÖNDERİLECEK") && !m.contains("Çankaya"),
+                    "{e}"
+                );
             } else {
-                assert!(m.contains("KARGO YAPILACAK") && m.contains("Çankaya"), "{e}");
+                assert!(
+                    m.contains("KARGO YAPILACAK") && m.contains("Çankaya"),
+                    "{e}"
+                );
             }
         }
         let f2 = d.ekle(girdi()).unwrap();
@@ -993,17 +999,46 @@ mod testler {
         // renk listede olmalı
         let mut kotu = kalem("Ceket", "ütü", "");
         kotu.renk = Some("gokkusagi".into());
-        assert!(d.kalem_ekle(&a.no, kotu, "Mağaza PC", "2026-11-05").is_err());
+        assert!(d
+            .kalem_ekle(&a.no, kotu, "Mağaza PC", "2026-11-05")
+            .is_err());
         // sonradan ütü eklenir, bir kalem çıkarılır
-        d.kalem_ekle(&a.no, kalem("Ceket", "ütü", ""), "Mağaza PC", "2026-11-05").unwrap();
-        d.kalem_cikar(&a.no, 1, "müşteri vazgeçti", "Mağaza PC", "2026-11-05").unwrap();
-        assert!(d.kalem_cikar(&a.no, 9, "", "Mağaza PC", "2026-11-05").is_err());
+        d.kalem_ekle(&a.no, kalem("Ceket", "ütü", ""), "Mağaza PC", "2026-11-05")
+            .unwrap();
+        d.kalem_cikar(&a.no, 1, "müşteri vazgeçti", "Mağaza PC", "2026-11-05")
+            .unwrap();
+        assert!(d
+            .kalem_cikar(&a.no, 9, "", "Mağaza PC", "2026-11-05")
+            .is_err());
         // mağazadan teslim -> kargo (eksik bilgi reddedilir) -> kargo iptal
-        assert!(d.teslim_sekli(&a.no, true, "Ayşe", "", "", "", "", "PC", "2026-11-05").is_err());
-        d.teslim_sekli(&a.no, true, "Ayşe Çelik", "Atatürk Mah. 5. Sk. No:3 Büyükçekmece/İstanbul",
-            "0532 111 22 33", "", "müşteri istedi", "PC", "2026-11-05").unwrap();
+        assert!(d
+            .teslim_sekli(&a.no, true, "Ayşe", "", "", "", "", "PC", "2026-11-05")
+            .is_err());
+        d.teslim_sekli(
+            &a.no,
+            true,
+            "Ayşe Çelik",
+            "Atatürk Mah. 5. Sk. No:3 Büyükçekmece/İstanbul",
+            "0532 111 22 33",
+            "",
+            "müşteri istedi",
+            "PC",
+            "2026-11-05",
+        )
+        .unwrap();
         assert!(d.bul(&a.no).unwrap().unwrap().kargo);
-        d.teslim_sekli(&a.no, false, "", "", "", "", "kargo iptal", "PC", "2026-11-06").unwrap();
+        d.teslim_sekli(
+            &a.no,
+            false,
+            "",
+            "",
+            "",
+            "",
+            "kargo iptal",
+            "PC",
+            "2026-11-06",
+        )
+        .unwrap();
         let f = d.bul(&a.no).unwrap().unwrap();
         assert!(!f.kargo && f.kargo_adres.is_empty());
         assert_eq!(f.kalemler.len(), 2);
@@ -1029,12 +1064,17 @@ mod testler {
         let m = duz_metin_nusha(&f, 42, "MÜŞTERİ NÜSHASI");
         assert!(m.contains("2 x Pantolon (Siyah)") && m.contains("Birlikte teslim"));
         assert!(!m.contains("Sat. Dan.") && !m.contains("Ölçü:") && !m.contains("Turgut Özal"));
-        assert!(m.lines().count() < t.lines().count() / 2 + 4, "müşteri nüshası kısa:\n{m}");
+        assert!(
+            m.lines().count() < t.lines().count() / 2 + 4,
+            "müşteri nüshası kısa:\n{m}"
+        );
         // teslim edilen fiş düzeltilemez
         for st in [Durum::Hazir, Durum::Teslim] {
             d.durum_ata(&a.no, st, "2026-11-07").unwrap();
         }
-        assert!(d.kalem_ekle(&a.no, kalem("Ceket", "ütü", ""), "PC", "2026-11-07").is_err());
+        assert!(d
+            .kalem_ekle(&a.no, kalem("Ceket", "ütü", ""), "PC", "2026-11-07")
+            .is_err());
         assert_eq!(kisa_ad("ali"), "ali");
         assert_eq!(kisa_ad("Muhammed Yusuf Beşir"), "Muhammed B.");
     }

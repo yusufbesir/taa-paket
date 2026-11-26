@@ -225,7 +225,10 @@ pub(crate) fn satirlar(f: &Fis, nusha: &str) -> Vec<(Stil, String)> {
                 "kalem-cikar" => "-",
                 _ => "*",
             };
-            v.push((Normal, format!("{ne} {} ({})", d.ayrinti, gun_metni(&d.tarih))));
+            v.push((
+                Normal,
+                format!("{ne} {} ({})", d.ayrinti, gun_metni(&d.tarih)),
+            ));
         }
     }
     v.push((Ayrac, String::new()));
@@ -249,7 +252,12 @@ pub(crate) fn satirlar(f: &Fis, nusha: &str) -> Vec<(Stil, String)> {
     for i in &f.imzalar {
         v.push((
             Normal,
-            format!("İmza ({}): {} {}", i.rol, kisa_ad(&i.kim), gun_metni(&i.tarih)),
+            format!(
+                "İmza ({}): {} {}",
+                i.rol,
+                kisa_ad(&i.kim),
+                gun_metni(&i.tarih)
+            ),
         ));
     }
     if imza_blogu() && !musteri_nushasi(nusha) {
@@ -288,7 +296,9 @@ pub(crate) fn musteri_satirlari(f: &Fis, nusha: &str) -> Vec<(Stil, String)> {
     v.push((OrtaKucuk, format!("{} · {}", nusha, gun_metni(&f.tarih))));
     v.push((Ayrac, String::new()));
     v.push((Kalin, format!("Müşteri: {}", f.musteri)));
-    let gun = gun_adi(&f.teslim).map(|g| format!(" {g}")).unwrap_or_default();
+    let gun = gun_adi(&f.teslim)
+        .map(|g| format!(" {g}"))
+        .unwrap_or_default();
     v.push((
         Kalin,
         format!("Teslim: {}{gun} {}", gun_metni(&f.teslim), f.teslim_saati),
@@ -478,7 +488,8 @@ pub const AYDINLATMA_CUMLESI: &str = "Kişisel verileriniz, tadilat işleminin y
 /// Kısa müşteri nüshasının tek satırlık kuralı.
 pub const KISA_KURAL: &str = "17:00'den itibaren fişinizle teslim alabilirsiniz. 14 gün içinde alınmayan ürünlerden mesul değiliz.";
 /// Kısa müşteri nüshasında aydınlatma (karekodsuz). Metin KVKK sorumlusunca onaylanmalıdır.
-pub const KISA_AYDINLATMA: &str = "Kişisel verileriniz yalnız tadilat ve teslim bilgilendirmesi için işlenir. Aydınlatma metni:";
+pub const KISA_AYDINLATMA: &str =
+    "Kişisel verileriniz yalnız tadilat ve teslim bilgilendirmesi için işlenir. Aydınlatma metni:";
 
 pub(crate) fn qr_baytlari(veri: &[u8]) -> Vec<u8> {
     qr_baytlari_boyut(veri, 5)
@@ -590,7 +601,10 @@ pub fn escpos_nusha_takipli(
             b.extend(sar(t.cumle, g).join("\n").chars().map(cp857));
             b.extend(*b"\n");
             b.extend([0x1B, 0x45, 0, 0x1B, 0x61, 0]);
-            b.extend(qr_baytlari_boyut(t.adres.as_bytes(), if kisa { 4 } else { 5 }));
+            b.extend(qr_baytlari_boyut(
+                t.adres.as_bytes(),
+                if kisa { 4 } else { 5 },
+            ));
             b.extend(*b"\n");
             if let Some(y) = t.yedek {
                 b.extend([0x1B, 0x61, 1, 0x1B, 0x4D, 1]); // ortala, küçük yazı
@@ -613,10 +627,16 @@ pub fn escpos_nusha_takipli(
         if kisa && taa_ayar::ozellik_acik("fis-aydinlatma", true) {
             // Kısa nüshada ikinci karekod yok: tek küçük satır.
             b.extend([0x1B, 0x61, 1, 0x1B, 0x4D, 1]);
-            b.extend(sar(&format!("{KISA_AYDINLATMA} {url}"), KUCUK).join("\n").chars().map(cp857));
+            b.extend(
+                sar(&format!("{KISA_AYDINLATMA} {url}"), KUCUK)
+                    .join("\n")
+                    .chars()
+                    .map(cp857),
+            );
             b.extend(*b"\n");
             b.extend([0x1B, 0x4D, 0, 0x1B, 0x61, 0]);
-        } else if nusha.starts_with("MÜŞTERİ") && taa_ayar::ozellik_acik("fis-aydinlatma", true) {
+        } else if nusha.starts_with("MÜŞTERİ") && taa_ayar::ozellik_acik("fis-aydinlatma", true)
+        {
             b.extend([0x1B, 0x4D, 1]); // küçük yazı (Font B)
             b.extend(
                 format!("{}\n", sar(AYDINLATMA_CUMLESI, KUCUK).join("\n"))
