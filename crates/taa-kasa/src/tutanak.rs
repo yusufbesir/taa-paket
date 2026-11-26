@@ -751,6 +751,7 @@ mod testler {
             zaman: 5,
             kanal: ImzaKanali::Telefon,
             cihaz: Some("tel-1".into()),
+            ozet: None,
         };
         let v = cift_dogrulama(&a, &gs, 20_000, &[imza], None);
         let k = v["kalemler"].as_array().unwrap();
@@ -809,6 +810,7 @@ mod testler {
             zaman: 0,
             kanal: ImzaKanali::Telefon,
             cihaz: Some("tel-1".into()),
+            ozet: None,
         };
         let h = tutanak_html(
             &cift_dogrulama(&a, &gs, 20_000, &[imza], None),

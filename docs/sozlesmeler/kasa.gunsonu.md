@@ -1,4 +1,4 @@
-<!-- Sahip: Yusuf. yazan: [Claude#taa-kasa-KS1 2026-11-26]. KS1 sözleşmesi; ciro alanları akşam ciro şablonuna (V2) birebir uyarlandı. güncelleme: [Claude#taa-kasa-T6b 2026-11-26] imza, çift doğrulama tutanağı (Tutaa'dan taşındı), açıklamalar. -->
+<!-- Sahip: Yusuf. yazan: [Claude#taa-kasa-KS1 2026-11-26]. KS1 sözleşmesi; ciro alanları akşam ciro şablonuna (V2) birebir uyarlandı. güncelleme: [Claude#taa-kasa-T6b 2026-11-26] imza, çift doğrulama tutanağı (Tutaa'dan taşındı), açıklamalar. [Claude#taa-kasa-KS2 2026-11-26] telefonla imza istemcisi, imza `ozet`. -->
 # kasa.gunsonu
 
 - Tür: veri türü ve yetenek
@@ -21,7 +21,7 @@
 | `sayim` | `id` (`AC-`/`AS-`/`DV-` + `YYYYAAGG-<çekmece>-<sıra>`), `tur` (acilis, ara, devir), `tarih`, `cekmece`, `kisi`, `ikinci_kisi` (ikinci sayan ya da devralan), `adetler` {kuruş: adet}, `sayilan_kurus`, `beklenen_kurus`, `fark_kurus`, `limit_asildi`, `not`, `zaman`, `duzeltir` | Açılışta beklenen = önceki gün sonunun `devreden_kurus`'u. Ara sayım ve devir iki kişilidir. |
 | `gun_sonu` | `id` (`GS-...`), `tarih`, `sube`, `cekmece`, `kisi`, `nakit_adetler`, `nakit_sayilan_kurus`, `noktalar` [{`nokta`, `z_toplam_kurus`, `pos` {pos_id: kuruş}}], `nebim_toplam_kurus`, `ciro` {alan: kuruş}, `doviz` [{`kod`, `tutar` (yabancı para kuruşu), `kur_onbinde`}], `devreden_kurus`, `kontrol` [7 × bool], `not`, `aciklamalar` {alan: metin}, `karsilastirma`, `zaman`, `duzeltir` | `ciro` alanları akşam ciro şablonunun satırlarıdır. Genel toplama girenler: `nakit` (NAKİT TL = Nebim/sistem nakdi, masraf ve para üstü düşülmüş), `ziraat_pos`, `iyzico_pos`, `efatura_pos`, `havale` (firma hesabı), `iyzico_odemesi`, `kredi_ceki`, `internet_degisimi`, döviz TL karşılığı ve masraflar. `kasa_fazlasi` / `kasa_acigi` elle girilmez: nakit sayım farkından yazılır (açık MASRAFLAR'ın ilk satırıdır, toplamı değiştirmez). Bilgi satırları (toplama girmez, eksi olabilir): `kredi_karti_fark`, `kasa_fazlasi`, `havale_fark`, `degisim`, `iade`. `aciklamalar` yalnız `havale_fark` ve `kredi_karti_fark` için; o satırda fark varsa zorunlu (ör. "… iadesine istinaden fark"). Döviz: USD, EUR, GBP, CHF (kur elle). |
 | `onay` | `id` (gün sonu), `kisi`, `onay` (ikinci_kisi, ertesi_gun), `zaman` | Ertesi gün gözden geçirmesi müdür ya da yönetici. `ikinci_kisi` onayı eski defterlerde vardır; artık imzadır (`imza`). |
-| `imza` | `id` (gün sonu), `sira` (1, 2), `rol` (`kasa_sorumlusu`, `magaza_sorumlusu`), `kisi`, `zaman`, `kanal` (`telefon` \| `ekran`), `cihaz` (telefonla imzada zorunlu) | İmza isteği yalnız kapanış listesi tamamlanınca açılır. En çok iki imza; aynı kişi iki kez imzalayamaz; ikinci imzayı giren atamaz. Gönderilmiş güne imza eklenmez. |
+| `imza` | `id` (gün sonu), `sira` (1, 2), `rol` (`kasa_sorumlusu`, `magaza_sorumlusu`), `kisi`, `zaman`, `kanal` (`telefon` \| `ekran`), `cihaz` (telefonla imzada zorunlu, `eslesme_kimligi:pc_pin`), `ozet` (telefonla imzada onaylanan özetin SHA-256'sı; isteğe bağlı) | İmza isteği yalnız kapanış listesi tamamlanınca açılır. En çok iki imza; aynı kişi iki kez imzalayamaz; ikinci imzayı giren atamaz. Gönderilmiş güne imza eklenmez. |
 | `tutanak` | `id` (gün sonu), `erp` {kalem kodu: kuruş}, `islem`, `kisi`, `zaman` | Çift doğrulama tutanağı ekleri: Nebim kasa Excel'inden içe aktarılan ERP sütunu ve "Yapılan İşlem". Son kayıt geçerli. |
 | `iptal` | `id`, `neden`, `kisi`, `zaman` | Yalnız yönetici girişiyle; neden zorunlu. **Silme yok.** |
 | `gonderim` | `id`, `dosya`, `imzali`, `zaman` | Paket kuyruğa alındı. |
@@ -41,8 +41,9 @@ Satırlar (her biri `beklenen_kurus`, `bulunan_kurus`, `fark_kurus = bulunan −
   (eski kayıt `iptal` satırıyla kapanır, yeni kayıt `duzeltir` alanında eskisini gösterir). Geçersiz düzeltme eski kaydı iptal etmez.
 - Gönderim ön koşulu: kapanış listesinin 7 maddesi ve **en az bir imza**. İkinci imza yoksa gün yine kapanır ve gönderilir;
   kayıtta, pakette (`ikinci_imza_durumu`), Excel'de, tutanakta, ekranda ve matriste "ikinci imza atmadı" yazar.
-- Telefonla imza: çekirdek `kanal: telefon` + `cihaz` kabul eder; kasa ekranı yalnız 127.0.0.1'de açıldığından telefon köprüsü
-  (Telefon Köprüsü / eşleşmiş cihaz) henüz bağlı değil, API `kanal: telefon` isteğine 501 döner ve imza ekrandan (yer tutucu) atılır.
+- Telefonla imza: istemci `telefon_imza` (Telefon Köprüsü `onay_iste@1` / `onay@1` / `onay_red@1`, kapsam `taa_kasa_gun_sonu`,
+  özet = gün sonu tutarlarının kanonik metninin SHA-256'sı, 60 sn). Köprü borusu bağlanana kadar API `kanal: telefon` isteğine
+  501 döner ve imza ekrandan (yer tutucu) atılır. Ayrıntı: docs/TAA-KASA.md "Telefonla imza".
 
 ## Gönderim paketi (merkeze)
 `{"tur":"kasa.gunsonu@1","surum":1,"sube","tarih","cekmece","gun_sonu","sayimlar","masraflar","onaylar":{"ikinci_kisi","ertesi_gun"},"imzalar","ikinci_imza_durumu","cift_dogrulama","olusturma","imza"}`.
