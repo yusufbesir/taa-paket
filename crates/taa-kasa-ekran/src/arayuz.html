@@ -278,6 +278,7 @@ function tl(k){k=Number(k)||0;const n=k<0;k=Math.abs(k);const t=String(Math.floo
 function kurusCoz(s){s=String(s||'').trim().replace(/\s|TL/gi,'');if(!s)return 0;
   if(s.includes(','))s=s.replace(/\./g,'').replace(',','.');else{const p=s.split('.');if(p.length>2||(p.length===2&&p[1].length===3))s=s.replace(/\./g,'')}
   if(!/^\d+(\.\d{1,2})?$/.test(s))return null;const [a,b='']=s.split('.');return Number(a)*100+Number((b+'00').slice(0,2))}
+function kurusCozEksi(s){s=String(s||'').trim();const e=s.startsWith('-')||s.startsWith('−');const v=kurusCoz(e?s.slice(1):s);return v==null?null:(e?-v:v)}
 function kurCoz(s){s=String(s||'').trim().replace(',','.');if(!s)return 0;if(!/^\d+(\.\d{1,4})?$/.test(s))return null;const [a,b='']=s.split('.');return Number(a)*10000+Number((b+'0000').slice(0,4))}
 function farkHtml(f){if(!f)return '<span class="fark tam">✓ 0,00 TL</span>';return f>0?`<span class="fark fazla">▲ +${tl(f)}</span>`:`<span class="fark eksik">▼ ${tl(f)}</span>`}
 function bildir(m){const b=$('#bildirim');b.textContent=m;b.hidden=false;clearTimeout(bildir.t);bildir.t=setTimeout(()=>b.hidden=true,4200)}
@@ -469,7 +470,10 @@ function gunSonuCiz(){const g=D.gun,s=bolum('gunsonu');
     ${n.poslar.map(p=>`<label class="alan">${esc(p.ad)} gün sonu<input class="girdi tutar" data-pos="${i}:${esc(p.id)}" inputmode="decimal" value="${GS.noktalar[i].pos[p.id]?tl(GS.noktalar[i].pos[p.id]).replace(' TL',''):''}"></label>`).join('')}</div></div>`).join('')}
     <p class="mut kucuk">Z raporu ve POS gün sonu fişinin fotoğrafı: dosya ekleme bir sonraki adımda bağlanacak.</p>`;
   if(GS.adim===2)govde=`<h2>Satış sistemi toplamı ve ödeme türleri</h2><label class="alan" style="max-width:320px">Nebim mağaza raporu toplamı<input class="girdi tutar" id="g-nebim" inputmode="decimal" value="${GS.nebim_toplam_kurus?tl(GS.nebim_toplam_kurus).replace(' TL',''):''}"></label>
-    <div class="form-iki">${D.sabitler.odeme_turleri.map(([k,a])=>`<label class="alan">${esc(a)}<input class="girdi tutar" data-ciro="${k}" inputmode="decimal" value="${GS.ciro[k]?tl(GS.ciro[k]).replace(' TL',''):''}"></label>`).join('')}</div>`;
+    <p class="mut kucuk">Satırlar şubelerin akşam ciro Excel'iyle aynı sıradadır; Excel bu kayıtlardan üretilir (Kayıtlar ve Excel).</p>
+    <div class="form-iki">${[...D.sabitler.odeme_turleri,D.sabitler.kasa_acigi].map(([k,a])=>`<label class="alan">${esc(a)}<input class="girdi tutar" data-ciro="${k}" inputmode="decimal" value="${GS.ciro[k]?tl(GS.ciro[k]).replace(' TL',''):''}"></label>`).join('')}</div>
+    <h2 style="margin-top:8px">Bilgi satırları</h2><p class="mut kucuk">Genel toplama girmez; eksi olabilir (ör. −150,00).</p>
+    <div class="form-iki">${D.sabitler.bilgi_alanlari.map(([k,a])=>`<label class="alan">${esc(a)}<input class="girdi tutar" data-ciro="${k}" data-eksi="1" inputmode="decimal" value="${GS.ciro[k]?tl(GS.ciro[k]).replace(' TL',''):''}"></label>`).join('')}</div>`;
   if(GS.adim===3)govde=`<h2>Kapanış kontrol listesi</h2><div class="kontrol">${D.sabitler.kapanis_listesi.map((m,i)=>`<label><input type="checkbox" data-k="${i}" ${GS.kontrol[i]?'checked':''}>${esc(m)}</label>`).join('')}</div>
     <div class="form-iki"><label class="alan">Ertesi güne devreden nakit (bozukluk)<input class="girdi tutar" id="g-devreden" inputmode="decimal" value="${GS.devreden_kurus?tl(GS.devreden_kurus).replace(' TL',''):''}"></label>
     <label class="alan">Açıklama notu (fark varsa zorunlu)<textarea class="girdi" id="g-not" maxlength="600">${esc(GS.not)}</textarea></label></div>
@@ -477,7 +481,7 @@ function gunSonuCiz(){const g=D.gun,s=bolum('gunsonu');
   if(GS.adim===4)govde=`<h2>Özet</h2><table class="tablo"><tbody>
     <tr><td>Sayılan nakit</td><td class="s">${tl(topla(GS.nakit_adetler))}</td></tr>
     <tr><td>Z raporu toplamı</td><td class="s">${tl(GS.noktalar.reduce((a,n)=>a+n.z_toplam_kurus,0))}</td></tr>
-    <tr><td>Ciro toplamı (döviz dahil)</td><td class="s">${GS.k?tl(GS.k.ciro_toplam_kurus):'—'}</td></tr>
+    <tr><td>Genel toplam (şablon: döviz ve masraf dahil)</td><td class="s">${GS.k?tl(GS.k.ciro_toplam_kurus):'—'}</td></tr>
     <tr><td>Nebim toplamı</td><td class="s">${tl(GS.nebim_toplam_kurus)}</td></tr>
     <tr><td>Kapanış listesi</td><td class="s">${GS.kontrol.filter(Boolean).length}/7</td></tr></tbody></table>
     ${GS.duzelt?'<div class="serit"><span>⚠</span><span><b>Düzeltme kipi (yönetici).</b> Eski kayıt silinmez; iptal kaydı ve gerekçeyle birlikte yenisi yazılır.</span></div>':''}
@@ -492,7 +496,7 @@ function gunSonuCiz(){const g=D.gun,s=bolum('gunsonu');
     const dvc=()=>GS.doviz.forEach((d,i)=>{kok.querySelector(`[data-dvtl="${i}"]`).textContent=d.tutar?tl(Math.round(d.tutar*d.kur_onbinde/10000)):''});
     kok.querySelectorAll('[data-dv]').forEach(i=>i.oninput=()=>{const v=kurusCoz(i.value);i.style.borderColor=v==null?'var(--eksik)':'';GS.doviz[+i.dataset.dv].tutar=v||0;dvc();onizle()});
     kok.querySelectorAll('[data-kur]').forEach(i=>i.oninput=()=>{const v=kurCoz(i.value);i.style.borderColor=v==null?'var(--eksik)':'';GS.doviz[+i.dataset.kur].kur_onbinde=v||0;dvc();onizle()});dvc()}
-  const para=(sel,f)=>kok.querySelectorAll(sel).forEach(i=>{i.oninput=()=>{const v=kurusCoz(i.value);i.style.borderColor=v==null?'var(--eksik)':'';f(i,v||0);onizle()};i.onblur=()=>{const v=kurusCoz(i.value);if(v!=null&&i.value)i.value=tl(v).replace(' TL','')}});
+  const para=(sel,f)=>kok.querySelectorAll(sel).forEach(i=>{const cz=i.dataset.eksi?kurusCozEksi:kurusCoz;i.oninput=()=>{const v=cz(i.value);i.style.borderColor=v==null?'var(--eksik)':'';f(i,v||0);onizle()};i.onblur=()=>{const v=cz(i.value);if(v!=null&&i.value)i.value=tl(v).replace(' TL','')}});
   para('[data-z]',(i,v)=>GS.noktalar[+i.dataset.z].z_toplam_kurus=v);
   para('[data-pos]',(i,v)=>{const [n,p]=i.dataset.pos.split(':');GS.noktalar[+n].pos[p]=v});
   para('#g-nebim',(i,v)=>GS.nebim_toplam_kurus=v);para('[data-ciro]',(i,v)=>{GS.ciro[i.dataset.ciro]=v});para('#g-devreden',(i,v)=>GS.devreden_kurus=v);
@@ -533,12 +537,14 @@ function gsKayitli(s,g){const x=g.gun_sonu,k=x.karsilastirma;
     if(e==='duzelt'){GS=gsYeni(x);GS.tarih=D.tarih;GS.cekmece=D.cekmece;gunSonuCiz()}})}
 
 // ---------------- Kayıtlar ve Excel
-let KY={bas:'',bit:''};
+let KY={bas:'',bit:'',ay:''};
 async function kayitlarCiz(){const s=bolum('kayitlar');if(!KY.bit){KY.bit=D.tarih;const t=new Date(D.tarih+'T00:00:00');t.setDate(t.getDate()-30);KY.bas=t.toISOString().slice(0,10)}
   s.innerHTML=`<div class="sayfa-bas"><div><h1>Kayıtlar ve Excel</h1><div class="mut">Kayıtlar silinmez; iptal edilenler listede görünmez, Excel'de de yer almaz (iz defterde kalır).</div></div>
    <div class="sira"><label class="sira kucuk">Başlangıç<input type="date" class="girdi" id="k-bas" value="${KY.bas}" style="width:auto"></label><label class="sira kucuk">Bitiş<input type="date" class="girdi" id="k-bit" value="${KY.bit}" style="width:auto"></label>
-   <a class="dugme ana" id="k-excel" href="/api/excel?bas=${KY.bas}&bit=${KY.bit}" download style="text-decoration:none">Excel'e aktar (.xlsx)</a></div></div><div id="k-govde" class="yigin"><p class="mut">Yükleniyor…</p></div>`;
-  const ch=()=>{KY.bas=s.querySelector('#k-bas').value;KY.bit=s.querySelector('#k-bit').value;kayitlarCiz()};s.querySelector('#k-bas').onchange=ch;s.querySelector('#k-bit').onchange=ch;
+   <a class="dugme" id="k-excel" href="/api/excel?bas=${KY.bas}&bit=${KY.bit}" download style="text-decoration:none">Kayıt dökümü (.xlsx)</a>
+   <label class="sira kucuk">Ay<input type="month" class="girdi" id="k-ay" value="${KY.ay||D.tarih.slice(0,7)}" style="width:auto"></label>
+   <a class="dugme ana" id="k-ciro" href="/api/excel/ciro?ay=${KY.ay||D.tarih.slice(0,7)}" download style="text-decoration:none" title="Şubelerin akşam ciro Excel'iyle aynı düzen: gün başına bir sayfa">Akşam ciro Excel'i (.xlsx)</a></div></div><div id="k-govde" class="yigin"><p class="mut">Yükleniyor…</p></div>`;
+  const ch=()=>{KY.bas=s.querySelector('#k-bas').value;KY.bit=s.querySelector('#k-bit').value;kayitlarCiz()};s.querySelector('#k-bas').onchange=ch;s.querySelector('#k-ay').onchange=e=>{KY.ay=e.target.value;s.querySelector('#k-ciro').href='/api/excel/ciro?ay='+encodeURIComponent(KY.ay)};s.querySelector('#k-bit').onchange=ch;
   try{const v=await api('GET',`/api/kayitlar?bas=${KY.bas}&bit=${KY.bit}`);
     s.querySelector('#k-govde').innerHTML=`<div class="kart"><h2>Mağaza toplamı (${esc(v.bit)})</h2><div class="durum-serit"><span>Çekmece: ${v.magaza.cekmece_sayisi}</span><span>Nakit: <b class="tutar">${tl(v.magaza.nakit_sayilan_kurus)}</b></span><span>Ciro: <b class="tutar">${tl(v.magaza.ciro_toplam_kurus)}</b></span><span>Z: <b class="tutar">${tl(v.magaza.z_toplam_kurus)}</b></span>${v.magaza.kasa_ciro_uyusmuyor?'<span style="color:var(--eksik);font-weight:600">▼▲ Kasa ile ciro uyuşmuyor</span>':''}</div></div>
     <div class="kart"><h2>Gün sonları</h2>${v.gun_sonlari.length?`<table class="tablo"><thead><tr><th>Tarih</th><th>Çekmece</th><th>Giren</th><th style="text-align:right">Nakit</th><th style="text-align:right">Ciro</th><th>Fark</th><th></th></tr></thead><tbody>${v.gun_sonlari.slice().reverse().map(g=>`<tr><td>${esc(g.tarih)}</td><td>${esc(g.cekmece)}</td><td>${esc(g.kisi)}</td><td class="s">${tl(g.nakit_sayilan_kurus)}</td><td class="s">${tl(g.karsilastirma.ciro_toplam_kurus)}</td><td>${g.karsilastirma.kasa_ciro_uyusmuyor?'<span class="fark eksik">▼▲ uyuşmuyor</span>':(g.karsilastirma.fark_var?'<span class="fark fazla">▲ fark (not var)</span>':'<span class="fark tam">✓</span>')}</td><td>${D.yonetici?`<button class="dugme" data-iptal="${esc(g.id)}">İptal et</button>`:''}</td></tr>`).join('')}</tbody></table>`:'<p class="mut">Bu aralıkta gün sonu yok.</p>'}</div>`;
@@ -554,7 +560,10 @@ async function ayarlarCiz(){const s=bolum('ayarlar');if(!D.yonetici){s.innerHTML
    <label class="alan">Masraf merkez onayı eşiği (TL)<input class="girdi tutar" id="a-esik" value="${tl(a.masraf_merkez_esigi_kurus).replace(' TL','')}"></label>
    <label class="alan">Fark toleransı (TL)<input class="girdi tutar" id="a-tol" value="${tl(a.fark_toleransi_kurus).replace(' TL','')}"></label>
    <label class="alan">Gün sonu son saati<input class="girdi mono" id="a-saat" value="${esc(a.gonderim_son_saat)}" maxlength="5"></label>
-   <label class="alan">Merkez klasörü (sunucu ucu gelene kadar)<input class="girdi mono" id="a-merkez" value="${esc(a.merkez_klasoru||'')}"></label></div>
+   <label class="alan">Merkez klasörü (sunucu ucu gelene kadar)<input class="girdi mono" id="a-merkez" value="${esc(a.merkez_klasoru||'')}"></label>
+   <label class="alan">Ciro Excel'i başlığı (A1, işletme adı)<input class="girdi" id="a-baslik" value="${esc(a.excel_baslik||'')}" maxlength="80"></label>
+   <label class="alan">Havale satırı adı (firma hesabı)<input class="girdi" id="a-havale" value="${esc(a.havale_hesap_adi||'')}" maxlength="80"></label></div>
+   <p class="mut kucuk">Ciro Excel'inde her çekmece bir mağaza sütunudur; sütun başlığı çekmecenin adıdır (ör. Outlet Mağaza, Ana Mağaza).</p>
    <div class="form-iki"><label class="alan">Personel (her satır: Ad;rol — rol: personel, mudur, yonetici)<textarea class="girdi" id="a-personel">${esc(a.personel.map(p=>p.ad+';'+p.rol).join('\n'))}</textarea></label>
    <label class="alan">Masraf türleri (her satır bir tür)<textarea class="girdi" id="a-turler">${esc(a.masraf_turleri.join('\n'))}</textarea></label></div>
    <label class="alan">Çekmeceler ve kasa noktaları (gelişmiş, JSON)<textarea class="girdi mono" id="a-cekmece" style="min-height:180px">${esc(JSON.stringify(a.cekmeceler,null,2))}</textarea></label>
@@ -564,7 +573,7 @@ async function ayarlarCiz(){const s=bolum('ayarlar');if(!D.yonetici){s.innerHTML
       if(es==null||to==null||(lim&&li==null))throw new Error('Tutar alanları sayı olmalı.');
       const personel=s.querySelector('#a-personel').value.split('\n').map(x=>x.trim()).filter(Boolean).map(x=>{const [ad,rol='personel']=x.split(';').map(y=>y.trim());if(!['personel','mudur','yonetici'].includes(rol))throw new Error('Rol geçersiz: '+x);return {ad,rol}});
       const y={...a,sube:s.querySelector('#a-sube').value.trim(),kasa_limiti_kurus:li,masraf_merkez_esigi_kurus:es,fark_toleransi_kurus:to,gonderim_son_saat:s.querySelector('#a-saat').value.trim(),
-        merkez_klasoru:s.querySelector('#a-merkez').value.trim()||null,personel,masraf_turleri:s.querySelector('#a-turler').value.split('\n').map(x=>x.trim()).filter(Boolean),cekmeceler:JSON.parse(s.querySelector('#a-cekmece').value)};
+        merkez_klasoru:s.querySelector('#a-merkez').value.trim()||null,excel_baslik:s.querySelector('#a-baslik').value.trim(),havale_hesap_adi:s.querySelector('#a-havale').value.trim(),personel,masraf_turleri:s.querySelector('#a-turler').value.split('\n').map(x=>x.trim()).filter(Boolean),cekmeceler:JSON.parse(s.querySelector('#a-cekmece').value)};
       await api('POST','/api/ayar',y);bildir('Ayarlar kaydedildi');await yenile();uygulamaGoster()}catch(e){h.textContent=e.message}}}
 
 // ---------------- Merkez matrisi (yönetici)

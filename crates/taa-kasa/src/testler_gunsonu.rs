@@ -69,7 +69,7 @@ fn acilis(d: &KasaDefteri, a: &KasaAyar) -> SayimKaydi {
 }
 
 fn gun_sonu_girdi() -> GunSonuGirdi {
-    // Açılış 500 TL + nakit ciro 1.000 TL − masraf 0 = 1.500 TL beklenen.
+    // Açılış 500 TL + NAKİT TL 1.000 TL = 1.500 TL beklenen.
     GunSonuGirdi {
         tarih: T.into(),
         cekmece: "c1".into(),
@@ -89,8 +89,8 @@ fn gun_sonu_girdi() -> GunSonuGirdi {
         nebim_toplam_kurus: 250_000,
         ciro: BTreeMap::from([
             ("nakit".into(), 100_000),
-            ("ziraat_kart".into(), 60_000),
-            ("iyzico_fiziksel".into(), 40_000),
+            ("ziraat_pos".into(), 60_000),
+            ("iyzico_pos".into(), 40_000),
             ("havale".into(), 10_000),
         ]),
         // 100 USD × 40 TL = 4.000 TL? Hayır: 10 USD × 40,0000 = 400 TL.

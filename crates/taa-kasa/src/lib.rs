@@ -7,6 +7,7 @@
 
 pub mod gunsonu;
 pub mod merkez;
+pub mod sablon;
 pub mod xlsx;
 pub mod zaman;
 

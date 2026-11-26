@@ -393,14 +393,17 @@ pub fn excel(
         Sayfa {
             ad: "Gün sonu".into(),
             satirlar: gs,
+            ..Default::default()
         },
         Sayfa {
             ad: "Masraf".into(),
             satirlar: ms,
+            ..Default::default()
         },
         Sayfa {
             ad: "Sayımlar".into(),
             satirlar: ss,
+            ..Default::default()
         },
     ])
 }

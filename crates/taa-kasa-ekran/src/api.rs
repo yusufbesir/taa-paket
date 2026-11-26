@@ -9,9 +9,10 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use taa_kasa::gunsonu::{
     GunSonuGirdi, KasaAyar, KasaDefteri, Kisi, MasrafGirdi, OnayTuru, Rol, SayimGirdi, SayimTuru,
-    DOVIZLER, KAPANIS_LISTESI, ODEME_TURLERI,
+    BILGI_ALANLARI, DOVIZLER, KAPANIS_LISTESI, KASA_ACIGI, ODEME_TURLERI,
 };
 use taa_kasa::merkez::{self, KlasorTasiyici, Kuyruk};
+use taa_kasa::sablon;
 use taa_kasa::{zaman, DEGERLER};
 
 /// Yönetici oturumu süresi (Terzi Takip ile aynı: 10 dk, her işlemde uzar).
@@ -217,7 +218,13 @@ impl Uygulama {
                 }
             }
             ("GET", "/api/kayitlar") => self.kayitlar(&ayar, sorgu),
+            ("GET", "/api/excel" | "/api/excel/ciro")
+                if self.kisi.is_none() && self.yonetici().is_none() =>
+            {
+                hata(401, "Excel için önce giriş yapın.")
+            }
             ("GET", "/api/excel") => self.excel(&ayar, sorgu),
+            ("GET", "/api/excel/ciro") => self.ciro_excel(&ayar, sorgu),
             ("GET", "/api/matris") => self.matris(&ayar, sorgu),
             ("POST", "/api/kapat") => Cevap::Kapat,
             _ => hata(404, "bilinmeyen istek"),
@@ -429,7 +436,16 @@ impl Uygulama {
             "kuyruk": {"bekleyen": self.kuyruk().bekleyenler().len(), "merkez_klasoru": ayar.merkez_klasoru.is_some()},
             "sabitler": {
                 "degerler": DEGERLER,
-                "odeme_turleri": ODEME_TURLERI.iter().map(|(k, a)| json!([k, a])).collect::<Vec<_>>(),
+                "odeme_turleri": ODEME_TURLERI.iter().map(|(k, a)| {
+                    let a = if *k == "havale" && !ayar.havale_hesap_adi.trim().is_empty() {
+                        format!("Bankaya havale: {}", ayar.havale_hesap_adi.trim())
+                    } else {
+                        a.to_string()
+                    };
+                    json!([k, a])
+                }).collect::<Vec<_>>(),
+                "kasa_acigi": [KASA_ACIGI.0, KASA_ACIGI.1],
+                "bilgi_alanlari": BILGI_ALANLARI.iter().map(|(k, a)| json!([k, a])).collect::<Vec<_>>(),
                 "dovizler": DOVIZLER.iter().map(|(k, a)| json!([k, a])).collect::<Vec<_>>(),
                 "kapanis_listesi": KAPANIS_LISTESI,
             },
@@ -546,6 +562,27 @@ impl Uygulama {
                 bayt: b,
             },
             Err(e) => hata(500, e),
+        }
+    }
+
+    /// Akşam ciro şablonu (aylık, gün başına sayfa): şubelerin akşam Excel'iyle aynı düzen.
+    fn ciro_excel(&self, ayar: &KasaAyar, sorgu: &str) -> Cevap {
+        let ay = crate::sorgu_degeri(sorgu, "ay")
+            .map(String::from)
+            .unwrap_or_else(|| {
+                zaman::yerel_tarih(zaman::simdi_sn(), ayar.saat_farki_dk)[..7].to_string()
+            });
+        let d = self.defter();
+        let r = (|| -> Result<Vec<u8>, String> {
+            sablon::ciro_sablonu(ayar, &ay, &d.gun_sonlari()?, &d.masraflar()?)
+        })();
+        match r {
+            Ok(b) => Cevap::Dosya {
+                ad: format!("ciro-sablonu-{ay}.xlsx"),
+                tur: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                bayt: b,
+            },
+            Err(e) => hata(422, e),
         }
     }
 
@@ -674,6 +711,11 @@ mod testler {
     #[test]
     fn excel_dosya_doner() {
         let mut u = uyg();
+        assert!(matches!(
+            u.istek("GET", "/api/excel/ciro", "ay=2026-11", &Value::Null),
+            Cevap::Json(401, _)
+        ));
+        u.istek("POST", "/api/giris", "", &json!({"ad":"Ayşe"}));
         match u.istek(
             "GET",
             "/api/excel",
@@ -686,5 +728,17 @@ mod testler {
             }
             _ => panic!("dosya bekleniyordu"),
         }
+        match u.istek("GET", "/api/excel/ciro", "ay=2026-11", &Value::Null) {
+            Cevap::Dosya { ad, bayt, .. } => {
+                assert_eq!(ad, "ciro-sablonu-2026-11.xlsx");
+                let x = String::from_utf8_lossy(&bayt);
+                assert!(x.contains("name=\"30.11.2026\""));
+            }
+            _ => panic!("ciro şablonu bekleniyordu"),
+        }
+        assert!(matches!(
+            u.istek("GET", "/api/excel/ciro", "ay=2026-13", &Value::Null),
+            Cevap::Json(422, _)
+        ));
     }
 }

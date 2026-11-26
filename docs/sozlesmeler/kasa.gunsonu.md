@@ -1,4 +1,4 @@
-<!-- Sahip: Yusuf. yazan: [Claude#taa-kasa-KS1 2026-11-26]. KS1 sözleşmesi (ilk sürüm; alanlar Yusuf'un akşam Excel'i görülünce birebir uyarlanacak). -->
+<!-- Sahip: Yusuf. yazan: [Claude#taa-kasa-KS1 2026-11-26]. KS1 sözleşmesi; ciro alanları akşam ciro şablonuna (V2) birebir uyarlandı. -->
 # kasa.gunsonu
 
 - Tür: veri türü ve yetenek
@@ -18,17 +18,17 @@
 | tur | Alanlar | Not |
 |---|---|---|
 | `sayim` | `id` (`AC-`/`AS-`/`DV-` + `YYYYAAGG-<çekmece>-<sıra>`), `tur` (acilis, ara, devir), `tarih`, `cekmece`, `kisi`, `ikinci_kisi` (ikinci sayan ya da devralan), `adetler` {kuruş: adet}, `sayilan_kurus`, `beklenen_kurus`, `fark_kurus`, `limit_asildi`, `not`, `zaman`, `duzeltir` | Açılışta beklenen = önceki gün sonunun `devreden_kurus`'u. Ara sayım ve devir iki kişilidir. |
-| `gun_sonu` | `id` (`GS-...`), `tarih`, `sube`, `cekmece`, `kisi`, `nakit_adetler`, `nakit_sayilan_kurus`, `noktalar` [{`nokta`, `z_toplam_kurus`, `pos` {pos_id: kuruş}}], `nebim_toplam_kurus`, `ciro` {ödeme türü: kuruş}, `doviz` [{`kod`, `tutar` (yabancı para kuruşu), `kur_onbinde`}], `devreden_kurus`, `kontrol` [7 × bool], `not`, `karsilastirma`, `zaman`, `duzeltir` | Ödeme türleri: nakit, ziraat_kart, iyzico_fiziksel, iyzico_sanal, qr, mail_order, havale. Döviz: USD, EUR, GBP, CHF (kur elle). |
+| `gun_sonu` | `id` (`GS-...`), `tarih`, `sube`, `cekmece`, `kisi`, `nakit_adetler`, `nakit_sayilan_kurus`, `noktalar` [{`nokta`, `z_toplam_kurus`, `pos` {pos_id: kuruş}}], `nebim_toplam_kurus`, `ciro` {alan: kuruş}, `doviz` [{`kod`, `tutar` (yabancı para kuruşu), `kur_onbinde`}], `devreden_kurus`, `kontrol` [7 × bool], `not`, `karsilastirma`, `zaman`, `duzeltir` | `ciro` alanları akşam ciro şablonunun satırlarıdır. Genel toplama girenler: `nakit` (NAKİT TL), `ziraat_pos` (ZİRAAT BANKASI POS:1), `iyzico_pos` (İYZİCO POS:2), `efatura_pos` (E-FATURA POS:2), `havale` (BANKAYA HAVALE, firma hesabı), `iyzico_odemesi`, `kredi_ceki`, `internet_degisimi`, `kasa_acigi` (KASA AÇIĞI). Bilgi satırları (toplama girmez, eksi olabilir): `kredi_karti_fark`, `kasa_fazlasi`, `havale_fark`, `degisim`, `iade`. Döviz: USD, EUR, GBP, CHF (kur elle). |
 | `onay` | `id` (gün sonu), `kisi`, `onay` (ikinci_kisi, ertesi_gun), `zaman` | Giren onaylayamaz. Ertesi gün gözden geçirmesi müdür ya da yönetici. |
 | `iptal` | `id`, `neden`, `kisi`, `zaman` | Yalnız yönetici girişiyle; neden zorunlu. **Silme yok.** |
 | `gonderim` | `id`, `dosya`, `imzali`, `zaman` | Paket kuyruğa alındı. |
 
 ## Karşılaştırma (`karsilastirma`)
 Satırlar (her biri `beklenen_kurus`, `bulunan_kurus`, `fark_kurus = bulunan − beklenen`):
-1. Nakit: sayılan ↔ açılış + nakit ciro − masraf (reddedilen ve iptal edilen masraf hariç).
-2. Z raporu toplamı (tüm kasa noktaları) ↔ ciro toplamı (ödeme türleri + döviz TL karşılığı).
+1. Nakit: sayılan ↔ açılış + NAKİT TL. (Şablonda NAKİT TL masraflar çıktıktan sonra kalan nakittir; masraf genel toplama ayrıca eklenir.)
+2. Z raporu toplamı (tüm kasa noktaları) ↔ genel toplam: şablonun son GENEL TOPLAM'ına çekmecenin payı (genel toplama giren alanlar + döviz TL karşılığı + çekmecenin masrafları). `ciro_toplam_kurus` budur.
 3. Her POS ödeme türü için: POS gün sonları toplamı ↔ o türün cirosu (Ziraat ve İyzico ayrı satır).
-4. Satış sistemi (Nebim) mağaza raporu toplamı ↔ ciro toplamı.
+4. Satış sistemi (Nebim) mağaza raporu toplamı ↔ genel toplam.
 
 `fark_var`: herhangi bir satır mağaza toleransının (`fark_toleransi_kurus`, varsayılan 0) dışında; o zaman `not` zorunludur.
 `kasa_ciro_uyusmuyor`: 1. ya da 2. satır tolerans dışında; Çatı'daki "kasa ile ciro uyuşmuyor" uyarısı budur.
@@ -54,4 +54,8 @@ Kuyruk `<veri kökü>/kasa/giden/`; teslim edilen `gonderilen/` altına taşın�
 API 401 (giriş yok), 403 (yetki: yönetici ya da müdür gerekli), 422 (kural: giren onaylayamaz, fark notu, tanımsız POS/ödeme türü…).
 
 ## Sürüm kuralı
-Değişirse `@2` yeni dosya; eski `@1` en az bir sürüm daha yaşar (§18.3). Excel örneğinden gelecek alan eklemeleri geriye uyumlu eklenir.
+Değişirse `@2` yeni dosya; eski `@1` en az bir sürüm daha yaşar (§18.3). 
+
+## Akşam ciro Excel'i
+
+`sablon::ciro_sablonu` aylık xlsx üretir: gün başına bir sayfa (`01.11.2026`), şablonla aynı satır/sütun düzeni ve formüller (iki çekmecede A1:E40 birebir). Ayrıntı ve şablondan ayrılan yerler: docs/TAA-KASA.md. Karşılaştırma aracı: `tools/kasa_ciro_karsilastir.py`.

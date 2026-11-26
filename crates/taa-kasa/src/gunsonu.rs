@@ -14,8 +14,9 @@
 //! - Tek yazar TAA Kasa: `kasa.gunsonu@1` (bu defter) ve `kasa.masraf@1` (masraf defteri). Tutaa yalnız okur.
 //! - Satış yapılmaz, yazarkasanın yerine geçilmez; tutarlar elle girilir, hiçbir satış sistemine bağlanılmaz.
 //!
-//! Alanlar Yusuf'un şubelerde kullanılan akşam Excel'i görülünce birebir uyarlanacaktır; bugünkü alanlar
-//! planlardan alınmıştır (ödeme türleri, Z/POS/Nebim üçlü karşılaştırma, döviz, 7 maddelik kapanış listesi).
+//! Ciro alanları şubelerin akşam Excel'ine ("KASIM AYI CİRO ŞABLONU 2026 V2") birebir uyarlandı: her çekmece
+//! şablondaki bir mağaza sütunudur (ör. OUTLET MAĞAZA / ANA MAĞAZA); satırlar ve genel toplam formülü
+//! şablonla aynıdır (`merkez::ciro_sablonu`). Z/POS/Nebim karşılaştırması ve kapanış listesi plandan gelir.
 
 use crate::{sayim_toplam, zaman};
 use serde::{Deserialize, Serialize};
@@ -29,16 +30,51 @@ pub const OZELLIK_GUNSONU: &str = "kasa-gunsonu";
 /// Tutar üst sınırı (10 milyar TL); taşmayı ve yazım hatasını önler.
 pub const TUTAR_EN_COK: i64 = 1_000_000_000_000;
 
-/// Ödeme türleri (anahtar, ekranda görünen ad). Sıra ekranda ve Excel'de aynıdır.
-pub const ODEME_TURLERI: [(&str, &str); 7] = [
-    ("nakit", "Nakit"),
-    ("ziraat_kart", "Ziraat kart"),
-    ("iyzico_fiziksel", "İyzico fiziksel POS"),
-    ("iyzico_sanal", "İyzico sanal POS"),
-    ("qr", "QR ödeme"),
-    ("mail_order", "Mail order"),
-    ("havale", "Havale / EFT"),
+/// Genel toplama giren ciro satırları (anahtar, şablondaki ad), akşam ciro şablonundaki sırayla.
+/// `havale` şablonda "BANKAYA HAVALE" bölümündeki firma hesabı satırıdır (adı ayarlardan: `havale_hesap_adi`).
+pub const ODEME_TURLERI: [(&str, &str); 8] = [
+    ("nakit", "NAKİT TL"),
+    ("ziraat_pos", "ZİRAAT BANKASI POS:1"),
+    ("iyzico_pos", "İYZİCO POS:2"),
+    ("efatura_pos", "E-FATURA POS:2"),
+    ("havale", "BANKAYA HAVALE (firma hesabı)"),
+    ("iyzico_odemesi", "İYZİCO ÖDEMESİ"),
+    ("kredi_ceki", "KREDİ ÇEKİ"),
+    ("internet_degisimi", "İNTERNET DEĞİŞİMİ"),
 ];
+
+/// Kasa açığı: şablonda MASRAFLAR bölümünün ilk satırı; masraf gibi genel toplama girer.
+pub const KASA_ACIGI: (&str, &str) = ("kasa_acigi", "KASA AÇIĞI");
+
+/// Bilgi satırları: şablonda yer alır ama genel toplama girmez; eksi olabilir.
+pub const BILGI_ALANLARI: [(&str, &str); 5] = [
+    ("kredi_karti_fark", "KREDİ KARTI +/-"),
+    ("kasa_fazlasi", "KASA FAZLASI"),
+    ("havale_fark", "HAVALE +/-"),
+    ("degisim", "DEĞİŞİM"),
+    ("iade", "İADE"),
+];
+
+/// `ciro` alanında geçerli anahtar mı; ikinci değer: eksi olabilir mi.
+pub fn ciro_anahtari(k: &str) -> Option<bool> {
+    if ODEME_TURLERI.iter().any(|(a, _)| *a == k) || k == KASA_ACIGI.0 {
+        Some(false)
+    } else if BILGI_ALANLARI.iter().any(|(a, _)| *a == k) {
+        Some(true)
+    } else {
+        None
+    }
+}
+
+/// Şablondaki genel toplam (son "GENEL TOPLAM" satırı) için çekmecenin payı: ödeme satırları + kasa açığı +
+/// döviz TL karşılığı + masraflar. Bilgi satırları (+/-, kasa fazlası, değişim, iade) girmez.
+pub fn ciro_toplami(ciro: &BTreeMap<String, i64>, doviz: &[DovizSatiri], masraf_kurus: i64) -> i64 {
+    let c = |k: &str| ciro.get(k).copied().unwrap_or(0);
+    ODEME_TURLERI.iter().map(|(k, _)| c(k)).sum::<i64>()
+        + c(KASA_ACIGI.0)
+        + doviz.iter().map(DovizSatiri::tl_kurus).sum::<i64>()
+        + masraf_kurus
+}
 
 /// Dövizler (kod, ad).
 pub const DOVIZLER: [(&str, &str); 4] = [
@@ -99,7 +135,7 @@ fn ayni_kisi(a: &str, b: &str) -> bool {
 pub struct PosCihazi {
     pub id: String,
     pub ad: String,
-    /// Bu POS'un gün sonu hangi ödeme türüyle karşılaştırılır (ör. `ziraat_kart`).
+    /// Bu POS'un gün sonu hangi ödeme türüyle karşılaştırılır (ör. `ziraat_pos`).
     pub odeme_turu: String,
 }
 
@@ -145,6 +181,10 @@ pub struct KasaAyar {
     pub personel: Vec<PersonelKaydi>,
     /// Sunucu kasa ucu (Ş3) gelene kadar paketlerin teslim edildiği ortak klasör (boşsa kuyrukta bekler).
     pub merkez_klasoru: Option<String>,
+    /// Ciro şablonunda "BANKAYA HAVALE" altındaki firma hesabı satırının adı (boşsa genel ad).
+    pub havale_hesap_adi: String,
+    /// Ciro şablonunun A1 başlığı (işletme adı; boşsa şube kodu).
+    pub excel_baslik: String,
 }
 
 impl Default for KasaAyar {
@@ -161,13 +201,13 @@ impl Default for KasaAyar {
                     poslar: vec![
                         PosCihazi {
                             id: "ziraat".into(),
-                            ad: "Ziraat POS".into(),
-                            odeme_turu: "ziraat_kart".into(),
+                            ad: "Ziraat Bankası POS 1".into(),
+                            odeme_turu: "ziraat_pos".into(),
                         },
                         PosCihazi {
                             id: "iyzico".into(),
-                            ad: "İyzico POS".into(),
-                            odeme_turu: "iyzico_fiziksel".into(),
+                            ad: "İyzico POS 2".into(),
+                            odeme_turu: "iyzico_pos".into(),
                         },
                     ],
                 }],
@@ -187,6 +227,8 @@ impl Default for KasaAyar {
             saat_farki_dk: zaman::TURKIYE_DK,
             personel: vec![],
             merkez_klasoru: None,
+            havale_hesap_adi: String::new(),
+            excel_baslik: String::new(),
         }
     }
 }
@@ -504,6 +546,9 @@ fn tutar_denetle(ad: &str, t: i64) -> Result<(), String> {
 
 /// Gün sonu karşılaştırması (KS7). `acilis_kurus`: o günün açılış sayımı; `masraf_kurus`: çekmeceden çıkan
 /// (reddedilmemiş, iptal edilmemiş) masraflar.
+///
+/// Şablona göre NAKİT TL masraflar çıktıktan sonra kalan nakittir (masraf ciroya ayrıca eklenir); bu yüzden
+/// çekmecede beklenen = açılış + NAKİT TL.
 pub fn karsilastir(
     ayar: &KasaAyar,
     girdi: &GunSonuGirdi,
@@ -512,18 +557,17 @@ pub fn karsilastir(
     masraf_kurus: i64,
 ) -> Karsilastirma {
     let cir = |k: &str| girdi.ciro.get(k).copied().unwrap_or(0);
-    let doviz_tl: i64 = girdi.doviz.iter().map(DovizSatiri::tl_kurus).sum();
-    let ciro_toplam: i64 = girdi.ciro.values().sum::<i64>() + doviz_tl;
+    let ciro_toplam = ciro_toplami(&girdi.ciro, &girdi.doviz, masraf_kurus);
     let z: i64 = girdi.noktalar.iter().map(|n| n.z_toplam_kurus).sum();
     let mut satirlar = vec![
         FarkSatiri {
-            ad: "Nakit: sayılan ↔ beklenen (açılış + nakit ciro − masraf)".into(),
-            beklenen_kurus: acilis_kurus + cir("nakit") - masraf_kurus,
+            ad: "Nakit: sayılan ↔ beklenen (açılış + NAKİT TL)".into(),
+            beklenen_kurus: acilis_kurus + cir("nakit"),
             bulunan_kurus: nakit_sayilan,
             fark_kurus: 0,
         },
         FarkSatiri {
-            ad: "Z raporu toplamı ↔ ciro toplamı".into(),
+            ad: "Z raporu toplamı ↔ genel toplam (şablon)".into(),
             beklenen_kurus: z,
             bulunan_kurus: ciro_toplam,
             fark_kurus: 0,
@@ -557,7 +601,7 @@ pub fn karsilastir(
         });
     }
     satirlar.push(FarkSatiri {
-        ad: "Satış sistemi (Nebim) toplamı ↔ ciro toplamı".into(),
+        ad: "Satış sistemi (Nebim) toplamı ↔ genel toplam (şablon)".into(),
         beklenen_kurus: girdi.nebim_toplam_kurus,
         bulunan_kurus: ciro_toplam,
         fark_kurus: 0,
@@ -990,13 +1034,12 @@ impl KasaDefteri {
                 tutar_denetle("POS gün sonu", *t)?;
             }
         }
-        for k in g.ciro.keys() {
-            if !ODEME_TURLERI.iter().any(|(a, _)| a == k) {
-                return Err(format!("bilinmeyen ödeme türü: {k}"));
-            }
-        }
         for (k, t) in &g.ciro {
-            tutar_denetle(k, *t)?;
+            match ciro_anahtari(k) {
+                None => return Err(format!("bilinmeyen ciro alanı: {k}")),
+                Some(true) => tutar_denetle(k, t.abs())?,
+                Some(false) => tutar_denetle(k, *t)?,
+            }
         }
         for d in &g.doviz {
             if !DOVIZLER.iter().any(|(k, _)| *k == d.kod) {

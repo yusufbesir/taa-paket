@@ -16,7 +16,7 @@
 ## Kurallar
 - Eşik: `masraf_merkez_esigi_kurus` (varsayılan 2.000 TL). Altı → mağaza müdürü (ya da yönetici) onaylar; eşik ve üstü → yalnız merkez (yönetici).
 - **Giren onaylayamaz** (müdür olsa bile). Bir masrafa tek karar verilir.
-- Gün sonu nakit beklentisine bekleyen ve onaylı masraflar girer; reddedilen ve iptal edilen girmez.
+- Bekleyen ve onaylı masraflar gün sonu genel toplamına ve ciro Excel'inin masraf satırlarına (18–26) girer; reddedilen ve iptal edilen girmez.
 - Masraf türleri listesi Yusuf'tan beklenir (G6); bugünkü liste yer tutucudur (Kırtasiye, Temizlik, Kargo, Yemek, Diğer).
 - Fiş fotoğrafı alanı sözleşmede var; ekranda dosya ekleme henüz bağlanmadı.
 
