@@ -77,21 +77,20 @@
       hedef: document.querySelector('.gez-alt'), programAdi: 'TAA Terzi Takip',
       get ogeler() {
         var tema = document.documentElement.dataset.tema || 'kocan';
-        var liste = [
+        // Sıra (Yusuf 11-26): kullanıcı bölümünün hemen altında Yönetici girişi (ya da Yönetici kipinden çık), ayraç, Ayarlar...
+        // Yönetici kipi: kapalıyken PIN akışı açılır, açıkken yönetici oturumu düşer (ortak oturum sürer).
+        var yonetici = (k().yoneticiAcik && k().yoneticiAcik())
+          ? { ad: 'Yönetici kipinden çık', tikla: function () { k().yoneticiKilitle(); } }
+          : { ad: 'Yönetici girişi', tikla: function () { if (k().git) k().git('telefonlar'); } };
+        return [
+          yonetici,
+          { ayrac: true },
           { ad: 'Ayarlar', tikla: function () { if (k().git) k().git('ayarlar'); } },
           { ad: 'Tema', alt: TEMA_ADLARI.map(function (t) { return { ad: t[1], secili: t[0] === tema, tikla: function () { if (k().tema) k().tema(t[0]); } }; }) },
           { ayrac: true },
           { ad: 'Klavye kısayolları', kisayol: 'F1', tikla: function () { if (k().kisayollar) k().kisayollar(); } },
           { ad: 'Yardım ve sürüm', tikla: function () { if (k().yardim) k().yardim(); } }
         ];
-        // Yönetici kipi: kapalıyken PIN akışı açılır, açıkken yönetici oturumu düşer (ortak oturum sürer).
-        liste.push({ ayrac: true });
-        if (k().yoneticiAcik && k().yoneticiAcik()) {
-          liste.push({ ad: 'Yönetici kipinden çık', tikla: function () { k().yoneticiKilitle(); } });
-        } else {
-          liste.push({ ad: 'Yönetici girişi', tikla: function () { if (k().git) k().git('telefonlar'); } });
-        }
-        return liste;
       }
     });
     // Menü kurulduysa kenar çubuğundaki yedek Ayarlar/Yönetici girişi satırları gizlenir (masaustu.html CSS).
