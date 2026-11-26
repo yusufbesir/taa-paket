@@ -254,6 +254,8 @@ mod testler {
             pay_mm: None,
             usta_onayli: false,
             igneli: false,
+            renk: None,
+            adet: None,
         }
     }
 

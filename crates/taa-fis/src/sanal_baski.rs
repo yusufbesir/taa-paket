@@ -122,6 +122,8 @@ fn ornek() -> Fis {
             pay_mm: None,
             usta_onayli: false,
             igneli: false,
+            renk: None,
+            adet: None,
         }],
         olcu_notu: String::new(),
         prova: String::new(),
@@ -145,6 +147,8 @@ fn ornek() -> Fis {
         raf: String::new(),
         teslim_degisiklikleri: vec![],
         imzalar: vec![],
+        duzeltmeler: Vec::new(),
+        bagli: Vec::new(),
     };
     f.kalemler.push(f.kalemler[0].clone());
     f
@@ -189,9 +193,9 @@ fn logo_576_nokta_ve_qr_dengeli() {
             s.logo
         );
     }
-    // her nüshada fiş QR'ı, müşteri nüshasında ek olarak aydınlatma QR'ı
+    // her nüshada fiş QR'ı; kısa müşteri nüshasında aydınlatma karekodsuz tek satır
     assert_eq!(s.qr_kurulum, s.qr_baski);
-    assert_eq!(s.qr_baski, 3);
+    assert_eq!(s.qr_baski, 2);
 }
 
 #[test]

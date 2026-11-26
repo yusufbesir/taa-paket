@@ -238,6 +238,13 @@ pub fn kayit(dizin: &Path, f: &Fis, simdi: u64) -> Result<Value, String> {
             if let Some(var) = k.varyant.as_deref().and_then(varyant_anahtari) {
                 v["v"] = json!(var);
             }
+            // Renk yalnız sabit listedeki anahtar olarak, adet 2-20 ise gider (2026-11-26 04:31).
+            if let Some(r) = k.renk.as_deref().filter(|r| taa_fis::renk_adi(r).is_some()) {
+                v["r"] = json!(r);
+            }
+            if let Some(a) = k.adet.filter(|a| (2..=20).contains(a)) {
+                v["a"] = json!(a);
+            }
             v
         })
         .collect();
@@ -246,7 +253,7 @@ pub fn kayit(dizin: &Path, f: &Fis, simdi: u64) -> Result<Value, String> {
     } else {
         String::new()
     };
-    Ok(json!({
+    let mut k = json!({
         "v": 2,
         "k": takip_kodu(dizin, &f.no)?,
         "d": durum_adi(f.durum),
@@ -257,7 +264,18 @@ pub fn kayit(dizin: &Path, f: &Fis, simdi: u64) -> Result<Value, String> {
         "u": kalemler,
         "ts": simdi,
         "sil": sil,
-    }))
+    });
+    // Bağlı (birlikte teslim) fiş sayısı; fiş numaraları gitmez.
+    if !f.bagli.is_empty() {
+        k["b"] = json!(f.bagli.len().min(20));
+    }
+    // Kargo: yalnız "kargoya hazırlanıyor" bilgisi; firma/takip no Telegram kargo kaydından eklenir.
+    // Ad, telefon, açık adres GİTMEZ.
+    if f.kargo && !matches!(f.durum, Durum::Teslim | Durum::Iptal) {
+        k["v"] = json!(3);
+        k["kg"] = json!({ "d": "hazirlaniyor", "f": "diger", "n": "", "t": "", "y": "" });
+    }
+    Ok(k)
 }
 
 /// Ürün adını sabit bir anahtara çevirir; bilinmeyen ürün "diger" olur (serbest metin dışarı çıkmaz).
@@ -304,7 +322,8 @@ fn urun_anahtari(urun: &str) -> &'static str {
 fn islem_kodu_gecerli(k: &str) -> bool {
     !k.is_empty()
         && k.len() <= 40
-        && k.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        && k.bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
 fn varyant_anahtari(v: &str) -> Option<&'static str> {
@@ -553,7 +572,11 @@ mod testler {
         assert_eq!(k["d"], "hazir");
         assert_eq!(k["s"], "MRK01");
         assert_eq!(k["t"], "2026-11-29");
-        assert_eq!(k["u"], json!([{"u": "ceket"}]), "serbest metin işlem dışarı gitmemeli");
+        assert_eq!(
+            k["u"],
+            json!([{"u": "ceket"}]),
+            "serbest metin işlem dışarı gitmemeli"
+        );
         let mut f2 = fis("F-2", Durum::Bekliyor);
         f2.kalemler[0].urun = "Pantolon".into();
         f2.kalemler[0].islem_kodu = Some("pant-paca-kisalt".into());
@@ -561,7 +584,10 @@ mod testler {
         f2.kalemler[0].olcu_mm = Some(25);
         f2.kalemler[0].not = "Ayşe Hanım acele".into();
         let k2 = kayit(&d, &f2, 1_000).unwrap();
-        assert_eq!(k2["u"], json!([{"u": "pantolon", "i": "pant-paca-kisalt", "v": "duble"}]));
+        assert_eq!(
+            k2["u"],
+            json!([{"u": "pantolon", "i": "pant-paca-kisalt", "v": "duble"}])
+        );
         let g2 = serde_json::to_string(&k2).unwrap();
         assert!(!g2.contains("Ayşe") && !g2.contains("acele"), "{g2}");
         assert_eq!(urun_anahtari("GÖMLEK"), "gomlek");

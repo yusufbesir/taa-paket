@@ -330,6 +330,9 @@ impl Uygulama {
             ("GET", ["api", "yonetim", "kisiler"]) => self.kisi_listesi_yonetim(i),
             ("POST", ["api", "yonetim", "kisi"]) => self.kisi_ekle(i),
             ("POST", ["api", "yonetim", "kisi", id, "kapat"]) => self.kisi_kapat(i, id),
+            ("POST", ["api", "yonetim", "cihaz", id, "ad"]) => self.cihaz_ad(i, id),
+            ("POST", ["api", "yonetim", "cihaz", id, "yetki"]) => self.cihaz_yetki(i, id),
+            ("GET", ["api", "yonetim", "yetkiler"]) => self.yetki_listesi(i),
             ("POST", ["api", "yonetim", "cihaz", id, "kapat"]) => {
                 if let Some(y) = self.yonetim_izni(i) {
                     return y;
@@ -542,6 +545,10 @@ impl Uygulama {
             Ok(t) => t,
             Err(e) => return Yanit::hata(500, &e),
         };
+        // Cihaz adını yönetici bu ekranda verir; telefonun önerdiği ad yalnız ön değerdir.
+        if let Some(ad) = v["ad"].as_str().map(str::trim).filter(|a| !a.is_empty()) {
+            b[n].ad = ad.chars().take(40).collect();
+        }
         match self
             .cihazlar()
             .ekle(&b[n].ad, &token, &tarih_iso(simdi), &b[n].kisi_id)
@@ -838,6 +845,20 @@ impl Uygulama {
         }
     }
 
+    /// Fiş düzeltme yetkisi: varsayılan yalnız mağaza bilgisayarı; yönetici her doğrulanmış cihaza verip geri alabilir.
+    fn duzeltme_izni(&self, cihaz: &cihaz::Cihaz) -> Option<Yanit> {
+        if self.cihazlar().yetki_var(&cihaz.id, "duzelt") {
+            return None;
+        }
+        Some(Yanit::json(
+            403,
+            json!({
+                "hata": "yetki_yok",
+                "ileti": "Bu cihazın fiş düzeltme yetkisi yok. Yönetici, mağaza bilgisayarındaki Telefonlar ekranından yetki verebilir.",
+            }),
+        ))
+    }
+
     fn yetkili(&self, i: &Istek, parca: &[&str]) -> Yanit {
         let token = i
             .yetki
@@ -926,8 +947,69 @@ impl Uygulama {
                 Ok(k) => Yanit::json(200, json!(k)),
                 Err(e) => Yanit::hata(500, &e),
             },
+            ("POST", ["api", "fis", no, "kalem"])
+            | ("POST", ["api", "fis", no, "kalem", _, "cikar"])
+            | ("POST", ["api", "fis", no, "teslim-sekli"])
+            | ("POST", ["api", "fis", no, "bagla"])
+            | ("POST", ["api", "fis", no, "bag-coz"]) => {
+                if let Some(y) = self.duzeltme_izni(&cihaz) {
+                    return y;
+                }
+                let v: serde_json::Value = serde_json::from_slice(&i.govde).unwrap_or_default();
+                let kim = if cihaz.kisi_id.is_empty() {
+                    cihaz.ad.clone()
+                } else {
+                    cihaz.kisi_id.clone()
+                };
+                let tarih = tarih_iso(self.simdi());
+                let s = |k: &str| v[k].as_str().unwrap_or("").to_string();
+                let sonuc: Result<serde_json::Value, String> = match parca {
+                    [_, _, _, "kalem"] => {
+                        match serde_json::from_value::<taa_fis::Kalem>(v["kalem"].clone()) {
+                            Ok(k) => d
+                                .kalem_ekle(no, k, &kim, &tarih)
+                                .map(|u| json!({ "uyarilar": u })),
+                            Err(e) => Err(format!("geçersiz kalem: {e}")),
+                        }
+                    }
+                    [_, _, _, "kalem", sira, _] => match sira.parse::<usize>() {
+                        Ok(n) => d
+                            .kalem_cikar(no, n, &s("neden"), &kim, &tarih)
+                            .map(|_| json!({})),
+                        Err(_) => Err("kalem sırası sayı olmalı".into()),
+                    },
+                    [_, _, _, "teslim-sekli"] => d
+                        .teslim_sekli(
+                            no,
+                            v["kargo"].as_bool().unwrap_or(false),
+                            &s("kargo_ad"),
+                            &s("kargo_adres"),
+                            &s("kargo_telefon"),
+                            &s("kargo_notu"),
+                            &s("neden"),
+                            &kim,
+                            &tarih,
+                        )
+                        .map(|_| json!({})),
+                    [_, _, _, "bagla"] => d.bagla(no, &s("diger"), &kim, &tarih).map(|_| json!({})),
+                    _ => d.bag_coz(no, &kim, &tarih).map(|_| json!({})),
+                };
+                match sonuc {
+                    Ok(mut j) => {
+                        if let Ok(Some(f)) = d.bul(no) {
+                            self.takibe_yaz(&f);
+                        }
+                        j["tamam"] = json!(true);
+                        Yanit::json(200, j)
+                    }
+                    Err(e) => Yanit::hata(422, &e),
+                }
+            }
             ("POST", ["api", "fis", no, "teslim"]) => {
                 let v: serde_json::Value = serde_json::from_slice(&i.govde).unwrap_or_default();
+                if let Some(y) = self.duzeltme_izni(&cihaz) {
+                    return y;
+                }
                 match d.teslim_degistir(
                     no,
                     v["yeni"].as_str().unwrap_or(""),
@@ -956,8 +1038,69 @@ impl Uygulama {
                     Some("iptal") => Durum::Iptal,
                     _ => return Yanit::hata(400, "durum: terzihanede, hazir, teslim ya da iptal"),
                 };
+                // Bağlı fiş varsa teslimde sorulur: istemci "bagli" listesiyle (boş olabilir) yeniden gönderir.
+                let mut birlikte: Vec<String> = Vec::new();
+                if yeni == Durum::Teslim {
+                    if let Ok(Some(f)) = d.bul(no) {
+                        let acik: Vec<taa_fis::Fis> = f
+                            .bagli
+                            .iter()
+                            .filter_map(|n| d.bul(n).ok().flatten())
+                            .filter(|x| {
+                                matches!(
+                                    x.durum,
+                                    Durum::Bekliyor | Durum::Terzihanede | Durum::Hazir
+                                )
+                            })
+                            .collect();
+                        match v.get("bagli").and_then(|b| b.as_array()) {
+                            None if !acik.is_empty() => {
+                                let liste: Vec<_> = acik
+                                    .iter()
+                                    .map(|x| json!({ "no": x.no, "musteri": x.musteri, "durum": x.durum, "hazir": x.durum == Durum::Hazir }))
+                                    .collect();
+                                return Yanit::json(
+                                    409,
+                                    json!({
+                                        "soru": "bagli_teslim",
+                                        "ileti": "Bu fişe bağlı başka fişler var. Onlar da şimdi teslim edilsin mi?",
+                                        "bagli": liste,
+                                    }),
+                                );
+                            }
+                            Some(sec) => {
+                                for n in sec.iter().filter_map(|x| x.as_str()) {
+                                    match acik.iter().find(|x| x.no == n) {
+                                        Some(x) if x.durum == Durum::Hazir => {
+                                            birlikte.push(n.to_string())
+                                        }
+                                        Some(_) => return Yanit::hata(
+                                            409,
+                                            &format!(
+                                                "{n} henüz hazır değil; birlikte teslim edilemez"
+                                            ),
+                                        ),
+                                        None => {
+                                            return Yanit::hata(
+                                                409,
+                                                &format!("{n} bu fişe bağlı açık bir fiş değil"),
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            None => {}
+                        }
+                    }
+                }
                 match d.durum_ata(no, yeni, &tarih_iso(self.simdi())) {
                     Ok(()) => {
+                        for n in &birlikte {
+                            let _ = d.durum_ata(n, Durum::Teslim, &tarih_iso(self.simdi()));
+                            if let Ok(Some(f)) = d.bul(n) {
+                                self.takibe_yaz(&f);
+                            }
+                        }
                         if let Ok(Some(f)) = d.bul(no) {
                             self.takibe_yaz(&f);
                         }
@@ -966,7 +1109,10 @@ impl Uygulama {
                         if yeni == Durum::Hazir {
                             mesaj = self.hazir_bildirimi(&d, no);
                         }
-                        Yanit::json(200, json!({ "tamam": true, "bildirim": mesaj }))
+                        Yanit::json(
+                            200,
+                            json!({ "tamam": true, "bildirim": mesaj, "birlikte_teslim": birlikte }),
+                        )
                     }
                     Err(e) => Yanit::hata(409, &e),
                 }
@@ -1992,6 +2138,27 @@ mod testler {
             .unwrap()
             .to_string();
         let yol = format!("/api/fis/{no}/teslim");
+        // telefonun varsayılan olarak düzeltme yetkisi yok; yönetici verir
+        assert_eq!(
+            u.isle(&ist(
+                "POST",
+                &yol,
+                Some(&t),
+                r#"{"yeni":"2099-02-01","saat":"18:00","neden":"x"}"#,
+                false
+            ))
+            .kod,
+            403
+        );
+        assert_eq!(
+            u.isle(&pc(
+                "POST",
+                "/api/yonetim/cihaz/T-001/yetki",
+                r#"{"yetki":"duzelt","ver":true}"#
+            ))
+            .kod,
+            200
+        );
         assert_eq!(
             u.isle(&ist(
                 "POST",
@@ -2681,5 +2848,204 @@ mod testler {
         ));
         assert_eq!(y.kod, 200);
         assert_eq!(json_of(&y), json!({}));
+    }
+
+    #[test]
+    fn duzeltme_yetkisi_baglama_ve_bagli_teslim() {
+        let u = uyg();
+        let t = esles(&u);
+        let fis = |yerel_pc: bool| {
+            let y = if yerel_pc {
+                u.isle(&pc("POST", "/api/fis", FIS))
+            } else {
+                u.isle(&ist("POST", "/api/fis", Some(&t), FIS, false))
+            };
+            assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
+            json_of(&y)["no"].as_str().unwrap().to_string()
+        };
+        let a = fis(true);
+        let b = fis(false);
+        let kalem = r#"{"kalem":{"urun":"Ceket","islem":"ütü","renk":"bej"}}"#;
+        // telefon düzeltemez (varsayılan), mağaza PC düzeltir
+        let y = u.isle(&ist(
+            "POST",
+            &format!("/api/fis/{a}/kalem"),
+            Some(&t),
+            kalem,
+            false,
+        ));
+        assert_eq!(y.kod, 403);
+        assert_eq!(json_of(&y)["hata"], "yetki_yok");
+        assert_eq!(
+            u.isle(&pc("POST", &format!("/api/fis/{a}/kalem"), kalem))
+                .kod,
+            200
+        );
+        assert_eq!(
+            u.isle(&pc("POST", &format!("/api/fis/{a}/teslim-sekli"),
+                r#"{"kargo":true,"kargo_ad":"Deneme Alıcı","kargo_adres":"Deneme Mah. 1. Sk. No:1 Büyükçekmece/İstanbul","kargo_telefon":"0532 000 00 00"}"#)).kod,
+            200
+        );
+        assert_eq!(
+            u.isle(&pc(
+                "POST",
+                &format!("/api/fis/{a}/teslim-sekli"),
+                r#"{"kargo":false,"neden":"kargo iptal"}"#
+            ))
+            .kod,
+            200
+        );
+        assert_eq!(
+            u.isle(&pc(
+                "POST",
+                &format!("/api/fis/{a}/bagla"),
+                &format!(r#"{{"diger":"{b}"}}"#)
+            ))
+            .kod,
+            200
+        );
+        let f = json_of(&u.isle(&pc("GET", &format!("/api/fis/{a}"), "")));
+        assert_eq!(f["bagli"][0], b.as_str());
+        assert_eq!(f["kalemler"].as_array().unwrap().len(), 2);
+        assert!(f["duzeltmeler"].as_array().unwrap().len() >= 4);
+        // yönetici yetkiyi verir, sonra geri alır; mağaza PC'sinden de alınabilir
+        assert_eq!(
+            u.isle(&pc(
+                "POST",
+                "/api/yonetim/cihaz/T-001/yetki",
+                r#"{"yetki":"duzelt","ver":true}"#
+            ))
+            .kod,
+            200
+        );
+        assert_eq!(
+            u.isle(&ist(
+                "POST",
+                &format!("/api/fis/{b}/kalem"),
+                Some(&t),
+                kalem,
+                false
+            ))
+            .kod,
+            200
+        );
+        assert_eq!(
+            u.isle(&pc(
+                "POST",
+                "/api/yonetim/cihaz/T-001/yetki",
+                r#"{"yetki":"duzelt","ver":false}"#
+            ))
+            .kod,
+            200
+        );
+        assert_eq!(
+            u.isle(&ist(
+                "POST",
+                &format!("/api/fis/{b}/kalem"),
+                Some(&t),
+                kalem,
+                false
+            ))
+            .kod,
+            403
+        );
+        assert_eq!(
+            u.isle(&pc(
+                "POST",
+                "/api/yonetim/cihaz/PC/yetki",
+                r#"{"yetki":"duzelt","ver":false}"#
+            ))
+            .kod,
+            200
+        );
+        assert_eq!(
+            u.isle(&pc("POST", &format!("/api/fis/{a}/kalem"), kalem))
+                .kod,
+            403
+        );
+        assert_eq!(
+            u.isle(&pc(
+                "POST",
+                "/api/yonetim/cihaz/PC/yetki",
+                r#"{"yetki":"duzelt","ver":true}"#
+            ))
+            .kod,
+            200
+        );
+        // yetki/ad yönetimi telefondan yapılamaz; ad yalnız masaüstü programdan
+        assert_eq!(
+            u.isle(&ist(
+                "POST",
+                "/api/yonetim/cihaz/T-001/yetki",
+                Some(&t),
+                r#"{"yetki":"duzelt","ver":true}"#,
+                false
+            ))
+            .kod,
+            403
+        );
+        assert_eq!(
+            u.isle(&ist(
+                "POST",
+                "/api/yonetim/cihaz/T-001/ad",
+                None,
+                r#"{"ad":"X"}"#,
+                true
+            ))
+            .kod,
+            403
+        );
+        assert_eq!(
+            u.isle(&pc(
+                "POST",
+                "/api/yonetim/cihaz/T-001/ad",
+                r#"{"ad":"Müdür telefonu"}"#
+            ))
+            .kod,
+            200
+        );
+        let l = json_of(&u.isle(&pc("GET", "/api/yonetim/yetkiler", "")));
+        assert_eq!(l["cihazlar"][1]["ad"], "Müdür telefonu");
+        assert_eq!(l["cihazlar"][0]["yetkiler"][0], "duzelt");
+        // bağlı teslim: ikisi de hazır; teslimde sorulur, seçilen birlikte teslim edilir
+        for n in [&a, &b] {
+            assert_eq!(
+                u.isle(&pc(
+                    "POST",
+                    &format!("/api/fis/{n}/durum"),
+                    r#"{"durum":"hazir"}"#
+                ))
+                .kod,
+                200
+            );
+        }
+        let y = u.isle(&pc(
+            "POST",
+            &format!("/api/fis/{a}/durum"),
+            r#"{"durum":"teslim"}"#,
+        ));
+        assert_eq!(y.kod, 409);
+        assert_eq!(json_of(&y)["soru"], "bagli_teslim");
+        assert_eq!(json_of(&y)["bagli"][0]["no"], b.as_str());
+        let y = u.isle(&pc(
+            "POST",
+            &format!("/api/fis/{a}/durum"),
+            &format!(r#"{{"durum":"teslim","bagli":["{b}"]}}"#),
+        ));
+        assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
+        assert_eq!(
+            json_of(&u.isle(&pc("GET", &format!("/api/fis/{b}"), "")))["durum"],
+            "teslim"
+        );
+        // personel ad soyad birlikte
+        assert_eq!(
+            u.isle(&pc(
+                "POST",
+                "/api/yonetim/kisi",
+                r#"{"ad":"Ali","rol":"personel"}"#
+            ))
+            .kod,
+            422
+        );
     }
 }
