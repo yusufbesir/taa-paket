@@ -18,7 +18,8 @@ use tiny_http::{Header, Method, Request, Response, Server};
 
 const YARDIM: &str = "\
 taa-cati-panel — TAA Çatı yönetim paneli (yalnız sunucu PC'sinde).
-Kullanım: taa-cati-panel [--sunucu <https://adres>] [--kok <veri kökü>] [--sertifika <pem>] [--pencere-acma]
+Kullanım: taa-cati-panel [--sunucu <https://adres>] [--kok <veri kökü>] [--sertifika <pem>] [--fis-klasoru <klasör>] [--pencere-acma]
+  --fis-klasoru    Raporlar için TerziTakip fiş sunucusu --veri klasörü (fisler.jsonl, usta puanı).
   --pencere-acma   pencereyi açmaz, açılış adresini yazar (tek seferlik).
 Panel yalnız bu bilgisayardan (127.0.0.1) açılır; pencere kapanınca birkaç dakika içinde kendiliğinden kapanır.";
 
@@ -29,6 +30,8 @@ const SESSIZLIK_SURESI: Duration = Duration::from_secs(3 * 60);
 
 struct Ayar {
     kok: PathBuf,
+    /// TerziTakip fiş sunucusu `--veri` klasörü (Raporlar için, isteğe bağlı).
+    fis_klasoru: Option<PathBuf>,
     sunucu: Option<String>,
     sertifika: Option<PathBuf>,
 }
@@ -60,6 +63,7 @@ fn main() -> ExitCode {
     let mut sunucu = None;
     let mut kok = None;
     let mut sertifika = None;
+    let mut fis_klasoru = None;
     let mut pencere = true;
     let mut i = 0;
     while i < args.len() {
@@ -68,6 +72,7 @@ fn main() -> ExitCode {
             "--sunucu" => sunucu = deger(i),
             "--kok" => kok = deger(i).map(PathBuf::from),
             "--sertifika" => sertifika = deger(i).map(PathBuf::from),
+            "--fis-klasoru" => fis_klasoru = deger(i).map(PathBuf::from),
             "--pencere-acma" => {
                 pencere = false;
                 i += 1;
@@ -86,6 +91,7 @@ fn main() -> ExitCode {
     };
     let ayar = Ayar {
         kok,
+        fis_klasoru,
         sunucu,
         sertifika,
     };
@@ -283,6 +289,7 @@ fn isle(
             json_yanit(istek, (200, json!({"tamam": true})));
             std::process::exit(0);
         }
+        ("GET", y) if taa_cati::raporlar_api::raporlar_yolu(y) => raporlar(istek, ayar, y, &sorgu),
         _ => {
             let y = baglan(ayar, |c, g| panel::api(c, g, yontem, &yol, &sorgu, &govde));
             json_yanit(istek, y);
@@ -384,6 +391,37 @@ fn baglan(ayar: &Ayar, f: impl FnOnce(&Cati, &dyn taa_kimlik::Gonderici) -> Yani
     };
     let c = Cati::oturumdan(gonderici, &oturum);
     f(&c, gonderici)
+}
+
+/// Raporlar: yerel veri kökünden salt okunur; oturumda `yonetici` rolü şart (karar `raporlar_api::yanit`'ta).
+fn raporlar(istek: Request, ayar: &Ayar, yol: &str, sorgu: &str) {
+    let roller: Option<Vec<String>> = depo_anahtari(ayar)
+        .ok()
+        .and_then(|a| taa_kimlik::varsayilan_depo(&ayar.kok).oku(&a).ok())
+        .map(|o| o.roller);
+    let (durum, tur, govde, indir) = taa_cati::raporlar_api::yanit(
+        &ayar.kok,
+        ayar.fis_klasoru.as_deref(),
+        roller.as_deref(),
+        yol,
+        sorgu,
+        &taa_rapor::tarih::bugun(),
+    );
+    let mut y = Response::from_string(govde).with_status_code(durum);
+    if let Some(ad) = indir {
+        // Dosya adı yalnız [a-z0-9.-] içerir (uygulama kimliği + tarih doğrulanmıştır).
+        let guvenli: String = ad
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '.'))
+            .collect();
+        if let Ok(h) = Header::from_bytes(
+            &b"Content-Disposition"[..],
+            format!("attachment; filename=\"{guvenli}\"").as_bytes(),
+        ) {
+            y.add_header(h);
+        }
+    }
+    yanitla(istek, y, tur);
 }
 
 fn depo_anahtari(ayar: &Ayar) -> Result<String, Yanit> {

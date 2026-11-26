@@ -15,6 +15,8 @@
 #[cfg(test)]
 mod testler;
 
+pub mod uygulamalar;
+
 pub use taa_rapor::{Bolum, Durum, Rapor};
 
 use serde_json::{json, Value};

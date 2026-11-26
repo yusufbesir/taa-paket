@@ -44,3 +44,6 @@ taa-raporlar [--kok K] [--fis-klasoru F] [--bugun YYYY-AA-GG] [--sunucu <https:/
 - Sunucu hazır olunca: tüm şubelerin verisi sunucudan (`GET /v1/...`), şube bazlı karşılaştırma kuralları.
 - B seçeneği: `--kaydet` çıktısını proje dosyalarına bırakıp Claude ile yorumlatma (rutin).
 - Excel: mevcut CSV (taa-rapor) + yorum sütunu.
+
+## Güncelleme 2026-11-26
+Rapor artık TAA Çatı panelinde "Raporlar" ekranından da çekilir (yalnız `yonetici` rolü, tüm uygulamalar): `taa_raporlar::uygulamalar` (uygulama kataloğu, veri alanı özeti, TerziTakip usta puanı gölge bölümü) ve `taa_cati::raporlar_api`. Ayrıntı: docs/S3-CATI-PANEL.md "Raporlar".

@@ -26,6 +26,9 @@ taa-hata = { path = "../taa-hata" }
 serde_json = "1"
 taa-kimlik = { path = "../taa-kimlik" }
 taa-kuyruk = { path = "../taa-kuyruk" }
+taa-ayar = { path = "../taa-ayar" }
+taa-rapor = { path = "../taa-rapor" }
+taa-raporlar = { path = "../taa-raporlar" }
 taa-yol = { path = "../taa-yol" }
 # Panel: çalışma alanında zaten kullanılan crate'ler (taa-fis-sunucu); yeni dış bağımlılık değil.
 getrandom = "0.3"
