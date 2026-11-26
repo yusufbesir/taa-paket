@@ -5,10 +5,17 @@
 // Akış (mağaza sunucusu internete açılmaz; bulut yalnız aracıdır):
 //   1) Aç:     sunucu POST /api/onay/ac (ed25519 imzalı) → bulut "onay:"+t kaydını {durum:"bekliyor"} olarak açar (≤15 dk).
 //   2) Müşteri GET/POST /o/<t> (betiksiz form): ad, telefon, onay kutusu. Bulut düz metni (ad, tel, user-agent, IP,
-//      zaman, dil) HEMEN sunucunun X25519 genel anahtarıyla şifreler (ECDH + HKDF-SHA256 + AES-256-GCM, aad = t);
-//      düz metin hiçbir yere yazılmaz/loglanmaz, kayıtta yalnız {e, iv, c} durur.
+//      zaman, dil) HEMEN sunucunun X25519 genel anahtarıyla şifreler (ECDH + HKDF-SHA256 + AES-256-GCM, aad = t, aç
+//      gövdesinde "oz" (kalem özeti) varsa aad = t + ":" + oz); düz metin hiçbir yere yazılmaz/loglanmaz, şifreli sonuç
+//      yaz-bir-kez anahtarında ("onay:"+t+":sonuc") yalnız {e, iv, c} olarak durur.
 //   3) Oku:    sunucu GET /api/onay/<t> (x-taa-zaman + x-taa-imza) → {durum} ya da {durum, e, iv, c}.
-//   4) Kapat:  sunucu POST /api/onay/kapat (imzalı) → kayıt silinir.
+//   4) Kapat:  sunucu POST /api/onay/kapat (imzalı) → şifreli sonuç silinir, kayıt sil zamanına kadar {durum:"kapandi"}
+//      olarak kalır (aynı t yeniden açılamaz: 409; oku/sayfa 404). Deneme anahtarları kişisel veri taşımaz, sil'de
+//      kendiliğinden düşer (KV silme zamanı / Blob temizliği); kapat onları tek tek silmez (KV yazma kotası).
+// Atomiklik (KV/Blob'da işlem yok): ilk onay ve 5 deneme sınırı yaz-bir-kez anahtarlarıyla korunur: yalnız yoksa yaz, sonra
+//   geri oku ve kendi "yazan" rastgele değerini doğrula; deneme sayacı tek alan değil deneme başına ayrı anahtardır
+//   ("onay:"+t+":deneme:"+n, n = 1..5). Blob'da "yalnız yoksa yaz" gerçekten atomiktir (allowOverwrite: false); KV'de değildir
+//   (README "Bilinen sınırlar").
 // Yusuf 2026-11-26 06:23: "telefon üzerinden de imza alınsın dokunmatik ekran ile — fişi yanında olmayan için".
 //   Aç gövdesinde "i": 1 → müşteri sayfasında parmakla imza ZORUNLU (yöntem "qr_imza"; tuval ve betik ./imza.mjs).
 //   "i" yoksa ya da 0 ise sayfa eskisi gibi betiksizdir. İmza PNG'si (base64) şifreli yükün (P) "imza" alanına girer;
@@ -22,8 +29,15 @@ import { imzaDogrula, imzaIcerik, imzaBetikYaniti, FORM_EN_COK, IMZA_EN, IMZA_BO
 export const ONAY_RE = /^[a-km-np-z2-9]{20}$/;
 export const ONAY_OMUR = 900; // saniye: kayıt en çok 15 dk yaşar
 export const ONAY_EN_COK_POST = 5;
-const ZAMAN_PAYI = 600; // aç/kapat gövdesindeki ts için saat kayması payı
-const OKU_PAYI = 300;
+// Saat payı iki yönlüdür ve aç, kapat, oku için aynıdır: şimdi-600 <= ts <= şimdi+600 (mağaza bilgisayarının saati
+// buluttan geri ya da ileri olabilir; Rust SAAT_PAYI_SN = 600). İleri payı daraltmak tekrar saldırısını pek kısaltmaz
+// (asıl koruma sil + "kapandi" kaydı; oku yanıtı yalnız sunucunun çözebildiği şifreli veridir), ama saati birkaç dakika
+// ileri olan bilgisayarda karekodu tamamen durdurur. Oku da 600: aç'ın kabul ettiği her kaymada akış uçtan uca çalışır
+// (eskiden oku ±300 idi; 300..600 sn kaymada karekod açılıp hiç okunamıyordu). Denetim 2026-11-26.
+const ZAMAN_PAYI = 600;
+/** Aç/kapat gövdesinin üst sınırı (bayt); gövde bu sınırdan fazlası okunmadan reddedilir (413). */
+export const IMZALI_GOVDE_EN_COK = 1024;
+export const OZ_RE = /^[0-9a-f]{64}$/;
 const BILGI = new TextEncoder().encode("taa-teslim-onay-v1");
 const yazi = (s) => new TextEncoder().encode(s);
 
@@ -52,7 +66,8 @@ async function imzaGecerli(metin, imzaHex, genelHex) {
 }
 
 async function imzaliGovde(govde, imzaHex, genelHex) {
-  if (typeof govde !== "string" || govde.length > 1024) return { hata: "gövde geçersiz", kod: 400 };
+  if (govde === null) return { hata: "gövde çok büyük", kod: 413 };
+  if (typeof govde !== "string" || govde.length > IMZALI_GOVDE_EN_COK) return { hata: "gövde geçersiz", kod: 400 };
   const h = await imzaGecerli(govde, imzaHex, genelHex);
   if (h) return h;
   try {
@@ -63,8 +78,12 @@ async function imzaliGovde(govde, imzaHex, genelHex) {
   }
 }
 
-/** 1) Aç gövdesi: {"v":1,"tur":"onay_ac","t","ts","sil","s","n","pk"[,"i"]} (ts<sil<=ts+900).
- *  i: 0 | 1 (isteğe bağlı; yoksa 0 = eski istemci). 1 → müşteri sayfasında parmakla imza zorunlu. */
+/** 1) Aç gövdesi: {"v":1,"tur":"onay_ac","t","ts","sil","s","n","pk"[,"i"][,"oz"]}.
+ *  Zaman: şimdi-600 <= ts <= şimdi+600; ts < sil <= ts+900 ve sil > şimdi. Kayda yazılan sil = min(sil, şimdi+900):
+ *  bilgisayar saati ileriyse (Rust her zaman sil = ts+900 gönderir) reddedilmez, bulut saatine göre kırpılır; böylece
+ *  toplam geçerlilik bulut saatiyle de 15 dk'yı aşmaz.
+ *  i: 0 | 1 (isteğe bağlı; yoksa 0 = eski istemci). 1 → müşteri sayfasında parmakla imza zorunlu.
+ *  oz: isteğe bağlı kalem özeti (sha256, 64 küçük harf hex). Kayda yazılır, şifreli P'ye girmez; aad = t + ":" + oz. */
 export async function dogrulaAc(govde, imzaHex, genelHex, simdi = Math.floor(Date.now() / 1000)) {
   const s = await imzaliGovde(govde, imzaHex, genelHex);
   if (s.hata) return s;
@@ -75,11 +94,17 @@ export async function dogrulaAc(govde, imzaHex, genelHex, simdi = Math.floor(Dat
     typeof k.s !== "string" || !/^[A-Za-z0-9_-]{1,16}$/.test(k.s) ||
     !Number.isInteger(k.n) || k.n < 1 || k.n > 50 ||
     typeof k.pk !== "string" || !/^[0-9a-fA-F]{64}$/.test(k.pk) ||
-    (k.i !== undefined && k.i !== 0 && k.i !== 1)
+    (k.i !== undefined && k.i !== 0 && k.i !== 1) ||
+    (k.oz !== undefined && (typeof k.oz !== "string" || !OZ_RE.test(k.oz)))
   ) return { hata: "gövde biçimi geçersiz", kod: 400 };
-  if (Math.abs(k.ts - simdi) > ZAMAN_PAYI) return { hata: "zaman geçersiz", kod: 400 };
-  if (!(k.sil > k.ts && k.sil <= k.ts + ONAY_OMUR) || k.sil <= simdi) return { hata: "silinme zamanı geçersiz", kod: 400 };
-  return { kayit: { t: k.t, s: k.s, n: k.n, pk: k.pk.toLowerCase(), sil: k.sil, durum: "bekliyor", p: 0, i: k.i === 1 ? 1 : 0 } };
+  if (!zamanGecerli(k.ts, simdi, ZAMAN_PAYI)) return { hata: "zaman geçersiz", kod: 400 };
+  if (!(k.sil > k.ts && k.sil <= k.ts + ONAY_OMUR) || k.sil <= simdi) {
+    return { hata: "silinme zamanı geçersiz", kod: 400 };
+  }
+  const sil = Math.min(k.sil, simdi + ONAY_OMUR);
+  const kayit = { t: k.t, s: k.s, n: k.n, pk: k.pk.toLowerCase(), sil, durum: "bekliyor", i: k.i === 1 ? 1 : 0 };
+  if (k.oz !== undefined) kayit.oz = k.oz;
+  return { kayit };
 }
 
 /** 4) Kapat gövdesi: {"v":1,"tur":"onay_kapat","t","ts"}. */
@@ -90,15 +115,18 @@ export async function dogrulaKapat(govde, imzaHex, genelHex, simdi = Math.floor(
   if (k.v !== 1 || k.tur !== "onay_kapat" || typeof k.t !== "string" || !ONAY_RE.test(k.t) || !Number.isInteger(k.ts)) {
     return { hata: "gövde biçimi geçersiz", kod: 400 };
   }
-  if (Math.abs(k.ts - simdi) > ZAMAN_PAYI) return { hata: "zaman geçersiz", kod: 400 };
-  return { t: k.t };
+  if (!zamanGecerli(k.ts, simdi, ZAMAN_PAYI)) return { hata: "zaman geçersiz", kod: 400 };
+  return { t: k.t, ts: k.ts };
 }
 
-/** 3) Oku: imza "onay_oku:"+t+":"+ts metni üzerinde; |ts-şimdi| <= 300. */
+/** ts penceresi (iki yönlü): şimdi-pay <= ts <= şimdi+pay. */
+const zamanGecerli = (ts, simdi, pay) => ts >= simdi - pay && ts <= simdi + pay;
+
+/** 3) Oku: imza "onay_oku:"+t+":"+ts metni üzerinde; şimdi-600 <= ts <= şimdi+600. */
 export async function dogrulaOku(t, zaman, imzaHex, genelHex, simdi = Math.floor(Date.now() / 1000)) {
   if (typeof t !== "string" || !ONAY_RE.test(t)) return { hata: "bulunamadı", kod: 404 };
   if (typeof zaman !== "string" || !/^\d{1,12}$/.test(zaman)) return { hata: "zaman yok", kod: 401 };
-  if (Math.abs(Number(zaman) - simdi) > OKU_PAYI) return { hata: "zaman geçersiz", kod: 401 };
+  if (!zamanGecerli(Number(zaman), simdi, ZAMAN_PAYI)) return { hata: "zaman geçersiz", kod: 401 };
   const h = await imzaGecerli(`onay_oku:${t}:${zaman}`, imzaHex, genelHex);
   return h || { tamam: true };
 }
@@ -141,8 +169,12 @@ function base64(b) {
   return btoa(s);
 }
 
-/** Sözleşme: geçici X25519 + ECDH(pk) → HKDF-SHA256(salt = geçici_genel || pk, info = "taa-teslim-onay-v1") → AES-256-GCM (aad = t). */
-export async function sifrele(duz, pkHex, t) {
+/** AES-GCM ek doğrulanan verisi: oz yoksa t (eski davranış), varsa t + ":" + oz (Rust tarafı aynı kuralla çözer). */
+export const onayAad = (t, oz) => (oz ? `${t}:${oz}` : t);
+
+/** Sözleşme: geçici X25519 + ECDH(pk) → HKDF-SHA256(salt = geçici_genel || pk, info = "taa-teslim-onay-v1") → AES-256-GCM
+ *  (aad = onayAad(t, oz)). */
+export async function sifrele(duz, pkHex, aad) {
   const pk = hexBayt(pkHex);
   if (!pk || pk.length !== 32) throw new Error("anahtar");
   const gecici = await crypto.subtle.generateKey({ name: "X25519" }, true, ["deriveBits"]);
@@ -156,7 +188,7 @@ export async function sifrele(duz, pkHex, t) {
   const anahtarBayt = await crypto.subtle.deriveBits({ name: "HKDF", hash: "SHA-256", salt: tuz, info: BILGI }, ikm, 256);
   const anahtar = await crypto.subtle.importKey("raw", anahtarBayt, { name: "AES-GCM" }, false, ["encrypt"]);
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const c = await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: yazi(t) }, anahtar, yazi(duz));
+  const c = await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: yazi(aad) }, anahtar, yazi(duz));
   return { e: hex(geciciGenel), iv: hex(iv), c: base64(c) };
 }
 
@@ -403,7 +435,7 @@ function imzaAlani(m, h) {
       <button type="button" class="ikincil" id="imza-temizle" hidden>${kacis(m.temizle)}</button></div>`;
 }
 
-/** Teslim onayı sayfası. hal: "form" | "doldu" | "alindi" | "tesekkur" | "cok".
+/** Teslim onayı sayfası. hal: "form" | "doldu" | "alindi" | "tesekkur" | "cok" | "hata" (depo okunamadı/yazılamadı).
  *  form için: {sube, n, imza (0|1), hatalar: {ad?, tel?, imza?, kutu?, genel?}, deger: {ad, tel}}; tablo: imzalı şube
  *  tablosu (yoksa dosyadaki). imza = 1 ise parmakla imza alanı ve /o/imza.js betiği eklenir (CSP: IMZA_CSP). */
 export function onaySayfa(hal, { dil = "tr", t = "", sube = "", n = 0, tablo = null, hatalar = {}, deger = {}, imza = 0 } = {}) {
@@ -418,6 +450,7 @@ export function onaySayfa(hal, { dil = "tr", t = "", sube = "", n = 0, tablo = n
   let govde;
   if (hal === "doldu") govde = tekKart("saat", m.doldu_b, m.doldu);
   else if (hal === "cok") govde = tekKart("saat", m.b, m.cok);
+  else if (hal === "hata") govde = tekKart("saat", m.h_b, m.h_genel);
   else if (hal === "alindi") govde = tekKart("tik", m.alindi_b, m.alindi_m);
   else if (hal === "tesekkur") govde = tekKart("tik", m.tesekkur_b, m.tesekkur_m);
   else {
@@ -455,7 +488,7 @@ ${ONAY_CSS}</style></head><body><div class="sayfa">
 // ---------------------------------------------------------------- istek işleyici
 /**
  * İki hedefin ortak işleyicisi. islem: "ac" | "kapat" | "oku" | "sayfa" | "betik" (/o/imza.js).
- * depo: {oku(t) → kayıt|null, yaz(kayit) (kayit.sil'de kendiliğinden silinmeli), sil(t), tablo() → şube tablosu|null}.
+ * depo: aşağıda onayIsle'nin açıklamasında (ana kayıt + yaz-bir-kez ek kayıtlar; kayıtlar sil'de kendiliğinden silinmeli).
  * Düz metin (ad, telefon, user-agent, IP) yalnız bu fonksiyonun belleğinde, şifrelemeye kadar yaşar.
  */
 /**
@@ -489,40 +522,119 @@ export async function govdeOku(istek, sinir) {
   return new TextDecoder().decode(b);
 }
 
+const rastgeleHex = () => hex(crypto.getRandomValues(new Uint8Array(12)));
+const DENEME = (n) => "deneme:" + n;
+
+/** birKezYaz sonucu. BILINMIYOR: yazı başarılı ama geri okuma iki kez de başarısız (kazanıp kazanmadığımız bilinmiyor). */
+export const KAZANDI = "kazandi";
+export const KAYBETTI = "kaybetti";
+export const BILINMIYOR = "bilinmiyor";
+
+/**
+ * Yaz-bir-kez: `yazYoksa()` yalnız anahtar yoksa yazar (yoksa false). Yazdıktan sonra geri okunur ve kayıttaki "yazan"
+ * kendi rastgele değerimiz mi diye bakılır: eşzamanlı iki yazıcıdan yalnız son yazılanı gören kazanır. (KV'de get+put
+ * atomik değildir; bu denetim pencereyi daraltır ama kapatmaz. Blob'da put allowOverwrite:false zaten atomiktir.)
+ * Geri okuma hata verir ya da boş dönerse bir kez yeniden denenir; yine okunamazsa BILINMIYOR döner ("kaybettim"
+ * sayılmaz: aç'ta 409 yerine 503, denemede hak yanmaz). yazYoksa'nın kendi hatası (ağ vb.) çağırana atılır.
+ */
+export async function birKezYaz(yazYoksa, geriOku, deger) {
+  if (!(await yazYoksa(deger))) return KAYBETTI;
+  for (let i = 0; i < 2; i++) {
+    const g = await Promise.resolve().then(geriOku).catch(() => null);
+    if (g) return g.yazan === deger.yazan ? KAZANDI : KAYBETTI;
+  }
+  return BILINMIYOR;
+}
+
+/**
+ * depo arayüzü (Cloudflare: cloudflare/worker.mjs, Vercel: vercel/lib/onay-depo.mjs):
+ *   oku(t), yaz(kayit) (üzerine yazar), yazYoksa(kayit) → bool, sil(t)        — ana kayıt "onay:"+t
+ *   ekOku(t, ad), ekYazYoksa(t, ad, deger) → bool, ekSil(t, ad)              — "onay:"+t+":"+ad (sonuc, deneme:1..5)
+ *   tablo() (isteğe bağlı, şube tablosu)
+ * oku/ekOku: kayıt yoksa null; okunamadıysa (ağ, depo hatası) HATA ATAR. "Yok" ile "okunamadı" ayrı tutulur: kapat
+ * okunamayan kaydı "yok" sayıp "kapandi" izini atlamasın.
+ * Ek kayıtlar da "sil" alanı taşır (KV silme zamanı / Blob temizliği).
+ */
 export async function onayIsle({ islem, t = "", istek, depo, genel, simdi = Math.floor(Date.now() / 1000) }) {
   const yontem = istek.method;
   if (islem === "betik") return imzaBetikYaniti(yontem); // GET /o/imza.js
+  const ekleriSil = async (x, adlar) => { await Promise.all(adlar.map((ad) => Promise.resolve().then(() => depo.ekSil(x, ad)).catch(() => {}))); };
   const gecerliKayit = async (x) => {
     if (!ONAY_RE.test(x)) return null;
     const k = await depo.oku(x);
     if (k && !(k.sil > simdi)) {
-      await depo.sil(x).catch(() => {});
+      await Promise.resolve().then(() => depo.sil(x)).catch(() => {});
+      await ekleriSil(x, ["sonuc"]);
       return null;
     }
     return k;
   };
+  /** Ana kayıt + şifreli sonuç: {k, onay} (k yok / kapandi → k: null). Eski biçim (onay ana kayıtta) de okunur. */
+  const durumOku = async (x) => {
+    const k = await gecerliKayit(x);
+    if (!k || k.durum === "kapandi") return { k: null, onay: null };
+    if (k.durum === "onaylandi") return { k, onay: k };
+    const s = await Promise.resolve().then(() => depo.ekOku(x, "sonuc")).catch(() => null);
+    return { k, onay: s && s.e && s.iv && s.c ? s : null };
+  };
+  /** Deneme hakkı: deneme:1..5 anahtarlarından ilk boş olanı yaz-bir-kez alır; hepsi doluysa 0. Geri okunamayan yazı
+   *  (BILINMIYOR) bizim sayılır: tek POST birden çok hak yakmaz. */
+  const denemeAl = async (x, sil) => {
+    for (let n = 1; n <= ONAY_EN_COK_POST; n++) {
+      const d = { t: x, sil, yazan: rastgeleHex() };
+      if ((await birKezYaz((v) => depo.ekYazYoksa(x, DENEME(n), v), () => depo.ekOku(x, DENEME(n)), d)) !== KAYBETTI) return n;
+    }
+    return 0;
+  };
+  const depoHatasi = () => json({ hata: "depo geçici olarak kullanılamıyor" }, 503);
   if (islem === "ac") {
     if (yontem !== "POST") return json({ hata: "yalnız POST" }, 405);
-    const s = await dogrulaAc(await istek.text(), istek.headers.get("x-taa-imza") || "", genel, simdi);
+    const s = await dogrulaAc(await govdeOku(istek, IMZALI_GOVDE_EN_COK), istek.headers.get("x-taa-imza") || "", genel, simdi);
     if (s.hata) return json({ hata: s.hata }, s.kod);
-    if (await gecerliKayit(s.kayit.t)) return json({ hata: "zaten var" }, 409);
-    await depo.yaz(s.kayit);
+    try {
+      // Kapanmış ("kapandi") ya da onaylanmış belirteç de var sayılır: sil zamanına kadar yeniden açılamaz.
+      if (await gecerliKayit(s.kayit.t)) return json({ hata: "zaten var" }, 409);
+      const kayit = { ...s.kayit, yazan: rastgeleHex() };
+      const y = await birKezYaz((v) => depo.yazYoksa(v), () => depo.oku(kayit.t), kayit);
+      if (y === KAYBETTI) return json({ hata: "zaten var" }, 409);
+      if (y === BILINMIYOR) return depoHatasi();
+    } catch {
+      return depoHatasi();
+    }
     return json({ tamam: true });
   }
   if (islem === "kapat") {
     if (yontem !== "POST") return json({ hata: "yalnız POST" }, 405);
-    const s = await dogrulaKapat(await istek.text(), istek.headers.get("x-taa-imza") || "", genel, simdi);
+    const s = await dogrulaKapat(await govdeOku(istek, IMZALI_GOVDE_EN_COK), istek.headers.get("x-taa-imza") || "", genel, simdi);
     if (s.hata) return json({ hata: s.hata }, s.kod);
-    await depo.sil(s.t);
+    try {
+      // Okunamadıysa (hata) 503: "yok" sayılıp "kapandi" izi atlanmaz (kayıt "bekliyor" kalıp sonradan onaylanamasın).
+      const k = await gecerliKayit(s.t);
+      // Yalnız açık kayıtta yazılır/silinir: kayıt yoksa (hiç açılmamış ya da süresi geçmiş) ya da zaten "kapandi" ise
+      // hiçbir yazma yapılmaz (süresi geçen karekodlar için gelen kapat'lar KV kotası harcamaz, iz de birikmez).
+      // Şifreli sonuç hemen silinir; kayıt sil zamanına kadar "kapandi" kalır (yeniden açılamaz). Deneme anahtarları
+      // sil'de kendiliğinden düşer.
+      if (k && k.durum !== "kapandi") {
+        await depo.yaz({ t: s.t, sil: k.sil, durum: "kapandi" });
+        await ekleriSil(s.t, ["sonuc"]);
+      }
+    } catch {
+      return depoHatasi();
+    }
     return json({ tamam: true });
   }
   if (islem === "oku") {
     if (yontem !== "GET") return json({ hata: "yalnız GET" }, 405);
     const s = await dogrulaOku(t, istek.headers.get("x-taa-zaman") || "", istek.headers.get("x-taa-imza") || "", genel, simdi);
     if (s.hata) return json({ hata: s.hata }, s.kod);
-    const k = await gecerliKayit(t);
-    if (!k) return json({ hata: "bulunamadı" }, 404);
-    return k.durum === "onaylandi" ? json({ durum: "onaylandi", e: k.e, iv: k.iv, c: k.c }) : json({ durum: "bekliyor" });
+    let d;
+    try {
+      d = await durumOku(t);
+    } catch {
+      return depoHatasi();
+    }
+    if (!d.k) return json({ hata: "bulunamadı" }, 404);
+    return d.onay ? json({ durum: "onaylandi", e: d.onay.e, iv: d.onay.iv, c: d.onay.c }) : json({ durum: "bekliyor" });
   }
   // Müşteri sayfası
   if (yontem !== "GET" && yontem !== "POST") return new Response("yalnız GET/POST", { status: 405 });
@@ -545,18 +657,32 @@ export async function onayIsle({ islem, t = "", istek, depo, genel, simdi = Math
       status: kod,
       headers: { ...HTML_BASLIK, ...(hal === "form" && sec.imza === 1 ? { "content-security-policy": IMZA_CSP } : {}), ...ek },
     });
-  const k = await gecerliKayit(t);
+  let d;
+  try {
+    d = await durumOku(t);
+  } catch {
+    return cevap("hata", 503);
+  }
+  const { k, onay } = d;
   if (!k) return cevap("doldu", 404);
   const imzaGerek = k.i === 1 ? 1 : 0;
   const ortak = { sube: k.s, n: k.n, imza: imzaGerek };
-  if (k.durum === "onaylandi") return cevap("alindi", 200, ortak);
+  if (onay) return cevap("alindi", 200, ortak);
   if (yontem === "GET") return cevap("form", 200, ortak);
 
-  // POST: basit hız sınırı (aynı t'ye en çok 5 POST), sonra doğrulama.
-  const p = (Number.isInteger(k.p) ? k.p : 0) + 1;
-  if (p > ONAY_EN_COK_POST) return cevap("cok", 429, ortak);
+  // POST: hız sınırı (aynı t'ye en çok 5 POST; her deneme kendi yaz-bir-kez anahtarını alır), sonra doğrulama.
+  // Ana kayıt POST'ta hiç yazılmaz: hatalı bir POST eşzamanlı bir onayı ezemez.
   const adHam = form.get("ad") ?? "";
   const telHam = form.get("tel") ?? "";
+  // Depo hatası (Vercel Blob ağ hatası vb.) ham 500 olarak değil, formda "bir sorun oluştu" olarak gösterilir.
+  const genelHata = () => cevap("form", 500, { ...ortak, hatalar: { genel: true }, deger: { ad: adHam, tel: telHam } });
+  let deneme;
+  try {
+    deneme = await denemeAl(t, k.sil);
+  } catch {
+    return genelHata();
+  }
+  if (!deneme) return cevap("cok", 429, ortak);
   const ad = adDogrula(adHam);
   const tel = telNormalize(telHam);
   const kutu = form.get("onay") === "1";
@@ -569,23 +695,34 @@ export async function onayIsle({ islem, t = "", istek, depo, genel, simdi = Math
   if (!tel) hatalar.tel = true;
   if (fazla || (imzaS.hata && (imzaGerek === 1 || imzaS.hata !== "yok"))) hatalar.imza = true;
   if (!kutu) hatalar.kutu = true;
-  if (Object.keys(hatalar).length) {
-    await depo.yaz({ ...k, p });
-    return cevap("form", 400, { ...ortak, hatalar, deger: { ad: adHam, tel: telHam } });
-  }
+  if (Object.keys(hatalar).length) return cevap("form", 400, { ...ortak, hatalar, deger: { ad: adHam, tel: telHam } });
   const ip = istek.headers.get("cf-connecting-ip") || (istek.headers.get("x-forwarded-for") || "").split(",")[0].trim();
   const P = { ad, tel, ua: (istek.headers.get("user-agent") || "").slice(0, 200), ip: ip.slice(0, 64), zaman: simdi, dil };
   if (imzaS.b64) P.imza = imzaS.b64; // base64 PNG (önek yok), çözülmüş ≤ IMZA_EN_COK bayt
   const duz = JSON.stringify(P);
   let sifreli;
   try {
-    sifreli = await sifrele(duz, k.pk, t);
+    sifreli = await sifrele(duz, k.pk, onayAad(t, k.oz));
   } catch {
     // Hata nesnesi loglanmaz/döndürülmez (düz metin sızmasın).
-    await depo.yaz({ ...k, p });
-    return cevap("form", 500, { ...ortak, hatalar: { genel: true }, deger: { ad: adHam, tel: telHam } });
+    return genelHata();
   }
-  // Kayıtta yalnız şifreli veri ve kişisel olmayan alanlar kalır (pk artık gerekmez).
-  await depo.yaz({ t, s: k.s, n: k.n, sil: k.sil, durum: "onaylandi", ...sifreli });
+  // Şifreli sonuç yaz-bir-kez anahtarına: ilk onay ezilmez; geç kalan (eşzamanlı) onay "Onayınız alındı" görür.
+  // Geri okunamazsa (BILINMIYOR) "bir sorun oluştu": müşteri yeniden gönderince sonuç varsa "Onayınız alındı" görür.
+  const sonuc = { t, sil: k.sil, yazan: rastgeleHex(), ...sifreli };
+  let y;
+  try {
+    y = await birKezYaz((v) => depo.ekYazYoksa(t, "sonuc", v), () => depo.ekOku(t, "sonuc"), sonuc);
+  } catch {
+    return genelHata();
+  }
+  if (y === KAYBETTI) return cevap("alindi", 200, ortak);
+  if (y === BILINMIYOR) return genelHata();
+  // Bu arada kapat geldiyse şifreli sonuç bırakılmaz (okunamazsa da: bırakmaktansa silmek güvenli).
+  const son = await Promise.resolve().then(() => depo.oku(t)).catch(() => null);
+  if (!son || son.durum === "kapandi") {
+    await ekleriSil(t, ["sonuc"]);
+    return cevap("doldu", 404);
+  }
   return cevap("tesekkur", 200, ortak);
 }

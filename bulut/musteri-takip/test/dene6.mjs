@@ -71,7 +71,9 @@ await t_("aç: kayıt bekliyor olarak saklanır, KV silme zamanı = sil, aynı t
   const r = await ac(g);
   assert.equal(r.status, 200, await r.clone().text());
   const v = kv.get("onay:" + T);
-  assert.deepEqual(JSON.parse(v.deger), { t: T, s: "MRK01", n: 3, pk: pkHex, sil: g.sil, durum: "bekliyor", p: 0, i: 0 }, "i yoksa 0 (eski istemci)");
+  const { yazan, ...kayit } = JSON.parse(v.deger);
+  assert.match(yazan, /^[0-9a-f]{24}$/, "yaz-bir-kez doğrulaması için rastgele yazan");
+  assert.deepEqual(kayit, { t: T, s: "MRK01", n: 3, pk: pkHex, sil: g.sil, durum: "bekliyor", i: 0 }, "i yoksa 0 (eski istemci)");
   assert.equal(v.exp, g.sil);
   assert.equal((await ac(acGovde(T))).status, 409);
 });
@@ -104,7 +106,9 @@ await t_("hatalı form: 400, hatalar gösterilir, değerler kaçışlanır, hiç
   assert(!h.includes("<script>alert") && h.includes("&lt;script&gt;alert(1)&lt;/script&gt;"), "kaçış");
   assert(h.includes('aria-invalid="true" aria-describedby="h-ad"'));
   const k = JSON.parse(kv.get("onay:" + T).deger);
-  assert.equal(k.durum, "bekliyor"); assert.equal(k.p, 1); assert(!kv.get("onay:" + T).deger.includes("script"));
+  assert.equal(k.durum, "bekliyor"); assert(!kv.get("onay:" + T).deger.includes("script"));
+  assert(kv.has(`onay:${T}:deneme:1`) && !kv.has(`onay:${T}:deneme:2`), "deneme başına ayrı anahtar");
+  assert(!kv.has(`onay:${T}:sonuc`));
   const r2 = await gonder(T, { ad: "Deneme Kişi", tel: "0555 000 00 01", dil: "en" });
   assert.equal(r2.status, 400); assert((await r2.text()).includes(ONAY_METIN.en.h_kutu), "dil formdan");
 });
@@ -115,11 +119,15 @@ await t_("geçerli onay: teşekkür sayfası, kayıtta düz metin yok", async ()
   const h = await r.text();
   assert.equal(r.status, 200);
   assert(h.includes(ONAY_METIN.tr.tesekkur_b) && h.includes(ONAY_METIN.tr.tesekkur_m));
-  const ham = kv.get("onay:" + T).deger;
+  // Şifreli sonuç yaz-bir-kez anahtarında; ana kayıt POST'ta hiç yazılmaz (bekliyor kalır).
+  const ham = kv.get(`onay:${T}:sonuc`).deger;
   const k = JSON.parse(ham);
-  assert.deepEqual(Object.keys(k).sort(), ["c", "durum", "e", "iv", "n", "s", "sil", "t"]);
-  assert.equal(k.durum, "onaylandi"); assert.match(k.e, /^[0-9a-f]{64}$/); assert.match(k.iv, /^[0-9a-f]{24}$/);
-  for (const duz of ["Ayşe", "Deneme", "5550000001", "Mozilla", "Android", "203.0.113", "198.51"]) assert(!ham.includes(duz), "düz metin: " + duz);
+  assert.deepEqual(Object.keys(k).sort(), ["c", "e", "iv", "sil", "t", "yazan"]);
+  assert.match(k.e, /^[0-9a-f]{64}$/); assert.match(k.iv, /^[0-9a-f]{24}$/);
+  assert.equal(JSON.parse(kv.get("onay:" + T).deger).durum, "bekliyor");
+  for (const duz of ["Ayşe", "Deneme", "5550000001", "Mozilla", "Android", "203.0.113", "198.51"]) {
+    assert(!ham.includes(duz) && !kv.get("onay:" + T).deger.includes(duz), "düz metin: " + duz);
+  }
 });
 let ilkC;
 await t_("oku + node:crypto ile çözme: düz metin birebir", async () => {
@@ -138,15 +146,15 @@ await t_("oku + node:crypto ile çözme: düz metin birebir", async () => {
 await t_("ikinci onay reddedilir (kayıt değişmez), sayfa 'Onayınız alındı'", async () => {
   const r = await gonder(T, { ad: "Başka Kişi", tel: "05550000002", onay: "1", dil: "tr" });
   assert.equal(r.status, 200); assert((await r.text()).includes(ONAY_METIN.tr.alindi_b));
-  assert.equal(JSON.parse(kv.get("onay:" + T).deger).c, ilkC);
+  assert.equal(JSON.parse(kv.get(`onay:${T}:sonuc`).deger).c, ilkC);
   const { h } = await sayfa(T, "?dil=de");
   assert(h.includes(ONAY_METIN.de.alindi_b) && !h.includes("<form"));
 });
 await t_("oku: imzasız, eski zamanlı, ileri zamanlı, bozuk imza, bilinmeyen t reddedilir", async () => {
   assert.equal((await iste("/api/onay/" + T)).status, 401);
   assert.equal((await oku(T, String(simdi()), "")).status, 401);
-  assert.equal((await oku(T, String(simdi() - 301))).status, 401);
-  assert.equal((await oku(T, String(simdi() + 301))).status, 401);
+  assert.equal((await oku(T, String(simdi() - 602))).status, 401, "oku payı ±600");
+  assert.equal((await oku(T, String(simdi() + 602))).status, 401);
   assert.equal((await oku(T, "abc")).status, 401);
   const ts = String(simdi());
   assert.equal((await oku(T, ts, imzala(`onay_oku:${yeniT()}:${ts}`))).status, 401, "başka t'nin imzası");
@@ -158,7 +166,11 @@ await t_("kapat: imzasız red, imzalı silme; sonra oku 404, sayfa 'süresi dold
   assert.equal((await kapat({ v: 1, tur: "onay_kapat", t: T, ts: simdi() - 4000 })).status, 400);
   assert(kv.has("onay:" + T));
   assert.equal((await kapat({ v: 1, tur: "onay_kapat", t: T, ts: simdi() })).status, 200);
-  assert(!kv.has("onay:" + T));
+  const kapali = JSON.parse(kv.get("onay:" + T).deger);
+  assert.deepEqual(kapali, { t: T, sil: kapali.sil, durum: "kapandi" }, "sil zamanına kadar kapandi izi (pk/şube yok)");
+  assert(!kv.has(`onay:${T}:sonuc`), "şifreli sonuç silindi");
+  // deneme anahtarları kişisel veri taşımaz; kapat onları silmez (KV yazma kotası), KV silme zamanı = sil
+  for (const [a, v] of kv) if (a.startsWith(`onay:${T}:deneme:`)) assert.equal(v.exp, kapali.sil, a);
   assert.equal((await oku(T)).status, 404);
   const { r, h } = await sayfa(T);
   assert.equal(r.status, 404); assert(h.includes("Bu karekodun süresi doldu, mağaza görevlisinden yenisini isteyin"));
@@ -185,6 +197,7 @@ await t_("hız sınırı: aynı t'ye 5 POST'tan sonra 429 (geçerli veriyle de)"
   const r = await gonder(t3, { ad: "Deneme Kişi", tel: "05550000004", onay: "1", dil: "ru" });
   assert.equal(r.status, 429); assert((await r.text()).includes(ONAY_METIN.ru.cok));
   assert.equal(JSON.parse(kv.get("onay:" + t3).deger).durum, "bekliyor");
+  assert.equal([...kv.keys()].filter((a) => a.startsWith(`onay:${t3}:deneme:`)).length, 5);
 });
 await t_("telefon normalizasyonu", () => {
   for (const [g, b] of [["05551234567", "+905551234567"], ["0555 123 45 67", "+905551234567"], ["+90 555 123 45 67", "+905551234567"],
@@ -252,7 +265,7 @@ await t_("çok dilli adlar: Hintçe (virama), Farsça (ZWNJ), harekeli Arapça g
   assert.equal((await ac(acGovde(t))).status, 200);
   const r = await gonder(t, { ad: "علی\u200Cرضا محمدی", tel: "+98 912 000 1234", onay: "1", dil: "fa" });
   assert.equal(r.status, 200);
-  const k = JSON.parse(kv.get("onay:" + t).deger);
+  const k = JSON.parse(kv.get(`onay:${t}:sonuc`).deger);
   assert.equal(coz(t, k).ad, "علی\u200Cرضا محمدی");
   await kapat({ v: 1, tur: "onay_kapat", t, ts: simdi() });
 });
@@ -270,7 +283,11 @@ await t_("Vercel: onay-depo.mjs sahte Blob ile aç → form → onay → oku →
   const bloblar = new Map();
   const secenekler = [];
   const blob = {
-    async put(yol, govde, sec) { secenekler.push(sec); bloblar.set(yol, { govde, uploadedAt: new Date() }); return { url: "https://blob.invalid/" + yol }; },
+    async put(yol, govde, sec) {
+      secenekler.push(sec);
+      if (sec.allowOverwrite === false && bloblar.has(yol)) throw new Error("BlobAlreadyExistsError");
+      bloblar.set(yol, { govde, uploadedAt: new Date() }); return { url: "https://blob.invalid/" + yol };
+    },
     async head(yol) { if (!bloblar.has(yol)) throw new Error("BlobNotFoundError"); return { url: "https://blob.invalid/" + yol, uploadedAt: bloblar.get(yol).uploadedAt }; },
     async del(url) { bloblar.delete(url.replace("https://blob.invalid/", "")); },
     async list({ prefix }) { return { blobs: [...bloblar].filter(([y]) => y.startsWith(prefix)).map(([y, b]) => ({ url: "https://blob.invalid/" + y, pathname: y, uploadedAt: b.uploadedAt })), hasMore: false }; },
@@ -291,7 +308,8 @@ await t_("Vercel: onay-depo.mjs sahte Blob ile aç → form → onay → oku →
   assert.equal((await v("/api/onay?islem=yok")).status, 404);
   const g = JSON.stringify(acGovde(t));
   assert.equal((await v("/api/onay/ac", { method: "POST", body: g, headers: { "x-taa-imza": imzala(g) } })).status, 200);
-  assert(secenekler.every((s) => s.cacheControlMaxAge >= 60 && s.allowOverwrite && !s.addRandomSuffix), "Blob seçenekleri");
+  assert(secenekler.every((s) => s.cacheControlMaxAge >= 60 && typeof s.allowOverwrite === "boolean" && !s.addRandomSuffix), "Blob seçenekleri");
+  assert.equal(secenekler.at(-1).allowOverwrite, false, "ana kayıt yaz-bir-kez yazılır");
   assert.equal((await v("/api/onay/ac", { method: "POST", body: g, headers: { "x-taa-imza": imzala(g) } })).status, 409);
   const ts = String(simdi());
   const okuV = () => v(`/api/onay/${t}`, { headers: { "x-taa-zaman": ts, "x-taa-imza": imzala(`onay_oku:${t}:${ts}`) } });
@@ -299,8 +317,11 @@ await t_("Vercel: onay-depo.mjs sahte Blob ile aç → form → onay → oku →
   const f = await v(`/api/onay?islem=sayfa&t=${t}`, { method: "POST", body: new URLSearchParams({ ad: "Deneme Kişi", tel: "0532 000 45 67", onay: "1" }).toString(),
     headers: { "content-type": "application/x-www-form-urlencoded", "user-agent": "Deneme/1.0", "x-forwarded-for": "203.0.113.5, 10.0.0.1" } });
   assert.equal(f.status, 200);
-  const ham = bloblar.get(`onay/${t}.json`).govde;
-  for (const yasak of ["Deneme", "4567", "203.0.113", "pk"]) assert(!ham.includes(yasak), "Blob'da düz metin: " + yasak);
+  const ham = bloblar.get(`onay/${t}.sonuc.json`).govde;
+  // "pk" alan adı olarak aranır (base64 c içinde rastgele "pk" harfleri geçebilir)
+  for (const yasak of ["Deneme", "4567", "203.0.113", '"pk"']) assert(!ham.includes(yasak), "Blob'da düz metin: " + yasak);
+  for (const yasak of ["Deneme", "4567", "203.0.113"]) assert(!bloblar.get(`onay/${t}.json`).govde.includes(yasak), "ana kayıtta düz metin: " + yasak);
+  assert(bloblar.has(`onay/${t}.deneme-1.json`));
   const o = await (await okuV()).json();
   assert.equal(o.durum, "onaylandi");
   const d = coz(t, o);
@@ -308,8 +329,13 @@ await t_("Vercel: onay-depo.mjs sahte Blob ile aç → form → onay → oku →
   assert.equal(d.tel, "+905320004567");
   const kg = JSON.stringify({ v: 1, tur: "onay_kapat", t, ts: simdi() });
   assert.equal((await v("/api/onay/kapat", { method: "POST", body: kg, headers: { "x-taa-imza": imzala(kg) } })).status, 200);
-  assert(!bloblar.has(`onay/${t}.json`));
+  assert.equal(JSON.parse(bloblar.get(`onay/${t}.json`).govde).durum, "kapandi");
+  assert(!bloblar.has(`onay/${t}.sonuc.json`), "şifreli sonuç kapat'ta silinir");
+  assert(bloblar.has(`onay/${t}.deneme-1.json`), "deneme kaydı sil'e kadar kalır (kişisel veri yok)");
   assert.equal((await okuV()).status, 404);
+  // sil geçince temizle ana kaydı ve ekini birlikte siler
+  assert.equal(await depo.temizle(simdi() + 1000), 2);
+  assert(![...bloblar.keys()].some((y) => y.includes(t)));
   // temizle: süresi geçen (sil geçmiş) ve çok eski yüklenmiş kayıtlar silinir, geçerli kalır
   const s0 = simdi();
   bloblar.set("onay/a.json", { govde: JSON.stringify({ sil: s0 - 1 }), uploadedAt: new Date() });

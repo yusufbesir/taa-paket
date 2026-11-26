@@ -212,7 +212,9 @@ impl TeslimSifreli {
                 && s.bytes()
                     .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
         };
-        self.surum == 1
+        // Sürüm 1: ana anahtar, aad = fiş no; sürüm 2: türe göre alt anahtar, aad = tür + fiş no + teslim_id
+        // (taa-fis-sunucu teslim_sifre.rs).
+        matches!(self.surum, 1 | 2)
             && hex(&self.iv, 24)
             && self.c.len() >= 24
             && self.c.len() <= 8192

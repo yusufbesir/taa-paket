@@ -183,7 +183,7 @@ impl Uygulama {
         });
         match t.sifreli.as_ref() {
             Some(s) => {
-                let duz = match teslim_sifre::coz(&self.dizin, no, s) {
+                let duz = match teslim_sifre::coz(&self.dizin, no, &t.teslim_id, s) {
                     Ok(x) => x,
                     Err(e) => return Yanit::hata(500, &e),
                 };

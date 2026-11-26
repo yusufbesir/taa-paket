@@ -5,13 +5,31 @@ import { dogrula, dogrulaSubeler, yeniMi, sayfa, KOD_RE, dilSec } from "./takip.
 import { onayIsle } from "./onay.mjs";
 import { IMZA_BETIK_YOLU } from "./imza.mjs";
 
-// Fişsiz teslim onayı (./onay.mjs): kayıt "onay:"+t, KV silme zamanı = sil (KV en az 60 sn ileri ister; asıl süre sil ile denetlenir).
-const onayDepo = (env) => ({
-  oku: (t) => env.TAKIP.get("onay:" + t, "json"),
-  yaz: (k) => env.TAKIP.put("onay:" + k.t, JSON.stringify(k), { expiration: Math.max(k.sil, Math.floor(Date.now() / 1000) + 60) }),
-  sil: (t) => env.TAKIP.delete("onay:" + t),
-  tablo: () => env.TAKIP.get("_subeler", "json"),
-});
+// Fişsiz teslim onayı (./onay.mjs): ana kayıt "onay:"+t, ek kayıtlar "onay:"+t+":"+ad (sonuc, deneme:1..5); KV silme
+// zamanı = sil (KV en az 60 sn ileri ister; asıl süre sil ile denetlenir). KV'de koşullu yazma yoktur: yazYoksa = get + put
+// (atomik DEĞİL; onay.mjs geri okuyup "yazan" değerini doğrular). KV olumsuz okumayı da uç noktada ~60 sn önbelleğe
+// alır: başka uçta yapılan onaydan sonra t'yi bilen ikinci bir POST eski "yok"u görüp ilk onayın üzerine yazabilir
+// (test/dene8.mjs "KV bilinen sınır"). Kesin çözüm Durable Object / D1; o zamana kadar sunucu ilk okuduğu onayı
+// sabitler ve hemen kapat gönderir (README "Bilinen sınırlar"). get hata atarsa (KV kesintisi) onay.mjs 503 verir.
+const onayDepo = (env) => {
+  const bitis = (sil) => ({ expiration: Math.max(sil, Math.floor(Date.now() / 1000) + 60) });
+  const ekAnahtar = (t, ad) => "onay:" + t + ":" + ad;
+  const yazYoksa = async (anahtar, deger) => {
+    if ((await env.TAKIP.get(anahtar, "json")) !== null) return false;
+    await env.TAKIP.put(anahtar, JSON.stringify(deger), bitis(deger.sil));
+    return true;
+  };
+  return {
+    oku: (t) => env.TAKIP.get("onay:" + t, "json"),
+    yaz: (k) => env.TAKIP.put("onay:" + k.t, JSON.stringify(k), bitis(k.sil)),
+    yazYoksa: (k) => yazYoksa("onay:" + k.t, k),
+    sil: (t) => env.TAKIP.delete("onay:" + t),
+    ekOku: (t, ad) => env.TAKIP.get(ekAnahtar(t, ad), "json"),
+    ekYazYoksa: (t, ad, deger) => yazYoksa(ekAnahtar(t, ad), deger),
+    ekSil: (t, ad) => env.TAKIP.delete(ekAnahtar(t, ad)),
+    tablo: () => env.TAKIP.get("_subeler", "json"),
+  };
+};
 
 // Çekmeceden dil seçilince (?dil=xx) seçim bir yıl hatırlanır; çerezde yalnız dil kodu vardır.
 const dilCerezi = (url, dil) =>

@@ -320,7 +320,7 @@ await t_("i=1: imzasız / bozuk / büyük imza reddedilir (400, h_imza), kayıt 
   r = await gonder(T, { ...alan, imza: "data:image/png;base64," + bosPng }); assert.equal(r.status, 400);
   assert((await r.text()).includes(ONAY_METIN.tr.h_imza));
   const k = JSON.parse(kv.get("onay:" + T).deger);
-  assert.equal(k.durum, "bekliyor"); assert.equal(k.p, 4);
+  assert.equal(k.durum, "bekliyor"); assert.equal([...kv.keys()].filter((a) => a.startsWith(`onay:${T}:deneme:`)).length, 4);
   // gövde sınırı: FORM_EN_COK'u aşan gövde okunmaz (imza hatası)
   const t4 = yeniT();
   assert.equal((await ac(acGovde(t4, { i: 1 }))).status, 200);
@@ -342,9 +342,9 @@ await t_("i=1 imzalı onay: 200; çözülen P = {ad, tel, ua, ip, zaman, dil, im
     { "user-agent": "Sahte/1.0", "cf-connecting-ip": "203.0.113.9" });
   assert.equal(r.status, 200, await r.clone().text());
   assert((await r.text()).includes(ONAY_METIN.tr.tesekkur_b));
-  const ham = kv.get("onay:" + T).deger;
+  const ham = kv.get(`onay:${T}:sonuc`).deger;
   const k = JSON.parse(ham);
-  assert.deepEqual(Object.keys(k).sort(), ["c", "durum", "e", "iv", "n", "s", "sil", "t"]);
+  assert.deepEqual(Object.keys(k).sort(), ["c", "e", "iv", "sil", "t", "yazan"]);
   assert(!ham.includes(imzaUrl.slice(30, 60)) && !ham.includes("Deneme") && !ham.includes("iVBOR"), "imza/ad düz metin değil");
   const j = await (await oku(T)).json();
   const P = coz(T, j);
@@ -387,8 +387,11 @@ await t_("en büyük imza (~60 KB) uçtan uca geçer: gövde, KV ve şifreli yü
 await t_("Vercel: i=1 aç → imzasız red → imzalı onay → oku/çöz (sahte Blob)", async () => {
   const bloblar = new Map();
   const blob = {
-    async put(y, g) { bloblar.set(y, { govde: g, uploadedAt: new Date() }); return { url: "https://blob.invalid/" + y }; },
-    async head(y) { if (!bloblar.has(y)) throw new Error("yok"); return { url: "https://blob.invalid/" + y }; },
+    async put(y, g, sec = {}) {
+      if (sec.allowOverwrite === false && bloblar.has(y)) throw new Error("BlobAlreadyExistsError");
+      bloblar.set(y, { govde: g, uploadedAt: new Date() }); return { url: "https://blob.invalid/" + y };
+    },
+    async head(y) { if (!bloblar.has(y)) throw new Error("BlobNotFoundError"); return { url: "https://blob.invalid/" + y }; },
     async del(u) { bloblar.delete(u.replace("https://blob.invalid/", "")); },
     async list() { return { blobs: [], hasMore: false }; },
   };

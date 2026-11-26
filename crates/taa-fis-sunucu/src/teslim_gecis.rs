@@ -179,7 +179,7 @@ fn sifreli_kopya_tutar(dizin: &Path, no: &str, k: &taa_fis::TeslimKaydi) -> bool
     };
     std::fs::read(dizin.join("imzalar").join(format!("{ad}.enc")))
         .ok()
-        .and_then(|b| teslim_sifre::bayt_coz(dizin, sahip.as_bytes(), &b).ok())
+        .and_then(|b| teslim_sifre::imza_coz(dizin, sahip, &k.teslim_id, &b).ok())
         .is_some_and(|png| sha256_bayt(&png) == k.imza_sha256)
 }
 
@@ -223,7 +223,7 @@ pub fn calistir(dizin: &Path, simdi: u64, zincir_onayi: bool) -> Result<GecisRap
                     .into(),
                     ..Default::default()
                 };
-                y.sifreli = Some(teslim_sifre::sifrele(dizin, no, &duz)?);
+                y.sifreli = Some(teslim_sifre::sifrele(dizin, no, &y.teslim_id, &duz)?);
                 y.teslim_alan = String::new();
                 sifrelenen += 1;
                 degisti = true;
@@ -426,13 +426,13 @@ mod testler {
         assert!(ta.teslim_alan.is_empty());
         assert_eq!(ta.imza_dosyasi, format!("imzalar/{a}-1.png.enc"));
         assert_eq!(ta.imza_yontemi, "cihaz_imza");
-        let duz = teslim_sifre::coz(&d, &a, ta.sifreli.as_ref().unwrap()).unwrap();
+        let duz = teslim_sifre::coz(&d, &a, &ta.teslim_id, ta.sifreli.as_ref().unwrap()).unwrap();
         assert_eq!(
             (duz.ad.as_str(), duz.yontem.as_str()),
             ("Eski Örnekkişi Bir", "ekran-imza")
         );
         let tb = df.bul(&b).unwrap().unwrap().teslim_kaydi.unwrap();
-        let duz = teslim_sifre::coz(&d, &b, tb.sifreli.as_ref().unwrap()).unwrap();
+        let duz = teslim_sifre::coz(&d, &b, &tb.teslim_id, tb.sifreli.as_ref().unwrap()).unwrap();
         assert_eq!(
             (duz.ad.as_str(), duz.yontem.as_str()),
             ("Eski Örnekkişi İki", "elle")
@@ -490,7 +490,7 @@ mod testler {
         assert!(!d.join(teslim_sifre::ANAHTAR_DOSYASI).exists());
         // anahtar varken: sorunlu imza bildirilir, imza yolu .png kalır, ad şifrelenir
         std::fs::remove_file(&bozuk).unwrap();
-        teslim_sifre::sifrele(&d, "F-0", &teslim_sifre::TeslimDuz::default()).unwrap();
+        teslim_sifre::sifrele(&d, "F-0", "", &teslim_sifre::TeslimDuz::default()).unwrap();
         std::fs::write(&bozuk, b"TAAENC1\nbozuk-bozuk-bozuk-bozuk-bozuk-bozuk").unwrap();
         let r = calistir(&d, 1_795_000_000, false).unwrap();
         assert_eq!(r.sorunlu_imza, vec![format!("imzalar/{a}-1.png")]);

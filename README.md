@@ -64,6 +64,26 @@ oturumdaki kişi (PIN'le "PC (PIN)") yazılır. Yeniden yazdırma yetkisi kapal�
 yalnız bir kez alır (ilk gösterim basım sayılır) ve hazır bildirimindeki takip bağlantısını maskeli görür.
 Ayrıntı, uçlar ve atomiklik: [bulut/musteri-takip/README.md](bulut/musteri-takip/README.md#teslim-sepeti-tek-karekodla-zincir-çok-fiş-tek-teslimat-yusuf-2026-11-26-0625).
 
+**Anahtar dosyaları (not, 2026-11-26):** teslim şifre anahtarı (`teslim-sifre.anahtar`), karekod onayının X25519
+özel anahtarı (`musteri-takip/teslim-x25519.anahtar`) ve müşteri takip imza anahtarı (`musteri-takip/imza.ozel`)
+şimdilik **veri klasöründe düz dosya** olarak durur (izin daraltması yalnız teslim şifre anahtarında ve yalnız Unix'te
+0600; Windows'ta izin daraltması ve DPAPI sarması yok). Veri klasörünü ya da
+yedeğini ele geçiren anahtarları da alır; şifreleme yalnız defter/imza dosyası tek başına sızarsa korur. Anahtarların
+yeri (veri klasörü içi/dışı, `--teslim-anahtar YOL`) ve ayrı yedek yeri **sunucu kurulumunda** yöneticiyle
+belirlenecek; o zamana kadar kodda değişiklik yapılmadı. Teslim bilgisi ve imza dosyaları bu ana anahtardan HKDF ile
+türetilen türe özgü alt anahtarlarla (v2) şifrelenir; anahtar dosyası kaybolursa eski ve yeni kayıtların hiçbiri
+çözülemez, dosya veriden ayrı yedeklenmelidir.
+
+**Şifre sürümü notları (denetim 2026-11-26):**
+- **Eski sürüme geri dönülemez:** v2 (`surum: 2`, `TAAENC2`) kayıtlar yazıldıktan sonra eski ikili bu kayıtları
+  geçersiz sayar (yalnız `surum == 1` kabul ediyordu). Programın eski sürümüne dönülecekse v2 öncesi defter yedeği ile
+  birlikte dönülmeli; aksi hâlde v2 kayıtlı teslimler okunamaz.
+- **v1 çözme yolu süresiz açık:** eski kayıtlar okunabilsin diye v1 (`surum: 1`, `TAAENC1`) çözme yolu kapatılmadı.
+  v1'de tür ayrımı yoktur (aynı ana anahtar, aad = fiş no); deftere ya da dosyaya yazabilen biri v1 biçimli blok
+  yerleştirebilir (imza tarafını `imza_sha256` denetimi tutar). Geçişin ve defter yedeklerinin `bayt_sifrele`
+  kopyaları da hâlâ v1 yazar. Yapılacak: v1 kayıtları v2'ye yeniden şifreleyen bir geçiş, ardından v1 kabulünü
+  kapatan bir bayrak (ikisi de kullanıcı verisine dokunduğu için bu turda yapılmadı).
+
 ## Mobil
 
 | Proje | Durum | Görev |

@@ -38,14 +38,49 @@ Genel anahtar: `taa-fis-sunucu --veri <klasör> --takip-genel-anahtar` (ilk çal
 ## Fişsiz teslim onayı (karekodla imza)
 Yusuf 2026-11-26 05:33: fişsiz teslimde müşteri imzası fiziksel değil karekodla; teslim alanın adı, telefonu, telefonun
 bilgisi, tarih/saat şifreli tutulur. Ortak kod `ortak/onay.mjs` (kopyala.sh iki hedefe kopyalar).
-- Sunucu `POST /api/onay/ac` (imzalı; `t` 20 karakter, `sil` ≤ ts+900, `pk` sunucunun X25519 genel anahtarı) → karekod `<birincil>/o/<t>`.
+- Sunucu `POST /api/onay/ac` (imzalı; `t` 20 karakter, `pk` sunucunun X25519 genel anahtarı, isteğe bağlı `i`, `oz`)
+  → karekod `<birincil>/o/<t>`. Zaman penceresi (aç, kapat ve oku için aynı, iki yönlü): `şimdi-600 ≤ ts ≤ şimdi+600`
+  (mağaza bilgisayarının saati buluttan 10 dk'ya kadar geri ya da ileri olabilir; Rust `SAAT_PAYI_SN` ile aynı).
+  Aç'ta ayrıca `ts < sil ≤ ts+900` ve `sil > şimdi`; kayda yazılan silinme zamanı `min(sil, şimdi+900)`'dür: Rust her
+  zaman `sil = ts+900` gönderir, saati ileri bilgisayarda bu **reddedilmez, bulut saatine kırpılır** (toplam geçerlilik
+  bulut saatiyle de 15 dk'yı aşmaz). Not (denetim 2026-11-26): ileri pay bir ara 60 sn'ye indirilmişti ve `sil ≤
+  şimdi+900` kuralıyla birlikte saati 1 sn bile ileri olan bilgisayarda karekodu tamamen durduruyordu; geri alındı.
+  İleri payı daraltmak tekrar saldırısını pek kısaltmaz (asıl koruma `sil` ve "kapandi" kaydıdır).
+  Aç/kapat gövdesi en çok 1 KiB'tır: `content-length` büyükse hiç okunmaz, başlık yoksa akış 1 KiB'ta kesilir (413).
 - Müşteri `/o/<t>` sayfasında (betiksiz, 13 dil) ad soyad, telefon ve "Ürünlerimi eksiksiz teslim aldım" kutusunu gönderir.
   Bulut düz metni (ad, telefon, user-agent ilk 200, IP, zaman, dil) hemen şifreler: geçici X25519 + ECDH(pk) →
-  HKDF-SHA256(salt = geçici_genel‖pk, info "taa-teslim-onay-v1") → AES-256-GCM (aad = t). Kayıtta yalnız `{e, iv, c}` kalır;
+  HKDF-SHA256(salt = geçici_genel‖pk, info "taa-teslim-onay-v1") → AES-256-GCM (aad: aşağıda). Kayıtta yalnız `{e, iv, c}` kalır;
   düz metin yazılmaz/loglanmaz. Bir `t` bir kez onaylanır; aynı `t`'ye en çok 5 POST.
-- Sunucu `GET /api/onay/<t>` (`x-taa-zaman`, `x-taa-imza` = imza("onay_oku:"+t+":"+ts), ±300 sn) ile okur, kendisi çözer,
+- **Kalem özeti `oz` ve AAD sözleşmesi (Rust tarafı aynı kuralla çözer):** aç gövdesinde isteğe bağlı `"oz"` = teslim
+  edilen kalemlerin SHA-256 özeti, **64 küçük harf hex** (büyük harf, başka uzunluk, boş dize, `null` → 400). `oz` bulut
+  kaydına yazılır, şifreli düz metne (P) **girmez**, oku yanıtında da dönmez (sunucu kendi `oz`'unu bilir). AES-GCM AAD'si
+  UTF-8 olarak: `oz` varsa `t + ":" + oz`, yoksa eskisi gibi yalnız `t`. Böylece şifreli onay, açılırken gösterilen kalem
+  listesine bağlanır: başka kalem listesiyle (başka `oz`) ya da `oz`'suz çözülemez (`test/dene8.mjs`).
+- **Kayıt düzeni ve atomiklik:** ana kayıt `onay:<t>` (Vercel `onay/<t>.json`) yalnız aç'ta yazılır (POST'ta hiç
+  yazılmaz: hatalı bir POST eşzamanlı onayı ezemez). Şifreli sonuç yaz-bir-kez anahtarındadır: `onay:<t>:sonuc`
+  (`onay/<t>.sonuc.json`); deneme sayacı tek alan değil, deneme başına ayrı anahtardır: `onay:<t>:deneme:<n>`, n = 1..5
+  (`onay/<t>.deneme-<n>.json`). Yaz-bir-kez = yalnız yoksa yaz, sonra geri oku ve kayıttaki kendi rastgele `yazan`
+  değerini doğrula; kaybeden onay "Onayınız alındı", kaybeden deneme bir sonraki `n`'i dener, `n` kalmadıysa 429.
+  Aç da aynı yolla yazılır (eşzamanlı iki aç → biri 409). Geri okuma başarısızsa bir kez yeniden denenir; yine
+  okunamazsa sonuç "bilinmiyor"dur, "kaybettim" sayılmaz: aç 503 döner (409 değil), deneme hakkı alınmış sayılır (tek
+  POST birden çok hak yakmaz), onay "Bir sorun oluştu" gösterir (yeniden gönderilince "Onayınız alındı").
+  Sınır için "Bilinen sınırlar"a bakın.
+- **Depo hataları:** depo `oku` kayıt yoksa `null` döner, okunamazsa (ağ, KV/Blob kesintisi, CDN 5xx) hata atar; "yok"
+  ile "okunamadı" ayrıdır (Vercel'de `head()`'in `BlobNotFoundError`'ı `api/onay.mjs`'te sınıfıyla tanınır). Okunamazsa
+  aç/kapat/oku 503, müşteri sayfası 503 "Bir sorun oluştu" (süresi doldu değil); POST sırasında depo yazma/okuma hatası
+  formda "Bir sorun oluştu" (500) olarak görünür, ham platform hatası dönmez.
+- **Kapat:** şifreli sonuç hemen silinir; ana kayıt `sil` zamanına kadar `{t, sil, durum:"kapandi"}` olarak kalır
+  (pk/şube/oz silinir). Bu sürede imzalı `aç` aynı `t`'yi yeniden açamaz (409; onaylanmış `t` için de 409), oku 404,
+  sayfa "süresi doldu". Açık kayıtta kapat yalnız 1 yazma + 1 silme yapar; kayıt yoksa (hiç açılmamış ya da süresi
+  geçmiş) ya da zaten "kapandi" ise hiç yazma/silme yapmaz (KV ücretsiz yazma kotası takip özelliğiyle paylaşılır).
+  Deneme anahtarları kişisel veri taşımaz; tek tek silinmez, `sil`'de düşer (KV silme zamanı; Vercel'de temizlik ana
+  kaydın `sil`'iyle). Kayıt okunamazsa kapat 503 döner ("yok" sayıp "kapandi" izini atlamaz; sunucu dakikada bir
+  yeniden dener).
+- Sunucu `GET /api/onay/<t>` (`x-taa-zaman`, `x-taa-imza` = imza("onay_oku:"+t+":"+ts), ±600 sn) ile okur, kendisi çözer,
   `POST /api/onay/kapat` (imzalı) ile siler. Cloudflare'de KV kendi siler; Vercel'de süresi geçen kayıt okurken, her
-  aç/kapat'ta ve günlük görevde silinir. Ayrıca mağaza sunucusu süresi geçen (onaylanmamış) her karekod için dakikada
+  aç/kapat'ta ve günlük görevde silinir. Vercel taraması belirteç başına en çok bir okuma yapar (yalnız ana kayıt
+  `onay/<t>.json`; ekler onun `sil`'iyle, ana kaydı olmayan ekler sahipsiz olarak silinir): bir belirteçte 7'ye kadar
+  blob (ana + sonuç + 5 deneme) olsa da aç/kapat yanıtı uzamaz. Ayrıca mağaza sunucusu süresi geçen (onaylanmamış) her karekod için dakikada
   bir iki buluta da `kapat` gönderir: Vercel'de 15 dk tavanı sunucu açık ve internete ulaşıyorsa ~16 dk'dır; sunucu
   kapalıysa şifreli kayıt bir sonraki aç/kapat'a ya da 03:17 görevine kadar (en kötü ~24 saat) kalır.
 - Ad kuralı: bulut `[\p{L}\p{M} .'-]` + ZWNJ/ZWJ (Hintçe virama, Farsça ZWNJ, harekeli Arapça geçer); sunucunun
@@ -66,7 +101,9 @@ bilgisi, tarih/saat şifreli tutulur. Ortak kod `ortak/onay.mjs` (kopyala.sh iki
 - Bulut doğrular: `data:image/png;base64,` öneki, çözülmüş ≤ 61 440 bayt, PNG imzası, IHDR en ≤ 800, boy ≤ 400, IEND.
   Ardından **içerik** (`imzaIcerik`): PNG gerçekten çözülür (parça CRC'leri, IDAT açılır ve tam boy, satır süzgeçleri) ve
   koyu piksel kuralı uygulanır: koyu (beyaz zemine göre parlaklık < 128) ≥ 60 ve ≥ binde 1,5; ≤ %60; koyu sütun aralığı
-  ≥ en/10. Boş beyaz tuval, tek nokta, kara tuval ve yalnız başlığı doğru sahte PNG reddedilir (400, imza hatası). Mağaza
+  ≥ en/10. Alfa ve `tRNS` saydamlığı beyaz zemine karıştırılarak değerlendirilir (gri/RGB'de `tRNS` rengiyle birebir
+  aynı piksel tam saydamdır; tekrar eden, IDAT'tan sonra gelen ya da alfalı türde `tRNS` geçersiz; `imza_png.rs` ile aynı).
+  Boş beyaz tuval, tek nokta, kara tuval, saydam "mürekkep" ve yalnız başlığı doğru sahte PNG reddedilir (400, imza hatası). Mağaza
   sunucusu aynı kuralı ayrıca uygular (`crates/taa-fis-sunucu/src/imza_png.rs`; hem `qr_imza` hem `cihaz_imza`; boş ya da
   çözülemeyen imza 422 `imza_gerekli`). Bu kural "gerçek imza" kanıtı değildir; yalnız boş/sahte gönderimi keser.
   Gövde sınırı 131 072 bayt (önceden 2 048); gövde akıştan okunur ve sınır aşılınca kesilir (content-length olmasa da).
@@ -295,14 +332,27 @@ arayüz: `ortak.js` `TKD.teslimSor` (masaüstü ve telefon teslim penceresi art�
   açılmamalı; Vercel'de log drain açılmamalı.
 - **Cloudflare KV sonunda tutarlıdır:** bir uç noktada okunan değer ~60 sn önbellekte kalabilir. Müşterinin telefonu
   başka bir uç noktaya düşerse kasadaki "bekliyor" durumu onaydan sonra 1 dakikaya kadar sürebilir (kasa ekranında bu
-  not yazar). Aynı nedenle "bir kez onay" ve 5 POST sınırı kesin değildir (dar pencerede ikinci POST ilkinin üzerine
-  yazabilir; sunucu ilk okuduğunu alıp kapatır). Gerçek dağıtımda mağaza ağı + mobil şebekeyle gecikme ölçülmeli;
-  kabul edilemezse onay kaydı Durable Object'e (ya da D1'e) taşınmalı (atomik tek seferlik onay da böyle çözülür).
-- **Vercel yolu gerçek dağıtımda denenmedi:** `vercel/lib/onay-depo.mjs` sahte Blob ile test edilir (dene6), ama Blob
+  not yazar). **KV'de koşullu yazma yoktur:** yaz-bir-kez = `get` + `put` + geri okuma (`yazan` doğrulaması). Bu, ana
+  kaydın POST'ta yeniden yazılmasından doğan ezilmeyi tamamen kaldırır ve eşzamanlı yazıcılar aynı gecikmeyi gördüğünde
+  tek kazanan verir (dene8), ama KV gerçek atomiklik sağlamaz: farklı uç noktalara düşen iki istek (ya da biri çok
+  gecikirse) ikisi de "kendi yazdığını" geri okuyabilir; KV aynı anahtara saniyede ~1 yazma sınırı ve olumsuz okuma
+  önbelleği de pencereyi etkiler. **Olumsuz okuma önbelleği yüzünden pencere eşzamanlı isteklerle sınırlı değildir:**
+  müşterinin form GET'i bir uç noktada `onay:<t>:sonuc` için "yok"u ~60 sn önbelleğe alır; başka uçta yapılan onaydan
+  sonra `t`'yi bilen ikinci bir POST bu uçta hem durum okumasında hem yaz-bir-kez denetiminde eski "yok"u görüp ilk
+  onayın üzerine yazabilir (dene8 "KV bilinen sınır" bu davranışı sabitler; **düzeltilmiş sayılmamalı**). 5 deneme
+  sınırı da birkaç deneme aşılabilir. Geçici önlem sunucudadır: ilk "onaylandi" okumasında onayı çözüp bellekte
+  sabitler, bir daha sormaz ve hemen kapat gönderir (sonraki yazım kasaya ulaşmaz). Gerçek dağıtımda mağaza ağı + mobil şebekeyle gecikme ölçülmeli;
+  kabul edilemezse onay kaydı Durable Object'e (ya da D1'e) taşınmalı (kesin atomik tek seferlik onay böyle çözülür).
+  Vercel Blob'da "yalnız yoksa yaz" `put(..., { allowOverwrite: false })` ile sunucu tarafında koşulludur (atomik);
+  geri okuma CDN'den `?v=` ile yapılır. Kapat ile aç/onay yarışında (ikisi de imzalı sunucudan) KV'de pencere kalır.
+- **Vercel yolu gerçek dağıtımda denenmedi:** `vercel/lib/onay-depo.mjs` sahte Blob ile test edilir (dene6, dene8), ama Blob
   CDN önbelleği (`cacheControlMaxAge: 60` + `?v=` ile aşma), yeniden yazımda `istek.url`'in biçimi (işlem hem asıl
-  yoldan hem sorgudan bulunur) ve `head/put/del` davranışı bir Vercel önizleme dağıtımında elle denenmeli
+  yoldan hem sorgudan bulunur) ve `head/put/del` davranışı (koşullu `allowOverwrite: false` dahil) bir Vercel önizleme dağıtımında elle denenmeli
   (aç → form → onay → oku → kapat). Blob public'tir; adres t bilinmeden tahmin edilemez (bekleyen kayıtta pk, şube kodu
   ve ürün sayısı açık, kişisel veri yok).
+- **Ortak sınama vektörleri:** `test/ortak-vektorler.json` (`test/vektor-uret.mjs` üretir; bulutun gerçek `sifrele()`
+  çıktısı aad = `t:oz` ile ve tRNS PNG'leri). dene8 ve Rust testleri (`teslim_onay.rs`, `imza_png.rs`, `include_str!`)
+  aynı dosyayı okur; dosya değişirse iki taraf da yeniden sınanmalı.
 - **Telefon doğrulanmaz:** karekodda yazılan ad ve telefon müşterinin beyanıdır (SMS kodu yok); "kimin telefonundan"
   bilgisi user-agent + IP'dir (user-agent istemcinin gönderdiği değerdir). Sunucu karekoddaki telefonu fişteki numarayla
   karşılaştırır (numarayı açmadan): farklıysa kasada "Farklı" yazar ve ilişki (yakını/diğer) seçilmeden teslim edilmez.

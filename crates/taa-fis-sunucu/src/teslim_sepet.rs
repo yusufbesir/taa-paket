@@ -717,6 +717,12 @@ impl Uygulama {
         Ok(s)
     }
 
+    /// Sepetin kalem özeti (`teslim_onay::kalem_ozeti`): bütün fişlerin no + kalemleri.
+    fn sepet_ozeti(s: &Sepet) -> String {
+        let fisler: Vec<&taa_fis::Fis> = s.satirlar.iter().map(|x| &x.fis).collect();
+        crate::teslim_onay::kalem_ozeti(&fisler)
+    }
+
     /// Karekoddaki telefonun sepetteki fiş telefonlarıyla karşılaştırması.
     fn sepet_tel_karsilastir(s: &Sepet, qr_tel: &str) -> &'static str {
         let fis_tel: Vec<String> = s
@@ -750,7 +756,7 @@ impl Uygulama {
         let kimlik = sepet_kimligi(&nolar);
         let n: u32 = s.satirlar.iter().map(|x| urun_sayisi(&x.fis)).sum();
         let fissiz = s.satirlar.iter().any(|x| !x.okutuldu);
-        let mut y = self.onay_ac_ic(&kimlik, n, fissiz, c);
+        let mut y = self.onay_ac_ic(&kimlik, n, fissiz, &Self::sepet_ozeti(&s), c);
         if y.kod == 200 {
             if let Ok(mut j) = serde_json::from_slice::<serde_json::Value>(&y.govde) {
                 j["sepet_kimligi"] = json!(kimlik);
@@ -869,7 +875,8 @@ impl Uygulama {
             .filter(|s| !s.is_empty())
             .map(str::to_string);
         let onay = match &belirtec {
-            Some(t) => match self.qr_onayi(&kimlik, t, c) {
+            // Kalem özeti defterden şimdi okunan fişlerle yeniden hesaplanır (açılıştakiyle aynı olmalı).
+            Some(t) => match self.qr_onayi(&kimlik, t, c, &Self::sepet_ozeti(&s)) {
                 Ok(b) => Some(b),
                 Err(y) => return y,
             },
@@ -967,7 +974,7 @@ impl Uygulama {
         // Şifreleme yazımdan ÖNCE: biri bile şifrelenemezse hiçbir şey yazılmaz.
         let mut sifreliler = Vec::with_capacity(nolar.len());
         for n in &nolar {
-            match teslim_sifre::sifrele(&self.dizin, n, &duz) {
+            match teslim_sifre::sifrele(&self.dizin, n, &teslim_id, &duz) {
                 Ok(x) => sifreliler.push(x),
                 Err(e) => return Yanit::hata(500, &format!("teslim bilgisi şifrelenemedi: {e}")),
             }
@@ -978,7 +985,7 @@ impl Uygulama {
         let mut imza_yontemi = String::new();
         let mut yazilan: Option<PathBuf> = None;
         if let Some((b, yontem)) = &imza {
-            match self.imza_yaz(&ana, b) {
+            match self.imza_yaz(&ana, &teslim_id, b) {
                 Ok((goreli, yol)) => {
                     imza_sha256 = sha256_bayt(b);
                     imza_dosyasi = goreli;
@@ -1469,8 +1476,10 @@ mod testler {
         assert!(bulunan.is_empty(), "{bulunan:?}");
         // her şifreli blok kendi fişine bağlı (aad): başka fişin bloğu çözülmez
         let sa = fis(&u, &a).teslim_kaydi.unwrap().sifreli.unwrap();
-        assert!(teslim_sifre::coz(&u.dizin, &a, &sa).is_ok());
-        assert!(teslim_sifre::coz(&u.dizin, &b, &sa).is_err());
+        assert!(teslim_sifre::coz(&u.dizin, &a, &tid, &sa).is_ok());
+        assert!(teslim_sifre::coz(&u.dizin, &b, &tid, &sa).is_err());
+        // başka teslimata (teslim_id) taşınan blok da çözülmez (teslim_sifre v2 aad'si)
+        assert!(teslim_sifre::coz(&u.dizin, &a, "T-20990101-ZZZZZZ", &sa).is_err());
         // sepet günlüğü: kişisel veri yok, teslim_id var
         let g = std::fs::read_to_string(u.dizin.join("teslim-sepet.jsonl")).unwrap();
         assert!(g.contains(&tid) && !g.contains("Deneme Yakın"));
@@ -1936,6 +1945,82 @@ mod testler {
 
     /// Sepet karekodu: n = toplam ürün, fişsiz varsa imza istenir; belirteç sepet kimliğine bağlı (sepet değişirse
     /// geçmez); müşterinin karekod imzası bütün kayıtlara bir kez yazılır; bulut kaydına kişisel veri gitmez.
+    /// Sepet karekodu açılınca bütün fişlerin kalem özeti (`oz`) buluta gider; onaydan sonra fişlerden birinin
+    /// kalemi değişirse sepet teslim edilmez (409 onay_kalem_degisti, hiçbir kayıt yazılmaz).
+    #[test]
+    fn sepet_onayi_kalem_degisince_reddedilir() {
+        let (u, bulut) = qr_uyg();
+        let (a, b) = (hazir_fis(&u), hazir_fis(&u));
+        let fisler = json!([
+            { "no": a, "okutuldu": true, "karekod": fis_kk(&u, &a) },
+            { "no": b, "okutuldu": true, "karekod": fis_kk(&u, &b) },
+        ]);
+        let y = u.isle(&pc(
+            "POST",
+            "/api/teslim/sepet/onay-ac",
+            &json!({ "fisler": fisler }).to_string(),
+        ));
+        assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
+        let t = json_of(&y)["t"].as_str().unwrap().to_string();
+        let oz = bulut.kayit.lock().unwrap()[&format!("{A}|{t}")]["oz"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let (fa, fb) = (fis(&u, &a), fis(&u, &b));
+        assert_eq!(oz, crate::teslim_onay::kalem_ozeti(&[&fb, &fa]));
+        assert_ne!(oz, crate::teslim_onay::kalem_ozeti(&[&fa]));
+        bulut.musteri_onaylar(A, &t, QR_AD, "+905320004567");
+        let y = u.isle(&pc(
+            "POST",
+            "/api/teslim/sepet/onay-durum",
+            &json!({ "fisler": fisler, "t": t }).to_string(),
+        ));
+        assert_eq!(
+            json_of(&y)["durum"],
+            "onaylandi",
+            "{}",
+            String::from_utf8_lossy(&y.govde)
+        );
+        // onaydan sonra ikinci fişe kalem eklenir
+        let y = u.isle(&pc(
+            "POST",
+            &format!("/api/fis/{b}/kalem"),
+            r#"{"kalem":{"urun":"Gömlek","islem":"yaka değiştir","adet":2}}"#,
+        ));
+        assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
+        let y = teslim(&u, json!({ "fisler": fisler, "onay_belirteci": t }));
+        assert_eq!(y.kod, 409, "{}", String::from_utf8_lossy(&y.govde));
+        assert_eq!(json_of(&y)["hata"], "onay_kalem_degisti");
+        assert!(fis(&u, &a).teslim_kaydi.is_none() && fis(&u, &b).teslim_kaydi.is_none());
+        assert!(imza_dosyalari(&u).is_empty());
+        // yeni karekod güncel içerikle: teslim olur
+        let y = u.isle(&pc(
+            "POST",
+            "/api/teslim/sepet/onay-ac",
+            &json!({ "fisler": fisler }).to_string(),
+        ));
+        let t2 = json_of(&y)["t"].as_str().unwrap().to_string();
+        assert_ne!(bulut.kayit.lock().unwrap()[&format!("{A}|{t2}")]["oz"], oz);
+        bulut.musteri_onaylar(A, &t2, QR_AD, "+905320004567");
+        u.isle(&pc(
+            "POST",
+            "/api/teslim/sepet/onay-durum",
+            &json!({ "fisler": fisler, "t": t2 }).to_string(),
+        ));
+        let y = teslim(&u, json!({ "fisler": fisler, "onay_belirteci": t2 }));
+        assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
+        let (ta, tb) = (
+            fis(&u, &a).teslim_kaydi.unwrap(),
+            fis(&u, &b).teslim_kaydi.unwrap(),
+        );
+        assert_eq!((ta.dogrulama.as_str(), tb.dogrulama.as_str()), ("qr", "qr"));
+        // v2 şifreli kayıtlar ortak teslim_id'ye bağlı
+        assert_eq!(ta.sifreli.as_ref().unwrap().surum, 2);
+        assert!(
+            teslim_sifre::coz(&u.dizin, &b, &tb.teslim_id, tb.sifreli.as_ref().unwrap()).is_ok()
+        );
+    }
+
     #[test]
     fn sepet_karekod_onayi() {
         let (u, bulut) = qr_uyg();

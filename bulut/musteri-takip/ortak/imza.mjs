@@ -7,7 +7,8 @@
 // İmza: 600×240 tuval, beyaz zemin, koyu çizgi → 8 bit GRİ TONLAMALI PNG (CompressionStream "deflate" = zlib); tarayıcıda
 // CompressionStream yoksa tuval.toDataURL (RGBA PNG) yedeği. Sonuç IMZA_EN_COK baytı geçerse önce 4 gri düzeye
 // indirilir, yine geçerse yarı çözünürlüğe (300×120) düşürülür. Bulut PNG'yi yeniden doğrular: imzaDogrula (biçim) ve
-// imzaIcerik (PNG gerçekten çözülür: CRC, IDAT boyu, koyu piksel kuralı; boş tuval / tek nokta / kara tuval reddedilir).
+// imzaIcerik (PNG gerçekten çözülür: CRC, IDAT boyu, tRNS saydamlığı beyaz zemine, koyu piksel kuralı; boş tuval / tek nokta /
+// kara tuval / saydam "mürekkep" reddedilir).
 // Aynı içerik kuralı mağaza sunucusunda da vardır (crates/taa-fis-sunucu/src/imza_png.rs); asıl karar sunucunundur.
 // Konsola hiçbir şey yazılmaz. Yazan: [Claude Opus 5.5, TerziTakip başlığı, 2026-11-26].
 
@@ -106,7 +107,7 @@ export async function imzaIcerik(b64) {
   for (let i = 0; i < ikili.length; i++) b[i] = ikili.charCodeAt(i);
   const u32 = (i) => ((b[i] << 24) >>> 0) + (b[i + 1] << 16) + (b[i + 2] << 8) + b[i + 3];
   if (b.length < 45 || PNG_IMZA.some((v, i) => b[i] !== v)) return { hata: "gecersiz" };
-  let i = 8, ihdr = null, iend = false;
+  let i = 8, ihdr = null, iend = false, saydam = null;
   const idat = [];
   while (i < b.length) {
     if (iend || b.length - i < 12) return { hata: "gecersiz" };
@@ -120,7 +121,15 @@ export async function imzaIcerik(b64) {
     } else if (!ihdr) return { hata: "gecersiz" };
     else if (tur === "IDAT") idat.push(b.subarray(i + 8, i + 8 + uz));
     else if (tur === "IEND") iend = true;
-    else if (tur.charCodeAt(0) < 97) return { hata: "gecersiz" }; // bilinmeyen kritik parça (ör. PLTE)
+    else if (tur === "tRNS") {
+      // Saydam renk (imza_png.rs ile aynı): renk 0 → [gri], renk 2 → [r, g, b] (16 bit örnek, 8 bit derinlikte üst bayt 0).
+      // Tekrar, IDAT'tan sonra ya da alfalı/başka renk türünde tRNS geçersizdir.
+      if (saydam || idat.length) return { hata: "gecersiz" };
+      const u16 = (j) => (b[j] << 8) | b[j + 1];
+      if (ihdr.renk === 0 && uz === 2) saydam = [u16(i + 8)];
+      else if (ihdr.renk === 2 && uz === 6) saydam = [u16(i + 8), u16(i + 10), u16(i + 12)];
+      else return { hata: "gecersiz" };
+    } else if (tur.charCodeAt(0) < 97) return { hata: "gecersiz" }; // bilinmeyen kritik parça (ör. PLTE)
     i += 12 + uz;
   }
   if (!ihdr || !iend) return { hata: "gecersiz" };
@@ -161,6 +170,9 @@ export async function imzaIcerik(b64) {
       else l = Math.floor((simdiki[k] * 299 + simdiki[k + 1] * 587 + simdiki[k + 2] * 114) / 1000);
       if (renk === 4) alfa = simdiki[k + 1];
       else if (renk === 6) alfa = simdiki[k + 3];
+      // tRNS: saydam renkle birebir aynı piksel tam saydamdır; beyaz zemin görünür (saydam "mürekkep" koyu sayılmaz).
+      if (saydam && (renk === 0 ? simdiki[k] === saydam[0]
+        : simdiki[k] === saydam[0] && simdiki[k + 1] === saydam[1] && simdiki[k + 2] === saydam[2])) alfa = 0;
       if (Math.floor((l * alfa + 255 * (255 - alfa)) / 255) < 128) {
         koyu++;
         if (x < sol) sol = x;

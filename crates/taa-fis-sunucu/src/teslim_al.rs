@@ -110,6 +110,8 @@ pub(crate) fn imza_dosya_adi_coz(ad: &str) -> Option<(&str, &str)> {
 
 /// Base64 imzayı çözer ve denetler: ≤300 KB, PNG imzası + IHDR, sonra İÇERİK (imza_png: PNG gerçekten çözülür,
 /// CRC/boy tutmalı, yeterince koyu piksel olmalı). Hata: (HTTP kodu, ileti); boş ya da çözülemeyen imza 422.
+/// Dönen baytlar gelen PNG DEĞİL, yeniden kodlanmış temiz PNG'dir (`imza_png::imza_temizle`: ek parçalar atılır);
+/// saklanan ve özeti (`imza_sha256`) alınan budur.
 pub(crate) fn imza_coz_denetle(s: &str) -> Result<Vec<u8>, (u16, String)> {
     let b = base64_coz(s).map_err(|e| (400, e))?;
     if b.len() > EN_BUYUK_IMZA {
@@ -118,8 +120,7 @@ pub(crate) fn imza_coz_denetle(s: &str) -> Result<Vec<u8>, (u16, String)> {
     if !png_gecerli(&b) {
         return Err((400, "imza PNG olmalı".into()));
     }
-    crate::imza_png::imza_yeterli(&b).map_err(|e| (422, format!("imza geçersiz: {e}")))?;
-    Ok(b)
+    crate::imza_png::imza_temizle(&b).map_err(|e| (422, format!("imza geçersiz: {e}")))
 }
 
 pub(crate) fn sha256_bayt(b: &[u8]) -> String {
@@ -367,7 +368,7 @@ impl Uygulama {
             .filter(|s| !s.is_empty())
             .map(str::to_string);
         let onay = match &belirtec {
-            Some(t) => match self.qr_onayi(no, t, c) {
+            Some(t) => match self.qr_onayi(no, t, c, &crate::teslim_onay::kalem_ozeti(&[&f])) {
                 Ok(b) => Some(b),
                 Err(y) => return y,
             },
@@ -494,8 +495,13 @@ impl Uygulama {
         let mut imza_dosyasi = String::new();
         let mut imza_yontemi = String::new();
         let mut yazilan: Option<PathBuf> = None;
+        // Teslim kimliği şifrelemeden ÖNCE: teslim bilgisi ve imza ona bağlı şifrelenir (aad, teslim_sifre v2).
+        let teslim_id = match self.yeni_teslim_id(d) {
+            Ok(t) => t,
+            Err(e) => return Yanit::hata(500, &e),
+        };
         if let Some((b, yontem)) = &imza {
-            match self.imza_yaz(no, b) {
+            match self.imza_yaz(no, &teslim_id, b) {
                 Ok((goreli, yol)) => {
                     imza_sha256 = sha256_bayt(b);
                     imza_dosyasi = goreli;
@@ -523,22 +529,13 @@ impl Uygulama {
                 ..Default::default()
             },
         };
-        let sifreli = match teslim_sifre::sifrele(&self.dizin, no, &duz) {
+        let sifreli = match teslim_sifre::sifrele(&self.dizin, no, &teslim_id, &duz) {
             Ok(x) => x,
             Err(e) => {
                 if let Some(y) = &yazilan {
                     self.imza_artigi_kenara(y);
                 }
                 return Yanit::hata(500, &format!("teslim bilgisi şifrelenemedi: {e}"));
-            }
-        };
-        let teslim_id = match self.yeni_teslim_id(d) {
-            Ok(t) => t,
-            Err(e) => {
-                if let Some(y) = &yazilan {
-                    self.imza_artigi_kenara(y);
-                }
-                return Yanit::hata(500, &e);
             }
         };
         let dogrulama = match (fisli, onay.is_some()) {
@@ -636,7 +633,7 @@ impl Uygulama {
         t: &taa_fis::TeslimKaydi,
     ) -> Option<teslim_sifre::TeslimDuz> {
         let s = t.sifreli.as_ref()?;
-        match teslim_sifre::coz(&self.dizin, no, s) {
+        match teslim_sifre::coz(&self.dizin, no, &t.teslim_id, s) {
             Ok(d) => Some(d),
             Err(e) => {
                 eprintln!("Teslim kaydı çözülemedi ({no}): {e}");
@@ -710,7 +707,7 @@ impl Uygulama {
                 json!({ "sifreli": false, "teslim_alan": t.teslim_alan, "iliski": t.iliski, "tarih": t.tarih, "saat": t.saat }),
             );
         };
-        let duz = match teslim_sifre::coz(&self.dizin, no, s) {
+        let duz = match teslim_sifre::coz(&self.dizin, no, &t.teslim_id, s) {
             Ok(x) => x,
             Err(e) => return Yanit::hata(500, &e),
         };
@@ -787,9 +784,15 @@ impl Uygulama {
         Yanit::json(200, json!({ "sonuc": bulunan }))
     }
 
-    /// İmzayı `imzalar/<no>-<n>.png.enc` olarak şifreli ve atomik yazar: (kayıttaki göreli yol, tam yol).
+    /// İmzayı `imzalar/<no>-<n>.png.enc` olarak şifreli (teslim_sifre v2: imza alt anahtarı, aad = fiş no +
+    /// teslim_id) ve atomik yazar: (kayıttaki göreli yol, tam yol).
     /// n, ne şifreli ne eski şifresiz dosyası olan ilk sıradır.
-    pub(crate) fn imza_yaz(&self, no: &str, png: &[u8]) -> Result<(String, PathBuf), Yanit> {
+    pub(crate) fn imza_yaz(
+        &self,
+        no: &str,
+        teslim_id: &str,
+        png: &[u8],
+    ) -> Result<(String, PathBuf), Yanit> {
         if !no_guvenli(no) {
             return Err(Yanit::hata(400, "fiş no geçersiz"));
         }
@@ -800,7 +803,7 @@ impl Uygulama {
         }) else {
             return Err(Yanit::hata(409, "bu fişe çok fazla imza dosyası yazılmış"));
         };
-        let sifreli = teslim_sifre::bayt_sifrele(&self.dizin, no.as_bytes(), png)
+        let sifreli = teslim_sifre::imza_sifrele(&self.dizin, no, teslim_id, png)
             .map_err(|e| Yanit::hata(500, &format!("imza şifrelenemedi: {e}")))?;
         let ad = format!("{no}-{n}.png.enc");
         let yol = klasor.join(&ad);
@@ -850,7 +853,7 @@ impl Uygulama {
             format!("{ad}.enc")
         };
         let png = match std::fs::read(klasor.join(&enc)) {
-            Ok(b) => teslim_sifre::bayt_coz(&self.dizin, sahip.as_bytes(), &b)
+            Ok(b) => teslim_sifre::imza_coz(&self.dizin, sahip, &t.teslim_id, &b)
                 .map_err(|_| (409, "imza dosyası çözülemedi (anahtar ya da fiş uyuşmuyor)"))?,
             Err(_) if !ad.ends_with(".enc") => {
                 std::fs::read(klasor.join(ad)).map_err(|_| (404, "imza yok"))?
@@ -1101,9 +1104,9 @@ pub(crate) mod testler {
         let t = f.teslim_kaydi.clone().unwrap();
         assert_eq!(t.imza_dosyasi, format!("imzalar/{no}-1.png.enc"));
         assert_eq!(t.imza_yontemi, "cihaz_imza");
-        // imza diskte şifreli (yerel anahtar, aad = fiş no); şifresiz PNG yazılmaz
+        // imza diskte şifreli (yerel anahtar v2: imza alt anahtarı, aad = fiş no + teslim_id); şifresiz PNG yazılmaz
         let enc = std::fs::read(u.dizin.join("imzalar").join(format!("{no}-1.png.enc"))).unwrap();
-        assert!(enc.starts_with(teslim_sifre::DOSYA_BASLIGI));
+        assert!(enc.starts_with(teslim_sifre::DOSYA_BASLIGI_V2));
         assert!(!enc.windows(11).any(|w| w == b"DENEME-IMZA"));
         assert!(!u.dizin.join("imzalar").join(format!("{no}-1.png")).exists());
         // imza geri okunur (sunucuda çözülür), özet tutar
@@ -1534,15 +1537,36 @@ pub(crate) mod testler {
         let imza_yolu = format!("/api/fis/{no}/imza");
         assert_eq!(u.isle(&pc("GET", &imza_yolu, "")).kod, 200);
         let dosya = u.dizin.join("imzalar").join(format!("{no}-1.png.enc"));
+        let tid = Defter { yol: &u.fis_yolu() }
+            .bul(&no)
+            .unwrap()
+            .unwrap()
+            .teslim_kaydi
+            .unwrap()
+            .teslim_id;
+        assert!(std::fs::read(&dosya)
+            .unwrap()
+            .starts_with(teslim_sifre::DOSYA_BASLIGI_V2));
         // başka bir (geçerli şifreli) imzayla değiştirilirse özet tutmaz: 409
-        let baska =
-            teslim_sifre::bayt_sifrele(&u.dizin, no.as_bytes(), &imza_png(401, 150)).unwrap();
+        let baska = teslim_sifre::imza_sifrele(&u.dizin, &no, &tid, &imza_png(401, 150)).unwrap();
         std::fs::write(&dosya, baska).unwrap();
+        assert_eq!(u.isle(&pc("GET", &imza_yolu, "")).kod, 409);
+        // eski v1 biçimiyle (aad = fiş no) şifrelenmiş başka imza da çözülür ama özet tutmaz: 409
+        let eski_v1 =
+            teslim_sifre::bayt_sifrele(&u.dizin, no.as_bytes(), &imza_png(401, 150)).unwrap();
+        std::fs::write(&dosya, eski_v1).unwrap();
         assert_eq!(u.isle(&pc("GET", &imza_yolu, "")).kod, 409);
         // başka fişin anahtar bağlamıyla (aad) şifrelenmiş imza çözülmez: 409
         let yabanci =
-            teslim_sifre::bayt_sifrele(&u.dizin, b"F-20990101-999", &imza_png(400, 150)).unwrap();
+            teslim_sifre::imza_sifrele(&u.dizin, "F-20990101-999", &tid, &imza_png(400, 150))
+                .unwrap();
         std::fs::write(&dosya, yabanci).unwrap();
+        assert_eq!(u.isle(&pc("GET", &imza_yolu, "")).kod, 409);
+        // aynı fiş, başka teslimat (teslim_id) bağlamı: çözülmez, 409
+        let baska_teslim =
+            teslim_sifre::imza_sifrele(&u.dizin, &no, "T-20990101-ZZZZZZ", &imza_png(400, 150))
+                .unwrap();
+        std::fs::write(&dosya, baska_teslim).unwrap();
         assert_eq!(u.isle(&pc("GET", &imza_yolu, "")).kod, 409);
         // kayıttaki dosya adı kurcalanırsa (yol kaçışı) okunmaz: 404
         let defter = std::fs::read_to_string(u.fis_yolu()).unwrap();
@@ -1768,6 +1792,12 @@ pub(crate) mod testler {
         pub(crate) istekler: Mutex<Vec<String>>,
         /// Bulut, mağaza saatini yanlış bulur (aç: 400, oku: 401 "zaman geçersiz").
         saat_yanlis: std::sync::atomic::AtomicBool,
+        /// Eski bulut: aç gövdesindeki `oz`u bilmez, onayı aad = t ile şifreler.
+        pub(crate) eski_bulut: std::sync::atomic::AtomicBool,
+        /// `Some(fark)`: bulutun saati = gerçek saat + fark (sn) ve bulutun zaman penceresi (onay.mjs) uygulanır:
+        /// aç/kapat/oku ts'si bulut saatinin ±600 sn içinde; aç'ta ts < sil <= ts+900, sil > şimdi ve kayda yazılan
+        /// sil = min(sil, şimdi+900). `None`: pencere denetlenmez (uygulama saatini ileri saran eski testler için).
+        pub(crate) bulut_saat_farki: Mutex<Option<i64>>,
     }
 
     impl SahteBulut {
@@ -1782,7 +1812,16 @@ pub(crate) mod testler {
                 dusuk: Default::default(),
                 istekler: Default::default(),
                 saat_yanlis: Default::default(),
+                eski_bulut: Default::default(),
+                bulut_saat_farki: Default::default(),
             })
+        }
+        /// Bulutun saati (pencere açıksa).
+        fn bulut_saati(&self) -> Option<u64> {
+            self.bulut_saat_farki
+                .lock()
+                .unwrap()
+                .map(|f| (crate::simdi() as i64 + f) as u64)
         }
         fn imza_dogru(&self, metin: &str, imza: &str) -> bool {
             use ed25519_dalek::Verifier;
@@ -1820,9 +1859,15 @@ pub(crate) mod testler {
                 duz["imza"] = json!(i);
             }
             let duz = duz.to_string();
+            // Yeni bulut: aad = t + ":" + oz (aç gövdesindeki kalem özeti); eski bulut: aad = t.
+            let aad = if self.eski_bulut.load(std::sync::atomic::Ordering::SeqCst) {
+                t.to_string()
+            } else {
+                format!("{t}:{}", r["oz"].as_str().unwrap())
+            };
             let (e, iv, c) = crate::teslim_onay::testler::sozlesme_sifrele(
                 r["pk"].as_str().unwrap(),
-                t,
+                &aad,
                 duz.as_bytes(),
                 [5u8; 32],
                 [6u8; 12],
@@ -1832,6 +1877,11 @@ pub(crate) mod testler {
             r["iv"] = json!(iv);
             r["c"] = json!(c);
         }
+    }
+
+    /// onay.mjs zaman penceresi: şimdi-600 <= ts <= şimdi+600 (aç, kapat, oku).
+    fn pencere_icinde(ts: u64, bulut: u64) -> bool {
+        ts + 600 >= bulut && ts <= bulut + 600
     }
 
     impl crate::teslim_onay::OnayAgi for SahteBulut {
@@ -1871,6 +1921,12 @@ pub(crate) mod testler {
                     let v: serde_json::Value = serde_json::from_str(g).unwrap();
                     let t = v["t"].as_str().unwrap().to_string();
                     assert!(crate::teslim_onay::belirtec_gecerli(&t));
+                    let bulut_saati = self.bulut_saati();
+                    if let Some(b) = bulut_saati {
+                        if !pencere_icinde(v["ts"].as_u64().unwrap(), b) {
+                            return Ok((400, r#"{"hata":"zaman geçersiz"}"#.into()));
+                        }
+                    }
                     if yol == "kapat" {
                         assert_eq!(v["tur"], "onay_kapat");
                         k.remove(&format!("{taban}|{t}"));
@@ -1878,20 +1934,34 @@ pub(crate) mod testler {
                     }
                     assert_eq!(v["tur"], "onay_ac");
                     assert_eq!(v["v"], 1);
-                    let (ts, sil) = (v["ts"].as_u64().unwrap(), v["sil"].as_u64().unwrap());
+                    let (ts, mut sil) = (v["ts"].as_u64().unwrap(), v["sil"].as_u64().unwrap());
                     assert!(ts < sil && sil <= ts + 900);
+                    if let Some(b) = bulut_saati {
+                        if sil <= b {
+                            return Ok((400, r#"{"hata":"silinme zamanı geçersiz"}"#.into()));
+                        }
+                        // onay.mjs dogrulaAc: bulut saatine kırpılır (reddedilmez)
+                        sil = sil.min(b + crate::teslim_onay::ONAY_OMRU_SN);
+                    }
                     assert_eq!(v["pk"].as_str().unwrap().len(), 64);
                     assert!((1..=50).contains(&v["n"].as_u64().unwrap()));
                     assert_eq!(v["s"], "MRK01");
                     // sözleşme: "i" her zaman var (fişsiz 1, fişli 0)
                     assert!(v["i"] == 0 || v["i"] == 1, "{v}");
+                    // sözleşme: "oz" kalem özeti, sha256 hex (64 küçük onaltılık)
+                    let oz = v["oz"].as_str().unwrap_or("");
+                    assert!(
+                        oz.len() == 64
+                            && oz.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')),
+                        "{v}"
+                    );
                     let a = format!("{taban}|{t}");
                     if k.contains_key(&a) {
                         return Ok((409, String::new()));
                     }
                     k.insert(
                         a,
-                        json!({ "pk": v["pk"], "durum": "bekliyor", "sil": sil, "i": v["i"] }),
+                        json!({ "pk": v["pk"], "durum": "bekliyor", "sil": sil, "i": v["i"], "oz": oz }),
                     );
                     Ok((200, "{}".into()))
                 }
@@ -1899,6 +1969,11 @@ pub(crate) mod testler {
                     let ts = baslik("x-taa-zaman");
                     if !self.imza_dogru(&format!("onay_oku:{t}:{ts}"), &baslik("x-taa-imza")) {
                         return Ok((401, String::new()));
+                    }
+                    if let Some(b) = self.bulut_saati() {
+                        if !ts.parse::<u64>().is_ok_and(|ts| pencere_icinde(ts, b)) {
+                            return Ok((401, r#"{"hata":"zaman geçersiz"}"#.into()));
+                        }
                     }
                     match k.get(&format!("{taban}|{t}")) {
                         Some(r) if r["durum"] == "onaylandi" => Ok((
@@ -2036,14 +2111,14 @@ pub(crate) mod testler {
         let tk = f.teslim_kaydi.clone().unwrap();
         assert!(tk.teslim_alan.is_empty() && tk.imza_dosyasi.is_empty());
         let s = tk.sifreli.clone().unwrap();
-        assert_eq!(s.surum, 1);
+        assert_eq!(s.surum, 2);
         // kör indeks: aynı ad/telefon aynı indeks
         assert_eq!(
             teslim_sifre::indeksler(&u.dizin, "zeynep  örnekoğlu", "0555 999 88 77").unwrap(),
             (s.ad_indeks.clone(), s.tel_indeks.clone())
         );
         // çözülen kayıt: ad, telefon, okutan cihaz, IP, onay zamanı, yöntem
-        let duz = teslim_sifre::coz(&u.dizin, &no, &s).unwrap();
+        let duz = teslim_sifre::coz(&u.dizin, &no, &tk.teslim_id, &s).unwrap();
         assert_eq!(
             (
                 duz.ad.as_str(),
@@ -2186,13 +2261,20 @@ pub(crate) mod testler {
         assert!(!tk.fisli && tk.iliski == "yakini");
         assert_eq!(tk.imza_yontemi, "qr_imza");
         assert_eq!(tk.imza_dosyasi, format!("imzalar/{no}-1.png.enc"));
-        assert_eq!(tk.imza_sha256, sha256_bayt(&imza_png(600, 220)));
+        // saklanan imza yeniden kodlanmış temiz PNG'dir; özet onun özetidir
+        assert_eq!(
+            tk.imza_sha256,
+            sha256_bayt(&crate::imza_png::imza_temizle(&imza_png(600, 220)).unwrap())
+        );
         // imza yerelde şifreli; sunucuda çözülüp yetkili cihaza gösterilir
         let enc = std::fs::read(u.dizin.join(&tk.imza_dosyasi)).unwrap();
         assert!(!enc.windows(11).any(|w| w == b"DENEME-IMZA"));
         let g2 = u.isle(&pc("GET", &format!("/api/fis/{no}/imza"), ""));
         assert_eq!(g2.kod, 200);
-        assert_eq!(g2.govde, imza_png(600, 220));
+        assert_eq!(
+            g2.govde,
+            crate::imza_png::imza_temizle(&imza_png(600, 220)).unwrap()
+        );
         // düz metin hiçbir dosyada yok (imza dahil)
         let mut bulunan = Vec::new();
         tum_dosyalarda(
@@ -2322,6 +2404,87 @@ pub(crate) mod testler {
         )
         .unwrap();
         assert!(m.replace('\n', " ").contains("QR onaylı, imzalı"), "{m}");
+    }
+
+    /// Karekod açıldıktan sonra fişin kalemi değişirse onay geçmez (409 onay_kalem_degisti); aç gövdesinde `oz`
+    /// vardır, yeni bulut aad = t:oz ile, eski bulut aad = t ile şifreler (ikisi de çözülür). Karekod imzasındaki
+    /// ek parçalar (tEXt) saklanan imzaya taşınmaz.
+    #[test]
+    fn qr_onayi_kalem_ozetine_bagli() {
+        let (u, bulut) = qr_uyg();
+        let no = hazir_fis(&u);
+        let (t, _) = qr_ac(&u, &no);
+        let oz = bulut.kayit.lock().unwrap()[&format!("{A}|{t}")]["oz"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let f = Defter { yol: &u.fis_yolu() }.bul(&no).unwrap().unwrap();
+        assert_eq!(oz, crate::teslim_onay::kalem_ozeti(&[&f]));
+        bulut.musteri_onaylar(A, &t, QR_AD, "+905320004567");
+        let durum = u.isle(&pc("GET", &format!("/api/fis/{no}/teslim-qr/{t}"), ""));
+        assert_eq!(
+            json_of(&durum)["durum"],
+            "onaylandi",
+            "{}",
+            String::from_utf8_lossy(&durum.govde)
+        );
+        // onaydan sonra kalem eklenir: müşterinin onayladığı içerik bu değil
+        let y = u.isle(&pc(
+            "POST",
+            &format!("/api/fis/{no}/kalem"),
+            r#"{"kalem":{"urun":"Ceket","islem":"kol kısalt"}}"#,
+        ));
+        assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
+        let g = json!({ "fisli": true, "fis_karekodu": fis_kk(&u, &no), "onay_belirteci": t })
+            .to_string();
+        let y = u.isle(&pc("POST", &format!("/api/fis/{no}/teslim-al"), &g));
+        assert_eq!(y.kod, 409, "{}", String::from_utf8_lossy(&y.govde));
+        assert_eq!(json_of(&y)["hata"], "onay_kalem_degisti");
+        assert!(Defter { yol: &u.fis_yolu() }
+            .bul(&no)
+            .unwrap()
+            .unwrap()
+            .teslim_kaydi
+            .is_none());
+        // yeni karekod (yeni özet) ESKİ bulutla: aad = t; çözülür ve güncel içerikle teslim olur
+        bulut
+            .eski_bulut
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        let (t2, _) = qr_ac(&u, &no);
+        let oz2 = bulut.kayit.lock().unwrap()[&format!("{A}|{t2}")]["oz"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert_ne!(oz2, oz);
+        // imza PNG'sinin arkasına (IEND'den önce) gizli tEXt parçası: kabul edilir ama saklanmaz
+        let png = imza_png(600, 220);
+        let mut ekli = png[..png.len() - 12].to_vec();
+        let metin = b"Comment\0GIZLI-EK-VERI";
+        ekli.extend_from_slice(&(metin.len() as u32).to_be_bytes());
+        ekli.extend_from_slice(b"tEXt");
+        ekli.extend_from_slice(metin);
+        let mut h = crc32fast::Hasher::new();
+        h.update(b"tEXt");
+        h.update(metin);
+        ekli.extend_from_slice(&h.finalize().to_be_bytes());
+        ekli.extend_from_slice(&png[png.len() - 12..]);
+        bulut.musteri_onaylar_imzali(A, &t2, QR_AD, "+905320004567", Some(&base64_kodla(&ekli)));
+        let durum = u.isle(&pc("GET", &format!("/api/fis/{no}/teslim-qr/{t2}"), ""));
+        assert_eq!(
+            json_of(&durum)["durum"],
+            "onaylandi",
+            "{}",
+            String::from_utf8_lossy(&durum.govde)
+        );
+        let g = json!({ "fisli": true, "fis_karekodu": fis_kk(&u, &no), "onay_belirteci": t2 })
+            .to_string();
+        let y = u.isle(&pc("POST", &format!("/api/fis/{no}/teslim-al"), &g));
+        assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
+        let g = u.isle(&pc("GET", &format!("/api/fis/{no}/imza"), ""));
+        assert_eq!(g.kod, 200);
+        assert!(!g.govde.windows(10).any(|w| w == b"GIZLI-EK-V"));
+        assert!(!g.govde.windows(4).any(|w| w == b"tEXt"));
+        assert_eq!(g.govde, crate::imza_png::imza_temizle(&png).unwrap());
     }
 
     #[test]
@@ -2472,7 +2635,8 @@ pub(crate) mod testler {
             .unwrap()
             .teslim_kaydi
             .unwrap();
-        let d = teslim_sifre::coz(&u.dizin, &no, tk.sifreli.as_ref().unwrap()).unwrap();
+        let d =
+            teslim_sifre::coz(&u.dizin, &no, &tk.teslim_id, tk.sifreli.as_ref().unwrap()).unwrap();
         assert_eq!(
             (d.ad.as_str(), d.yontem.as_str(), d.tel.as_str()),
             ("Deneme Yakın Kişi", "ekran-imza", "")
@@ -2588,6 +2752,46 @@ pub(crate) mod testler {
         let j = json_of(&y);
         assert_eq!(j["hata"], "saat_farki");
         assert!(j["ileti"].as_str().unwrap().contains("saat"));
+    }
+
+    /// Bilgisayar saati buluttan ileri ya da geri (±600 sn'ye kadar): karekod açılır, onay okunur, kapat bulut kaydını
+    /// siler. Bulut aç'ta sil'i kendi saatine kırpar; denetim bulgusu: eskiden saati 1 sn bile ileri bilgisayarda bulut
+    /// "silinme zamanı geçersiz" diyor, kullanıcı `saat_farki` görüyordu (sahte bulut pencereyi denetlemediği için
+    /// Rust testleri bunu yakalamıyordu).
+    #[test]
+    fn qr_bilgisayar_saati_kaymasi() {
+        for kayma in [1i64, 5, 30, 60, 300, 600, -5, -300, -600] {
+            let (u, bulut) = qr_uyg();
+            // bilgisayar `kayma` sn ileri = bulut saati gerçek saatten `kayma` sn geri
+            *bulut.bulut_saat_farki.lock().unwrap() = Some(-kayma);
+            let no = hazir_fis(&u);
+            let (t, _) = qr_ac(&u, &no);
+            let bulut_simdi = (crate::simdi() as i64 - kayma) as u64;
+            for taban in [A, B] {
+                let sil = bulut.kayit.lock().unwrap()[&format!("{taban}|{t}")]["sil"]
+                    .as_u64()
+                    .unwrap();
+                assert!(
+                    sil <= bulut_simdi + 1 + crate::teslim_onay::ONAY_OMRU_SN,
+                    "kayma {kayma}: bulut sil kırpılmalı"
+                );
+            }
+            bulut.musteri_onaylar(A, &t, QR_AD, QR_TEL);
+            let j = json_of(&u.isle(&pc("GET", &format!("/api/fis/{no}/teslim-qr/{t}"), "")));
+            assert_eq!(j["durum"], "onaylandi", "kayma {kayma}: {j}");
+            assert_eq!(j["ad"], QR_AD, "kayma {kayma}");
+            // ilk onaylı okumada kapat gönderildi: bulut kayıtları silindi (kapat da pencere içinde)
+            assert!(bulut.kayit.lock().unwrap().is_empty(), "kayma {kayma}");
+        }
+        // pencere dışı (10 dk'dan fazla): bulut reddeder, kullanıcı saat iletisini görür
+        for kayma in [700i64, -700] {
+            let (u, bulut) = qr_uyg();
+            *bulut.bulut_saat_farki.lock().unwrap() = Some(-kayma);
+            let no = hazir_fis(&u);
+            let y = u.isle(&pc("POST", &format!("/api/fis/{no}/teslim-qr"), "{}"));
+            assert_eq!(y.kod, 502, "kayma {kayma}");
+            assert_eq!(json_of(&y)["hata"], "saat_farki", "kayma {kayma}");
+        }
     }
 
     /// Süresi geçen (onaylanmamış) karekodun bulut kaydı kapattırılır (Vercel'de kendi silme zamanı yok).

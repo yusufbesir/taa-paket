@@ -7,7 +7,14 @@
 //!    `musteri-takip.json` adresleri) imzalı `POST /api/onay/ac` gönderir. Gövdede sunucunun X25519 GENEL anahtarı
 //!    (`pk`) vardır. Ekranda `<birincil>/o/<t>` karekodu gösterilir (birincile ulaşılamadıysa yedek adres).
 //! 2. Müşteri kendi telefonuyla okutur, bulut sayfasında ad soyad + telefon yazıp onaylar. Bulut, form verisini
-//!    hemen `pk` ile şifreler (geçici X25519 + HKDF-SHA256 + AES-256-GCM, aad = t); düz metin bulutta saklanmaz.
+//!    hemen `pk` ile şifreler (geçici X25519 + HKDF-SHA256 + AES-256-GCM, aad = t + ":" + oz); düz metin bulutta
+//!    saklanmaz.
+//!
+//! Kalem özeti `oz` (denetçi bulgusu 2026-11-26: onay fişin o anki içeriğine bağlı değildi; karekod açıldıktan sonra
+//! kalem eklenip çıkarılsa da aynı onayla teslim yapılabiliyordu): aç gövdesinde `"oz"` = teslim edilecek fiş(ler)in
+//! fiş no + kalemlerinden (ürün, renk, adet, işlem) sıralı, kararlı sha256 özeti (hex 64, `kalem_ozeti`). Bulut onayı
+//! aad = `t:oz` ile şifreler; oz'u bilmeyen eski bulutun onayı (aad = t) da çözülür. Teslim anında özet defterdeki
+//! güncel fişlerden yeniden hesaplanır; açılıştakinden farklıysa 409 `onay_kalem_degisti` (yeni karekod gerekir).
 //! 3. Oku: sunucu imzalı `GET /api/onay/<t>` ile durumu sorar; "onaylandi" ise şifreli bloğu kendi özel anahtarıyla
 //!    çözer (yalnız bu sunucu çözebilir).
 //! 4. Kapat: sunucu imzalı `POST /api/onay/kapat` ile bulut kaydını sildirir.
@@ -18,7 +25,8 @@
 //!   `POST /api/fis/<no>/teslim-qr {"fisli": false}` ile açınca i = 1 olur (gövde yoksa fişli sayılır).
 //! - Bulut, onaylanan düz metin JSON'a `"imza": "<base64 PNG>"` ekler (i = 1 ise zorunlu) ve hepsini birlikte
 //!   şifreler. Sunucu çözünce PNG'yi doğrular (PNG imzası + IHDR, en çok 300 KB, kenar en çok 8192 px); teslimde
-//!   imza yerelde ŞİFRELİ saklanır (`imzalar/<no>-<n>.png.enc`, AES-256-GCM yerel anahtar, aad = fiş no), kayda
+//!   imza yeniden kodlanıp (ek parçalar atılır, bkz. `imza_png`) yerelde ŞİFRELİ saklanır (`imzalar/<no>-<n>.png.enc`,
+//!   AES-256-GCM, yerel anahtardan türetilen imza alt anahtarı, aad = fiş no + teslim_id; bkz. `teslim_sifre`), kayda
 //!   `imza_sha256` ve `imza_yontemi: "qr_imza"` yazılır. Karekoddan imza gelmezse (eski bulut) fişsiz teslim için
 //!   mağaza cihazının ekranında imza ("cihaz_imza") alınır; imzasız fişsiz teslim 422 `imza_gerekli`.
 //!
@@ -133,6 +141,8 @@ pub(crate) struct OnayKaydi {
     no: String,
     /// Karekodu açan cihaz (yalnız o cihaz sorgular ve teslimi tamamlar).
     cihaz: String,
+    /// Açılıştaki kalem özeti (`kalem_ozeti`); teslimde yeniden hesaplanan özetle aynı olmalı.
+    oz: String,
     /// Karekod fişsiz teslim için açıldı: bulut müşteriden imza ister ("i": 1).
     imza_gerekli: bool,
     sil: u64,
@@ -203,7 +213,7 @@ fn anahtar_tur(paylasilan: &[u8; 32], e: &[u8; 32], pk: &[u8; 32]) -> Result<[u8
 /// aad = UTF-8 t. Düz metin baytlarını döndürür.
 pub fn onay_coz(
     ozel: &x25519_dalek::StaticSecret,
-    t: &str,
+    aad: &str,
     e_hex: &str,
     iv_hex: &str,
     c_b64: &str,
@@ -231,10 +241,68 @@ pub fn onay_coz(
         aes_gcm::Nonce::from_slice(&iv),
         Payload {
             msg: &c,
-            aad: t.as_bytes(),
+            aad: aad.as_bytes(),
         },
     )
     .map_err(|_| "onay çözülemedi (kurcalanmış ya da başka sunucunun)".into())
+}
+
+/// Onayın aad'si: kalem özeti varsa `t:oz`, yoksa (eski sözleşme) `t`.
+pub fn onay_aad(t: &str, oz: &str) -> String {
+    if oz.is_empty() {
+        t.to_string()
+    } else {
+        format!("{t}:{oz}")
+    }
+}
+
+/// Kalem özetine bağlı onayı çözer: önce aad = `t:oz`, olmazsa eski bulut onayı (aad = t). Özet bağlılığı teslim
+/// anında ayrıca denetlenir (`qr_onayi`), eski bulutun onayı da kalem değişikliğinden sonra geçmez.
+pub fn onay_coz_ozlu(
+    ozel: &x25519_dalek::StaticSecret,
+    t: &str,
+    oz: &str,
+    e_hex: &str,
+    iv_hex: &str,
+    c_b64: &str,
+) -> Result<Vec<u8>, String> {
+    if !oz.is_empty() {
+        if let Ok(d) = onay_coz(ozel, &onay_aad(t, oz), e_hex, iv_hex, c_b64) {
+            return Ok(d);
+        }
+    }
+    onay_coz(ozel, t, e_hex, iv_hex, c_b64)
+}
+
+/// Teslim onayının kalem özeti (`oz`, hex 64): fişler fiş no'ya, her fişin kalemleri (ürün, renk, adet, işlem)
+/// kendi içinde sıralanır, JSON olarak kodlanıp sha256 alınır. Kalem sırası değişmesi özeti değiştirmez; kalem
+/// eklemek/çıkarmak, ürün, renk, adet ya da işlemi değiştirmek değiştirir. Adet boşsa 1 sayılır (ürün sayısıyla aynı
+/// kural). Kişisel veri (müşteri, telefon) özete girmez; özet buluta gider.
+pub(crate) fn kalem_ozeti(fisler: &[&taa_fis::Fis]) -> String {
+    // (ürün, renk, adet, işlem)
+    type KalemAnahtari<'a> = (&'a str, &'a str, u32, &'a str);
+    let mut v: Vec<(&str, Vec<KalemAnahtari>)> = fisler
+        .iter()
+        .map(|f| {
+            let mut k: Vec<_> = f
+                .kalemler
+                .iter()
+                .map(|k| {
+                    (
+                        k.urun.as_str(),
+                        k.renk.as_deref().unwrap_or(""),
+                        k.adet.unwrap_or(1).max(1),
+                        k.islem.as_str(),
+                    )
+                })
+                .collect();
+            k.sort_unstable();
+            (f.no.as_str(), k)
+        })
+        .collect();
+    v.sort_unstable();
+    let metin = json!({ "s": "taa-teslim-oz-v1", "fisler": v }).to_string();
+    crate::teslim_al::sha256_bayt(metin.as_bytes())
 }
 
 /// Çözülen onay JSON'unu denetler (bulut tarafı da denetler; burada yeniden, güvenmeden).
@@ -377,11 +445,13 @@ fn bulut_kapat(dizin: &Path, agi: &dyn OnayAgi, t: &str, tabanlar: &[String], ts
 }
 
 /// Bulut okumasını yapar ve bellekteki kaydı günceller (arka planda ya da testte eşzamanlı çağrılır).
+#[allow(clippy::too_many_arguments)]
 fn sorgula_ve_guncelle(
     dizin: PathBuf,
     agi: Arc<dyn OnayAgi>,
     harita: OnayHaritasi,
     t: String,
+    oz: String,
     tabanlar: Vec<String>,
     ts: u64,
     sil: u64,
@@ -395,7 +465,7 @@ fn sorgula_ve_guncelle(
     let guncel = match sonuc {
         Bulut::Onaylandi { e, iv, c } => {
             match ozel_anahtar(&dizin)
-                .and_then(|k| onay_coz(&k, &t, &e, &iv, &c))
+                .and_then(|k| onay_coz_ozlu(&k, &t, &oz, &e, &iv, &c))
                 .and_then(|d| onay_bilgisi(&d))
                 .and_then(|b| {
                     if onay_zamani_gecerli(b.zaman, sil) {
@@ -570,18 +640,20 @@ impl Uygulama {
             .iter()
             .map(|k| k.adet.unwrap_or(1).max(1))
             .sum::<u32>();
-        self.onay_ac_ic(no, n, imza_gerekli, c)
+        self.onay_ac_ic(no, n, imza_gerekli, &kalem_ozeti(&[&f]), c)
     }
 
     /// Karekod açmanın ortak kısmı: `anahtar` fiş no ya da teslim sepeti kimliği ("S-..."); belirteç bu anahtara
     /// ve cihaza bağlanır. `n` müşteriye gösterilen ürün sayısıdır; bulut en çok `QR_EN_COK_URUN` kabul eder.
     /// Daha fazlası SIKIŞTIRILMAZ (müşteri "50 ürün" onaylarken daha fazlası teslim edilmesin): 409 `qr_cok_urun`
-    /// döner, arayüz ekran imzasına geçer.
+    /// döner, arayüz ekran imzasına geçer. `oz`: teslim edilecek fiş(ler)in kalem özeti (`kalem_ozeti`); buluta
+    /// gider (aad = t:oz) ve teslimde yeniden hesaplanıp karşılaştırılır.
     pub(crate) fn onay_ac_ic(
         &self,
         no: &str,
         n: u32,
         imza_gerekli: bool,
+        oz: &str,
         c: &cihaz::Cihaz,
     ) -> Yanit {
         if n > QR_EN_COK_URUN {
@@ -639,7 +711,7 @@ impl Uygulama {
         let sil = simdi + ONAY_OMRU_SN;
         let govde = json!({
             "v": 1, "tur": "onay_ac", "t": t, "ts": simdi, "sil": sil,
-            "s": sube, "n": n, "pk": pk, "i": u8::from(imza_gerekli),
+            "s": sube, "n": n, "pk": pk, "i": u8::from(imza_gerekli), "oz": oz,
         });
         let (g, imza) = match musteri_takip::imzala(&self.dizin, &govde) {
             Ok(x) => x,
@@ -717,6 +789,7 @@ impl Uygulama {
                 OnayKaydi {
                     no: no.to_string(),
                     cihaz: c.id.clone(),
+                    oz: oz.to_string(),
                     imza_gerekli,
                     sil,
                     tabanlar: sira,
@@ -778,10 +851,10 @@ impl Uygulama {
             } else {
                 k.sorguda = true;
                 k.son_sorgu = simdi;
-                Some((k.tabanlar.clone(), k.sil))
+                Some((k.tabanlar.clone(), k.sil, k.oz.clone()))
             }
         };
-        if let Some((tabanlar, sil)) = is {
+        if let Some((tabanlar, sil, oz)) = is {
             let (dizin, agi, harita, t2) = (
                 self.dizin.clone(),
                 self.onay_agi.clone(),
@@ -790,10 +863,10 @@ impl Uygulama {
             );
             if self.onay_arka_plan {
                 std::thread::spawn(move || {
-                    sorgula_ve_guncelle(dizin, agi, harita, t2, tabanlar, simdi, sil)
+                    sorgula_ve_guncelle(dizin, agi, harita, t2, oz, tabanlar, simdi, sil)
                 });
             } else {
-                sorgula_ve_guncelle(dizin, agi, harita, t2, tabanlar, simdi, sil);
+                sorgula_ve_guncelle(dizin, agi, harita, t2, oz, tabanlar, simdi, sil);
             }
         }
         let (bilgi, hata, baglanti, kalan, imza_gerekli) = {
@@ -839,12 +912,15 @@ impl Uygulama {
         }
     }
 
-    /// teslim-al için: belirteç bu fişe ve cihaza ait, süresi geçmemiş ve onaylanmış olmalı.
+    /// teslim-al için: belirteç bu fişe ve cihaza ait, süresi geçmemiş ve onaylanmış olmalı. `guncel_oz`: teslim
+    /// anında defterdeki fiş(ler)den yeniden hesaplanan kalem özeti; açılıştakinden farklıysa 409
+    /// `onay_kalem_degisti` (müşteri başka içeriği onayladı; yeni karekod gerekir).
     pub(crate) fn qr_onayi(
         &self,
         no: &str,
         t: &str,
         c: &cihaz::Cihaz,
+        guncel_oz: &str,
     ) -> Result<OnayBilgisi, Yanit> {
         let yok = || {
             Yanit::json(
@@ -861,6 +937,20 @@ impl Uygulama {
             .lock()
             .map_err(|_| Yanit::hata(500, "kilit hatası"))?;
         match h.get(t) {
+            Some(k)
+                if k.no == no
+                    && k.cihaz == c.id
+                    && k.sil > simdi
+                    && !crate::teslim_al::sabit_esit(k.oz.as_bytes(), guncel_oz.as_bytes()) =>
+            {
+                Err(Yanit::json(
+                    409,
+                    json!({
+                        "hata": "onay_kalem_degisti",
+                        "ileti": "Karekod açıldıktan sonra fişin kalemleri değişti; müşterinin onayladığı içerik bu değil. Yeni karekod oluşturun.",
+                    }),
+                ))
+            }
             Some(k) if k.no == no && k.cihaz == c.id && k.sil > simdi => match &k.bilgi {
                 Some(b) => Ok(b.clone()),
                 None => Err(Yanit::json(
@@ -885,7 +975,8 @@ pub(crate) mod testler {
     use super::*;
     use aes_gcm::aead::{Aead, KeyInit, Payload};
 
-    /// Tarayıcı/bulut tarafının şifrelemesi (sözleşme; testte Rust ile yapılır).
+    /// Tarayıcı/bulut tarafının şifrelemesi (sözleşme; testte Rust ile yapılır). `t`: aad (eski sözleşmede
+    /// belirteç, yenisinde `onay_aad(t, oz)`).
     pub(crate) fn sozlesme_sifrele(
         pk_hex: &str,
         t: &str,
@@ -987,6 +1078,112 @@ pub(crate) mod testler {
         );
     }
 
+    /// Sahte fiş (yalnız kalem özeti için): no + kalemler.
+    fn oz_fisi(no: &str, kalemler: serde_json::Value) -> taa_fis::Fis {
+        let mut f: taa_fis::Fis = serde_json::from_value(json!({
+            "no": no, "musteri": "Deneme Müşteri", "telefon": "0532 000 45 67",
+            "kalemler": kalemler, "teslim": "2099-01-01", "tarih": "2026-11-26",
+            "ucret_kurus": 0, "on_odeme_kurus": 0, "durum": "hazir",
+        }))
+        .unwrap_or_else(|e| panic!("sahte fiş: {e}"));
+        f.no = no.into();
+        f
+    }
+
+    #[test]
+    fn kalem_ozeti_kararli_ve_icerige_duyarli() {
+        let a = oz_fisi(
+            "F-20261126-001",
+            json!([{"urun":"Pantolon","islem":"paça kısalt","renk":"siyah","adet":2},{"urun":"Ceket","islem":"kol kısalt"}]),
+        );
+        let b = oz_fisi(
+            "F-20261126-002",
+            json!([{"urun":"Etek","islem":"bel daralt"}]),
+        );
+        let oz = kalem_ozeti(&[&a, &b]);
+        assert_eq!(oz.len(), 64);
+        assert!(oz.bytes().all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f')));
+        // fiş sırası ve kalem sırası özeti değiştirmez
+        assert_eq!(kalem_ozeti(&[&b, &a]), oz);
+        let mut ters = a.clone();
+        ters.kalemler.reverse();
+        assert_eq!(kalem_ozeti(&[&ters, &b]), oz);
+        // adet boş = 1
+        let mut bir = b.clone();
+        bir.kalemler[0].adet = Some(1);
+        assert_eq!(kalem_ozeti(&[&a, &bir]), oz);
+        // not, ölçü gibi alanlar özete girmez (yalnız ürün, renk, adet, işlem)
+        let mut notlu = a.clone();
+        notlu.kalemler[0].not = "deneme notu".into();
+        assert_eq!(kalem_ozeti(&[&notlu, &b]), oz);
+        // içerik değişince özet değişir
+        let degisik = |f: &dyn Fn(&mut taa_fis::Fis)| {
+            let mut x = a.clone();
+            f(&mut x);
+            kalem_ozeti(&[&x, &b])
+        };
+        for (ad, o) in [
+            ("adet", degisik(&|x| x.kalemler[0].adet = Some(3))),
+            (
+                "renk",
+                degisik(&|x| x.kalemler[0].renk = Some("bej".into())),
+            ),
+            ("renk yok", degisik(&|x| x.kalemler[0].renk = None)),
+            ("ürün", degisik(&|x| x.kalemler[1].urun = "Yelek".into())),
+            (
+                "işlem",
+                degisik(&|x| x.kalemler[1].islem = "boy kısalt".into()),
+            ),
+            (
+                "kalem çıkar",
+                degisik(&|x| {
+                    x.kalemler.pop();
+                }),
+            ),
+            (
+                "kalem ekle",
+                degisik(&|x| {
+                    let k = x.kalemler[1].clone();
+                    x.kalemler.push(k)
+                }),
+            ),
+            ("fiş no", degisik(&|x| x.no = "F-20261126-009".into())),
+        ] {
+            assert_ne!(o, oz, "{ad} değişince özet değişmeli");
+        }
+        // fiş sepetten çıkarılırsa özet değişir; alanlar arası kayma (ayraç) özeti eşlemez
+        assert_ne!(kalem_ozeti(&[&a]), oz);
+        let k1 = oz_fisi("F-1", json!([{"urun":"A B","islem":"C"}]));
+        let k2 = oz_fisi("F-1", json!([{"urun":"A","islem":"B C"}]));
+        assert_ne!(kalem_ozeti(&[&k1]), kalem_ozeti(&[&k2]));
+    }
+
+    #[test]
+    fn ozlu_onay_aad_ve_eski_bulut() {
+        let d = taa_dosya::gecici_klasor().unwrap();
+        let ozel = ozel_anahtar(&d).unwrap();
+        let pk = genel_anahtar(&d).unwrap();
+        let t = yeni_belirtec().unwrap();
+        let (oz1, oz2) = ("a".repeat(64), "b".repeat(64));
+        assert_eq!(onay_aad(&t, &oz1), format!("{t}:{oz1}"));
+        assert_eq!(onay_aad(&t, ""), t);
+        let duz = br#"{"ad":"Deneme Kisi","tel":"+905320004567","zaman":1795000000}"#;
+        // yeni bulut: aad = t:oz
+        let (e, iv, c) = sozlesme_sifrele(&pk, &onay_aad(&t, &oz1), duz, [7u8; 32], [9u8; 12]);
+        assert_eq!(onay_coz_ozlu(&ozel, &t, &oz1, &e, &iv, &c).unwrap(), duz);
+        // başka özetle açılmış kayıt bu onayı çözemez (t'ye düşüş de tutmaz)
+        assert!(onay_coz_ozlu(&ozel, &t, &oz2, &e, &iv, &c).is_err());
+        // yalnız t ile (özetsiz) de çözülmez
+        assert!(onay_coz(&ozel, &t, &e, &iv, &c).is_err());
+        // eski bulut: oz'u bilmez, aad = t; özetli kayıt yine çözer (bağlılık teslimde denetlenir)
+        let (e, iv, c) = sozlesme_sifrele(&pk, &t, duz, [7u8; 32], [9u8; 12]);
+        assert_eq!(onay_coz_ozlu(&ozel, &t, &oz1, &e, &iv, &c).unwrap(), duz);
+        assert_eq!(onay_coz_ozlu(&ozel, &t, "", &e, &iv, &c).unwrap(), duz);
+        // başka belirteç: hiçbir yoldan çözülmez
+        let t2 = yeni_belirtec().unwrap();
+        assert!(onay_coz_ozlu(&ozel, &t2, &oz1, &e, &iv, &c).is_err());
+    }
+
     #[test]
     fn sube_kodu_ve_onay_zamani_kurallari() {
         for k in ["MRK01", "S_1-a", "ABCDEFGHIJKLMNOP"] {
@@ -1044,6 +1241,35 @@ pub(crate) mod testler {
             let j = json!({ "ad": ad, "tel": "+905320004567", "ua": "", "ip": "", "zaman": 1, "dil": "tr" });
             assert!(onay_bilgisi(j.to_string().as_bytes()).is_err(), "{ad:?}");
         }
+    }
+
+    /// Bulut ile Rust'ın ORTAK vektör dosyası (bulut/musteri-takip/test/ortak-vektorler.json; vektor-uret.mjs üretir,
+    /// dene8.mjs de okur). Sahte veridir.
+    pub(crate) const ORTAK_VEKTORLER: &str =
+        include_str!("../../../bulut/musteri-takip/test/ortak-vektorler.json");
+
+    /// Bulutun GERÇEK `sifrele()` çıktısı, aad = t + ":" + oz (onayIsle, WebCrypto X25519; sunucu özel anahtarı
+    /// 0x11 * 32). Denetim bulgusu: yeni AAD yolu yalnız Rust'ın kendi `sozlesme_sifrele`'siyle sınanıyordu.
+    #[test]
+    fn bulut_webcrypto_ozlu_vektor() {
+        let v: serde_json::Value = serde_json::from_str(ORTAK_VEKTORLER).unwrap();
+        let o = &v["onay_oz"];
+        let a = |k: &str| o[k].as_str().unwrap();
+        let ozel_bayt: [u8; 32] = hex_coz(a("ozel")).unwrap().try_into().unwrap();
+        let ozel = x25519_dalek::StaticSecret::from(ozel_bayt);
+        assert_eq!(a("pk"), VEKTOR_PK);
+        assert_eq!(
+            hex(x25519_dalek::PublicKey::from(&ozel).as_bytes()),
+            VEKTOR_PK
+        );
+        let duz = onay_coz_ozlu(&ozel, a("t"), a("oz"), a("e"), a("iv"), a("c"))
+            .unwrap_or_else(|h| panic!("{h}"));
+        let b = onay_bilgisi(&duz).unwrap();
+        assert_eq!((b.ad.as_str(), b.tel.as_str()), (a("ad"), a("tel")));
+        assert_eq!(b.zaman, o["zaman"].as_u64().unwrap());
+        // aad = t ile (özetsiz) ya da başka özetle çözülmez
+        assert!(onay_coz(&ozel, a("t"), a("e"), a("iv"), a("c")).is_err());
+        assert!(onay_coz_ozlu(&ozel, a("t"), &"0".repeat(64), a("e"), a("iv"), a("c")).is_err());
     }
 
     /// (t, e, iv, c, beklenen ad (NFC), tel, ip, dil). Üretim betiği: bulut/musteri-takip/test/dene6.mjs ile aynı
