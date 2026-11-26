@@ -147,7 +147,10 @@ html[data-tema="keten"][data-ton="koyu"]{
 .tk-teslim-kaydi dd{margin:0;overflow-wrap:anywhere}
 .tk-imza-gorsel{margin-top:var(--tk-g2)}
 .tk-imza-resim{display:block;max-width:min(100%,420px);height:auto;background:#FFFFFF;border:var(--tk-kenar) solid var(--tk-line);border-radius:min(var(--tk-r),12px)}
-@media (max-width:480px){.tk-imza-tuval{height:160px}.dz-kutu.tk-teslim{padding:var(--tk-g4)}}
+/* Telefonda (dokunmatik) imza alanı tam genişlik ve parmakla imza için yüksek; teslim kutusu ekranı kaplar. */
+@media (max-width:480px){.tk-imza-tuval{height:220px}.dz-kutu.tk-teslim{padding:var(--tk-g3);max-width:100vw;width:100vw;margin:0;border-radius:0}
+  .tk-teslim .tk-imza-cerceve{margin-inline:calc(-1 * var(--tk-g1))}}
+.tk-qr-imza-notu{margin:0;font-weight:600}
 /* Karekodla teslim onayı: karekod her temada beyaz zemin + koyu modül (okunabilirlik); yanında durum ve geri sayım. */
 .tk-qr{display:grid;grid-template-columns:minmax(200px,280px) 1fr;gap:var(--tk-g3);align-items:start;border:var(--tk-kenar) solid var(--tk-line);border-radius:min(var(--tk-r),12px);padding:var(--tk-g3)}
 .tk-qr-resim{background:#FFFFFF;color:#111111;border-radius:min(var(--tk-r),12px);padding:var(--tk-g2);aspect-ratio:1/1;display:grid;place-items:center;min-height:200px}

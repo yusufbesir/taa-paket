@@ -66,6 +66,34 @@ fn main() {
             std::process::exit(1);
         }
     }
+    // Eski teslim kayıtlarının şifrelenmesi (bir kezlik, idempotent; bkz. teslim_gecis). Önce defterin şifreli
+    // yedeği alınır; hata olursa defter değişmez ve sunucu yine açılır. Günlüğe yalnız sayılar yazılır.
+    // Defter zinciri (TT1) başlatılmışsa yeniden yazım yalnız yöneticinin açık onayıyla (`--teslim-gecis-zincir-onay`).
+    let zincir_onayi = std::env::args().any(|a| a == "--teslim-gecis-zincir-onay");
+    match taa_fis_sunucu::teslim_gecis::calistir(&veri, taa_fis_sunucu::simdi(), zincir_onayi) {
+        Ok(r) => {
+            if r.zincir_onayi_gerekli {
+                eprintln!("Teslim geçişi: defter zinciri başlatılmış; eski teslim satırları yeniden yazılmadı. Yönetici onaylıyorsa programı --teslim-gecis-zincir-onay ile açın (merkezdeki zincir ucu yenilenmeli).");
+            }
+            if r.defter_yeniden_yazilan > 0 || r.imza_sifrelenen > 0 {
+                eprintln!(
+                    "Teslim geçişi: {} defter satırı yeniden yazıldı ({} düz metin şifrelendi), {} imza şifrelendi; şifreli yedek: {}",
+                    r.defter_yeniden_yazilan,
+                    r.defter_sifrelenen,
+                    r.imza_sifrelenen,
+                    r.yedek.as_deref().unwrap_or("-")
+                );
+            }
+            if !r.duz_imza_bekleyen.is_empty() {
+                eprintln!(
+                    "Teslim geçişi: {} şifresiz imza dosyası yönetici onayıyla silinmeyi bekliyor (imzalar/{}).",
+                    r.duz_imza_bekleyen.len(),
+                    taa_fis_sunucu::teslim_gecis::SILINECEK_LISTESI
+                );
+            }
+        }
+        Err(e) => eprintln!("Teslim geçişi yapılamadı (defter değişmedi): {e}"),
+    }
     let mut uyg = Uygulama::yeni(veri, arg("--yazici").map(PathBuf::from), taban.clone());
     // Karekod onayı: süresi geçen karekodların bulut kaydı dakikada bir kapattırılır (Vercel Blob'da kendi silme
     // zamanı yok; şifreli kayıt 15 dk + en çok 1 dk içinde silinir, sunucu açık ve internete ulaşıyorsa).

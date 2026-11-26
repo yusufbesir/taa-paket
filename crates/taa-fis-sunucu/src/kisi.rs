@@ -12,7 +12,10 @@ use std::path::{Path, PathBuf};
 pub struct Kisi {
     pub id: String,
     pub ad: String,
-    /// "danisman", "usta", "personel", "yonetici" (görüntü içindir; yetki vermez).
+    /// "danisman", "usta", "personel", "yonetici", "magaza-muduru". Görüntü içindir; TEK İSTİSNA: rolü yönetici
+    /// bu bilgisayarda verdiyse (kaynak "" ya da "ilk-kurulum") "yonetici" ve "magaza-muduru" teslim bilgisini
+    /// açık görme yetkisini ("teslim-acik") varsayılan taşır (bkz. cihaz::rol_varsayilani_acik; yönetici kişi
+    /// bazında geri alabilir). Çatı/Telegram'dan gelen rol yetki VERMEZ.
     #[serde(default)]
     pub rol: String,
     #[serde(default)]
@@ -33,7 +36,7 @@ pub struct Kisiler {
     pub yol: PathBuf,
 }
 
-pub const ROLLER: [&str; 4] = ["danisman", "usta", "personel", "yonetici"];
+pub const ROLLER: [&str; 5] = ["danisman", "usta", "personel", "yonetici", "magaza-muduru"];
 
 /// Kimlik biçimi: harf/rakam/tire, 3-40 karakter.
 pub fn kimlik_gecerli(id: &str) -> bool {
@@ -91,7 +94,7 @@ impl Kisiler {
             return Err("ad 1-40 karakter olmalı".into());
         }
         if !ROLLER.contains(&rol) {
-            return Err("rol danisman, usta, personel ya da yonetici olmalı".into());
+            return Err("rol danisman, usta, personel, yonetici ya da magaza-muduru olmalı".into());
         }
         Ok(ad)
     }
@@ -140,10 +143,14 @@ fn telegram_kisileri(dizin: &Path, sube: &str) -> Vec<(Kisi, bool)> {
         .filter(|h| h.rol != Rol::Magaza && !h.usta_id.is_empty())
         .filter(|h| h.sube.is_empty() || sube.is_empty() || h.sube == sube)
         .map(|h| {
+            // Telegram rolü gösterim içindir; "yonetici" olsa da teslim-acik kendiliğinden gelmez
+            // (cihaz::rol_varsayilani_acik yalnız bu bilgisayarda verilen rolü sayar).
             let rol = match h.rol {
                 Rol::Usta => "usta",
                 Rol::Personel => "personel",
-                _ => "yonetici",
+                Rol::Yonetici => "yonetici",
+                // Yukarıda süzülür; eşleşme eksiksiz olsun diye.
+                Rol::Magaza => "personel",
             };
             let ad = if h.profil_adi.trim().is_empty() {
                 h.usta_id.clone()

@@ -623,8 +623,9 @@ impl Defter<'_> {
     }
 
     /// Fişi teslim eder: ürünü teslim alanı yazar ve durumu Hazır -> Teslim yapar (tek satır, atomik).
-    /// Fiş Hazır olmalı, bir kez yazılır. Fişsiz teslimde doğrulama "telefon-son4" (imza zorunlu) ya da
-    /// "qr+telefon-son4" (karekod onayı; imza gerekmez); fişlide "fis" ya da "qr", imza isteğe bağlı.
+    /// Fiş Hazır olmalı, bir kez yazılır. Fişsiz teslimde doğrulama "telefon-son4" ya da "qr+telefon-son4" ve
+    /// İMZA ZORUNLU (karekod sayfasında "qr_imza" ya da cihaz ekranında "cihaz_imza"); fişlide "fis" ya da "qr",
+    /// imza isteğe bağlı.
     /// Şifreli kayıtta (`sifreli`) düz metin ad boş olmalıdır. Bağlı fiş birlikte teslim edildiyse `ana_fis` dolu olur.
     /// Telefonun son 4 hanesi bu kayda girmez (çağıran sunucu doğrular).
     pub fn teslim_et(&self, no: &str, kayit: TeslimKaydi) -> Result<(), String> {
@@ -670,17 +671,25 @@ impl Defter<'_> {
                     .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
         };
         if kayit.imza_sha256.is_empty() {
-            // Fişsiz teslimde karekod onayı ya da ekran imzasından biri zorunlu.
-            if !kayit.fisli && !kayit.qr_onayli() {
-                return Err(
-                    "fişsiz teslimde teslim alanın imzası ya da karekod onayı zorunlu".into(),
-                );
+            // Fişsiz teslimde imza ZORUNLU (Yusuf 2026-11-26: "fişi yanında olmayan için" telefondan ya da
+            // ekrandan dokunmatik imza). Karekod onayı tek başına yetmez: müşteri imzayı karekod sayfasında
+            // (qr_imza) ya da mağaza cihazının ekranında (cihaz_imza) atar.
+            if !kayit.fisli {
+                return Err("fişsiz teslimde teslim alanın imzası zorunlu".into());
             }
-            if !kayit.imza_dosyasi.is_empty() {
-                return Err("imza dosyası var ama özeti yok".into());
+            if !kayit.imza_dosyasi.is_empty() || !kayit.imza_yontemi.is_empty() {
+                return Err("imza dosyası/yöntemi var ama özeti yok".into());
             }
-        } else if !ozet_gecerli(&kayit.imza_sha256) || kayit.imza_dosyasi.trim().is_empty() {
-            return Err("imza özeti (sha-256) ya da dosyası geçersiz".into());
+        } else {
+            if !ozet_gecerli(&kayit.imza_sha256) || kayit.imza_dosyasi.trim().is_empty() {
+                return Err("imza özeti (sha-256) ya da dosyası geçersiz".into());
+            }
+            if !IMZA_YONTEMLERI.contains(&kayit.imza_yontemi.as_str()) {
+                return Err("imza yöntemi \"qr_imza\" ya da \"cihaz_imza\" olmalı".into());
+            }
+            if kayit.imza_yontemi == "qr_imza" && !kayit.qr_onayli() {
+                return Err("karekod imzası yalnız karekod onaylı teslimde olur".into());
+            }
         }
         if kayit.kim.trim().is_empty() {
             return Err("teslimi yapan cihaz/kişi boş olamaz".into());
@@ -704,6 +713,69 @@ impl Defter<'_> {
             no: no.into(),
             kayit,
         })
+    }
+
+    /// Bir kezlik geçiş için teslim kayıtlarını yeniden yazar (ör. eski düz metin teslim bilgisini şifreli biçime
+    /// çevirmek). `donustur(no, kayıt)` her teslim kaydı satırı için çağrılır; `Some(yeni)` dönerse o satır yeniden
+    /// yazılır, diğer bütün satırlar BAYT BAYT aynı kalır. Değişen satır yoksa dosyaya dokunulmaz (0 döner).
+    /// Değişiklik varsa önce `yedekle(eski_icerik)` çağrılır (hata verirse defter değişmez), sonra defter atomik
+    /// olarak (geçici dosya + yeniden adlandırma) yeniden yazılır. Bozuk satır varsa hiçbir şey yazılmaz.
+    /// Not: zincir (TT1) başlatılmışsa yeniden yazılan satırlardan sonraki zincir özetleri değişir; merkeze daha
+    /// önce gönderilmiş uç `zincir_dogrula` ile artık doğrulanmaz (geçiş bilerek yapılan tek yeniden yazımdır).
+    pub fn teslim_kayitlarini_yeniden_yaz(
+        &self,
+        mut donustur: impl FnMut(&str, &TeslimKaydi) -> Result<Option<TeslimKaydi>, String>,
+        yedekle: impl FnOnce(&[u8]) -> Result<(), String>,
+    ) -> Result<usize, String> {
+        let eski = match std::fs::read(self.yol) {
+            Ok(b) => b,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+            Err(e) => return Err(format!("defter okunamadı: {e}")),
+        };
+        let mut yeni: Vec<u8> = Vec::with_capacity(eski.len());
+        let mut degisen = 0usize;
+        let parcalar: Vec<&[u8]> = eski.split(|b| *b == b'\n').collect();
+        let son = parcalar.len().saturating_sub(1);
+        for (i, satir) in parcalar.iter().enumerate() {
+            let metin = std::str::from_utf8(satir).map_err(|_| "defter satırı UTF-8 değil")?;
+            let temiz = metin.trim_end_matches('\r');
+            let mut yazilacak: Option<String> = None;
+            if !temiz.trim().is_empty() {
+                let k: Kayit = serde_json::from_str(temiz)
+                    .map_err(|e| format!("defter satırı bozuk (satır {}): {e}", i + 1))?;
+                if let Kayit::TeslimKaydi { no, kayit } = k {
+                    if let Some(y) = donustur(&no, &kayit)? {
+                        yazilacak = Some(
+                            serde_json::to_string(&Kayit::TeslimKaydi { no, kayit: y })
+                                .map_err(|e| e.to_string())?,
+                        );
+                        degisen += 1;
+                    }
+                }
+            }
+            match yazilacak {
+                Some(y) => yeni.extend_from_slice(y.as_bytes()),
+                None => yeni.extend_from_slice(satir),
+            }
+            if i < son {
+                yeni.push(b'\n');
+            }
+        }
+        if degisen == 0 {
+            return Ok(0);
+        }
+        yedekle(&eski)?;
+        // Okuma ile yeniden adlandırma arasında deftere satır eklendiyse (aynı süreçte başka istek ya da ikinci
+        // süreç) o satır kaybolmasın: dosya yeniden okunur, değiştiyse hiçbir şey yazılmadan vazgeçilir (yedek
+        // şifreli kalır; geçiş bir sonraki açılışta yeniden dener). Kalan pencere bu karşılaştırma ile yeniden
+        // adlandırma arasıdır (mikrosaniye); bu yüzden geçiş yalnız sunucu açılışında, istek almadan önce çalışır.
+        match std::fs::read(self.yol) {
+            Ok(b) if b == eski => {}
+            Ok(_) => return Err("defter geçiş sırasında değişti; yeniden yazılmadı".into()),
+            Err(e) => return Err(format!("defter yeniden okunamadı: {e}")),
+        }
+        taa_dosya::uzerine_yaz_atomik(self.yol, &yeni).map_err(|e| e.to_string())?;
+        Ok(degisen)
     }
 
     fn duzeltilebilir(&self, no: &str) -> Result<Fis, String> {

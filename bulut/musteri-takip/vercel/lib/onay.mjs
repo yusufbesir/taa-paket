@@ -9,10 +9,15 @@
 //      düz metin hiçbir yere yazılmaz/loglanmaz, kayıtta yalnız {e, iv, c} durur.
 //   3) Oku:    sunucu GET /api/onay/<t> (x-taa-zaman + x-taa-imza) → {durum} ya da {durum, e, iv, c}.
 //   4) Kapat:  sunucu POST /api/onay/kapat (imzalı) → kayıt silinir.
+// Yusuf 2026-11-26 06:23: "telefon üzerinden de imza alınsın dokunmatik ekran ile — fişi yanında olmayan için".
+//   Aç gövdesinde "i": 1 → müşteri sayfasında parmakla imza ZORUNLU (yöntem "qr_imza"; tuval ve betik ./imza.mjs).
+//   "i" yoksa ya da 0 ise sayfa eskisi gibi betiksizdir. İmza PNG'si (base64) şifreli yükün (P) "imza" alanına girer;
+//   düz metin P = {ad, tel, ua, ip, zaman, dil[, imza]}. İmzalı form sayfasının CSP'si yalnız script-src 'self' ile açılır.
 // Bu dosya iki hedefe de aynen kopyalanır (./kopyala.sh). Konsola hiçbir şey yazılmaz: kişisel veri loglanmaz.
 // Yazan: [Claude Opus 5.5, TerziTakip başlığı, 2026-11-26].
 import { DILLER, SAG_SOL, METIN, dilSec } from "./diller.mjs";
 import { hexBayt, kacis, dilCekmecesi, subeTablosu, CSS } from "./takip.mjs";
+import { imzaDogrula, imzaIcerik, imzaBetikYaniti, FORM_EN_COK, IMZA_EN, IMZA_BOY, IMZA_BETIK_YOLU } from "./imza.mjs";
 
 export const ONAY_RE = /^[a-km-np-z2-9]{20}$/;
 export const ONAY_OMUR = 900; // saniye: kayıt en çok 15 dk yaşar
@@ -33,6 +38,8 @@ const HTML_BASLIK = {
   "x-frame-options": "DENY",
   "x-content-type-options": "nosniff",
 };
+/** Yalnız imzalı form sayfası: tek fark script-src 'self' (betik /o/imza.js; satır içi betik yok). */
+export const IMZA_CSP = "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
 async function imzaGecerli(metin, imzaHex, genelHex) {
   const genel = hexBayt(genelHex);
@@ -56,7 +63,8 @@ async function imzaliGovde(govde, imzaHex, genelHex) {
   }
 }
 
-/** 1) Aç gövdesi: {"v":1,"tur":"onay_ac","t","ts","sil","s","n","pk"} (ts<sil<=ts+900). */
+/** 1) Aç gövdesi: {"v":1,"tur":"onay_ac","t","ts","sil","s","n","pk"[,"i"]} (ts<sil<=ts+900).
+ *  i: 0 | 1 (isteğe bağlı; yoksa 0 = eski istemci). 1 → müşteri sayfasında parmakla imza zorunlu. */
 export async function dogrulaAc(govde, imzaHex, genelHex, simdi = Math.floor(Date.now() / 1000)) {
   const s = await imzaliGovde(govde, imzaHex, genelHex);
   if (s.hata) return s;
@@ -66,11 +74,12 @@ export async function dogrulaAc(govde, imzaHex, genelHex, simdi = Math.floor(Dat
     !Number.isInteger(k.ts) || !Number.isInteger(k.sil) ||
     typeof k.s !== "string" || !/^[A-Za-z0-9_-]{1,16}$/.test(k.s) ||
     !Number.isInteger(k.n) || k.n < 1 || k.n > 50 ||
-    typeof k.pk !== "string" || !/^[0-9a-fA-F]{64}$/.test(k.pk)
+    typeof k.pk !== "string" || !/^[0-9a-fA-F]{64}$/.test(k.pk) ||
+    (k.i !== undefined && k.i !== 0 && k.i !== 1)
   ) return { hata: "gövde biçimi geçersiz", kod: 400 };
   if (Math.abs(k.ts - simdi) > ZAMAN_PAYI) return { hata: "zaman geçersiz", kod: 400 };
   if (!(k.sil > k.ts && k.sil <= k.ts + ONAY_OMUR) || k.sil <= simdi) return { hata: "silinme zamanı geçersiz", kod: 400 };
-  return { kayit: { t: k.t, s: k.s, n: k.n, pk: k.pk.toLowerCase(), sil: k.sil, durum: "bekliyor", p: 0 } };
+  return { kayit: { t: k.t, s: k.s, n: k.n, pk: k.pk.toLowerCase(), sil: k.sil, durum: "bekliyor", p: 0, i: k.i === 1 ? 1 : 0 } };
 }
 
 /** 4) Kapat gövdesi: {"v":1,"tur":"onay_kapat","t","ts"}. */
@@ -164,6 +173,9 @@ export const ONAY_METIN = {
     doldu_b: "Karekodun süresi doldu", doldu: "Bu karekodun süresi doldu, mağaza görevlisinden yenisini isteyin.",
     alindi_b: "Onayınız alındı", alindi_m: "Teşekkür ederiz. Bu sayfayı kapatabilirsiniz.",
     tesekkur_b: "Teşekkür ederiz", tesekkur_m: "Teslim onayınız mağazamıza iletildi. Bu sayfayı kapatabilirsiniz.",
+    imza: "İmzanız", imza_aciklama: "Aşağıdaki kutuya parmağınızla imzanızı atın.", temizle: "Temizle",
+    h_imza: "İmza gerekli: kutuya parmağınızla imzanızı atın.", imza_kisa: "İmza çok kısa. Lütfen tam imzanızı atın.",
+    js_gerekli: "İmza için tarayıcıda JavaScript gerekli. JavaScript'i açın ya da imzanızı mağaza cihazında atın.",
   },
   en: {
     b: "Delivery confirmation", urun: "Items: {n}",
@@ -176,6 +188,9 @@ export const ONAY_METIN = {
     doldu_b: "This QR code has expired", doldu: "This QR code has expired, please ask a shop assistant for a new one.",
     alindi_b: "Your confirmation has been received", alindi_m: "Thank you. You can close this page.",
     tesekkur_b: "Thank you", tesekkur_m: "Your delivery confirmation has been sent to our shop. You can close this page.",
+    imza: "Your signature", imza_aciklama: "Sign in the box below with your finger.", temizle: "Clear",
+    h_imza: "Signature required: sign in the box with your finger.", imza_kisa: "The signature is too short. Please sign in full.",
+    js_gerekli: "JavaScript is required in your browser to sign. Turn on JavaScript or sign on the shop’s device.",
   },
   ar: {
     b: "تأكيد الاستلام", urun: "عدد القطع: {n}",
@@ -188,6 +203,9 @@ export const ONAY_METIN = {
     doldu_b: "انتهت صلاحية رمز QR", doldu: "انتهت صلاحية رمز QR هذا، اطلب رمزًا جديدًا من موظف المتجر.",
     alindi_b: "تم استلام تأكيدك", alindi_m: "شكرًا لك. يمكنك إغلاق هذه الصفحة.",
     tesekkur_b: "شكرًا لك", tesekkur_m: "تم إرسال تأكيد الاستلام إلى متجرنا. يمكنك إغلاق هذه الصفحة.",
+    imza: "توقيعك", imza_aciklama: "وقّع في المربع أدناه بإصبعك.", temizle: "مسح",
+    h_imza: "التوقيع مطلوب: وقّع في المربع بإصبعك.", imza_kisa: "التوقيع قصير جدًا. يرجى التوقيع كاملًا.",
+    js_gerekli: "يلزم تفعيل JavaScript في المتصفح للتوقيع. فعّل JavaScript أو وقّع على جهاز المتجر.",
   },
   ru: {
     b: "Подтверждение получения", urun: "Изделий: {n}",
@@ -200,6 +218,9 @@ export const ONAY_METIN = {
     doldu_b: "Срок действия QR-кода истёк", doldu: "Срок действия этого QR-кода истёк, попросите новый у сотрудника магазина.",
     alindi_b: "Ваше подтверждение получено", alindi_m: "Спасибо. Эту страницу можно закрыть.",
     tesekkur_b: "Спасибо", tesekkur_m: "Ваше подтверждение получения отправлено в наш магазин. Эту страницу можно закрыть.",
+    imza: "Ваша подпись", imza_aciklama: "Распишитесь пальцем в поле ниже.", temizle: "Очистить",
+    h_imza: "Нужна подпись: распишитесь пальцем в поле.", imza_kisa: "Подпись слишком короткая. Пожалуйста, распишитесь полностью.",
+    js_gerekli: "Для подписи в браузере нужен JavaScript. Включите JavaScript или распишитесь на устройстве магазина.",
   },
   de: {
     b: "Übergabebestätigung", urun: "Artikel: {n}",
@@ -212,6 +233,9 @@ export const ONAY_METIN = {
     doldu_b: "Dieser QR-Code ist abgelaufen", doldu: "Dieser QR-Code ist abgelaufen, bitte fragen Sie das Personal nach einem neuen.",
     alindi_b: "Ihre Bestätigung ist eingegangen", alindi_m: "Vielen Dank. Sie können diese Seite schließen.",
     tesekkur_b: "Vielen Dank", tesekkur_m: "Ihre Übergabebestätigung wurde an unser Geschäft gesendet. Sie können diese Seite schließen.",
+    imza: "Ihre Unterschrift", imza_aciklama: "Unterschreiben Sie mit dem Finger im Feld unten.", temizle: "Löschen",
+    h_imza: "Unterschrift erforderlich: Unterschreiben Sie mit dem Finger im Feld.", imza_kisa: "Die Unterschrift ist zu kurz. Bitte unterschreiben Sie vollständig.",
+    js_gerekli: "Zum Unterschreiben ist JavaScript im Browser erforderlich. Aktivieren Sie JavaScript oder unterschreiben Sie am Gerät des Geschäfts.",
   },
   fr: {
     b: "Confirmation de remise", urun: "Articles : {n}",
@@ -224,6 +248,9 @@ export const ONAY_METIN = {
     doldu_b: "Ce code QR a expiré", doldu: "Ce code QR a expiré, demandez-en un nouveau au personnel de la boutique.",
     alindi_b: "Votre confirmation a bien été reçue", alindi_m: "Merci. Vous pouvez fermer cette page.",
     tesekkur_b: "Merci", tesekkur_m: "Votre confirmation de remise a été transmise à notre boutique. Vous pouvez fermer cette page.",
+    imza: "Votre signature", imza_aciklama: "Signez avec le doigt dans le cadre ci-dessous.", temizle: "Effacer",
+    h_imza: "Signature requise : signez avec le doigt dans le cadre.", imza_kisa: "La signature est trop courte. Veuillez signer en entier.",
+    js_gerekli: "JavaScript doit être activé dans votre navigateur pour signer. Activez JavaScript ou signez sur l’appareil de la boutique.",
   },
   es: {
     b: "Confirmación de entrega", urun: "Artículos: {n}",
@@ -236,6 +263,9 @@ export const ONAY_METIN = {
     doldu_b: "Este código QR ha caducado", doldu: "Este código QR ha caducado, pida uno nuevo al personal de la tienda.",
     alindi_b: "Hemos recibido su confirmación", alindi_m: "Gracias. Puede cerrar esta página.",
     tesekkur_b: "Gracias", tesekkur_m: "Su confirmación de entrega se ha enviado a nuestra tienda. Puede cerrar esta página.",
+    imza: "Su firma", imza_aciklama: "Firme con el dedo en el recuadro de abajo.", temizle: "Borrar",
+    h_imza: "Firma obligatoria: firme con el dedo en el recuadro.", imza_kisa: "La firma es demasiado corta. Firme completa, por favor.",
+    js_gerekli: "Para firmar se necesita JavaScript en el navegador. Active JavaScript o firme en el dispositivo de la tienda.",
   },
   zh: {
     b: "取件确认", urun: "件数：{n}",
@@ -248,6 +278,9 @@ export const ONAY_METIN = {
     doldu_b: "二维码已过期", doldu: "此二维码已过期，请向店员索取新的二维码。",
     alindi_b: "已收到您的确认", alindi_m: "谢谢。您可以关闭此页面。",
     tesekkur_b: "谢谢", tesekkur_m: "您的取件确认已发送至本店。您可以关闭此页面。",
+    imza: "您的签名", imza_aciklama: "请用手指在下方框内签名。", temizle: "清除",
+    h_imza: "需要签名：请用手指在框内签名。", imza_kisa: "签名太短，请完整签名。",
+    js_gerekli: "签名需要浏览器启用 JavaScript。请启用 JavaScript，或在店内设备上签名。",
   },
   hi: {
     b: "डिलीवरी की पुष्टि", urun: "सामान: {n}",
@@ -260,6 +293,9 @@ export const ONAY_METIN = {
     doldu_b: "QR कोड की समय-सीमा समाप्त हो गई", doldu: "इस QR कोड की समय-सीमा समाप्त हो गई है, दुकान के कर्मचारी से नया माँगें।",
     alindi_b: "आपकी पुष्टि मिल गई है", alindi_m: "धन्यवाद। आप यह पेज बंद कर सकते हैं।",
     tesekkur_b: "धन्यवाद", tesekkur_m: "आपकी डिलीवरी पुष्टि हमारी दुकान को भेज दी गई है। आप यह पेज बंद कर सकते हैं।",
+    imza: "आपके हस्ताक्षर", imza_aciklama: "नीचे दिए बॉक्स में उंगली से हस्ताक्षर करें।", temizle: "मिटाएँ",
+    h_imza: "हस्ताक्षर ज़रूरी है: बॉक्स में उंगली से हस्ताक्षर करें।", imza_kisa: "हस्ताक्षर बहुत छोटा है। कृपया पूरा हस्ताक्षर करें।",
+    js_gerekli: "हस्ताक्षर के लिए ब्राउज़र में JavaScript ज़रूरी है। JavaScript चालू करें या दुकान के डिवाइस पर हस्ताक्षर करें।",
   },
   fa: {
     b: "تأیید تحویل", urun: "تعداد اقلام: {n}",
@@ -272,6 +308,9 @@ export const ONAY_METIN = {
     doldu_b: "مهلت این کد QR تمام شده است", doldu: "مهلت این کد QR تمام شده است، از کارمند فروشگاه کد جدید بخواهید.",
     alindi_b: "تأیید شما دریافت شد", alindi_m: "سپاسگزاریم. می‌توانید این صفحه را ببندید.",
     tesekkur_b: "سپاسگزاریم", tesekkur_m: "تأیید تحویل شما به فروشگاه ما فرستاده شد. می‌توانید این صفحه را ببندید.",
+    imza: "امضای شما", imza_aciklama: "در کادر زیر با انگشت خود امضا کنید.", temizle: "پاک کردن",
+    h_imza: "امضا لازم است: در کادر با انگشت خود امضا کنید.", imza_kisa: "امضا خیلی کوتاه است. لطفاً امضای کامل بزنید.",
+    js_gerekli: "برای امضا، JavaScript باید در مرورگر فعال باشد. JavaScript را فعال کنید یا روی دستگاه فروشگاه امضا کنید.",
   },
   ro: {
     b: "Confirmare de predare", urun: "Articole: {n}",
@@ -284,6 +323,9 @@ export const ONAY_METIN = {
     doldu_b: "Acest cod QR a expirat", doldu: "Acest cod QR a expirat, cereți unul nou de la personalul magazinului.",
     alindi_b: "Confirmarea dumneavoastră a fost primită", alindi_m: "Vă mulțumim. Puteți închide această pagină.",
     tesekkur_b: "Vă mulțumim", tesekkur_m: "Confirmarea de predare a fost trimisă magazinului nostru. Puteți închide această pagină.",
+    imza: "Semnătura dumneavoastră", imza_aciklama: "Semnați cu degetul în caseta de mai jos.", temizle: "Șterge",
+    h_imza: "Semnătura este obligatorie: semnați cu degetul în casetă.", imza_kisa: "Semnătura este prea scurtă. Vă rugăm să semnați complet.",
+    js_gerekli: "Pentru semnare este necesar JavaScript în browser. Activați JavaScript sau semnați pe dispozitivul magazinului.",
   },
   el: {
     b: "Επιβεβαίωση παράδοσης", urun: "Είδη: {n}",
@@ -296,6 +338,9 @@ export const ONAY_METIN = {
     doldu_b: "Ο κωδικός QR έληξε", doldu: "Αυτός ο κωδικός QR έληξε, ζητήστε νέο από το προσωπικό του καταστήματος.",
     alindi_b: "Η επιβεβαίωσή σας ελήφθη", alindi_m: "Ευχαριστούμε. Μπορείτε να κλείσετε αυτή τη σελίδα.",
     tesekkur_b: "Ευχαριστούμε", tesekkur_m: "Η επιβεβαίωση παράδοσης στάλθηκε στο κατάστημά μας. Μπορείτε να κλείσετε αυτή τη σελίδα.",
+    imza: "Η υπογραφή σας", imza_aciklama: "Υπογράψτε με το δάχτυλό σας στο πλαίσιο παρακάτω.", temizle: "Καθαρισμός",
+    h_imza: "Απαιτείται υπογραφή: υπογράψτε με το δάχτυλό σας στο πλαίσιο.", imza_kisa: "Η υπογραφή είναι πολύ σύντομη. Υπογράψτε πλήρως.",
+    js_gerekli: "Για την υπογραφή απαιτείται JavaScript στο πρόγραμμα περιήγησης. Ενεργοποιήστε το JavaScript ή υπογράψτε στη συσκευή του καταστήματος.",
   },
   bg: {
     b: "Потвърждение за получаване", urun: "Артикули: {n}",
@@ -308,6 +353,9 @@ export const ONAY_METIN = {
     doldu_b: "QR кодът е изтекъл", doldu: "Този QR код е изтекъл, поискайте нов от служител на магазина.",
     alindi_b: "Потвърждението ви е получено", alindi_m: "Благодарим ви. Можете да затворите тази страница.",
     tesekkur_b: "Благодарим ви", tesekkur_m: "Потвърждението за получаване е изпратено до нашия магазин. Можете да затворите тази страница.",
+    imza: "Вашият подпис", imza_aciklama: "Подпишете се с пръст в полето по-долу.", temizle: "Изчисти",
+    h_imza: "Нужен е подпис: подпишете се с пръст в полето.", imza_kisa: "Подписът е твърде кратък. Моля, подпишете се изцяло.",
+    js_gerekli: "За подписване е нужен JavaScript в браузъра. Включете JavaScript или се подпишете на устройството на магазина.",
   },
 };
 export const ONAY_ANAHTARLAR = Object.keys(ONAY_METIN.tr);
@@ -335,11 +383,30 @@ label.kutu input{flex:none;width:24px;height:24px;margin:0;accent-color:var(--vu
 form.onay button{min-height:52px;border:0;border-radius:12px;background:var(--vurgu);color:var(--vurgu-yazi);font:inherit;font-size:17px;font-weight:700;cursor:pointer}
 .gizlilik{margin:0;color:var(--ince);font-size:13.5px}
 .hatalar{margin:18px 0 0;padding:12px 14px;border-inline-start:4px solid var(--hata);border-radius:8px;background:var(--not)}
-.hatalar b{display:block;color:var(--hata)}.hatalar ul{margin:6px 0 0;padding-inline-start:20px}`;
+.hatalar b{display:block;color:var(--hata)}.hatalar ul{margin:6px 0 0;padding-inline-start:20px}
+[hidden]{display:none!important}
+.imza-alan .ipucu{margin:0;color:var(--ince);font-size:14px}
+.imza-kutu{border:1px dashed var(--cizgi);border-radius:12px;background:#fff;overflow:hidden}
+.imza-kutu.hatali{border:2px solid var(--hata)}
+.imza-kutu canvas{display:block;width:100%;height:auto;aspect-ratio:600/240;touch-action:none;cursor:crosshair}
+form.onay button.ikincil{justify-self:start;min-height:44px;padding:0 18px;border:1px solid var(--cizgi);background:var(--kart);color:inherit;font-size:15px;font-weight:600}`;
+
+/** Parmakla imza alanı (betik ./imza.mjs imzaIstemci ile sözleşmeli kimlikler). Betik yoksa tuval gizli kalır, uyarı görünür. */
+function imzaAlani(m, h) {
+  const hata = h.imza ? `<p class="alan-hata" id="h-imza">${kacis(m.h_imza)}</p>` : "";
+  return `<div class="alan imza-alan" id="imza-alan" data-bos="${kacis(m.h_imza)}" data-kisa="${kacis(m.imza_kisa)}">
+      <span id="imza-b">${kacis(m.imza)}</span><p class="ipucu" id="imza-ipucu">${kacis(m.imza_aciklama)}</p>
+      <div class="imza-kutu${h.imza ? " hatali" : ""}"><canvas id="imza-tuval" width="${IMZA_EN}" height="${IMZA_BOY}" role="img" aria-labelledby="imza-b" aria-describedby="imza-ipucu${h.imza ? " h-imza" : ""}" tabindex="-1" hidden></canvas></div>
+      <input type="hidden" name="imza" id="imza-veri" value="">
+      <noscript><p class="alan-hata">${kacis(m.js_gerekli)}</p></noscript>${hata}
+      <p class="alan-hata" id="imza-uyari" role="status" aria-live="polite" hidden></p>
+      <button type="button" class="ikincil" id="imza-temizle" hidden>${kacis(m.temizle)}</button></div>`;
+}
 
 /** Teslim onayı sayfası. hal: "form" | "doldu" | "alindi" | "tesekkur" | "cok".
- *  form için: {sube, n, hatalar: {ad?, tel?, kutu?, genel?}, deger: {ad, tel}}; tablo: imzalı şube tablosu (yoksa dosyadaki). */
-export function onaySayfa(hal, { dil = "tr", t = "", sube = "", n = 0, tablo = null, hatalar = {}, deger = {} } = {}) {
+ *  form için: {sube, n, imza (0|1), hatalar: {ad?, tel?, imza?, kutu?, genel?}, deger: {ad, tel}}; tablo: imzalı şube
+ *  tablosu (yoksa dosyadaki). imza = 1 ise parmakla imza alanı ve /o/imza.js betiği eklenir (CSP: IMZA_CSP). */
+export function onaySayfa(hal, { dil = "tr", t = "", sube = "", n = 0, tablo = null, hatalar = {}, deger = {}, imza = 0 } = {}) {
   if (!ONAY_METIN[dil]) dil = "tr";
   const m = ONAY_METIN[dil];
   const subeler = subeTablosu(tablo);
@@ -355,7 +422,7 @@ export function onaySayfa(hal, { dil = "tr", t = "", sube = "", n = 0, tablo = n
   else if (hal === "tesekkur") govde = tekKart("tik", m.tesekkur_b, m.tesekkur_m);
   else {
     const h = hatalar || {};
-    const liste = ["ad", "tel", "kutu", "genel"].filter((k) => h[k]).map((k) => `<li>${kacis(m["h_" + k])}</li>`).join("");
+    const liste = ["ad", "tel", "imza", "kutu", "genel"].filter((k) => h[k]).map((k) => `<li>${kacis(m["h_" + k])}</li>`).join("");
     const ozet = liste ? `<div class="hatalar" role="alert"><b>${kacis(m.h_b)}</b><ul>${liste}</ul></div>` : "";
     const hataP = (k) => (h[k] ? `<p class="alan-hata" id="h-${k}">${kacis(m["h_" + k])}</p>` : "");
     const gecersiz = (k) => (h[k] ? ` aria-invalid="true" aria-describedby="h-${k}"` : "");
@@ -368,9 +435,10 @@ export function onaySayfa(hal, { dil = "tr", t = "", sube = "", n = 0, tablo = n
       <form class="onay" method="post" action="${kacis(adres)}"><input type="hidden" name="dil" value="${kacis(dil)}">
       <label class="alan"><span>${kacis(m.ad)}</span><input type="text" name="ad" value="${ad}" autocomplete="name" autocapitalize="words" spellcheck="false" minlength="2" maxlength="60" required${gecersiz("ad")}></label>${hataP("ad")}
       <label class="alan"><span>${kacis(m.tel)}</span><input type="tel" name="tel" value="${tel}" inputmode="tel" autocomplete="tel" dir="ltr" maxlength="32" placeholder="0555 123 45 67" required${gecersiz("tel")}></label>${hataP("tel")}
+${imza === 1 ? imzaAlani(m, h) : ""}
       <label class="kutu${h.kutu ? " hatali" : ""}"><input type="checkbox" name="onay" value="1" required${gecersiz("kutu")}><span>${kacis(m.kutu)}</span></label>${hataP("kutu")}
       <button type="submit">${kacis(m.gonder)}</button>
-      <p class="gizlilik">${kacis(m.gizlilik)}</p></form></section>`;
+      <p class="gizlilik">${kacis(m.gizlilik)}</p></form></section>${imza === 1 ? `<script src="${IMZA_BETIK_YOLU}" defer></script>` : ""}`;
   }
   const yon = SAG_SOL.has(dil) ? "rtl" : "ltr";
   return `<!doctype html><html lang="${dil}" dir="${yon}"><head><meta charset="utf-8">
@@ -386,12 +454,44 @@ ${ONAY_CSS}</style></head><body><div class="sayfa">
 
 // ---------------------------------------------------------------- istek işleyici
 /**
- * İki hedefin ortak işleyicisi. islem: "ac" | "kapat" | "oku" | "sayfa".
+ * İki hedefin ortak işleyicisi. islem: "ac" | "kapat" | "oku" | "sayfa" | "betik" (/o/imza.js).
  * depo: {oku(t) → kayıt|null, yaz(kayit) (kayit.sil'de kendiliğinden silinmeli), sil(t), tablo() → şube tablosu|null}.
  * Düz metin (ad, telefon, user-agent, IP) yalnız bu fonksiyonun belleğinde, şifrelemeye kadar yaşar.
  */
+/**
+ * İstek gövdesini en çok `sinir` bayt okur; aşarsa okumayı keser ve null döner (content-length olmasa da: kimliksiz biri
+ * platform sınırına kadar gövde okutamasın). content-length sınırı aşıyorsa hiç okunmaz.
+ */
+export async function govdeOku(istek, sinir) {
+  const uzunluk = Number(istek.headers.get("content-length") || 0);
+  if (uzunluk > sinir) return null;
+  if (!istek.body) return "";
+  const okuyucu = istek.body.getReader();
+  const parcalar = [];
+  let top = 0;
+  try {
+    for (;;) {
+      const { done, value } = await okuyucu.read();
+      if (done) break;
+      top += value.length;
+      if (top > sinir) {
+        okuyucu.cancel().catch(() => {});
+        return null;
+      }
+      parcalar.push(value);
+    }
+  } catch {
+    return "";
+  }
+  const b = new Uint8Array(top);
+  let yer = 0;
+  for (const p of parcalar) { b.set(p, yer); yer += p.length; }
+  return new TextDecoder().decode(b);
+}
+
 export async function onayIsle({ islem, t = "", istek, depo, genel, simdi = Math.floor(Date.now() / 1000) }) {
   const yontem = istek.method;
+  if (islem === "betik") return imzaBetikYaniti(yontem); // GET /o/imza.js
   const gecerliKayit = async (x) => {
     if (!ONAY_RE.test(x)) return null;
     const k = await depo.oku(x);
@@ -428,9 +528,11 @@ export async function onayIsle({ islem, t = "", istek, depo, genel, simdi = Math
   if (yontem !== "GET" && yontem !== "POST") return new Response("yalnız GET/POST", { status: 405 });
   const url = new URL(istek.url);
   let form = null;
+  let fazla = false; // gövde FORM_EN_COK'u aşarsa (imza çok büyük) hiçbir alan okunmaz
   if (yontem === "POST") {
-    const g = await istek.text().catch(() => "");
-    form = new URLSearchParams(g.length <= 2048 ? g : "");
+    const g = await govdeOku(istek, FORM_EN_COK);
+    fazla = g === null;
+    form = new URLSearchParams(fazla ? "" : g);
   }
   const formDil = form && form.get("dil");
   const dil = formDil && DILLER.some(([d]) => d === formDil) ? formDil
@@ -439,10 +541,14 @@ export async function onayIsle({ islem, t = "", istek, depo, genel, simdi = Math
     ? { "set-cookie": `dil=${dil}; Path=/; Max-Age=31536000; SameSite=Lax; Secure` } : {};
   const tablo = await Promise.resolve(depo.tablo ? depo.tablo() : null).catch(() => null);
   const cevap = (hal, kod, sec = {}) =>
-    new Response(onaySayfa(hal, { dil, t, tablo, ...sec }), { status: kod, headers: { ...HTML_BASLIK, ...ek } });
+    new Response(onaySayfa(hal, { dil, t, tablo, ...sec }), {
+      status: kod,
+      headers: { ...HTML_BASLIK, ...(hal === "form" && sec.imza === 1 ? { "content-security-policy": IMZA_CSP } : {}), ...ek },
+    });
   const k = await gecerliKayit(t);
   if (!k) return cevap("doldu", 404);
-  const ortak = { sube: k.s, n: k.n };
+  const imzaGerek = k.i === 1 ? 1 : 0;
+  const ortak = { sube: k.s, n: k.n, imza: imzaGerek };
   if (k.durum === "onaylandi") return cevap("alindi", 200, ortak);
   if (yontem === "GET") return cevap("form", 200, ortak);
 
@@ -454,16 +560,23 @@ export async function onayIsle({ islem, t = "", istek, depo, genel, simdi = Math
   const ad = adDogrula(adHam);
   const tel = telNormalize(telHam);
   const kutu = form.get("onay") === "1";
+  // İmza: i=1 ise zorunlu; i=0 ise isteğe bağlı (gelirse doğrulanıp yüke girer). Betiksiz tarayıcıda alan boş gelir → red.
+  let imzaS = imzaDogrula(form.get("imza"));
+  // İçerik: PNG gerçekten çözülür; boş tuval / tek nokta / sahte PNG imza sayılmaz (sunucu da aynı kuralı uygular).
+  if (imzaS.b64 && !(await imzaIcerik(imzaS.b64)).tamam) imzaS = { hata: "bos" };
   const hatalar = {};
   if (!ad) hatalar.ad = true;
   if (!tel) hatalar.tel = true;
+  if (fazla || (imzaS.hata && (imzaGerek === 1 || imzaS.hata !== "yok"))) hatalar.imza = true;
   if (!kutu) hatalar.kutu = true;
   if (Object.keys(hatalar).length) {
     await depo.yaz({ ...k, p });
     return cevap("form", 400, { ...ortak, hatalar, deger: { ad: adHam, tel: telHam } });
   }
   const ip = istek.headers.get("cf-connecting-ip") || (istek.headers.get("x-forwarded-for") || "").split(",")[0].trim();
-  const duz = JSON.stringify({ ad, tel, ua: (istek.headers.get("user-agent") || "").slice(0, 200), ip: ip.slice(0, 64), zaman: simdi, dil });
+  const P = { ad, tel, ua: (istek.headers.get("user-agent") || "").slice(0, 200), ip: ip.slice(0, 64), zaman: simdi, dil };
+  if (imzaS.b64) P.imza = imzaS.b64; // base64 PNG (önek yok), çözülmüş ≤ IMZA_EN_COK bayt
+  const duz = JSON.stringify(P);
   let sifreli;
   try {
     sifreli = await sifrele(duz, k.pk, t);

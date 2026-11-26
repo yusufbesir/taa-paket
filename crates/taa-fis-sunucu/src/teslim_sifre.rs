@@ -14,6 +14,11 @@
 //!   Yedekte anahtar dosyası ayrıca (ve veriden ayrı yerde) saklanmalıdır.
 //! - Kör indeks: `ad_indeks`/`tel_indeks` = HMAC-SHA256(ayrı türetilmiş anahtar, normalize ad / telefon) ilk 16
 //!   onaltılık hane. Yönetici arama ucu (`GET /api/yonetim/teslim-ara`) bununla fiş bulur; değer geri çevrilemez.
+//! - Anahtarın yeri ve yedeği ŞİMDİLİK DEĞİŞMEZ (Yusuf 2026-11-26: en son, sunucuya kurulumda sorulacak): kuruluma
+//!   geçerken yer (veri klasörü içi/dışı, `--teslim-anahtar`) ve ayrı yedek yeri yöneticiye sorulacak.
+//! - Aynı anahtar imza dosyalarını (`imzalar/<no>-<n>.png.enc`, aad = fiş no) ve geçiş yedeklerini
+//!   (`yedek/*.jsonl.enc`, aad = "yedek:<dosya adı>") da şifreler (`bayt_sifrele` / `bayt_coz`); anahtar kaybolursa
+//!   bunlar da okunamaz.
 //! - Bu modül hiçbir şeyi günlüğe yazmaz.
 //!
 //! Yazan: [Claude Opus 5.5, TerziTakip başlığı, 2026-11-26].
@@ -78,11 +83,64 @@ pub fn anahtar_yolu(dizin: &Path) -> PathBuf {
         .unwrap_or_else(|| dizin.join(ANAHTAR_DOSYASI))
 }
 
-/// Defterde şifreli teslim kaydı var mı? (anahtar kaybını sessizce yeni anahtarla örtmemek için)
+/// Defterde şifreli teslim kaydı ya da şifreli imza/yedek dosyası var mı? (anahtar kaybını sessizce yeni
+/// anahtarla örtmemek için)
 pub fn sifreli_kayit_var(dizin: &Path) -> bool {
+    let enc_var = |alt: &str| {
+        std::fs::read_dir(dizin.join(alt))
+            .map(|r| {
+                r.flatten()
+                    .any(|e| e.file_name().to_string_lossy().ends_with(".enc"))
+            })
+            .unwrap_or(false)
+    };
     std::fs::read(dizin.join("fisler.jsonl"))
         .map(|b| b.windows(11).any(|w| w == b"\"sifreli\":{"))
         .unwrap_or(false)
+        || enc_var("imzalar")
+        || enc_var(YEDEK_KLASORU)
+}
+
+/// Geçiş yedeklerinin klasörü (veri klasöründe). İçindeki dosyalar `bayt_sifrele` ile şifrelidir.
+pub const YEDEK_KLASORU: &str = "yedek";
+/// Şifreli dosya (imza `.png.enc`, defter yedeği `.jsonl.enc`) başlığı. Ardından 12 bayt IV ve
+/// AES-256-GCM şifreli metin + 16 bayt etiket gelir.
+pub const DOSYA_BASLIGI: &[u8; 8] = b"TAAENC1\n";
+
+/// İkili veriyi (imza PNG'si, defter yedeği) yerel anahtarla tek blok AES-256-GCM ile şifreler.
+/// `aad` dosyanın bağlı olduğu şeydir (imzada fiş no, yedekte "yedek:<dosya adı>"): dosya başka bir fişe/ada
+/// taşınırsa çözülmez. Anahtar yoksa `sifrele` ile aynı kuralla oluşturulur (kayıp anahtar yeniden üretilmez).
+pub fn bayt_sifrele(dizin: &Path, aad: &[u8], duz: &[u8]) -> Result<Vec<u8>, String> {
+    let ana = ana_anahtar(dizin)?;
+    let iv = rastgele(12)?;
+    let sifreci = Aes256Gcm::new_from_slice(&ana).map_err(|_| "anahtar uzunluğu")?;
+    let c = sifreci
+        .encrypt(Nonce::from_slice(&iv), Payload { msg: duz, aad })
+        .map_err(|_| "şifrelenemedi")?;
+    let mut v = Vec::with_capacity(DOSYA_BASLIGI.len() + 12 + c.len());
+    v.extend_from_slice(DOSYA_BASLIGI);
+    v.extend_from_slice(&iv);
+    v.extend_from_slice(&c);
+    Ok(v)
+}
+
+/// `bayt_sifrele` ile şifrelenmiş veriyi çözer (anahtar üretmez). Başlık, aad ya da anahtar uyuşmazsa hata.
+pub fn bayt_coz(dizin: &Path, aad: &[u8], veri: &[u8]) -> Result<Vec<u8>, String> {
+    let govde = veri
+        .strip_prefix(DOSYA_BASLIGI.as_slice())
+        .filter(|g| g.len() >= 12 + 16)
+        .ok_or("şifreli dosya biçimi tanınmadı")?;
+    let ana = ana_anahtar_oku(dizin)?;
+    let sifreci = Aes256Gcm::new_from_slice(&ana).map_err(|_| "anahtar uzunluğu")?;
+    sifreci
+        .decrypt(
+            Nonce::from_slice(&govde[..12]),
+            Payload {
+                msg: &govde[12..],
+                aad,
+            },
+        )
+        .map_err(|_| "şifreli dosya çözülemedi (anahtar ya da bağlı fiş uyuşmuyor)".into())
 }
 
 fn anahtar_coz(m: &str) -> Result<[u8; 32], String> {
@@ -274,6 +332,7 @@ pub fn coz(dizin: &Path, fis_no: &str, s: &TeslimSifreli) -> Result<TeslimDuz, S
 
 /// Telefonu ekranda maskeler: son 4 hane dışındaki rakamlar gizlenir ("+••••••••4567").
 pub fn tel_maskele(tel: &str) -> String {
+    // Not: ad için `taa_fis::ad_maskele` ("M*** Y***"); IP maskeli görünümde hiç gösterilmez.
     let r: Vec<char> = tel.chars().filter(|c| c.is_ascii_digit()).collect();
     if r.is_empty() {
         return String::new();
@@ -436,6 +495,35 @@ mod testler {
         assert!(e.contains("yedekten"), "{e}");
         assert!(!d.join(ANAHTAR_DOSYASI).exists());
         assert!(coz(&d, "F-1", &s).is_err());
+    }
+
+    #[test]
+    fn bayt_sifreleme_ve_anahtar_koruma() {
+        let d = taa_dosya::gecici_klasor().unwrap();
+        let png = b"\x89PNG\r\n\x1a\nDENEME-IMZA".to_vec();
+        let v = bayt_sifrele(&d, b"F-1", &png).unwrap();
+        assert!(v.starts_with(DOSYA_BASLIGI));
+        assert!(!v.windows(11).any(|w| w == b"DENEME-IMZA"));
+        assert_eq!(bayt_coz(&d, b"F-1", &v).unwrap(), png);
+        assert!(
+            bayt_coz(&d, b"F-2", &v).is_err(),
+            "başka fişe taşınan imza çözülmez"
+        );
+        let mut k = v.clone();
+        let n = k.len() - 1;
+        k[n] ^= 1;
+        assert!(bayt_coz(&d, b"F-1", &k).is_err());
+        assert!(
+            bayt_coz(&d, b"F-1", &png).is_err(),
+            "şifresiz dosya kabul edilmez"
+        );
+        // şifreli imza dosyası varken anahtar kaybolursa yeni anahtar üretilmez
+        std::fs::create_dir_all(d.join("imzalar")).unwrap();
+        std::fs::write(d.join("imzalar").join("F-1-1.png.enc"), &v).unwrap();
+        assert!(sifreli_kayit_var(&d));
+        std::fs::remove_file(d.join(ANAHTAR_DOSYASI)).unwrap();
+        assert!(bayt_sifrele(&d, b"F-1", &png).is_err());
+        assert!(!d.join(ANAHTAR_DOSYASI).exists());
     }
 
     #[test]

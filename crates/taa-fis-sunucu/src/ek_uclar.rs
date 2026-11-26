@@ -14,7 +14,7 @@ impl Uygulama {
     }
 
     /// GET /api/oturum: giriş türü (pc | tel | kullanici) ve kişisel telefonda kişi.
-    pub(crate) fn oturum(&self, c: &cihaz::Cihaz) -> Yanit {
+    pub(crate) fn oturum(&self, c: &cihaz::Cihaz, i: &Istek) -> Yanit {
         let sube = self.sube_kodu().unwrap_or_default();
         let giris = if c.id == PC_ID {
             "pc"
@@ -37,7 +37,8 @@ impl Uygulama {
                 "kisi": kisi,
                 "sube": sube,
                 // Arayüz düzeltme gibi bölümleri bu listeye göre gösterir (asıl denetim sunucuda).
-                "yetkiler": self.cihazlar().yetkileri(&c.id),
+                // "teslim-acik": kişi/rol ve (bilgisayarda) yönetici oturumu dahil etkin karar.
+                "yetkiler": self.etkin_yetkiler(Some(i), c),
             }),
         )
     }
@@ -141,10 +142,17 @@ pub(crate) fn fis_json(f: taa_fis::Fis, h: &BTreeMap<String, String>) -> serde_j
     let olc = ad(&f.olcu_alan_id);
     let duz = ad(&f.duzenleyen_id).unwrap_or_default();
     let mut v = json!(f);
-    // Şifreli teslim bloğu istemciye gitmez (yalnız "şifreli" işareti); yetkili cihaza ayrıca çözülmüş görünüm eklenir.
+    // Şifreli teslim bloğu istemciye gitmez (yalnız "şifreli" işareti); yetkili cihaza ayrıca maskeli görünüm eklenir.
+    // Eski (geçiş öncesi) düz metin ad hiçbir listede açık gitmez: maskelenir.
     if let Some(t) = v.get_mut("teslim_kaydi").and_then(|t| t.as_object_mut()) {
         if t.remove("sifreli").is_some() {
             t.insert("sifreli".into(), json!(true));
+        }
+        if let Some(a) = t.get("teslim_alan").and_then(|a| a.as_str()) {
+            if !a.is_empty() {
+                let m = taa_fis::ad_maskele(a);
+                t.insert("teslim_alan".into(), json!(m));
+            }
         }
     }
     if let Some(a) = dan {

@@ -228,7 +228,7 @@ impl TeslimSifreli {
 /// Şifresi çözülmüş, yalnız bellekte duran görünüm (basım ve ekran için). Defterde YAZILMAZ (`serde(skip)`).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TeslimGorunen {
-    /// Teslim alanın adı soyadı (basımda yalnız "Ad S." kısaltması kullanılır).
+    /// Teslim alanın adı soyadı (basımda yalnız maskeli "A*** S***" biçimi kullanılır).
     pub ad: String,
     /// "qr" ya da "ekran-imza".
     pub yontem: String,
@@ -252,9 +252,15 @@ pub struct TeslimKaydi {
     /// İmza PNG'sinin SHA-256 özeti (onaltılık); imza alınmadıysa boş.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub imza_sha256: String,
-    /// Veri klasörüne göre imza dosyası (ör. "imzalar/F-20261126-001-1.png"); imza yoksa boş.
+    /// Veri klasörüne göre imza dosyası (yeni: "imzalar/F-20261126-001-1.png.enc", yerel anahtarla AES-256-GCM
+    /// şifreli; eski kayıtlarda ".png"); imza yoksa boş. `imza_sha256` ŞİFRESİZ PNG'nin özetidir.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub imza_dosyasi: String,
+    /// İmzanın nereden alındığı: "qr_imza" (müşteri karekod sayfasında kendi telefonuna parmakla çizdi) ya da
+    /// "cihaz_imza" (mağaza telefonu/tablet ya da bilgisayar ekranındaki imza alanı). İmza yoksa boş.
+    /// Kişisel veri değildir (yalnız yöntem).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub imza_yontemi: String,
     /// Teslimi yapan cihaz/kişi (kişi kimliği ya da cihaz adı).
     pub kim: String,
     pub tarih: String,
@@ -278,6 +284,23 @@ impl TeslimKaydi {
     pub fn qr_onayli(&self) -> bool {
         self.dogrulama == "qr" || self.dogrulama == "qr+telefon-son4"
     }
+}
+
+/// İmza yöntemleri (TeslimKaydi.imza_yontemi).
+pub const IMZA_YONTEMLERI: &[&str] = &["qr_imza", "cihaz_imza"];
+
+/// Adı maskeler (Yusuf 2026-11-26: "daha sonra maskeli olarak görünsün"): her kelimenin yalnız ilk harfi kalır,
+/// ardından "***". "Mehmet Yılmaz" -> "M*** Y***". Ekranda (yetkisiz görünüm) ve basılı nüshalarda kullanılır.
+pub fn ad_maskele(ad: &str) -> String {
+    ad.split_whitespace()
+        .filter_map(|k| k.chars().next())
+        .map(|c| match c {
+            // Türkçe: noktalı küçük i -> İ (genel büyük harf kuralı "I" verirdi).
+            'i' => "İ***".to_string(),
+            c => format!("{}***", c.to_uppercase()),
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// İlişki anahtarının fişe basılan adı.
@@ -1248,7 +1271,8 @@ mod testler {
             fisli,
             dogrulama: if fisli { "fis" } else { "telefon-son4" }.into(),
             imza_sha256: "ab".repeat(32),
-            imza_dosyasi: "imzalar/F-20261104-001-1.png".into(),
+            imza_dosyasi: "imzalar/F-20261104-001-1.png.enc".into(),
+            imza_yontemi: "cihaz_imza".into(),
             kim: "PC".into(),
             tarih: "2026-11-09".into(),
             saat: "10:00:00".into(),
@@ -1282,6 +1306,7 @@ mod testler {
             dogrulama: if fisli { "qr" } else { "qr+telefon-son4" }.into(),
             imza_sha256: String::new(),
             imza_dosyasi: String::new(),
+            imza_yontemi: String::new(),
             kim: "PC".into(),
             tarih: "2026-11-26".into(),
             saat: "14:32:09".into(),
@@ -1309,8 +1334,34 @@ mod testler {
         k.imza_sha256 = String::new();
         k.imza_dosyasi = String::new();
         assert!(d.teslim_et(&f.no, k).is_err());
-        // fişsiz QR: imza gerekmez
-        d.teslim_et(&f.no, qr(false)).unwrap();
+        // fişsiz QR: imza artık ZORUNLU (karekod sayfasında qr_imza ya da ekranda cihaz_imza)
+        assert!(d
+            .teslim_et(&f.no, qr(false))
+            .unwrap_err()
+            .contains("imzası zorunlu"));
+        let imzali_qr = || {
+            let mut k = qr(false);
+            k.imza_sha256 = "cd".repeat(32);
+            k.imza_dosyasi = format!("imzalar/{}-1.png.enc", f.no);
+            k.imza_yontemi = "qr_imza".into();
+            k
+        };
+        // imza yöntemi bilinmiyor / boş: reddedilir
+        let mut k = imzali_qr();
+        k.imza_yontemi = "parmak".into();
+        assert!(d.teslim_et(&f.no, k).is_err());
+        let mut k = imzali_qr();
+        k.imza_yontemi = String::new();
+        assert!(d.teslim_et(&f.no, k).is_err());
+        // qr_imza karekodsuz teslimde olmaz
+        let mut k = teslim_kaydi_ornek(false);
+        k.imza_yontemi = "qr_imza".into();
+        assert!(d.teslim_et(&f.no, k).is_err());
+        // imzasız kayıtta yöntem yazılamaz
+        let mut k = qr(true);
+        k.imza_yontemi = "cihaz_imza".into();
+        assert!(d.teslim_et(&f.no, k).is_err());
+        d.teslim_et(&f.no, imzali_qr()).unwrap();
         let mut g = d.bul(&f.no).unwrap().unwrap();
         assert_eq!(g.durum, Durum::Teslim);
         let t = g.teslim_kaydi.clone().unwrap();
@@ -1318,7 +1369,7 @@ mod testler {
         // çözülmemiş: "(şifreli)"; çözülmüş görünüm: "Ad S. - QR onaylı, tarih saat"
         let m = duz_metin(&g, 42).replace('\n', " ");
         assert!(
-            m.contains("Teslim alan: (şifreli) - QR onaylı, 26.11.2026 14:32"),
+            m.contains("Teslim alan: (şifreli) - QR onaylı, imzalı, 26.11.2026 14:32"),
             "{m}"
         );
         g.teslim_kaydi.as_mut().unwrap().gorunen = Some(TeslimGorunen {
@@ -1327,10 +1378,10 @@ mod testler {
         });
         let m = duz_metin(&g, 42).replace('\n', " ");
         assert!(
-            m.contains("Teslim alan: Zeynep K. - QR onaylı, 26.11.2026 14:32"),
+            m.contains("Teslim alan: Z*** A*** K*** - QR onaylı, imzalı, 26.11.2026 14:32"),
             "{m}"
         );
-        assert!(!m.contains("Kaya"));
+        assert!(!m.contains("Kaya") && !m.contains("Zeynep"));
         // görünüm diske/JSON'a yazılmaz
         let j = serde_json::to_string(&g).unwrap();
         assert!(!j.contains("Zeynep") && !j.contains("gorunen"), "{j}");
@@ -1349,6 +1400,7 @@ mod testler {
         let mut k = teslim_kaydi_ornek(true);
         k.imza_sha256 = String::new();
         k.imza_dosyasi = String::new();
+        k.imza_yontemi = String::new();
         k.tarih = tarih.into();
         d.teslim_et(no, k).unwrap();
     }
@@ -1434,10 +1486,10 @@ mod testler {
         // 42 sütunda satır sarılabilir; satırlar birleştirilip aranır.
         let m = duz_metin(&g, 42).replace('\n', " ");
         assert!(
-            m.contains("Teslim alan: Zeynep K. (yakını) - fişsiz, imzalı"),
+            m.contains("Teslim alan: Z*** K*** (yakını) - fişsiz, imzalı"),
             "{m}"
         );
-        assert!(!m.contains("Kaya"));
+        assert!(!m.contains("Kaya") && !m.contains("Zeynep"));
         // müşteri nüshasında basılmaz
         assert!(!duz_metin_nusha(&g, 42, "MÜŞTERİ NÜSHASI").contains("Teslim alan:"));
         // eski satırlar (teslim kaydı yok) okunur, alan yazılmaz
@@ -1462,8 +1514,69 @@ mod testler {
         k.teslim_alan = "Ayşe Çelik".into();
         k.imza_sha256 = String::new();
         k.imza_dosyasi = String::new();
+        k.imza_yontemi = String::new();
         d.teslim_et(&f.no, k).unwrap();
         let g = d.bul(&f.no).unwrap().unwrap();
-        assert!(duz_metin(&g, 42).contains("Teslim alan: Ayşe Ç. (kendisi) - fişli\n"));
+        assert!(duz_metin(&g, 42).contains("Teslim alan: A*** Ç*** (kendisi) - fişli\n"));
+    }
+
+    #[test]
+    fn ad_maskeleme() {
+        assert_eq!(ad_maskele("Mehmet Yılmaz"), "M*** Y***");
+        assert_eq!(ad_maskele("  ışık   ince "), "I*** İ***");
+        assert_eq!(ad_maskele("علی\u{200C}رضا محمدی"), "ع*** م***");
+        assert_eq!(ad_maskele(""), "");
+    }
+
+    /// Bir kezlik geçiş: yalnız dönüştürülen teslim satırı değişir, diğerleri bayt bayt aynı kalır;
+    /// yedek çağrısı başarısızsa defter değişmez; ikinci çalıştırma hiçbir şey yazmaz.
+    #[test]
+    fn teslim_kayitlari_yeniden_yazilir() {
+        let y = yol();
+        let d = Defter { yol: &y };
+        let f = d.ekle(girdi()).unwrap();
+        let f2 = d.ekle(girdi()).unwrap();
+        d.durum_ata(&f.no, Durum::Hazir, "2026-11-08").unwrap();
+        d.teslim_et(&f.no, teslim_kaydi_ornek(true)).unwrap();
+        let once = std::fs::read(&y).unwrap();
+        let donustur = |_: &str, k: &TeslimKaydi| -> Result<Option<TeslimKaydi>, String> {
+            if k.teslim_alan.is_empty() {
+                return Ok(None);
+            }
+            Ok(Some(TeslimKaydi {
+                teslim_alan: String::new(),
+                sifreli: Some(sahte_sifreli()),
+                ..k.clone()
+            }))
+        };
+        // yedek alınamazsa dokunulmaz
+        let e = d
+            .teslim_kayitlarini_yeniden_yaz(donustur, |_| Err("yedek yok".into()))
+            .unwrap_err();
+        assert_eq!(e, "yedek yok");
+        assert_eq!(std::fs::read(&y).unwrap(), once);
+        let mut yedek = Vec::new();
+        let n = d
+            .teslim_kayitlarini_yeniden_yaz(donustur, |b| {
+                yedek = b.to_vec();
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(n, 1);
+        assert_eq!(yedek, once);
+        let sonra = std::fs::read_to_string(&y).unwrap();
+        assert!(!sonra.contains("Zeynep"), "{sonra}");
+        let once_m = String::from_utf8(once.clone()).unwrap();
+        let (a, b): (Vec<&str>, Vec<&str>) = (once_m.lines().collect(), sonra.lines().collect());
+        assert_eq!(a.len(), b.len());
+        assert_eq!(a.iter().zip(&b).filter(|(x, y)| x != y).count(), 1);
+        let t = d.bul(&f.no).unwrap().unwrap().teslim_kaydi.unwrap();
+        assert!(t.teslim_alan.is_empty() && t.sifreli.is_some());
+        assert_eq!(d.bul(&f2.no).unwrap().unwrap().durum, Durum::Bekliyor);
+        // ikinci çalıştırma: değişiklik yok, yedek istenmez
+        let n = d
+            .teslim_kayitlarini_yeniden_yaz(donustur, |_| panic!("yedek istenmemeli"))
+            .unwrap();
+        assert_eq!(n, 0);
     }
 }

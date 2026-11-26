@@ -762,7 +762,8 @@ html[data-tema="keten"] .rozet{border-radius:8px}
 
   // B2: fişsiz teslim ve imza buraya bağlanır
   /* Teslim akışının tamamı (ortak.js TKD.teslimSor): kutuda "Fişiyle geldi" / "Fişi yok"; varsayılan "Karekodla onay"
-     (müşteri kendi telefonuyla okutur; /teslim-qr), yedek "Telefonu yok: ekranda imza". Fişsizde son 4 hane ve karekod ya da imza (telefonda varsayılan olarak "fissiz-teslim" yetkisi yok, seçenek kapalı ve
+     (müşteri kendi telefonuyla okutur; /teslim-qr), yedek "Telefonu yok: ekranda imza". Fişsizde son 4 hane ve İMZA ZORUNLU: müşteri karekod sayfasında kendi telefonunda parmakla imzalar, imza gelmezse
+     ya da karekod yoksa bu telefonun dokunmatik ekranındaki tam genişlik imza alanı zorunlu (telefonda varsayılan olarak "fissiz-teslim" yetkisi yok, seçenek kapalı ve
      nedeni yazılı), fişlide isteğe bağlı imza. İstek /teslim-al ucuna gider. Bağlı açık fiş varsa 409 {soru:"bagli_teslim"}
      gelir; TKD.bagliSor kutusu açılır ve aynı istek "bagli" listesiyle yeniden gönderilir.
      Teslim kaydı kalıcı olduğu için 6 sn'lik geri alma beklemesi teslimde yoktur; kutunun kendisi onaydır.
@@ -778,9 +779,11 @@ html[data-tema="keten"] .rozet{border-radius:8px}
       var bt=r.birlikte_teslim||[],tk=r.teslim_kaydi||{};
       bildir('Teslim: '+noKisa(no)+(bt.length?' + '+bt.map(noKisa).join(', '):'')+(tk.fisli===false?' · fişsiz':'')+(tk.dogrulama&&tk.dogrulama.indexOf('qr')===0?' · karekod onaylı':''));
       yenile()})}
-  /* Fiş sayfasında teslim kaydı ve imza görüntüsü (GET /api/fis/<no>/imza, telefonun kendi anahtarıyla). */
-  /* İmzayı yalnız fişsiz teslim ya da düzeltme yetkisi olan telefon görür (sunucu da 403 döner); diğerinde yalnız "İmzalı" yazar. */
-  function teslimKaydiCiz(f){TKD.teslimKaydiCiz($('#fis-teslim-kaydi'),f,{imzaGorebilir:TKD.yetkiVar(OTURUM,'fissiz-teslim')||TKD.yetkiVar(OTURUM,'duzelt'),imzaGetir:function(no){return TKD.imzaCek(no,{'Authorization':'Bearer '+tok})}})}
+  /* Fiş sayfasında teslim kaydı: varsayılan maskeli. Açık hâl (GET /api/fis/<no>/teslim-acik) ve imza görüntüsü
+     (GET /api/fis/<no>/imza) yalnız "teslim-acik" yetkili telefonda (yönetici / mağaza müdürü ya da yöneticinin yetki
+     verdiği cihaz/kişi); sunucu da 403 döner ve her açılışı günlüğe yazar. */
+  function teslimKaydiCiz(f){TKD.teslimKaydiCiz($('#fis-teslim-kaydi'),f,{imzaGetir:function(no){return TKD.imzaCek(no,{'Authorization':'Bearer '+tok})},
+    acikGetir:function(no){return api('GET','/api/fis/'+encodeURIComponent(no)+'/teslim-acik')}})}
   window.addEventListener('pagehide',function(){bekleyeniGonder(true)});
   function tumunuCiz(degisti){anaCiz();if(EKRAN==='liste')listeCiz();if(EKRAN==='fis'&&ACIK_NO)fisCiz(degisti)}
 

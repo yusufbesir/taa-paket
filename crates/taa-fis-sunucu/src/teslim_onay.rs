@@ -12,6 +12,16 @@
 //!    çözer (yalnız bu sunucu çözebilir).
 //! 4. Kapat: sunucu imzalı `POST /api/onay/kapat` ile bulut kaydını sildirir.
 //!
+//! İmza (Yusuf 2026-11-26: "telefon üzerinden de imza alınsın dokunmatik ekran ile — fişi yanında olmayan için"):
+//! - Aç gövdesinde `"i": 1` (fişsiz teslim: müşteri karekod sayfasında parmakla imza çizer, imza ZORUNLU) ya da
+//!   `"i": 0` (fişli: imza istenmez/isteğe bağlı). Eski bulut `i` alanını bilmiyorsa 0 sayar. İstemci karekodu
+//!   `POST /api/fis/<no>/teslim-qr {"fisli": false}` ile açınca i = 1 olur (gövde yoksa fişli sayılır).
+//! - Bulut, onaylanan düz metin JSON'a `"imza": "<base64 PNG>"` ekler (i = 1 ise zorunlu) ve hepsini birlikte
+//!   şifreler. Sunucu çözünce PNG'yi doğrular (PNG imzası + IHDR, en çok 300 KB, kenar en çok 8192 px); teslimde
+//!   imza yerelde ŞİFRELİ saklanır (`imzalar/<no>-<n>.png.enc`, AES-256-GCM yerel anahtar, aad = fiş no), kayda
+//!   `imza_sha256` ve `imza_yontemi: "qr_imza"` yazılır. Karekoddan imza gelmezse (eski bulut) fişsiz teslim için
+//!   mağaza cihazının ekranında imza ("cihaz_imza") alınır; imzasız fişsiz teslim 422 `imza_gerekli`.
+//!
 //! Güvenlik:
 //! - Mağaza sunucusu internete AÇILMAZ; bütün bağlantılar sunucudan dışarı doğrudur (curl).
 //! - X25519 özel anahtarı `musteri-takip/teslim-x25519.anahtar` dosyasındadır ("x25519-ozel:<hex>"), dışarı çıkmaz.
@@ -39,6 +49,8 @@ pub const HKDF_BILGI: &[u8] = b"taa-teslim-onay-v1";
 const ANAHTAR_DOSYASI: &str = "teslim-x25519.anahtar";
 /// Bulut isteği zaman aşımı (sn). Aç isteği iki buluta paralel gider.
 const BULUT_SURESI_SN: u32 = 8;
+/// Şifreli onayın (imza dahil) en büyük boyu (bayt).
+const EN_BUYUK_SIFRELI: usize = crate::teslim_al::EN_BUYUK_IMZA * 4 / 3 + 8 * 1024;
 /// Bulut ile mağaza bilgisayarı saatleri arasında kabul edilen kayma (bulutun aç payıyla aynı).
 const SAAT_PAYI_SN: u64 = 600;
 /// Bulut saat farkı nedeniyle isteği reddettiğinde (aç: 400 "zaman geçersiz", oku: 401) ekranda gösterilen neden.
@@ -89,7 +101,7 @@ impl OnayAgi for CurlOnayAgi {
 }
 
 /// Müşterinin onay formundan gelen (çözülmüş) bilgi. Yalnız bellekte.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct OnayBilgisi {
     pub ad: String,
     /// "+<rakamlar>"
@@ -100,6 +112,18 @@ pub struct OnayBilgisi {
     /// Onay anı (bulutun saati), unix saniyesi.
     pub zaman: u64,
     pub dil: String,
+    /// Müşterinin karekod sayfasında parmakla çizdiği imza (doğrulanmış PNG baytları); yoksa `None`.
+    pub imza: Option<Vec<u8>>,
+}
+
+/// Hata iletilerinde ve test çıktısında kişisel veri ya da imza baytı görünmesin.
+impl std::fmt::Debug for OnayBilgisi {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OnayBilgisi")
+            .field("zaman", &self.zaman)
+            .field("imza", &self.imza.as_ref().map(|b| b.len()))
+            .finish_non_exhaustive()
+    }
 }
 
 /// Bellekteki karekod kaydı.
@@ -107,6 +131,8 @@ pub(crate) struct OnayKaydi {
     no: String,
     /// Karekodu açan cihaz (yalnız o cihaz sorgular ve teslimi tamamlar).
     cihaz: String,
+    /// Karekod fişsiz teslim için açıldı: bulut müşteriden imza ister ("i": 1).
+    imza_gerekli: bool,
     sil: u64,
     /// Kaydın açıldığı bulut tabanları; karekoddaki adres ilk sıradadır.
     tabanlar: Vec<String>,
@@ -187,8 +213,9 @@ pub fn onay_coz(
     let iv = hex_coz(iv_hex)
         .filter(|v| v.len() == 12)
         .ok_or("iv bozuk")?;
+    // İmza (base64 PNG, en çok 300 KB) da şifreli onayın içindedir: 300 KB * 4/3 + form alanları.
     let c = base64_coz(c_b64)
-        .filter(|v| v.len() > 16 && v.len() <= 4096)
+        .filter(|v| v.len() > 16 && v.len() <= EN_BUYUK_SIFRELI)
         .ok_or("şifreli metin bozuk")?;
     let pk = x25519_dalek::PublicKey::from(ozel);
     let paylasilan = ozel.diffie_hellman(&x25519_dalek::PublicKey::from(e));
@@ -244,6 +271,14 @@ pub fn onay_bilgisi(duz: &[u8]) -> Result<OnayBilgisi, String> {
         .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
         .take(8)
         .collect();
+    // İsteğe bağlı imza: base64 PNG (data: öneki kabul). Varsa geçerli olmalı; bozuksa onay reddedilir.
+    let imza = match v["imza"].as_str().map(str::trim).filter(|x| !x.is_empty()) {
+        None => None,
+        Some(x) => Some(
+            crate::teslim_al::imza_coz_denetle(x)
+                .map_err(|(_, e)| format!("onaydaki imza geçersiz ({e})"))?,
+        ),
+    };
     Ok(OnayBilgisi {
         ad,
         tel,
@@ -251,6 +286,7 @@ pub fn onay_bilgisi(duz: &[u8]) -> Result<OnayBilgisi, String> {
         ip,
         zaman,
         dil,
+        imza,
     })
 }
 
@@ -425,7 +461,8 @@ pub(crate) fn fis_telefonu_karsilastir(d: &Defter, no: &str, qr_tel: &str) -> &'
     }
 }
 
-/// Ekrana giden görünüm: tam telefon yok, yalnız maskeli.
+/// Ekrana giden görünüm (teslimi yapan kasiyer kimliği kontrol eder): tam telefon yok, yalnız maskeli; imza
+/// görüntüsü gönderilmez, yalnız geldi mi.
 fn bilgi_json(b: &OnayBilgisi) -> serde_json::Value {
     json!({
         "ad": b.ad,
@@ -433,6 +470,7 @@ fn bilgi_json(b: &OnayBilgisi) -> serde_json::Value {
         "cihaz": cihaz_ozeti(&b.ua),
         "zaman": b.zaman,
         "zaman_metni": zaman_metni(b.zaman),
+        "imzali": b.imza.is_some(),
     })
 }
 
@@ -509,8 +547,11 @@ impl Uygulama {
         }
     }
 
-    /// POST /api/fis/<no>/teslim-qr: belirteç üretir, buluta "aç" gönderir, karekodu döndürür.
-    pub(crate) fn teslim_qr_ac(&self, d: &Defter, no: &str, c: &cihaz::Cihaz) -> Yanit {
+    /// POST /api/fis/<no>/teslim-qr {fisli?}: belirteç üretir, buluta "aç" gönderir, karekodu döndürür.
+    /// `fisli: false` ise karekod sayfası müşteriden imza ister (aç gövdesinde "i": 1); gövde yoksa fişli (i = 0).
+    pub(crate) fn teslim_qr_ac(&self, d: &Defter, no: &str, c: &cihaz::Cihaz, i: &Istek) -> Yanit {
+        let istek: serde_json::Value = serde_json::from_slice(&i.govde).unwrap_or_default();
+        let imza_gerekli = istek["fisli"].as_bool() == Some(false);
         let f = match d.bul(no) {
             Ok(Some(f)) => f,
             Ok(None) => return Yanit::hata(404, "fiş yok"),
@@ -571,7 +612,7 @@ impl Uygulama {
         let sil = simdi + ONAY_OMRU_SN;
         let govde = json!({
             "v": 1, "tur": "onay_ac", "t": t, "ts": simdi, "sil": sil,
-            "s": sube, "n": n, "pk": pk,
+            "s": sube, "n": n, "pk": pk, "i": u8::from(imza_gerekli),
         });
         let (g, imza) = match musteri_takip::imzala(&self.dizin, &govde) {
             Ok(x) => x,
@@ -649,6 +690,7 @@ impl Uygulama {
                 OnayKaydi {
                     no: no.to_string(),
                     cihaz: c.id.clone(),
+                    imza_gerekli,
                     sil,
                     tabanlar: sira,
                     bilgi: None,
@@ -661,7 +703,7 @@ impl Uygulama {
         }
         Yanit::json(
             200,
-            json!({ "t": t, "url": url, "qr_svg": svg, "sil": sil, "kalan_sn": ONAY_OMRU_SN }),
+            json!({ "t": t, "url": url, "qr_svg": svg, "sil": sil, "kalan_sn": ONAY_OMRU_SN, "imza_gerekli": imza_gerekli }),
         )
     }
 
@@ -715,7 +757,7 @@ impl Uygulama {
                 sorgula_ve_guncelle(dizin, agi, harita, t2, tabanlar, simdi, sil);
             }
         }
-        let (bilgi, hata, baglanti, kalan) = {
+        let (bilgi, hata, baglanti, kalan, imza_gerekli) = {
             let Ok(h) = self.onaylar.lock() else {
                 return Yanit::hata(500, "kilit hatası");
             };
@@ -727,6 +769,7 @@ impl Uygulama {
                 k.hata.clone(),
                 k.baglanti.clone(),
                 k.sil.saturating_sub(simdi),
+                k.imza_gerekli,
             )
         };
         if let Some(e) = hata {
@@ -741,6 +784,7 @@ impl Uygulama {
                 v["durum"] = json!("onaylandi");
                 v["kalan_sn"] = json!(kalan);
                 v["fis_telefonu"] = json!(fis_telefonu_karsilastir(d, no, &b.tel));
+                v["imza_gerekli"] = json!(imza_gerekli);
                 Yanit::json(200, v)
             }
             None => Yanit::json(
@@ -748,6 +792,7 @@ impl Uygulama {
                 json!({
                     "durum": "bekliyor",
                     "kalan_sn": kalan,
+                    "imza_gerekli": imza_gerekli,
                     "baglanti_sorunu": baglanti.is_some(),
                     "saat_sorunu": baglanti.as_deref() == Some(SAAT_SORUNU),
                 }),
