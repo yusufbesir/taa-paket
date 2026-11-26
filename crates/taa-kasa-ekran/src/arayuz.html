@@ -558,7 +558,7 @@ function gsKayitli(s,g){const x=g.gun_sonu,k=x.karsilastirma;
     ${g.imzalar.length&&!g.gonderildi?`<button class="dugme ana" data-e="gonder">Merkeze gönder${g.imzalar.length<2?' (ikinci imza atmadı)':''}</button>`:''}
     <button class="dugme" data-e="whatsapp">WhatsApp özeti</button>
     <button class="dugme" data-e="tutanak">Çift doğrulama tutanağı (A4)</button>
-    ${g.imzalar.length===1&&!g.gonderildi?`<label class="alan">İkinci imza atılmama gerekçesi (zorunlu)<input class="girdi" id="t-gerekce" maxlength="300" value="${esc(g.ikinci_imza_gerekcesi||'')}"></label><button class="dugme" data-e="gerekce">Gerekçeyi kaydet</button>`:''}
+    ${g.imzalar.length===1&&!g.gonderildi?`<label class="alan">İkinci imza atılmama gerekçesi (zorunlu)<input class="girdi" id="t-gerekce" maxlength="300" list="gerekce-onerileri" value="${esc(g.ikinci_imza_gerekcesi||'')}"><datalist id="gerekce-onerileri"><option value="Mağaza sorumlusu izinli: "><option value="Tek personel vardiyası: "><option value="Mağaza sorumlusu erken çıktı: "><option value="Vekil atanmadı: "></datalist></label><button class="dugme" data-e="gerekce">Gerekçeyi kaydet</button>`:''}
     ${g.imzalar.length&&!g.gonderildi?'<div class="mut kucuk">İlk imza atıldı: tutanak ekleri (ERP, yapılan işlem) kilitli.</div>':''}
     ${!g.gonderildi&&!g.imzalar.length?`<label class="alan">Nebim kasa Excel'i (ERP sütunu)<input type="file" accept=".xlsx" id="t-excel" class="girdi"></label>
     <label class="alan">Yapılan işlem (tutanak)<input class="girdi" id="t-islem" maxlength="600"></label><button class="dugme" data-e="tutanak-kaydet">Tutanağa işle</button>`:''}
