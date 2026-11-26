@@ -157,13 +157,22 @@ impl Defter {
         for (i, k) in self.kayitlar.iter().enumerate() {
             let beklenen = i as u64 + 1;
             if k.sira != beklenen {
-                return Err(Hata::Zincir { sira: k.sira, neden: format!("sıra {beklenen} olmalıydı") });
+                return Err(Hata::Zincir {
+                    sira: k.sira,
+                    neden: format!("sıra {beklenen} olmalıydı"),
+                });
             }
             if k.onceki != onceki {
-                return Err(Hata::Zincir { sira: k.sira, neden: "önceki özet bağlantısı kopuk".into() });
+                return Err(Hata::Zincir {
+                    sira: k.sira,
+                    neden: "önceki özet bağlantısı kopuk".into(),
+                });
             }
             if kayit_ozeti(k.sira, &k.onceki, &k.zaman, &k.tur, &k.veri) != k.ozet {
-                return Err(Hata::Zincir { sira: k.sira, neden: "özet içerikle uyuşmuyor".into() });
+                return Err(Hata::Zincir {
+                    sira: k.sira,
+                    neden: "özet içerikle uyuşmuyor".into(),
+                });
             }
             onceki = k.ozet.clone();
         }
@@ -182,20 +191,36 @@ impl Defter {
         let kok = self.merkle_kok(self.len());
         let son = self.son_ozet();
         let imza = o.imzala(&muhur_bayt(self.len() as u64, &son, &kok, zaman));
-        Muhur { sayi: self.len() as u64, son_ozet: son, merkle_kok: kok, zaman: zaman.to_string(), imza }
+        Muhur {
+            sayi: self.len() as u64,
+            son_ozet: son,
+            merkle_kok: kok,
+            zaman: zaman.to_string(),
+            imza,
+        }
     }
 
     /// Mührü doğrular: imza geçerli olmalı ve mührün söylediği ilk `sayi` kayıt bu defterde aynı kökü vermeli.
     /// Defter mühürden uzunsa (sonradan eklenmiş kayıtlar) geçerlidir; kısaysa (silinmiş kayıt) reddedilir.
     pub fn muhur_dogrula(&self, g: &GenelAnahtar, m: &Muhur) -> Result<(), Hata> {
-        g.dogrula(&muhur_bayt(m.sayi, &m.son_ozet, &m.merkle_kok, &m.zaman), &m.imza)
-            .map_err(|e| Hata::Muhur(format!("imza: {e:?}")))?;
+        g.dogrula(
+            &muhur_bayt(m.sayi, &m.son_ozet, &m.merkle_kok, &m.zaman),
+            &m.imza,
+        )
+        .map_err(|e| Hata::Muhur(format!("imza: {e:?}")))?;
         self.dogrula()?;
         let n = m.sayi as usize;
         if self.len() < n {
-            return Err(Hata::Muhur(format!("defter mühürden kısa ({} < {n}): kayıt silinmiş", self.len())));
+            return Err(Hata::Muhur(format!(
+                "defter mühürden kısa ({} < {n}): kayıt silinmiş",
+                self.len()
+            )));
         }
-        let son = if n == 0 { KOK_ONCEKI.to_string() } else { self.kayitlar[n - 1].ozet.clone() };
+        let son = if n == 0 {
+            KOK_ONCEKI.to_string()
+        } else {
+            self.kayitlar[n - 1].ozet.clone()
+        };
         if son != m.son_ozet {
             return Err(Hata::Muhur("son özet defterle uyuşmuyor".into()));
         }
@@ -211,7 +236,11 @@ mod testler {
     use super::*;
 
     fn anahtar() -> OzelAnahtar {
-        let d = std::env::temp_dir().join(format!("taa-zincir-test-{}-{:?}", std::process::id(), std::thread::current().id()));
+        let d = std::env::temp_dir().join(format!(
+            "taa-zincir-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
         let _ = std::fs::create_dir_all(&d);
         let (o, g) = (d.join("ozel"), d.join("genel"));
         let _ = std::fs::remove_file(&o);
@@ -223,20 +252,30 @@ mod testler {
     fn dolu(n: usize) -> Defter {
         let mut d = Defter::yeni();
         for i in 0..n {
-            d.ekle(&format!("2026-11-26T02:00:{i:02}Z"), "is.basladi", json!({"is": i}));
+            d.ekle(
+                &format!("2026-11-26T02:00:{i:02}Z"),
+                "is.basladi",
+                json!({"is": i}),
+            );
         }
         d
     }
 
     #[test]
     fn sha256_bilinen_yanit() {
-        assert_eq!(hex(&sha(&[b"abc"])), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+        assert_eq!(
+            hex(&sha(&[b"abc"])),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
     }
 
     #[test]
     fn merkle_rfc6962_bos_ve_tek() {
         // RFC 6962: boş ağacın kökü SHA-256("").
-        assert_eq!(dolu(0).merkle_kok(0), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+        assert_eq!(
+            dolu(0).merkle_kok(0),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
         let d = dolu(1);
         assert_eq!(d.merkle_kok(1), hex(&yaprak(&d.kayitlar()[0].ozet)));
     }
@@ -261,7 +300,10 @@ mod testler {
     fn icerik_degisikligi_yakalanir() {
         let mut k = dolu(4).kayitlar().to_vec();
         k[1].veri = json!({"is": 99});
-        assert!(matches!(Defter::kayitlardan(k), Err(Hata::Zincir { sira: 2, .. })));
+        assert!(matches!(
+            Defter::kayitlardan(k),
+            Err(Hata::Zincir { sira: 2, .. })
+        ));
     }
 
     #[test]
@@ -317,7 +359,11 @@ mod testler {
         // Aynı uzunlukta, tutarlı ama farklı geçmiş (zinciri baştan yeniden üretme saldırısı).
         let mut baska = Defter::yeni();
         for i in 0..3 {
-            baska.ekle(&format!("2026-11-26T02:00:{i:02}Z"), "is.basladi", json!({"is": i + 100}));
+            baska.ekle(
+                &format!("2026-11-26T02:00:{i:02}Z"),
+                "is.basladi",
+                json!({"is": i + 100}),
+            );
         }
         assert!(baska.dogrula().is_ok());
         assert!(matches!(baska.muhur_dogrula(&g, &m), Err(Hata::Muhur(_))));
