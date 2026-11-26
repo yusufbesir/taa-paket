@@ -141,10 +141,22 @@ mod testler {
     fn yalniz_yonetici() {
         let d = gecici("yetki");
         let t = "2026-11-26";
-        assert_eq!(yanit(&d, None, None, "/api/raporlar", "", t).0, 401);
+        for y in [
+            "/api/raporlar",
+            "/api/raporlar/csv",
+            "/api/raporlar/xlsx",
+            "/api/raporlar/liste",
+        ] {
+            assert_eq!(yanit(&d, None, None, y, "", t).0, 401, "{y}");
+        }
         for r in ["personel", "tezgahtar", "yonetici2", ""] {
             let rl = rol(&[r]);
-            for y in ["/api/raporlar", "/api/raporlar/csv", "/api/raporlar/liste"] {
+            for y in [
+                "/api/raporlar",
+                "/api/raporlar/csv",
+                "/api/raporlar/xlsx",
+                "/api/raporlar/liste",
+            ] {
                 let c = yanit(&d, None, Some(&rl), y, "", t);
                 assert_eq!(c.0, 403, "{r} {y}");
                 assert!(
