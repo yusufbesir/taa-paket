@@ -427,8 +427,36 @@ fn imza_kurallari_en_az_tek_imza_ve_ikinci_imza_atmadi() {
         d.imzala(&gs.id, ImzaKanali::Ekran, None, &ayse()).is_err(),
         "aynı kişi iki kez imzalayamaz"
     );
-    // Tek imzayla gönderilir; ikinci imza "imza atmadı" yazar.
+    // Tek imzayla gönderim kısa gerekçe ister (karar 2026-11-26); ikinci imza "imza atmadı" yazar.
+    assert!(d
+        .gonderim_paketi(&a, &gs.id)
+        .unwrap_err()
+        .contains("gerekçe"));
+    assert!(
+        d.ikinci_imza_gerekcesi(&gs.id, "yok", &ayse()).is_err(),
+        "çok kısa"
+    );
+    // Tutanak ekleri ilk imzadan sonra kilitli.
+    assert!(d
+        .tutanak_kaydet(&gs.id, None, Some("sonradan"), &ayse())
+        .unwrap_err()
+        .contains("kilitli"));
+    d.ikinci_imza_gerekcesi(&gs.id, "  ikinci   kişi izinli ", &ayse())
+        .unwrap();
+    let du = d.gun_durumu(&a, T, "c1").unwrap();
+    assert_eq!(
+        du.ikinci_imza_gerekcesi.as_deref(),
+        Some("ikinci kişi izinli")
+    );
     let p = d.gonderim_paketi(&a, &gs.id).unwrap();
+    assert_eq!(p["ikinci_imza_gerekcesi"], "ikinci kişi izinli");
+    assert_eq!(p["imzalar"][1]["gerekce"], "ikinci kişi izinli");
+    assert_eq!(
+        p["cift_dogrulama"]["imzalar"][1]["gerekce"],
+        "ikinci kişi izinli"
+    );
+    let g = d.gerekce_haritasi().unwrap();
+    assert_eq!(g[&gs.id], "ikinci kişi izinli");
     assert_eq!(p["imzalar"][0]["durum"], "imzaladi");
     assert_eq!(p["imzalar"][0]["cihaz"], "tel-1");
     assert_eq!(p["imzalar"][1]["durum"], "imza_atmadi");
@@ -455,6 +483,11 @@ fn imza_kurallari_en_az_tek_imza_ve_ikinci_imza_atmadi() {
     assert!(!du.imza_istegi, "iki imza dolunca istek kapanır");
     assert_eq!(du.ikinci_onay.as_deref(), Some(mehmet_mudur().ad.as_str()));
     assert!(du.ikinci_imza_durumu.starts_with("imzaladı"));
+    assert!(
+        du.ikinci_imza_gerekcesi.is_none(),
+        "ikinci imza atılınca gerekçe görünmez"
+    );
+    assert!(d.gerekce_haritasi().unwrap().is_empty());
     assert!(d
         .imzala(&gs.id, ImzaKanali::Ekran, None, &yonetici())
         .is_err());
@@ -586,6 +619,8 @@ fn kuyruk_cevrimdisi_bekletir_sonra_teslim_eder_ve_matris() {
     let gs = d.gun_sonu_ekle(&a, &gun_sonu_girdi(), &ayse()).unwrap();
     d.onayla(&gs.id, OnayTuru::IkinciKisi, &mehmet_mudur())
         .unwrap();
+    d.ikinci_imza_gerekcesi(&gs.id, "tek kişi kapanış", &mehmet_mudur())
+        .unwrap();
     let p = d.gonderim_paketi(&a, &gs.id).unwrap();
     assert_eq!(p["imzalar"][0]["kisi"], mehmet_mudur().ad);
     assert_eq!(p["tur"], "kasa.gunsonu@1");
@@ -621,6 +656,7 @@ fn kuyruk_cevrimdisi_bekletir_sonra_teslim_eder_ve_matris() {
             alinma_sn: son("2026-11-24") - 60,
             kasa_ciro_uyusmuyor: true,
             ikinci_imza_atmadi: true,
+            ikinci_imza_gerekcesi: Some("ikinci kişi izinli".into()),
         },
         GelenPaket {
             sube: "ESY".into(),
@@ -628,6 +664,7 @@ fn kuyruk_cevrimdisi_bekletir_sonra_teslim_eder_ve_matris() {
             alinma_sn: son("2026-11-25") + 60,
             kasa_ciro_uyusmuyor: false,
             ikinci_imza_atmadi: false,
+            ikinci_imza_gerekcesi: None,
         },
     ];
     let tarihler: Vec<String> = ["2026-11-24", "2026-11-25", "2026-11-26", "2026-11-27"]
@@ -667,6 +704,7 @@ fn excel_uc_sayfa_uretir() {
         &d.masraflar().unwrap(),
         &d.sayimlar().unwrap(),
         &d.imza_haritasi().unwrap(),
+        &d.gerekce_haritasi().unwrap(),
     );
     let m = String::from_utf8_lossy(&b);
     assert!(m.contains("ikinci imza atmadı"));

@@ -142,6 +142,8 @@ pub struct MatrisHucre {
     pub cekmece_sayisi: usize,
     /// Gelen paketlerden en az birinde ikinci imza yok ("ikinci imza atmadı").
     pub ikinci_imza_atmadi: bool,
+    /// İkinci imza atılmayan paketlerin gerekçeleri.
+    pub ikinci_imza_gerekceleri: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -158,6 +160,7 @@ pub struct GelenPaket {
     pub alinma_sn: i64,
     pub kasa_ciro_uyusmuyor: bool,
     pub ikinci_imza_atmadi: bool,
+    pub ikinci_imza_gerekcesi: Option<String>,
 }
 
 /// Merkez klasöründeki paketleri okur (bozuk ya da tanınmayan dosyalar atlanır, sayısı döner).
@@ -193,6 +196,7 @@ pub fn gelenleri_oku(klasor: &Path) -> (Vec<GelenPaket>, usize) {
                     .as_bool()
                     .unwrap_or(false),
                 ikinci_imza_atmadi: p["ikinci_imza_durumu"] == IKINCI_IMZA_ATMADI,
+                ikinci_imza_gerekcesi: p["ikinci_imza_gerekcesi"].as_str().map(str::to_string),
             }),
             None => bozuk += 1,
         }
@@ -239,6 +243,10 @@ pub fn matris(
                         kasa_ciro_uyusmuyor: p.iter().any(|g| g.kasa_ciro_uyusmuyor),
                         cekmece_sayisi: p.len(),
                         ikinci_imza_atmadi: p.iter().any(|g| g.ikinci_imza_atmadi),
+                        ikinci_imza_gerekceleri: p
+                            .iter()
+                            .filter_map(|g| g.ikinci_imza_gerekcesi.clone())
+                            .collect(),
                     }
                 })
                 .collect(),
@@ -259,6 +267,7 @@ pub fn excel(
     masraflar: &[MasrafGorunum],
     sayimlar: &[SayimKaydi],
     imzalar: &BTreeMap<String, Vec<ImzaKaydi>>,
+    gerekceler: &BTreeMap<String, String>,
 ) -> Vec<u8> {
     let mut b: Vec<Hucre> = [
         "Şube",
@@ -336,7 +345,10 @@ pub fn excel(
                             ImzaKanali::Ekran => "ekran",
                         }
                     ),
-                    None if n == 1 => IKINCI_IMZA_ATMADI.to_string(),
+                    None if n == 1 => match gerekceler.get(&g.id) {
+                        Some(x) => format!("{IKINCI_IMZA_ATMADI} (gerekçe: {x})"),
+                        None => IKINCI_IMZA_ATMADI.to_string(),
+                    },
                     None => "imza atmadı".to_string(),
                 }
                 .into(),

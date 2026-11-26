@@ -399,7 +399,7 @@ async function anaEylem(e){
   if(e==='imza'){const ikinci=D.gun.imzalar.length===1;
     const ad=await kisiSec(ikinci?'İkinci imza (Mağaza Sorumlusu / Vekili)':'Birinci imza (Kasa Sorumlusu)',ikinci?'Kaydı giren kişi ikinci imzayı atamaz. İmzalayacak kişiyi seçin.':'İmzalayacak kişiyi seçin. Telefon köprüsü bağlanana kadar imza bu ekrandan atılır (yer tutucu).',ikinci?D.gun.gun_sonu.kisi:null);if(!ad)return;
     try{await api('POST','/api/giris',{ad});await api('POST','/api/imza',{id:D.gun.gun_sonu.id,kanal:'ekran'});bildir(ikinci?'İkinci imza kaydedildi':'İmza kaydedildi. İkinci kişi yoksa gün "ikinci imza atmadı" ile gönderilebilir.');yenile()}catch(x){bildir(x.message);yenile()}return}
-  if(e==='gonder'){try{const v=await api('POST','/api/gonder',{id:D.gun.gun_sonu.id});bildir((v.imzali?'İmzalandı, ':'Cihaz anahtarı yok, imzasız; ')+(v.teslim?'merkeze teslim edildi.':'kuyruğa alındı. '+(v.hata||'')));yenile()}catch(x){bildir(x.message)}return}
+  if(e==='gonder'){if(D.gun.imzalar.length===1&&!D.gun.ikinci_imza_gerekcesi){bildir('İkinci imza atılmadı: önce kısa gerekçe yazın (Gün sonu ekranı → Gerekçe).');return}try{const v=await api('POST','/api/gonder',{id:D.gun.gun_sonu.id});bildir((v.imzali?'İmzalandı, ':'Cihaz anahtarı yok, imzasız; ')+(v.teslim?'merkeze teslim edildi.':'kuyruğa alındı. '+(v.hata||'')));yenile()}catch(x){bildir(x.message)}return}
   git(e)}
 
 // ---------------- sayım ızgarası (sayısal tuş takımı: Enter/↓ sonraki, ↑ önceki; odakta seçili; boş = 0)
@@ -551,19 +551,22 @@ function gsKayitli(s,g){const x=g.gun_sonu,k=x.karsilastirma;
    ${x.not?`<p><b>Not:</b> ${esc(x.not)}</p>`:''}</div>
    <aside class="kart yigin"><h2>Durum</h2>
     <div>1. imza (Kasa Sorumlusu): <b>${g.imzalar[0]?esc(g.imzalar[0].kisi)+' · '+(g.imzalar[0].kanal==='telefon'?'telefon':'ekran'):'imza atmadı'}</b></div>
-    <div>2. imza (Mağaza Sorumlusu / Vekili): <b>${g.imzalar[1]?esc(g.imzalar[1].kisi)+' · '+(g.imzalar[1].kanal==='telefon'?'telefon':'ekran'):esc(g.ikinci_imza_durumu)}</b></div>
+    <div>2. imza (Mağaza Sorumlusu / Vekili): <b>${g.imzalar[1]?esc(g.imzalar[1].kisi)+' · '+(g.imzalar[1].kanal==='telefon'?'telefon':'ekran'):esc(g.ikinci_imza_durumu)}</b>${!g.imzalar[1]&&g.ikinci_imza_gerekcesi?` · gerekçe: ${esc(g.ikinci_imza_gerekcesi)}`:''}</div>
     <div>Ertesi gün müdür: <b>${esc(g.ertesi_gun_onay||'bekliyor')}</b></div>
     <div>Merkeze: <b>${g.gonderildi?'gönderildi (kuyrukta ya da teslim)':'gönderilmedi'}</b></div><div>Kapanış listesi: <b>${x.kontrol.filter(Boolean).length}/7</b></div>
     ${g.imza_istegi?`<button class="dugme ${g.imzalar.length?'':'ana'}" data-e="imza">${g.imzalar.length?'İkinci imzayı al':'İmza al'}</button>`:''}
     ${g.imzalar.length&&!g.gonderildi?`<button class="dugme ana" data-e="gonder">Merkeze gönder${g.imzalar.length<2?' (ikinci imza atmadı)':''}</button>`:''}
     <button class="dugme" data-e="whatsapp">WhatsApp özeti</button>
     <button class="dugme" data-e="tutanak">Çift doğrulama tutanağı (A4)</button>
-    ${!g.gonderildi?`<label class="alan">Nebim kasa Excel'i (ERP sütunu)<input type="file" accept=".xlsx" id="t-excel" class="girdi"></label>
+    ${g.imzalar.length===1&&!g.gonderildi?`<label class="alan">İkinci imza atılmama gerekçesi (zorunlu)<input class="girdi" id="t-gerekce" maxlength="300" list="gerekce-onerileri" value="${esc(g.ikinci_imza_gerekcesi||'')}"><datalist id="gerekce-onerileri"><option value="Mağaza sorumlusu izinli: "><option value="Tek personel vardiyası: "><option value="Mağaza sorumlusu erken çıktı: "><option value="Vekil atanmadı: "></datalist></label><button class="dugme" data-e="gerekce">Gerekçeyi kaydet</button>`:''}
+    ${g.imzalar.length&&!g.gonderildi?'<div class="mut kucuk">İlk imza atıldı: tutanak ekleri (ERP, yapılan işlem) kilitli.</div>':''}
+    ${!g.gonderildi&&!g.imzalar.length?`<label class="alan">Nebim kasa Excel'i (ERP sütunu)<input type="file" accept=".xlsx" id="t-excel" class="girdi"></label>
     <label class="alan">Yapılan işlem (tutanak)<input class="girdi" id="t-islem" maxlength="600"></label><button class="dugme" data-e="tutanak-kaydet">Tutanağa işle</button>`:''}
     ${g.imzalar.length&&!g.ertesi_gun_onay?'<button class="dugme" data-e="ertesi">Ertesi gün gözden geçirdim (müdür)</button>':''}
     ${D.yonetici?'<button class="dugme" data-e="duzelt">İptal et ve yeniden gir</button>':''}</aside></div>`;
   s.querySelectorAll('[data-e]').forEach(b=>b.onclick=async()=>{const e=b.dataset.e;
     if(e==='imza'||e==='gonder'||e==='whatsapp')return anaEylem(e);
+    if(e==='gerekce'){try{await api('POST','/api/gerekce',{id:x.id,gerekce:s.querySelector('#t-gerekce').value});bildir('Gerekçe kaydedildi');yenile()}catch(z){bildir(z.message)}return}
     if(e==='tutanak'){window.open('/api/tutanak?id='+encodeURIComponent(x.id),'_blank');return}
     if(e==='tutanak-kaydet'){const f=s.querySelector('#t-excel').files[0],g2={id:x.id,islem:s.querySelector('#t-islem').value};
       try{if(f){if(f.size>180000)throw new Error('Excel 180 KB\'den büyük; satırları azaltın.');g2.excel_b64=await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=()=>no(new Error('dosya okunamadı'));r.readAsDataURL(f)})}
@@ -617,7 +620,7 @@ async function matrisCiz(){const s=bolum('matris');s.innerHTML='<h1>Merkez matri
   try{const v=await api('GET','/api/matris?gun=14');const SY={geldi:['✓','Geldi'],gec:['⏱','Geç'],eksik:['✕','Eksik'],bekleniyor:['…','Bekleniyor']};
     s.innerHTML=`<div class="sayfa-bas"><div><h1>Merkez matrisi</h1><div class="mut">Mağaza × gün: ✓ geldi · ⏱ geç · ✕ eksik · … bekleniyor · ⚠ kasa ile ciro uyuşmuyor · ½ ikinci imza atmadı (tek imza). ${esc(v.not)}</div></div></div>
     <div class="kart" style="overflow:auto"><table class="tablo matris"><thead><tr><th>Şube</th>${v.tarihler.map(t=>`<th>${esc(t.slice(5))}</th>`).join('')}</tr></thead><tbody>
-    ${v.satirlar.map(r=>`<tr><th>${esc(r.sube)}</th>${r.hucreler.map(h=>`<td class="m-${h.durum}" title="${SY[h.durum][1]}${h.kasa_ciro_uyusmuyor?' · kasa ile ciro uyuşmuyor':''}${h.ikinci_imza_atmadi?' · ikinci imza atmadı':''}">${SY[h.durum][0]}${h.kasa_ciro_uyusmuyor?' ⚠':''}${h.ikinci_imza_atmadi?' ½':''}</td>`).join('')}</tr>`).join('')}</tbody></table>
+    ${v.satirlar.map(r=>`<tr><th>${esc(r.sube)}</th>${r.hucreler.map(h=>`<td class="m-${h.durum}" title="${SY[h.durum][1]}${h.kasa_ciro_uyusmuyor?' · kasa ile ciro uyuşmuyor':''}${h.ikinci_imza_atmadi?' · ikinci imza atmadı'+(h.ikinci_imza_gerekceleri.length?' (gerekçe: '+esc(h.ikinci_imza_gerekceleri.join('; '))+')':''):''}">${SY[h.durum][0]}${h.kasa_ciro_uyusmuyor?' ⚠':''}${h.ikinci_imza_atmadi?' ½':''}</td>`).join('')}</tr>`).join('')}</tbody></table>
     ${v.okunamayan?`<p class="hata">${v.okunamayan} dosya okunamadı.</p>`:''}</div>`}catch(e){s.innerHTML=`<h1>Merkez matrisi</h1><p class="hata">${esc(e.message)}</p>`}}
 
 basla().catch(e=>{document.body.innerHTML='<p style="padding:24px">TAA Kasa açılamadı: '+esc(e.message)+'</p>'});

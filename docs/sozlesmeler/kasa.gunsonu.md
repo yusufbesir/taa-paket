@@ -24,6 +24,7 @@
 | `imza` | `id` (gün sonu), `sira` (1, 2), `rol` (`kasa_sorumlusu`, `magaza_sorumlusu`), `kisi`, `zaman`, `kanal` (`telefon` \| `ekran`), `cihaz` (telefonla imzada zorunlu, `eslesme_kimligi:pc_pin`), `ozet` (telefonla imzada onaylanan özetin SHA-256'sı; isteğe bağlı) | İmza isteği yalnız kapanış listesi tamamlanınca açılır. En çok iki imza; aynı kişi iki kez imzalayamaz; ikinci imzayı giren atamaz. Gönderilmiş güne imza eklenmez. |
 | `tutanak` | `id` (gün sonu), `erp` {kalem kodu: kuruş}, `islem`, `kisi`, `zaman` | Çift doğrulama tutanağı ekleri: Nebim kasa Excel'inden içe aktarılan ERP sütunu ve "Yapılan İşlem". Son kayıt geçerli. |
 | `iptal` | `id`, `neden`, `kisi`, `zaman` | Yalnız yönetici girişiyle; neden zorunlu. **Silme yok.** |
+| `gerekce` | `id` (gün sonu), `gerekce` (5–300 karakter), `kisi`, `zaman` | İkinci imza atılmayacaksa gönderimden önce zorunlu; son kayıt geçerli. Yalnız tek imzalı, gönderilmemiş güne yazılır. |
 | `gonderim` | `id`, `dosya`, `imzali`, `zaman` | Paket kuyruğa alındı. |
 
 ## Karşılaştırma (`karsilastirma`)
@@ -39,17 +40,18 @@ Satırlar (her biri `beklenen_kurus`, `bulunan_kurus`, `fark_kurus = bulunan −
 ## Kurallar
 - Aynı gün ve çekmece için tek açılış ve tek gün sonu; ikincisi reddedilir, düzeltme yönetici girişiyle "iptal et ve yeniden gir"
   (eski kayıt `iptal` satırıyla kapanır, yeni kayıt `duzeltir` alanında eskisini gösterir). Geçersiz düzeltme eski kaydı iptal etmez.
-- Gönderim ön koşulu: kapanış listesinin 7 maddesi ve **en az bir imza**. İkinci imza yoksa gün yine kapanır ve gönderilir;
+- Gönderim ön koşulu: kapanış listesinin 7 maddesi, **en az bir imza** ve tek imzada **gerekçe**. İlk imzadan sonra `tutanak` kaydı (ekler) eklenmez.
+- İkinci imza yoksa gün yine kapanır ve gerekçeyle gönderilir;
   kayıtta, pakette (`ikinci_imza_durumu`), Excel'de, tutanakta, ekranda ve matriste "ikinci imza atmadı" yazar.
 - Telefonla imza: istemci `telefon_imza` (Telefon Köprüsü `onay_iste@1` / `onay@1` / `onay_red@1`, kapsam `taa_kasa_gun_sonu`,
   özet = gün sonu tutarlarının kanonik metninin SHA-256'sı, 60 sn). Köprü borusu bağlanana kadar API `kanal: telefon` isteğine
   501 döner ve imza ekrandan (yer tutucu) atılır. Ayrıntı: docs/TAA-KASA.md "Telefonla imza".
 
 ## Gönderim paketi (merkeze)
-`{"tur":"kasa.gunsonu@1","surum":1,"sube","tarih","cekmece","gun_sonu","sayimlar","masraflar","onaylar":{"ikinci_kisi","ertesi_gun"},"imzalar","ikinci_imza_durumu","cift_dogrulama","olusturma","imza"}`.
+`{"tur":"kasa.gunsonu@1","surum":1,"sube","tarih","cekmece","gun_sonu","sayimlar","masraflar","onaylar":{"ikinci_kisi","ertesi_gun"},"imzalar","ikinci_imza_durumu","ikinci_imza_gerekcesi","cift_dogrulama","olusturma","imza"}`.
 
 - `imzalar`: iki rol de yazılır: `{sira, rol, rol_adi, kisi, zaman, kanal, cihaz, durum: "imzaladi"|"imza_atmadi", imzalamadi}`;
-  atılmamış ikinci imzada `not: "ikinci imza atmadı"`.
+  atılmamış ikinci imzada `not: "ikinci imza atmadı"` ve varsa `gerekce`. `cift_dogrulama.ikinci_imza_gerekcesi` aynı değer.
 - `cift_dogrulama` (`taa-kasa.cift_dogrulama@1`, Kasa Çift Doğrulama Tutanağı; şablon Tutaa'dan alındı:
   `crates/taa-kasa/sablonlar/kasa-cift-dogrulama.json`): `numara` (KCD-yıl-<gün sonu>), `baslik`, `sube`, `tarih`, `cekmece`,
   `gun_sonu_id`, `kalemler` [8 × `{kod, ad, erp_kurus, fiili_kurus, fark_kurus, gerekce, fiili_kaynagi}`], `toplam_fark_kurus`,
@@ -78,7 +80,7 @@ Kuyruk `<veri kökü>/kasa/giden/`; teslim edilen `gonderilen/` altına taşın�
 `merkez_klasoru` ayarındaki ortak klasördür.
 
 ## Matris (Çatı RP6)
-`merkez::matris`: mağaza × gün → `geldi` | `gec` | `eksik` | `bekleniyor`, hücrede `kasa_ciro_uyusmuyor` ve `ikinci_imza_atmadi`. Son saat mağaza ayarı
+`merkez::matris`: mağaza × gün → `geldi` | `gec` | `eksik` | `bekleniyor`, hücrede `kasa_ciro_uyusmuyor`, `ikinci_imza_atmadi` ve `ikinci_imza_gerekceleri`. Son saat mağaza ayarı
 (`gonderim_son_saat`, varsayılan 23:00, Türkiye saati); paketin `olusturma` anı esas alınır. Çatı paneline bağlanması Çatı'nın bu türü
 `veri_okur` ile okumasını ister (ayrı adım).
 

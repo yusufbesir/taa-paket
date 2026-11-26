@@ -208,6 +208,12 @@ impl Uygulama {
                     Err(e) => hata(422, e),
                 }
             }
+            ("POST", "/api/gerekce") => self.yaz(govde, |d, k, g| {
+                let id = g.get("id").and_then(Value::as_str).unwrap_or("");
+                let gr = g.get("gerekce").and_then(Value::as_str).unwrap_or("");
+                d.ikinci_imza_gerekcesi(id, gr, k)
+                    .map(|_| json!({"tamam": true}))
+            }),
             ("GET", "/api/tutanak") => {
                 if self.kisi.is_none() && self.yonetici().is_none() {
                     return hata(401, "Tutanak için önce giriş yapın.");
@@ -655,7 +661,14 @@ impl Uygulama {
                 .filter(|x| ic(&x.kayit.tarih))
                 .collect();
             let s: Vec<_> = d.sayimlar()?.into_iter().filter(|x| ic(&x.tarih)).collect();
-            Ok(merkez::excel(&ayar.sube, &g, &m, &s, &d.imza_haritasi()?))
+            Ok(merkez::excel(
+                &ayar.sube,
+                &g,
+                &m,
+                &s,
+                &d.imza_haritasi()?,
+                &d.gerekce_haritasi()?,
+            ))
         })();
         match r {
             Ok(b) => Cevap::Dosya {
@@ -820,6 +833,18 @@ mod testler {
         let (_, v) = json_of(u.istek("GET", "/api/durum", "tarih=2026-11-25", &Value::Null));
         assert_eq!(v["gun"]["asama"], "gonder");
         assert_eq!(v["gun"]["ikinci_imza_durumu"], "ikinci imza atmadı");
+        // Tek imzayla gönderim gerekçe ister.
+        let (d, _) = json_of(u.istek("POST", "/api/gerekce", "", &json!({"id":id,"gerekce":"x"})));
+        assert_eq!(d, 422);
+        let (d, _) = json_of(u.istek(
+            "POST",
+            "/api/gerekce",
+            "",
+            &json!({"id":id,"gerekce":"ikinci kişi izinli"}),
+        ));
+        assert_eq!(d, 200);
+        let (_, v) = json_of(u.istek("GET", "/api/durum", "tarih=2026-11-25", &Value::Null));
+        assert_eq!(v["gun"]["ikinci_imza_gerekcesi"], "ikinci kişi izinli");
         // Giren ikinci imzayı atamaz; telefonla da istek köprüye gitmeden reddedilir.
         let (d, _) = json_of(u.istek("POST", "/api/imza", "", &json!({"id":id,"kanal":"ekran"})));
         assert_eq!(d, 422);

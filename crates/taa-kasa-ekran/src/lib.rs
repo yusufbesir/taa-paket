@@ -62,6 +62,40 @@ pub fn base64_kodla(b: &[u8]) -> String {
     }
     o
 }
+/// İndirme başlığı (`Content-Disposition`). Başlık değeri ASCII olmalı: Türkçe harfler sadeleştirilir, öteki
+/// karakterler `_` olur (tırnak, `\`, `/`, `:` dahil; Windows'ta geçersiz dosya adı oluşmasın). Asıl ad
+/// `filename*` (RFC 5987) ile de verilir. Şube adı Türkçe ya da boşluklu olsa da başlık düşmez.
+pub fn indirme_basligi(ad: &str) -> String {
+    let sade: String = ad
+        .chars()
+        .map(|c| match c {
+            'ç' => 'c',
+            'Ç' => 'C',
+            'ğ' => 'g',
+            'Ğ' => 'G',
+            'ı' => 'i',
+            'İ' => 'I',
+            'ö' => 'o',
+            'Ö' => 'O',
+            'ş' => 's',
+            'Ş' => 'S',
+            'ü' => 'u',
+            'Ü' => 'U',
+            c if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') => c,
+            _ => '_',
+        })
+        .collect();
+    let mut kod = String::new();
+    for b in ad.as_bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.') {
+            kod.push(*b as char);
+        } else {
+            kod.push_str(&format!("%{b:02X}"));
+        }
+    }
+    format!("attachment; filename=\"{sade}\"; filename*=UTF-8''{kod}")
+}
+
 pub const GOVDE_EN_COK: usize = 256 * 1024;
 
 pub const GUVENLIK_BASLIKLARI: &[(&str, &str)] = &[
@@ -205,6 +239,21 @@ pub fn pin_gecerli(pin: &str) -> bool {
 #[cfg(test)]
 mod testler {
     use super::*;
+
+    #[test]
+    fn indirme_basligi_ascii_ve_guvenli() {
+        let b = indirme_basligi("taa-kasa-Şişli \"Ç\"/x:1.xlsx");
+        assert!(b.is_ascii(), "{b}");
+        assert!(
+            b.starts_with("attachment; filename=\"taa-kasa-Sisli__C__x_1.xlsx\""),
+            "{b}"
+        );
+        assert!(
+            b.contains("filename*=UTF-8''taa-kasa-%C5%9Ei%C5%9Fli%20"),
+            "{b}"
+        );
+        assert!(tiny_http::Header::from_bytes(&b"Content-Disposition"[..], b.as_bytes()).is_ok());
+    }
 
     #[test]
     fn istek_denetimi() {
