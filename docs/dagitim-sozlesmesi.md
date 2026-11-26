@@ -1,4 +1,4 @@
-<!-- Sahip: Yusuf. yazan: [Claude#dg0-sozlesme 2026-11-26]. Durum: TASLAK (DG0, Fable denetimi bekliyor). Değişiklik: Yusuf'un onayıyla. Kod yok. -->
+<!-- Sahip: Yusuf. yazan: [Claude#dg0-sozlesme 2026-11-26]. Durum: TASLAK (DG0). Fable denetimi YAPILDI 2026-11-26: Kapı 2 onayı VERİLMEDİ; bloklayıcı düzeltmeler §17'de (önceki metinle çelişirse §17 geçerli). Rapor: planlar yanı denetim/DG0-FABLE-DENETIMI-2026-11-26.md. Değişiklik: Yusuf'un onayıyla. Kod yok. -->
 # TAA İşlem Gücü: dağıtım sözleşmesi (DG0)
 
 Kaynaklar (okundu): `planlar/PLAN-TAA-ISLEM-GUCU-BIRLESIK-2026-11-15.md` (güncel tek belge), `planlar/PLAN-DAGITIK-ISLEM-2026-11-15.md` (kurgu, tarihçe), `planlar/PLAN-DAGITIK-ISLEM-UYGULAMA-2026-11-15.md` §3 DG0 ve §7b, `denetim/DENETIM-DAGITIK-ISLEM-KURGU-2026-11-15.md` (K1-K7, Y1-Y8, R1-R9), `planlar/briefler/BRIF-DG0-SOZLESME.md`. Uygulanmış kod: `crates/taa-zincir` (defter, bkz. §4). Ölçüm: `crates/taa-olcum`, `docs/olcum/YONTEM.md`.
@@ -574,3 +574,17 @@ Yazarken tahmin edilmeyen, onay ya da ölçüm bekleyenler (numaralar yalnız bu
 
 ## 16. Denetim notu
 **Fable denetimi bekliyor.** Bu belge DG0 taslağıdır; Kapı 2 ancak Fable'ın K1-K7'yi (ve Y2, Y3, R1-R9) bu belgede karşılanmış bulup yazılı onay vermesiyle geçilir. O zamana kadar dağıtıcı, işçi ve zarf kodu yazılmaz. Denetimde özellikle bakılması istenenler: §15 madde 1-3 (kütüphane, A sınıfı zarf, kimlik bağlama), §4.3 arşiv zinciri eksikliği, §8.2 Windows araçlarının tasarım okuması olması, §9.5 toplama riski. Yazan: [Claude#dg0-sozlesme 2026-11-26].
+
+## 17. Fable denetimi düzeltmeleri (2026-11-26; bloklayıcılar)
+
+Bu bölüm denetimin B-1..B-6 ve B-8 bulgularını bağlayıcı kural olarak yazar. Önceki bölümlerle çelişirse **bu bölüm geçerlidir**; ilgili satırlar Kapı 2 onayından önce yerinde düzeltilecektir. Kapı 2 onayı hâlâ yoktur.
+
+- **D-1 (B-1, §2.5) iki sayaç:** `deneme_no` her kirada artar (sınırsız, yalnız sıra bilgisi). `hata_sayisi` yalnız çalıştırıcı hatasında ve doğrulama reddinde artar; `basarisiz` yalnız `hata_sayisi` üst sınırıyla (başlangıç: 3 hata, en az 2 farklı işçide) olur. Kapanma ve kira düşmesi parçayı `basarisiz` yapmaz.
+- **D-2 (B-2, §2.6) sonuç kabul sırası:** önce (`parca_kimligi`, `deneme_no`, `sonuc_sha256`) kayıtlı mı bakılır (kayıtlıysa aynı yanıt döner); kayıtlı değilse "kira aktif" koşulu uygulanır. Test Q-YINELENEN-01 bu sırayı sınar.
+- **D-3 (B-3, §7, §2.2, §5.4) iptalde yeniden şifreleme yok:** manifestteki `girdi_sifreli_sha256` değişmez; "iptal sonrası yeni parça anahtarı" kuralı kaldırıldı. Yerine olay raporu (R3). Gerekirse ayrı "manifest düzeltme kaydı" tasarlanır.
+- **D-4 (B-4, §6.1, §5.5) iki zarf anahtarı:** A sınıfı sunucu zarf anahtarı parolasız açılır (işletim sistemi korumalı depo); B/C zarf anahtarı ana anahtarla sarılıdır. "A kilitli sunucuda akar" kuralı bu sayede tutar.
+- **D-5 (B-5, §2.4, §6) istek imzası:** her istek imzası uç adını, gövde özetini, `kira_kimligi`'ni ve artan sayaç ya da sunucu tek kullanımlık değerini kapsar; TLS zorunludur. Test G-TEKRAR-01: kaydedilmiş kalp atışı yeniden gönderilirse reddedilir, kira uzamaz.
+- **D-6 (B-6, §5.2-§5.4) gönderen doğrulama:** HPKE Base modu göndereni doğrulamaz. Kira yanıtı (belirteç özeti, sarılmış anahtarın özeti, §5.3 alanları) sunucu manifest anahtarıyla imzalanır; işçi imzayı doğrulamadan zarfı açmaz. Sonuç zarfı (işçi → sunucu) için §5.3'ün eşi yazılacaktır (alan listesi DG0 son halinde).
+- **D-8 (B-8, §9.3, §12.1) işaret koşulları dürüst sınırı:** disk şifresi, güncel Windows ve hesap türü işçinin kendi beyanıdır; işçi güvenilmeyen sınıftadır. Beyan hijyen denetimidir, güvenlik kanıtı değildir; işareti veren yöneticinin yerinde doğrulaması şarttır (Çatı'da onay kutusu + defter kaydı).
+
+**Açık kalanlar (Yusuf kararı gerekir):** B-7 (Kapı 1 kazanç eşiğinin sayısı ve "5 geçerse pay yok" kuralı; `YONTEM.md` kilit özetiyle birlikte güncellenecek), Y-1 yeni bağımlılık (HPKE, Argon2id), Y-2 dış tanık, Y-3 merkez anahtarı kurtarma, Y-8 önbellek silmenin "kalıcı silme yok" kuralına girmediği, `ocr.genel` akış listesi. Ayrıntı ve Fable önerileri denetim raporunda.
