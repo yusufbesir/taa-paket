@@ -32,6 +32,7 @@ pub const PROGRAM: &str = "taa-cati";
 
 pub const KULLANICI_UCU: &str = "/v1/kullanici";
 pub const ROL_UCU: &str = "/v1/rol";
+pub const GRUP_UCU: &str = "/v1/grup";
 pub const IZIN_UCU: &str = "/v1/izin";
 pub const CIHAZ_UCU: &str = "/v1/cihaz";
 pub const PROGRAM_YETKI_UCU: &str = "/v1/program-yetki";
@@ -354,6 +355,19 @@ impl<'a> Cati<'a> {
         parola: &str,
         roller: &[RolAtama],
     ) -> Result<Value, CatiHata> {
+        self.kullanici_ekle_gruplu(ad, gorunen_ad, gercek_ad, parola, roller, &[])
+    }
+
+    /// Kullanıcı açılırken gruplara da atanır (grup id); rol yerine yalnız grup verilebilir. Yetkiler gruptan akar.
+    pub fn kullanici_ekle_gruplu(
+        &self,
+        ad: &str,
+        gorunen_ad: &str,
+        gercek_ad: Option<&str>,
+        parola: &str,
+        roller: &[RolAtama],
+        gruplar: &[i64],
+    ) -> Result<Value, CatiHata> {
         let ad = tanitici("kullanıcı adı", ad)?;
         let gercek_var = gercek_ad.is_some_and(|g| !g.trim().is_empty());
         if !(gorunen_ad_gecerli(gorunen_ad) || gercek_var && gorunen_ad.trim().is_empty()) {
@@ -366,9 +380,9 @@ impl<'a> Cati<'a> {
                 "parola en az {PAROLA_EN_AZ} karakter olmalı"
             )));
         }
-        if roller.is_empty() {
+        if roller.is_empty() && gruplar.is_empty() {
             return Err(CatiHata::GecersizGirdi(
-                "en az bir rol gerekli (--rol)".into(),
+                "en az bir rol ya da grup gerekli".into(),
             ));
         }
         let mut govde = json!({
@@ -377,6 +391,9 @@ impl<'a> Cati<'a> {
             "parola": parola,
             "roller": roller.iter().map(RolAtama::json).collect::<Vec<_>>(),
         });
+        if !gruplar.is_empty() {
+            govde["gruplar"] = json!(gruplar);
+        }
         if let Some(g) = gercek_ad.map(str::trim).filter(|g| !g.is_empty()) {
             if !gorunen_ad_gecerli(g) {
                 return Err(CatiHata::GecersizGirdi(
@@ -409,6 +426,74 @@ impl<'a> Cati<'a> {
         self.yaz(
             IZIN_KULLANICI,
             &format!("{KULLANICI_UCU}/{kullanici_id}/kapat"),
+            json!({}),
+        )
+    }
+
+    // ---- gruplar: kullanıcıları gruba at, gruba rol ver (tek tek kullanıcıyla uğraşma) ----
+
+    pub fn gruplar(&self) -> Result<Vec<Value>, CatiHata> {
+        self.liste(IZIN_KULLANICI, GRUP_UCU)
+    }
+
+    /// `POST /v1/grup` → 201 {id, ad}. Roller (şube kapsamlı) grup açılırken verilebilir.
+    pub fn grup_ekle(
+        &self,
+        ad: &str,
+        aciklama: &str,
+        roller: &[RolAtama],
+    ) -> Result<Value, CatiHata> {
+        let ad = tanitici("grup adı", ad)?;
+        if aciklama.chars().count() > 200 || aciklama.chars().any(char::is_control) {
+            return Err(CatiHata::GecersizGirdi(
+                "açıklama en çok 200 karakter".into(),
+            ));
+        }
+        self.yaz(
+            IZIN_KULLANICI,
+            GRUP_UCU,
+            json!({ "ad": ad, "aciklama": aciklama.trim(), "roller": roller.iter().map(RolAtama::json).collect::<Vec<_>>() }),
+        )
+    }
+
+    pub fn grup_rol_ver(&self, grup_id: i64, rol: &RolAtama) -> Result<Value, CatiHata> {
+        self.yaz(
+            IZIN_KULLANICI,
+            &format!("{GRUP_UCU}/{grup_id}/rol"),
+            rol.json(),
+        )
+    }
+
+    pub fn grup_rol_kaldir(&self, grup_id: i64, rol: &RolAtama) -> Result<Value, CatiHata> {
+        self.yaz(
+            IZIN_KULLANICI,
+            &format!("{GRUP_UCU}/{grup_id}/rol-kaldir"),
+            rol.json(),
+        )
+    }
+
+    pub fn grup_uye_ver(&self, grup_id: i64, kullanici_id: i64) -> Result<Value, CatiHata> {
+        self.yaz(
+            IZIN_KULLANICI,
+            &format!("{GRUP_UCU}/{grup_id}/uye"),
+            json!({ "kullanici_id": kullanici_id }),
+        )
+    }
+
+    pub fn grup_uye_kaldir(&self, grup_id: i64, kullanici_id: i64) -> Result<Value, CatiHata> {
+        self.yaz(
+            IZIN_KULLANICI,
+            &format!("{GRUP_UCU}/{grup_id}/uye-kaldir"),
+            json!({ "kullanici_id": kullanici_id }),
+        )
+    }
+
+    /// Grubu kapatır (rolleri düşer) ya da yeniden açar. Silme yok.
+    pub fn grup_durum(&self, grup_id: i64, acik: bool) -> Result<Value, CatiHata> {
+        let son = if acik { "ac" } else { "kapat" };
+        self.yaz(
+            IZIN_KULLANICI,
+            &format!("{GRUP_UCU}/{grup_id}/{son}"),
             json!({}),
         )
     }
@@ -576,10 +661,28 @@ impl<'a> Cati<'a> {
         gercek_ad: Option<&str>,
         gorunen_ad: Option<&str>,
     ) -> Result<Value, CatiHata> {
-        if roller.is_empty() {
-            return Err(CatiHata::GecersizGirdi("en az bir rol gerekli".into()));
+        self.kullanici_onayla_gruplu(kullanici_id, roller, &[], kisi_id, gercek_ad, gorunen_ad)
+    }
+
+    /// [`Self::kullanici_onayla`] + gruplar: rol ya da grup en az biri gerekli.
+    pub fn kullanici_onayla_gruplu(
+        &self,
+        kullanici_id: i64,
+        roller: &[RolAtama],
+        gruplar: &[i64],
+        kisi_id: Option<&str>,
+        gercek_ad: Option<&str>,
+        gorunen_ad: Option<&str>,
+    ) -> Result<Value, CatiHata> {
+        if roller.is_empty() && gruplar.is_empty() {
+            return Err(CatiHata::GecersizGirdi(
+                "en az bir rol ya da grup gerekli".into(),
+            ));
         }
         let mut m = Map::new();
+        if !gruplar.is_empty() {
+            m.insert("gruplar".into(), json!(gruplar));
+        }
         if let Some(g) = gorunen_ad.map(str::trim).filter(|g| !g.is_empty()) {
             if !gorunen_ad_gecerli(g) {
                 return Err(CatiHata::GecersizGirdi(

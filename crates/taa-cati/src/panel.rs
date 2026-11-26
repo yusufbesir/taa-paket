@@ -208,6 +208,14 @@ fn rol_listesi(g: &Value) -> Result<Vec<RolAtama>, CatiHata> {
         .collect()
 }
 
+/// Grup id listesi: `"gruplar": [1, 2]`.
+fn grup_listesi(g: &Value) -> Vec<i64> {
+    g.get("gruplar")
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(Value::as_i64).collect())
+        .unwrap_or_default()
+}
+
 fn rol_atama(g: &Value) -> Result<RolAtama, CatiHata> {
     RolAtama::yeni(s(g, "rol").unwrap_or_default(), i(g, "sube_id"))
 }
@@ -232,6 +240,7 @@ pub fn api(
         },
         ("GET", "/api/kullanicilar") => dizi(c.kullanicilar()),
         ("GET", "/api/roller") => dizi(c.roller()),
+        ("GET", "/api/gruplar") => dizi(c.gruplar()),
         ("GET", "/api/izinler") => dizi(c.izinler()),
         ("GET", "/api/cihazlar") => {
             let d = sorgu_degeri(sorgu, "durum").filter(|d| !d.is_empty());
@@ -295,7 +304,14 @@ pub fn api(
             };
             let gad = s(govde, "gorunen_ad").unwrap_or("");
             match rol_listesi(govde) {
-                Ok(r) => deger(c.kullanici_ekle(ad, gad, s(govde, "gercek_ad"), p, &r)),
+                Ok(r) => deger(c.kullanici_ekle_gruplu(
+                    ad,
+                    gad,
+                    s(govde, "gercek_ad"),
+                    p,
+                    &r,
+                    &grup_listesi(govde),
+                )),
                 Err(e) => hata(e),
             }
         }
@@ -307,6 +323,39 @@ pub fn api(
                 Ok(r) if yol.ends_with("kaldir") => deger(c.rol_kaldir(id, &r)),
                 Ok(r) => deger(c.rol_ver(id, &r)),
                 Err(e) => hata(e),
+            }
+        }
+        ("POST", "/api/grup/ekle") => match s(govde, "ad") {
+            Some(ad) => match rol_listesi(govde) {
+                Ok(r) => deger(c.grup_ekle(ad, s(govde, "aciklama").unwrap_or(""), &r)),
+                Err(e) => hata(e),
+            },
+            None => girdi("grup adı gerekli"),
+        },
+        ("POST", "/api/grup/rol") | ("POST", "/api/grup/rol-kaldir") => {
+            let Some(id) = i(govde, "id") else {
+                return girdi("id gerekli");
+            };
+            match rol_atama(govde) {
+                Ok(r) if yol.ends_with("kaldir") => deger(c.grup_rol_kaldir(id, &r)),
+                Ok(r) => deger(c.grup_rol_ver(id, &r)),
+                Err(e) => hata(e),
+            }
+        }
+        ("POST", "/api/grup/uye") | ("POST", "/api/grup/uye-kaldir") => {
+            let (Some(id), Some(k)) = (i(govde, "id"), i(govde, "kullanici_id")) else {
+                return girdi("id ve kullanici_id gerekli");
+            };
+            if yol.ends_with("kaldir") {
+                deger(c.grup_uye_kaldir(id, k))
+            } else {
+                deger(c.grup_uye_ver(id, k))
+            }
+        }
+        ("POST", "/api/grup/durum") => {
+            match (i(govde, "id"), govde.get("acik").and_then(Value::as_bool)) {
+                (Some(id), Some(acik)) => deger(c.grup_durum(id, acik)),
+                _ => girdi("id ve açık/kapalı gerekli"),
             }
         }
         ("POST", "/api/kullanici/kapat") => match i(govde, "id") {
@@ -340,9 +389,10 @@ pub fn api(
                 return girdi("id gerekli");
             };
             match rol_listesi(govde) {
-                Ok(r) => deger(c.kullanici_onayla(
+                Ok(r) => deger(c.kullanici_onayla_gruplu(
                     id,
                     &r,
+                    &grup_listesi(govde),
                     s(govde, "kisi_id"),
                     s(govde, "gercek_ad"),
                     s(govde, "gorunen_ad"),
@@ -612,6 +662,90 @@ mod testler {
         );
         assert_eq!(d, 200);
         assert_eq!(g.son().2["roller"][0]["rol"], "kasiyer");
+    }
+
+    #[test]
+    fn grup_uclari() {
+        let g = Sahte::yeni();
+        let c = Cati::izinsiz_denetimle(&g);
+        let (d, _) = api(
+            &c,
+            &g,
+            "POST",
+            "/api/grup/ekle",
+            "",
+            &json!({"ad": "magaza-personeli", "aciklama": "Mağaza", "roller": [{"rol": "kasa", "sube_id": 4}]}),
+        );
+        assert_eq!(d, 200);
+        assert_eq!(g.son().1, "/v1/grup");
+        assert_eq!(g.son().2["roller"][0]["rol"], "kasa");
+        let (d, _) = api(
+            &c,
+            &g,
+            "POST",
+            "/api/grup/uye",
+            "",
+            &json!({"id": 3, "kullanici_id": 9}),
+        );
+        assert_eq!(d, 200);
+        assert_eq!(g.son().1, "/v1/grup/3/uye");
+        let (d, _) = api(
+            &c,
+            &g,
+            "POST",
+            "/api/grup/uye-kaldir",
+            "",
+            &json!({"id": 3, "kullanici_id": 9}),
+        );
+        assert_eq!(d, 200);
+        assert_eq!(g.son().1, "/v1/grup/3/uye-kaldir");
+        let (d, _) = api(
+            &c,
+            &g,
+            "POST",
+            "/api/grup/rol",
+            "",
+            &json!({"id": 3, "rol": "kasa"}),
+        );
+        assert_eq!((d, g.son().1.as_str()), (200, "/v1/grup/3/rol"));
+        let (d, _) = api(
+            &c,
+            &g,
+            "POST",
+            "/api/grup/rol-kaldir",
+            "",
+            &json!({"id": 3, "rol": "kasa"}),
+        );
+        assert_eq!((d, g.son().1.as_str()), (200, "/v1/grup/3/rol-kaldir"));
+        let (d, _) = api(
+            &c,
+            &g,
+            "POST",
+            "/api/grup/durum",
+            "",
+            &json!({"id": 3, "acik": false}),
+        );
+        assert_eq!((d, g.son().1.as_str()), (200, "/v1/grup/3/kapat"));
+        // grupla kullanıcı açma: rol olmadan yalnız grup yeter; ikisi de yoksa sunucuya gitmeden reddedilir
+        let (d, _) = api(
+            &c,
+            &g,
+            "POST",
+            "/api/kullanici/ekle",
+            "",
+            &json!({"ad": "ilker", "gorunen_ad": "I", "parola": "uzun-parola-1", "gruplar": [3]}),
+        );
+        assert_eq!(d, 200);
+        assert_eq!(g.son().2["gruplar"][0], 3);
+        let (d, _) = api(
+            &c,
+            &g,
+            "POST",
+            "/api/kullanici/ekle",
+            "",
+            &json!({"ad": "ilker2", "gorunen_ad": "I", "parola": "uzun-parola-1"}),
+        );
+        assert_ne!(d, 200);
     }
 
     #[test]
