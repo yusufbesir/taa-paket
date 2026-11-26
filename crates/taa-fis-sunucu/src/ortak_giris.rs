@@ -270,8 +270,12 @@ fn oturum_ozeti(o: &serde_json::Value, uyari: bool) -> serde_json::Value {
     v
 }
 
+/// taa-kimlik `kullanici_gecerli` ile aynı kural: boş değil, en çok 64, boşluk/denetim yok, "-" ile başlamaz.
 fn kullanici_gecerli(k: &str) -> bool {
-    !k.is_empty() && k.chars().count() <= 64 && !k.chars().any(char::is_whitespace)
+    !k.is_empty()
+        && !k.starts_with('-')
+        && k.chars().count() <= 64
+        && !k.chars().any(|c| c.is_whitespace() || c.is_control())
 }
 
 /// Süren oturum; bu programa kapalıysa ya da yoksa null.
@@ -477,6 +481,20 @@ mod testler {
     fn post(bul: KimlikBulucu, islem: &str, govde: serde_json::Value) -> serde_json::Value {
         yanitla(bul, "terzitakip", islem, govde.to_string().as_bytes())
             .unwrap_or_else(|| json!("YOK"))
+    }
+
+    #[test]
+    fn kullanici_kurali_taa_kimlik_ile_ayni() {
+        assert!(kullanici_gecerli("ayse-k"));
+        assert!(!kullanici_gecerli("-ayse"));
+        assert!(!kullanici_gecerli("--sunucu"));
+        assert!(!kullanici_gecerli("a b"));
+        assert!(!kullanici_gecerli("a\u{7}"));
+        assert!(!kullanici_gecerli(""));
+        assert_eq!(
+            post(arac_yok, "giris", json!({"kullanici": "-x", "parola": "p"}))["durum"],
+            "girdi"
+        );
     }
 
     #[test]

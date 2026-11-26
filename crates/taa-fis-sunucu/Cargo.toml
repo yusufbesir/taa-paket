@@ -27,6 +27,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 getrandom = "0.3"
+# Müşteri takip kayıtlarını imzalamak için (taa-imza ile aynı sürüm/özellikler; çalışma alanında zaten var).
+ed25519-dalek = { version = "2", default-features = false, features = ["std"] }
 tiny_http = "0.12"
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 taa-ayar = { path = "../taa-ayar" }

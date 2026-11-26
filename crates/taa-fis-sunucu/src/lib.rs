@@ -10,6 +10,7 @@ mod ek_uclar;
 mod hesap_uclari;
 pub mod kisi;
 pub mod kurulum;
+pub mod musteri_takip;
 pub mod ortak_giris;
 pub mod pencere;
 pub mod sayfalar;
@@ -387,16 +388,33 @@ impl Uygulama {
     }
 
     /// Fiş hazır olunca bilgilendirme kuyruğuna yazar; sonucu kısa metin olarak döndürür.
+    /// Müşteri takip sayfasına gidecek durumu kuyruğa yazar (özellik kapalıysa bir şey yapmaz).
+    /// Hata fişi engellemez: yalnız günlüğe yazılır, gönderim arka planda yeniden denenir.
+    fn takibe_yaz(&self, f: &taa_fis::Fis) {
+        if let Err(e) = musteri_takip::kuyruga_yaz(&self.dizin, f, self.simdi()) {
+            eprintln!("Müşteri takip kuyruğuna yazılamadı: {e}");
+        }
+    }
+
+    /// Müşteri nüshasına basılacak takip adresleri (özellik kapalıysa `None`).
+    pub(crate) fn takip_adresleri(&self, no: &str) -> Option<(String, Option<String>)> {
+        let a = musteri_takip::Ayar::dizinden(&self.dizin)?;
+        let kod = musteri_takip::takip_kodu(&self.dizin, no).ok()?;
+        Some((a.adres(&kod), a.yedek_adres(&kod)))
+    }
+
     fn hazir_bildirimi(&self, d: &Defter, no: &str) -> serde_json::Value {
         let Ok(Some(f)) = d.bul(no) else {
             return json!(null);
         };
-        json!(taa_bildirim::hazir_bildir(
+        let takip = self.takip_adresleri(no).map(|(a, _)| a);
+        json!(taa_bildirim::hazir_bildir_takipli(
             &self.dizin,
             no,
             &f.telefon,
             f.bildirim_izni,
-            &tarih_iso(self.simdi())
+            &tarih_iso(self.simdi()),
+            takip.as_deref()
         ))
     }
 
@@ -898,6 +916,7 @@ impl Uygulama {
                 g.sube = sube;
                 match d.ekle_uyarili(g) {
                     Ok((f, uyarilar)) => {
+                        self.takibe_yaz(&f);
                         Yanit::json(200, json!({ "no": f.no, "uyarilar": uyarilar }))
                     }
                     Err(e) => Yanit::hata(422, &e),
@@ -939,6 +958,9 @@ impl Uygulama {
                 };
                 match d.durum_ata(no, yeni, &tarih_iso(self.simdi())) {
                     Ok(()) => {
+                        if let Ok(Some(f)) = d.bul(no) {
+                            self.takibe_yaz(&f);
+                        }
                         // Hazır + müşteri izni varsa hazır mesajı kuyruğa yazılır (yalnız fiş no, KVKK).
                         let mut mesaj = json!(null);
                         if yeni == Durum::Hazir {
@@ -1102,7 +1124,13 @@ impl Uygulama {
                     let ayd = self.aydinlatma_url.clone().unwrap_or_else(|| {
                         format!("{}/aydinlatma", self.taban_url.trim_end_matches('/'))
                     });
-                    taa_fis::escpos_nushalar_tam(&f, 42, &qr, Some(&ayd))
+                    let takip = self.takip_adresleri(&f.no);
+                    let t = takip.as_ref().map(|(a, y)| taa_fis::Takip {
+                        adres: a,
+                        yedek: y.as_deref(),
+                        cumle: musteri_takip::FIS_CUMLESI,
+                    });
+                    taa_fis::escpos_nushalar_takipli(&f, 42, &qr, Some(&ayd), t.as_ref())
                 };
                 match yaziciya_yaz(yazici, &baytlar) {
                     Ok(()) => Yanit::json(200, json!({ "tamam": true })),

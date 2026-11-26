@@ -355,7 +355,7 @@ fn yetki_belgesi_imza_sure_ve_dosya() {
         .is_err(),
         "kurcalanmış belge"
     );
-    // Anahtar yokken: dogrulandi=false, gecerlilik yoksa alınma+7 gün.
+    // Anahtar yokken: dogrulandi=false, gecerlilik yoksa alınma+3 gün (E5).
     let kok2 = taa_dosya::gecici_klasor().unwrap();
     assert!(sunucu_anahtari_oku(&kok2).unwrap().is_none());
     let y2 = yetki_al(
@@ -368,7 +368,7 @@ fn yetki_belgesi_imza_sure_ve_dosya() {
     )
     .unwrap();
     assert!(!y2.dogrulandi && y2.izinli("her.sey") && !y2.izinli("yok.islem"));
-    assert_eq!(y2.gecerlilik, crate::yetki::gun_ekle(&y2.alinma, 7));
+    assert_eq!(y2.gecerlilik, crate::yetki::gun_ekle(&y2.alinma, 3));
     assert!(yetki_oku(&kok2, "https://s", None, None).is_ok());
     // Bozuk sunucu.pub sessizce atlanmaz.
     std::fs::create_dir_all(kok2.join("anahtarlar")).unwrap();
@@ -579,4 +579,39 @@ fn e1_yanit_vermeyen_sunucuda_butce_icinde_cevrimdisi_kabul() {
         "çevrimdışı geçerli oturum korunur"
     );
     drop(tut);
+}
+
+#[test]
+fn e5_cevrimdisi_uc_gun_siniri() {
+    // Sunucu gecerlilik = son temas + 3 gün verir (Yusuf 11-25). Son temas 2026-11-25T12:00:00Z.
+    let ulasilamadi = || Err(KimlikHata::Baglanti("bağlanılamadı".into()));
+    let o = d1_oturum("2026-11-28T12:00:00Z");
+    assert!(
+        oturum_dogrula(&o, "2026-11-28T11:59:59Z", ulasilamadi).is_ok(),
+        "3 günden 1 sn önce kabul"
+    );
+    assert!(
+        oturum_dogrula(&o, "2026-11-28T12:00:00Z", ulasilamadi).is_err(),
+        "tam sınırda ret"
+    );
+    assert!(
+        oturum_dogrula(&o, "2026-11-28T12:00:01Z", ulasilamadi).is_err(),
+        "3 günden 1 sn sonra ret"
+    );
+    assert!(
+        oturum_dogrula(&d1_oturum(""), "2026-11-25T12:00:01Z", ulasilamadi).is_err(),
+        "boş gecerlilik ret"
+    );
+    assert_eq!(yetki::VARSAYILAN_GUN, 3, "gecerliliksiz belge de 3 gün");
+}
+
+/// Giydir başlığının bulgusu (11-26): "-" ile başlayan ad seçenek sanılmasın diye reddedilir.
+#[test]
+fn kullanici_tire_ile_baslayamaz() {
+    assert!(crate::kullanici_gecerli("ayse"));
+    assert!(crate::kullanici_gecerli("ayse-k"));
+    assert!(!crate::kullanici_gecerli("-ayse"));
+    assert!(!crate::kullanici_gecerli("--sunucu"));
+    assert!(!crate::kullanici_gecerli(""));
+    assert!(!crate::kullanici_gecerli("a b"));
 }

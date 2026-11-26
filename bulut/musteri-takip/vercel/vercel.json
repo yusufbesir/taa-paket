@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    { "source": "/t/:kod", "destination": "/api/t?kod=:kod" },
+    { "source": "/api/durum/:kod", "destination": "/api/t?kod=:kod&bicim=json" },
+    { "source": "/", "destination": "/api/t" }
+  ],
+  "crons": [{ "path": "/api/temizle", "schedule": "17 3 * * *" }]
+}

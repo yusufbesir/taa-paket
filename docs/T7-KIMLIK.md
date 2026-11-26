@@ -3,7 +3,7 @@
 
 Kaynak: Yusuf 2026-11-06 "Merkez sunucu: PostgreSQL, ücretsiz". Sözleşme: Tutaa `API-SOZLESMESI.md`
 (`POST /v1/giris {kullanici, parola[, kod]} -> {oturum, sube_id, roller[]}`; her istek `Authorization: Bearer <oturum>`).
-Sunucu kodu Tutaa deposunun işidir; bu crate istemci tarafıdır. Kuyruk: `docs/T6-KUYRUK.md`.
+Sunucu kodu taa-sunucu deposunun işidir; bu crate istemci tarafıdır. Kuyruk: `docs/T6-KUYRUK.md`.
 
 ## Ne yapar
 | Parça | İş |

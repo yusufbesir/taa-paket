@@ -117,6 +117,15 @@
   function basla() {
     denetle();
     setInterval(denetle, ARALIK_MS);
+    // Başka programda çıkış yapıldıysa ortak bilgisayarda pencere öne gelince hemen fark edilsin (en çok 5 sn'de bir).
+    var son = Date.now();
+    function odakDenetle() {
+      if (document.visibilityState === 'hidden' || Date.now() - son < 5000) return;
+      son = Date.now();
+      denetle();
+    }
+    window.addEventListener('focus', odakDenetle);
+    document.addEventListener('visibilitychange', odakDenetle);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', basla);

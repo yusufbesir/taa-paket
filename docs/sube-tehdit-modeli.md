@@ -15,7 +15,7 @@ Test adları uygulama aşamasında (Ş2, Ş3, KM1, RH1, EB1–EB4) aynen kullan�
 | V6 | Cihaz anahtarı (özel) | Her şube bilgisayarında `<kök>\cihaz\` | İstek kimliği |
 | V7 | Sunucu makbuz anahtarı, yayın imza anahtarı | Sunucu / yayın ortamı (AI dokunmaz) | Bütünlük |
 | V8 | Yönetici hesapları (argon2 özet, TOTP sırrı) | Sunucu PostgreSQL | Tüm sistem yetkisi |
-| V9 | Çevrimdışı yetki belgeleri (7 gün) | Şube bilgisayarı (her eş için ayrı belge) | Geçici yetki |
+| V9 | Çevrimdışı yetki belgeleri (3 gün, Yusuf 11-25) | Şube bilgisayarı (her eş için ayrı belge) | Geçici yetki |
 | V10 | Gece yedekleri | Sunucu, şifreli | Tüm veri |
 | V11 | Denetim izi (`olaylar`) | Sunucu | Kanıt |
 | V12 | Eş listesi (sunucu imzalı: şube kodu, cihaz kimlikleri, açık anahtarlar, roller) | Sunucu + çok bilgisayarlı şubede her eşin önbelleği | Eş kapısının kime açık olduğunu belirler |
@@ -47,7 +47,7 @@ Test adları uygulama aşamasında (Ş2, Ş3, KM1, RH1, EB1–EB4) aynen kullan�
 |---|---|---|---|---|---|
 | T1 | Başka şubenin kaydını okuma/listeleme/sayma | S1 | Şube cihazdan türetilir; `yetki::izinli` + RLS; başka şube kaydına 404 | `izolasyon_*` matrisi | Uygulama ve RLS aynı hatayı yaparsa; iki kilit ayrı test edilir |
 | T2 | Başka şube adına yazma (`X-TAA-Sube`/gövde sahteciliği) | S1, S2 | Beyan yok sayılır; uyuşmazlık 409 + `yetki.red.sube` | `sube_beyan_uyusmaz_409` | Yok (sunucu kuralı) |
-| T3 | Çalınan şube bilgisayarı | S3 | Çatı'dan cihaz ve şube imzası iptal; oturumlar düşer; yerel veri DPAPI; Windows hesabı parolalı | `calinti_cihaz_iptal_red`, `es_iptal_cihaz_red` | İptalden önceki çevrimdışı süre (en çok 7 gün) ve Windows oturumu açık bırakılmışsa yerel veri; çok bilgisayarlı şubede çalınan PC şubenin tüm eşlenmiş kayıtlarını taşır |
+| T3 | Çalınan şube bilgisayarı | S3 | Çatı'dan cihaz ve şube imzası iptal; oturumlar düşer; yerel veri DPAPI; Windows hesabı parolalı | `calinti_cihaz_iptal_red`, `es_iptal_cihaz_red` | İptalden önceki çevrimdışı süre (en çok 3 gün) ve Windows oturumu açık bırakılmışsa yerel veri; çok bilgisayarlı şubede çalınan PC şubenin tüm eşlenmiş kayıtlarını taşır |
 | T4 | Kopyalanan şube imza anahtarı | S2, S5 | DPAPI (başka PC'de açılmaz); iki anahtar şartı; iptal | `imza_baska_cihazdan_red`, `imza_iptal_sonrasi_red` | **Yazılımla tam devredilemezlik yok**: PC'de yönetici olan S2 anahtarı o PC'de kullanabilir |
 | T5 | İstek imzasının belge imzası yerine kullanılması | S2 | Alan ayrımı etiketi `TAA-BELGE-v1` | `imza_etiket_karisma_red` | Yok |
 | T6 | Tekrar saldırısı | S4 | İstek imzasında zaman (±5 dk) + tek kullanımlık değer; `no`/`olay_id` tek kayıt | `istek_tekrar_red`, `olay_tekrar_tek_kayit` | Yok |
@@ -56,7 +56,7 @@ Test adları uygulama aşamasında (Ş2, Ş3, KM1, RH1, EB1–EB4) aynen kullan�
 | T9 | Yönetici hesabı ele geçirme | S5, S6 | argon2, TOTP zorunlu, 5 yanlışta kilit, yeniden doğrulama 15 dk, yalnız merkez cihazından yönetim | `yonetici_totp_zorunlu`, `giris_kilit_5` | TOTP cihazı da çalınırsa |
 | T10 | Yerel PIN ile yönetici yetkisi | S1, S2 | Kayıtlı cihazda yerel PIN yönetici izni vermez; yerel kipe geri düşme yok | `kayitli_cihaz_pin_yetkisiz` | Paketsiz kurulumda PIN sürer (bilerek) |
 | T11 | Çevrimdışı belge kopyalama | S2, S5 | Belge kullanıcı + cihaz anahtarı + şube + izne bağlı | `cevrimdisi_belge_baska_cihaz_red` | — |
-| T12 | Saat geri alarak süresi dolmuş belge kullanma | S2 | Son sunucu zamanı + artan sayaç; geri giderse yönetici eylemi durur; sunucu eşitlemede yeniden denetler | `saat_geri_alma_yonetici_durur` | Saat hiç ileri alınmadan 7 gün içinde kullanım (kabul edilen gecikme) |
+| T12 | Saat geri alarak süresi dolmuş belge kullanma | S2 | Son sunucu zamanı + artan sayaç; geri giderse yönetici eylemi durur; sunucu eşitlemede yeniden denetler | `saat_geri_alma_yonetici_durur` | Saat hiç ileri alınmadan 3 gün içinde kullanım (kabul edilen gecikme) |
 | T13 | Hata mesajı/günlükten sızıntı | S1 | 404 ile "yok" ve "başkasının" ayırt edilmez; mesajda şube adı, kişi verisi, SQL yok; günlükte ad/telefon/e-posta maskeli | `hata_mesaji_sizinti`, `gunluk_maske_taramasi` | Yan kanal (yanıt süresi farkı) [ÖLÇ] |
 | T14 | Sayım/istatistikten çıkarım | S1 | Sayım uçları da RLS'den geçer; şube yalnız kendi sayısını alır | `izolasyon_*_sayim` | — |
 | T15 | Zararlı ek dosya | S1, S2 | MIME izin listesi, boyut sınırı, sha256, yürütülebilir dosya reddi, zarf şifreleme | `ek_mime_red`, `ek_yurutulebilir_red` | Görüntü işleyici açığı (bağımlılık güncel tutulur, `cargo audit`) |
@@ -96,7 +96,7 @@ Test adları uygulama aşamasında (Ş2, Ş3, KM1, RH1, EB1–EB4) aynen kullan�
 
 ## 7. Kalan riskler (kabul edilen)
 - Yazılımla tam "devredilemez anahtar" garantisi yok; iki anahtar şartı ve iptal akışıyla sınırlandı.
-- Çevrimdışı şubede yetki iptali en çok 7 gün gecikir.
+- Çevrimdışı şubede yetki iptali en çok 3 gün gecikir (son sunucu temasından).
 - Sunucu tek PC (Yusuf'un bilgisayarı): merkez görünümü kesilebilir; şubeler çalışmaya devam eder. Fiziksel güvenliği ve disk şifrelemesi (BitLocker ertelendi) Yusuf'tadır.
 - Uçtan uca şifreleme yok (sunucu rapor için okur; 11-11 kararı).
 - Yan kanal (yanıt süresi) ölçülmedi.
