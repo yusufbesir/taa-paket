@@ -1,7 +1,7 @@
-// TAA müşteri takip, Cloudflare Workers + KV. Ortak kod: ./takip.mjs (bulut/musteri-takip/ortak'tan kopya).
+// TAA müşteri takip, Cloudflare Workers + KV. Ortak kod: ./takip.mjs ve ./diller.mjs (bulut/musteri-takip/ortak'tan kopya).
 // Ayarlar (wrangler.toml): KV bağı TAKIP; değişkenler GENEL_ANAHTAR (mağaza sunucusunun genel anahtarı, gizli değil),
 // YEDEK_SAYFA (Vercel adresi). Kayıt süresi KV'nin kendi silme zamanıyla (expiration = sil) yönetilir.
-import { dogrula, yeniMi, sayfa, KOD_RE } from "./takip.mjs";
+import { dogrula, yeniMi, sayfa, KOD_RE, dilSec } from "./takip.mjs";
 
 const html = (h, kod = 200) =>
   new Response(h, {
@@ -38,9 +38,14 @@ export default {
       if (kayit && kayit.sil <= Date.now() / 1000) kayit = null;
       if (m[1] === "api/durum") return kayit ? json(kayit) : json({ hata: "bulunamadı" }, 404);
       const yedek = env.YEDEK_SAYFA && KOD_RE.test(kod) ? `${env.YEDEK_SAYFA}/t/${kod}` : "";
-      return html(sayfa(kayit, { yedek }), kayit ? 200 : 404);
+      const dil = dilSec(url.searchParams.get("dil"), istek.headers.get("accept-language"));
+      const adres = KOD_RE.test(kod) ? `/t/${kod}` : "";
+      return html(sayfa(kayit, { yedek, dil, adres }), kayit ? 200 : 404);
     }
-    if (istek.method === "GET" && yol === "/") return html(sayfa(null));
+    if (istek.method === "GET" && yol === "/") {
+      const dil = dilSec(url.searchParams.get("dil"), istek.headers.get("accept-language"));
+      return html(sayfa(null, { dil, adres: "/" }));
+    }
     return new Response("Bulunamadı", { status: 404 });
   },
 };
