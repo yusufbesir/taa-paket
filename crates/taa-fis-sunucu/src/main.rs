@@ -64,6 +64,26 @@ fn main() {
             std::thread::sleep(std::time::Duration::from_secs(60));
         });
     }
+    // Şube eşitleme: site okunur, şube tablosu değiştiyse (ya da 14 günde bir) bulutlara imzalı itilir. İlk tur 1 dk sonra, sonra 6 saatte bir.
+    {
+        let dizin = veri.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(60));
+            loop {
+                let simdi = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                let g = taa_fis_sunucu::musteri_takip::CurlGonderici;
+                match taa_fis_sunucu::sube_esitle::esitle(&dizin, simdi, &taa_fis_sunucu::sube_esitle::site_getir, &g) {
+                    Ok(s) if s.degisti => eprintln!("Şube tablosu güncellendi: {} şube, {} hedefe itildi", s.subeler, s.itilen),
+                    Ok(_) => {}
+                    Err(e) => eprintln!("Şube eşitleme yapılamadı: {e}"),
+                }
+                std::thread::sleep(std::time::Duration::from_secs(6 * 3600));
+            }
+        });
+    }
     let mut uyg = Uygulama::yeni(veri, arg("--yazici").map(PathBuf::from), taban.clone());
     uyg.aydinlatma_url = arg("--aydinlatma-url");
     let kok = arg("--kok")

@@ -14,6 +14,7 @@ pub mod musteri_takip;
 pub mod ortak_giris;
 pub mod pencere;
 pub mod sayfalar;
+pub mod sube_esitle;
 mod teslim_al;
 mod yonetici;
 
