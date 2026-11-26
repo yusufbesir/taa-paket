@@ -83,3 +83,68 @@ html[data-tema="keten"][data-ton="koyu"]{
   --tk-ok:#8FD6A0;--tk-uyari:#F0C060;--tk-hata:#FF9A7A;
   --tk-gol:0 1px 2px rgba(0,0,0,.45);
 }
+/* ============ 3. ORTAK BİLEŞEN: fiş düzeltme bölümü ve bağlı fiş kutusu (ortak.js TKD) ============
+   Yalnız --tk-* jetonları; .dugme, .alan, .mesaj, .onay sayfaların kendi kurallarıyla gelir. */
+.dz{border-top:var(--tk-kenar) solid var(--tk-line);padding-top:var(--tk-g3);margin-top:var(--tk-g2)}
+.dz h3{margin:0}
+.dz h4{margin:var(--tk-g2) 0 0;font-size:max(13px,.875em)}
+.dz-bas{display:flex;flex-wrap:wrap;gap:var(--tk-g2);align-items:baseline;justify-content:space-between}
+.dz-dugmeler,.dz-sira{display:flex;flex-wrap:wrap;gap:var(--tk-g2)}
+.dz-dugmeler .dugme,.dz-sira .dugme{flex:1 1 auto;width:auto;white-space:nowrap}
+.dz-dugmeler .dugme[aria-expanded="true"]{background:var(--tk-tx);color:var(--tk-bg);border-color:var(--tk-tx)}
+.dz-form[hidden],.dz .alan[hidden]{display:none}
+.dz .alan{align-content:end}
+.dz-form h4{margin:0}
+.dz-izgara{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--tk-g2) var(--tk-g3)}
+.dz .alan input,.dz .alan select,.dz .alan textarea{width:100%;min-height:var(--tk-hedef);padding:var(--tk-g1) var(--tk-g3);
+  border:var(--tk-kenar) solid var(--tk-line);border-radius:min(var(--tk-r),12px);background:var(--tk-panel);color:var(--tk-tx);font:inherit}
+.dz-liste,.dz-sonuc,.dz-gecmis{list-style:none;margin:0;padding:0;display:grid;gap:var(--tk-g1)}
+.dz-liste li{display:flex;gap:var(--tk-g2);align-items:center;justify-content:space-between;padding:var(--tk-g1) 0;
+  border-bottom:var(--tk-kenar) solid var(--tk-panel2)}
+.dz-liste li>span{min-width:0;overflow-wrap:anywhere}
+.dz-gecmis li{padding:var(--tk-g1) 0;border-bottom:var(--tk-kenar) solid var(--tk-panel2);overflow-wrap:anywhere}
+.dz-secim{width:100%;min-height:var(--tk-hedef);text-align:start;padding:var(--tk-g1) var(--tk-g3);border:var(--tk-kenar) solid var(--tk-line);
+  border-radius:min(var(--tk-r),12px);background:var(--tk-panel);color:var(--tk-tx);cursor:pointer;font:inherit}
+.dz-secim[aria-pressed="true"]{background:var(--tk-tx);color:var(--tk-bg);border-color:var(--tk-tx)}
+.dz-secim[aria-pressed="true"] .mut{color:inherit}
+.dz-kutu{max-width:min(560px,calc(100vw - 2*var(--tk-g4)));width:100%;border:var(--tk-kenar) solid var(--tk-line);border-radius:var(--tk-r);
+  background:var(--tk-panel);color:var(--tk-tx);padding:var(--tk-g5);box-shadow:var(--tk-gol)}
+.dz-kutu::backdrop{background:rgba(0,0,0,.45)}
+.dz-kutu,.dz-kutu button,.dz-kutu input{font:inherit}
+.dz-kutu{font-size:var(--tk-yazi);font-family:var(--tk-fb)}
+.dz-kutu .dugme:disabled{opacity:.55;cursor:default}
+.dz-kutu h2{margin:0 0 var(--tk-g2)}
+.dz-kutu-liste{border:0;margin:var(--tk-g3) 0;padding:0;display:grid;gap:var(--tk-g1)}
+.dz-kutu-liste .onay{align-items:flex-start;font-weight:400}
+.dz-pasif{color:var(--tk-mut)}
+.dz-neden{color:var(--tk-uyari);font-weight:600}
+.dz-kutu .dz-sira{margin-top:var(--tk-g3)}
+@media (prefers-reduced-motion:reduce){.dz-kutu{animation:none}}
+/* ============ 4. ORTAK BİLEŞEN: teslim kutusu, imza alanı, teslim kaydı (ortak.js TKD, Ekip B2) ============
+   İmza tuvali kâğıt gibi beyazdır (imza PNG'si her temada aynı görünür); çerçeve ve yazılar --tk-* jetonlarıyla. */
+.tk-teslim [hidden],.tk-teslim-bolum [hidden]{display:none!important}
+.tk-teslim form{display:grid;gap:var(--tk-g3)}
+.tk-teslim h2,.tk-teslim p{margin:0}
+.tk-teslim-tur{border:var(--tk-kenar) solid var(--tk-line);border-radius:min(var(--tk-r),12px);margin:0;padding:var(--tk-g2) var(--tk-g3);
+  display:flex;flex-wrap:wrap;gap:var(--tk-g1) var(--tk-g4);align-items:center}
+.tk-teslim-tur legend{padding:0 var(--tk-g1);font-weight:600}
+.tk-teslim-tur .onay{font-weight:600}
+.tk-teslim-tur .dz-neden{flex:1 1 100%;font-weight:400}
+.tk-teslim .alan input,.tk-teslim .alan select{width:100%;min-height:var(--tk-hedef);padding:var(--tk-g1) var(--tk-g3);
+  border:var(--tk-kenar) solid var(--tk-line);border-radius:min(var(--tk-r),12px);background:var(--tk-panel);color:var(--tk-tx);font:inherit}
+.tk-son4 input{max-width:9ch;letter-spacing:.3em;font-size:1.25em}
+.tk-imza-kap{display:grid;gap:var(--tk-g1)}
+.tk-imza-bas{font-weight:600}
+.tk-imza-cerceve{position:relative;border:var(--tk-kenar) dashed var(--tk-line);border-radius:min(var(--tk-r),12px);overflow:hidden;background:#FFFFFF}
+.tk-imza-tuval{display:block;width:100%;height:180px;touch-action:none;cursor:crosshair;background:#FFFFFF;-webkit-user-select:none;user-select:none}
+.tk-imza-tuval:focus-visible{outline:3px solid var(--tk-ac);outline-offset:-3px}
+.tk-imza-ipucu{position:absolute;inset-inline-start:var(--tk-g3);bottom:var(--tk-g2);color:#5A5A5A;pointer-events:none;font-size:max(13px,.875em)}
+.tk-imza-cerceve::after{content:"";position:absolute;inset-inline:var(--tk-g4);bottom:36px;border-bottom:1px solid #9A9A9A;pointer-events:none}
+.tk-imza-alt{display:flex;gap:var(--tk-g2);align-items:center;justify-content:space-between;flex-wrap:wrap}
+.tk-imza-alt .dugme{width:auto}
+.tk-teslim-kaydi{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:var(--tk-g2) var(--tk-g3);margin:var(--tk-g2) 0 0}
+.tk-teslim-kaydi dt{color:var(--tk-mut);font-size:max(12px,.8em)}
+.tk-teslim-kaydi dd{margin:0;overflow-wrap:anywhere}
+.tk-imza-gorsel{margin-top:var(--tk-g2)}
+.tk-imza-resim{display:block;max-width:min(100%,420px);height:auto;background:#FFFFFF;border:var(--tk-kenar) solid var(--tk-line);border-radius:min(var(--tk-r),12px)}
+@media (max-width:480px){.tk-imza-tuval{height:160px}.dz-kutu.tk-teslim{padding:var(--tk-g4)}}
