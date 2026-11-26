@@ -90,6 +90,61 @@ export async function dogrula(govde, imzaHex, genelHex, simdi = Math.floor(Date.
   return { kayit };
 }
 
+/** İmzalı şube tablosu (mağaza sunucusunun günlük site eşitlemesi). Biçim:
+ *  {v:1, tur:"subeler", ts, wa?, subeler:{KOD:{ad, adres?, tel?, saat?, wa?, not?}}}. Yalnız kamuya açık işletme bilgisi. */
+export async function dogrulaSubeler(govde, imzaHex, genelHex, simdi = Math.floor(Date.now() / 1000)) {
+  const genel = hexBayt(genelHex);
+  const imza = hexBayt(imzaHex);
+  if (!genel || genel.length !== 32) return { hata: "sunucu ayarı eksik", kod: 500 };
+  if (!imza || imza.length !== 64) return { hata: "imza yok", kod: 401 };
+  if (typeof govde !== "string" || govde.length > 16384) return { hata: "gövde geçersiz", kod: 400 };
+  const anahtar = await crypto.subtle.importKey("raw", genel, { name: "Ed25519" }, false, ["verify"]);
+  if (!(await crypto.subtle.verify("Ed25519", anahtar, imza, new TextEncoder().encode(govde)))) return { hata: "imza geçersiz", kod: 401 };
+  let k;
+  try {
+    k = JSON.parse(govde);
+  } catch {
+    return { hata: "gövde geçersiz", kod: 400 };
+  }
+  const yazi = (x, n) => x === undefined || (typeof x === "string" && x.length <= n && !/[<>\u0000-\u001f]/.test(x));
+  const no = (x) => x === undefined || (typeof x === "string" && /^\+?\d{0,15}$/.test(x));
+  if (!k || k.v !== 1 || k.tur !== "subeler" || !Number.isInteger(k.ts) || !no(k.wa) ||
+    !k.subeler || typeof k.subeler !== "object" || Array.isArray(k.subeler)) return { hata: "tablo biçimi geçersiz", kod: 400 };
+  if (k.ts > simdi + 600 || k.ts < simdi - 30 * GUN) return { hata: "tablo zamanı geçersiz", kod: 400 };
+  const girdiler = Object.entries(k.subeler);
+  if (girdiler.length < 1 || girdiler.length > 60) return { hata: "tablo biçimi geçersiz", kod: 400 };
+  const subeler = {};
+  for (const [kod, x] of girdiler) {
+    if (!/^[A-Z0-9]{2,8}$/.test(kod) || !x || typeof x !== "object" || typeof x.ad !== "string" || !x.ad ||
+      !yazi(x.ad, 60) || !yazi(x.adres, 160) || !yazi(x.saat, 40) || !yazi(x.not, 80) || !no(x.tel) || !no(x.wa)) {
+      return { hata: "tablo biçimi geçersiz", kod: 400 };
+    }
+    subeler[kod] = { ad: x.ad, adres: x.adres || "", tel: x.tel || "", saat: x.saat || "", wa: x.wa || "", not: x.not || "" };
+  }
+  return { tablo: { v: 1, ts: k.ts, wa: k.wa || "", subeler } };
+}
+
+/** +90XXXXXXXXXX → "0XXX XXX XX XX" (Türkiye dışı numara olduğu gibi). */
+function telGorunen(tel) {
+  const m = /^\+90(\d{3})(\d{3})(\d{2})(\d{2})$/.exec(tel || "");
+  return m ? `0${m[1]} ${m[2]} ${m[3]} ${m[4]}` : tel || "";
+}
+
+/** Dosyadaki ilk tabloyla imzalı tabloyu birleştirir: imzalı tablodaki dolu alanlar üstün, yeni şubeler eklenir. */
+export function subeTablosu(tablo) {
+  if (!tablo || !tablo.subeler) return SUBELER;
+  const sonuc = {};
+  for (const [kod, s] of Object.entries(SUBELER)) sonuc[kod] = { ...s };
+  for (const [kod, s] of Object.entries(tablo.subeler)) {
+    const eski = Object.hasOwn(sonuc, kod) ? sonuc[kod] : {};
+    const yeni = { ...eski };
+    for (const [a, d] of Object.entries(s)) if (d) yeni[a] = d;
+    if (s.tel) yeni.tel_g = telGorunen(s.tel);
+    sonuc[kod] = yeni;
+  }
+  return sonuc;
+}
+
 /** Eski kayıt yenisinin üzerine yazılmasın (tekrar oynatma / sıra karışması). */
 export function yeniMi(eski, yeni) {
   return !eski || yeni.ts >= eski.ts;
@@ -227,7 +282,9 @@ function kargoKarti(kg, dil, m) {
 }
 
 /** Şube kodu → SUBELER kaydı; Object.prototype üyeleri ("constructor", "__proto__") şube sayılmaz. */
-const subeBul = (kod) => (typeof kod === "string" && Object.hasOwn(SUBELER, kod) ? SUBELER[kod] : null);
+// sayfa() eşzamanlıdır; başında etkin tablo atanır, bitince dosyadaki tabloya döner.
+let AKTIF = SUBELER;
+const subeBul = (kod) => (typeof kod === "string" && Object.hasOwn(AKTIF, kod) ? AKTIF[kod] : null);
 
 const subeAdi = (s) => `<bdi lang="tr">Terzi Adem Altun · ${kacis(s.ad)}</bdi>`;
 
@@ -258,27 +315,43 @@ function subeKarti(kod, { kargoda, durum = "", m, tam = false, wa = "", takipKod
     tam ? waDugmesi(waNumarasi(s, wa), takipKodu, m) : "",
   ].join("");
   return `<section class="kart sube-kart${tam ? " burada" : ""}" aria-labelledby="sube">${bas}${rozet}
-    <p class="sube-ad">${subeAdi(s)}</p>${s.adres ? `<p class="adres" lang="tr"><bdi>${kacis(s.adres)}</bdi></p>` : adresYokNotu(s, m)}
+    <p class="sube-ad">${subeAdi(s)}</p>${s.adres ? `<p class="adres" lang="tr"><bdi>${kacis(s.adres)}</bdi></p>` : adresYokNotu(s, m)}${subeNotu(s)}
     ${tam && s.tel_g ? `<p class="tel"><bdi dir="ltr">${kacis(s.tel_g)}</bdi></p>` : ""}
     ${tam && s.saat ? `<dl><div><dt>${m.saatler}</dt><dd dir="ltr">${kacis(s.saat)}</dd></div></dl>` : ""}
     ${dugmeler ? `<div class="dugmeler">${dugmeler}</div>` : ""}</section>`;
 }
 const SIMGE_KONUM = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>';
 
-/** Şubeler sekmesi: kayıttaki şube en üstte tam kart, altında diğer şubeler (adresi olanlar önce). */
-function subelerSekmesi(kayit, m, wa) {
+const subeNotu = (s) => (s.not ? `<p class="sube-not" lang="tr"><bdi>${kacis(s.not)}</bdi></p>` : "");
+
+/** Arama metnini sadeleştirir: Türkçe küçük harf, aksansız (ı/i, ş/s... eşit sayılır). */
+const sade = (x) => String(x || "").toLocaleLowerCase("tr-TR").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ı/g, "i");
+
+/** Şubeler sekmesi: kayıttaki şube en üstte tam kart; diğer şubeler çekmecede (details), içinde arama kutusu.
+ *  Arama betiksiz: GET ?sekme=subeler&ara=... ile sunucuda süzülür; arama varken çekmece açık gelir. */
+function subelerSekmesi(kayit, m, wa, { adres = "", dil = "tr", ara = "" } = {}) {
   const ust = subeKarti(kayit.s, { kargoda: !!kayit.kg, durum: kayit.d, m, tam: true, wa, takipKodu: kayit.k });
-  const digerleri = Object.entries(SUBELER).filter(([k]) => k !== kayit.s);
+  const tum = Object.entries(AKTIF).filter(([k]) => k !== kayit.s);
   // Kararlı sıralama: adresli şubeler önce, kendi aralarında dosyadaki sıra korunur.
-  digerleri.sort(([, a], [, b]) => (b.adres ? 1 : 0) - (a.adres ? 1 : 0));
+  tum.sort(([, a], [, b]) => (b.adres ? 1 : 0) - (a.adres ? 1 : 0));
+  const q = sade(ara).trim();
+  const digerleri = q ? tum.filter(([, s]) => sade(`${s.ad} ${s.adres || ""} ${s.not || ""}`).includes(q)) : tum;
   const adressizVar = digerleri.some(([, s]) => !s.adres);
   const lis = digerleri.map(([, s]) => {
     const d = [s.adres ? dugme(yolTarifi(s.adres), m.yol, true, "kucuk") : "", s.tel ? dugme(`tel:${s.tel}`, m.ara, true, "kucuk") : ""].join("");
-    return `<li><p class="sube-ad">${subeAdi(s)}</p>${s.adres ? `<p class="adres" lang="tr"><bdi>${kacis(s.adres)}</bdi></p>` : ""}${d ? `<div class="dugmeler">${d}</div>` : ""}</li>`;
+    return `<li><p class="sube-ad">${subeAdi(s)}</p>${s.adres ? `<p class="adres" lang="tr"><bdi>${kacis(s.adres)}</bdi></p>` : ""}${subeNotu(s)}${s.tel_g ? `<p class="tel"><bdi dir="ltr">${kacis(s.tel_g)}</bdi></p>` : ""}${d ? `<div class="dugmeler">${d}</div>` : ""}</li>`;
   }).join("");
   const not = adressizVar ? adresYokNotu({}, m) : "";
-  return `${ust}<section class="kart" aria-labelledby="diger"><h2 id="diger" class="kb">${m.diger_subeler}</h2><ul class="subeler">${lis}</ul>${not}</section>`;
+  const form = adres
+    ? `<form class="sube-ara" method="get" action="${kacis(adres)}" role="search"><input type="hidden" name="sekme" value="subeler"><input type="hidden" name="dil" value="${kacis(dil)}">
+      <label class="gizli" for="ara">${kacis(m.ara_b)}</label><input id="ara" type="search" name="ara" value="${kacis(ara)}" maxlength="40" placeholder="${kacis(m.ara_ph)}" autocomplete="off" enterkeyhint="search">
+      <button type="submit">${SIMGE_ARA}<span>${kacis(m.ara_d)}</span></button></form>${q ? `<p class="ara-sonuc"><a href="${kacis(sekmeAdresi(adres, "subeler", dil))}">${kacis(m.ara_temizle)}</a></p>` : ""}`
+    : "";
+  const liste = digerleri.length ? `<ul class="subeler">${lis}</ul>` : `<p class="not">${kacis(m.ara_yok)}</p>`;
+  return `${ust}<section class="kart" aria-labelledby="diger"><details class="cekmece"${q ? " open" : ""}><summary><h2 id="diger" class="kb">${m.diger_subeler}</h2><span class="sayi">${tum.length}</span></summary>
+    ${form}${liste}${not}</details></section>`;
 }
+const SIMGE_ARA = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>';
 
 /** EK2.sss içinde WhatsApp'ı anan sorunun sırası (ek işlem). */
 const SSS_WA_SIRA = 3;
@@ -304,8 +377,19 @@ function sekmeCubugu(sekme, dil, adres, m) {
 /** Takip sayfası (sunucuda üretilir; istemci betiği yok).
  *  dil: DILLER'den biri; adres: bağlantılar için /t/<kod>; sekme: SEKMELER'den biri (bilinmeyen → ozet);
  *  wa: merkez WhatsApp numarası (varsayılan WHATSAPP_MERKEZ; testler dosyayı değiştirmeden geçebilsin diye seçenek). */
-export function sayfa(kayit, { yedek = "", dil = "tr", adres = "", sekme = "ozet", wa = WHATSAPP_MERKEZ } = {}) {
+export function sayfa(kayit, secenek = {}) {
+  const tablo = secenek.tablo || null;
+  AKTIF = subeTablosu(tablo);
+  try {
+    return sayfaUret(kayit, { ...secenek, wa: secenek.wa ?? (tablo && tablo.wa) ?? WHATSAPP_MERKEZ });
+  } finally {
+    AKTIF = SUBELER;
+  }
+}
+
+function sayfaUret(kayit, { yedek = "", dil = "tr", adres = "", sekme = "ozet", wa = WHATSAPP_MERKEZ, ara = "" } = {}) {
   if (!METIN[dil]) dil = "tr";
+  ara = typeof ara === "string" ? ara.slice(0, 40) : "";
   sekme = sekmeSec(sekme);
   const m = { ...METIN[dil], ...EK[dil], ...EK2[dil] };
   const tekKart = (ikon, baslik, metin, ek = "") =>
@@ -326,7 +410,7 @@ export function sayfa(kayit, { yedek = "", dil = "tr", adres = "", sekme = "ozet
     cubuk = sekmeCubugu(sekme, dil, adres, m);
     const kg = kayit.kg;
     if (sekme === "islemler") govde = islemlerKarti(kayit, dil, m);
-    else if (sekme === "subeler") govde = subelerSekmesi(kayit, m, wa);
+    else if (sekme === "subeler") govde = subelerSekmesi(kayit, m, wa, { adres, dil, ara });
     else if (sekme === "sss") govde = sssSekmesi(m, waNumarasi(subeBul(kayit.s), wa), kayit.k);
     else {
       // Kargoda adımlar: alındı → terzide → kargolandı → teslim. Mağazadan teslimde: alındı → terzide → hazır → teslim.
@@ -436,6 +520,7 @@ a{color:var(--vurgu)}
 .kart.burada{border-top:4px solid var(--vurgu)}
 .dugme.wa{gap:8px}
 .dugme.kucuk{flex:0 1 auto;min-height:44px;padding:0 14px;font-size:14.5px}
+details.cekmece>summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;cursor:pointer}details.cekmece>summary::-webkit-details-marker{display:none}details.cekmece>summary h2{margin:0}details.cekmece>summary .sayi{margin-inline-start:auto;font-size:13px;font-weight:700;color:var(--ince);border:1px solid var(--cizgi);border-radius:999px;padding:2px 10px}details.cekmece>summary::after{content:"";flex:none;width:8px;height:8px;border-inline-end:2px solid var(--vurgu);border-bottom:2px solid var(--vurgu);transform:rotate(45deg) translateY(-2px)}details.cekmece[open]>summary::after{transform:rotate(-135deg) translateY(-2px)}details.cekmece>summary:focus-visible{outline:3px solid var(--vurgu);outline-offset:2px;border-radius:8px}form.sube-ara{display:flex;gap:8px;margin:12px 0}form.sube-ara input[type=search]{flex:1;min-width:0;min-height:48px;padding:0 14px;border:1px solid var(--cizgi);border-radius:12px;background:var(--kart);color:inherit;font:inherit;font-size:16px}form.sube-ara input:focus-visible,form.sube-ara button:focus-visible{outline:3px solid var(--vurgu);outline-offset:2px}form.sube-ara button{display:inline-flex;align-items:center;gap:6px;min-height:48px;padding:0 16px;border:0;border-radius:12px;background:var(--vurgu);color:var(--vurgu-yazi);font:inherit;font-weight:700;cursor:pointer}.gizli{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.ara-sonuc{margin:0 0 8px;font-size:14px}.sube-not{font-size:14px;color:var(--vurgu);margin:4px 0 0}ul.subeler .tel{font-size:14px;color:var(--ince);margin:2px 0 0}
 ul.subeler{list-style:none;margin:0;padding:0}
 ul.subeler li{padding:12px 0;border-bottom:1px solid var(--cizgi)}ul.subeler li:first-child{padding-top:0}ul.subeler li:last-child{border-bottom:0;padding-bottom:0}
 ul.subeler .sube-ad{font-size:16px;font-weight:600}ul.subeler .adres{font-size:14px;color:var(--ince)}ul.subeler .dugmeler{margin-top:10px}

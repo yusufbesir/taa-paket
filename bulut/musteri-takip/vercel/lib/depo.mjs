@@ -45,3 +45,20 @@ export async function temizle(simdi = Math.floor(Date.now() / 1000)) {
   } while (imlec);
   return silinen;
 }
+
+/** İmzalı şube tablosu: ayar/subeler.json (kamuya açık işletme bilgisi). */
+export async function subeOku() {
+  try {
+    const h = await head("ayar/subeler.json");
+    const r = await fetch(`${h.url}?v=${Date.now()}`, { cache: "no-store" });
+    return r.ok ? await r.json() : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function subeYaz(tablo) {
+  await put("ayar/subeler.json", JSON.stringify(tablo), {
+    access: "public", addRandomSuffix: false, allowOverwrite: true, contentType: "application/json", cacheControlMaxAge: 60,
+  });
+}

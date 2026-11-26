@@ -1,7 +1,7 @@
 // TAA müşteri takip, Cloudflare Workers + KV. Ortak kod: ./takip.mjs ve ./diller.mjs (bulut/musteri-takip/ortak'tan kopya).
 // Ayarlar (wrangler.toml): KV bağı TAKIP; değişkenler GENEL_ANAHTAR (mağaza sunucusunun genel anahtarı, gizli değil),
 // YEDEK_SAYFA (Vercel adresi). ?sekme=ozet|islemler|subeler|sss sayfa()'ya geçer (bilinmeyen → ozet). Kayıt süresi KV'nin kendi silme zamanıyla (expiration = sil) yönetilir.
-import { dogrula, yeniMi, sayfa, KOD_RE, dilSec } from "./takip.mjs";
+import { dogrula, dogrulaSubeler, yeniMi, sayfa, KOD_RE, dilSec } from "./takip.mjs";
 
 // Çekmeceden dil seçilince (?dil=xx) seçim bir yıl hatırlanır; çerezde yalnız dil kodu vardır.
 const dilCerezi = (url, dil) =>
@@ -14,7 +14,7 @@ const html = (h, kod = 200, ek = {}) =>
       "content-type": "text/html; charset=utf-8",
       "cache-control": "no-store",
       "x-robots-tag": "noindex",
-      "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
+      "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'self'",
     },
   });
 const json = (v, kod = 200) =>
@@ -34,6 +34,17 @@ export default {
       }
       return json({ tamam: true });
     }
+    if (istek.method === "POST" && yol === "/api/subeler") {
+      // İmzalı şube tablosu (mağaza sunucusunun günlük site eşitlemesi). Anahtar "_subeler" takip koduyla çakışmaz.
+      const s = await dogrulaSubeler(await istek.text(), istek.headers.get("x-taa-imza") || "", env.GENEL_ANAHTAR);
+      if (s.hata) return json({ hata: s.hata }, s.kod);
+      const eski = await env.TAKIP.get("_subeler", "json");
+      if (eski && eski.ts > s.tablo.ts) return json({ hata: "daha yeni tablo var" }, 409);
+      await env.TAKIP.put("_subeler", JSON.stringify(s.tablo));
+      return json({ tamam: true, sube: Object.keys(s.tablo.subeler).length });
+    }
+    const tablo = istek.method === "GET" ? await env.TAKIP.get("_subeler", "json").catch(() => null) : null;
+    const ara = url.searchParams.get("ara") || "";
     const m = yol.match(/^\/(t|api\/durum)\/([^/]+)$/);
     if (istek.method === "GET" && m) {
       const kod = m[2];
@@ -44,11 +55,11 @@ export default {
       const yedek = env.YEDEK_SAYFA && KOD_RE.test(kod) ? `${env.YEDEK_SAYFA}/t/${kod}` : "";
       const dil = dilSec(url.searchParams.get("dil"), istek.headers.get("accept-language"), istek.headers.get("cookie"));
       const adres = KOD_RE.test(kod) ? `/t/${kod}` : "";
-      return html(sayfa(kayit, { yedek, dil, adres, sekme: url.searchParams.get("sekme") || "" }), kayit ? 200 : 404, dilCerezi(url, dil));
+      return html(sayfa(kayit, { yedek, dil, adres, tablo, ara, sekme: url.searchParams.get("sekme") || "" }), kayit ? 200 : 404, dilCerezi(url, dil));
     }
     if (istek.method === "GET" && yol === "/") {
       const dil = dilSec(url.searchParams.get("dil"), istek.headers.get("accept-language"), istek.headers.get("cookie"));
-      return html(sayfa(null, { dil, adres: "/", sekme: url.searchParams.get("sekme") || "" }), 200, dilCerezi(url, dil));
+      return html(sayfa(null, { dil, adres: "/", tablo, sekme: url.searchParams.get("sekme") || "" }), 200, dilCerezi(url, dil));
     }
     return new Response("Bulunamadı", { status: 404 });
   },

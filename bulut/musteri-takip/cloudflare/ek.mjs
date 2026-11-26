@@ -3,35 +3,77 @@
 // Kargo firmaları ve takip bağlantıları burada; takip bağlantısı kalıbı doğrulanmamış firmada yalnız ana sayfa açılır.
 // Yazan: [Claude Opus 5.5, TerziTakip başlığı, 2026-11-26].
 
-/** Şube kodu → kamuya açık bilgi. Adresi girilmemiş şubede ad + "açık adres için merkezi arayın" notu gösterilir.
- *  YAPILACAK: Merkez dışındaki 14 şubenin adres, tel (+90...), tel_g (görünen biçim), saat bilgisi Yusuf'tan alınıp girilecek.
- *  wa: şubenin WhatsApp numarası (isteğe bağlı, uluslararası biçim; boşsa WHATSAPP_MERKEZ kullanılır). */
+/** Şube kodu → kamuya açık bilgi (ilk tablo: terziademaltun.com/iletisimbilgileri, 2026-11-05).
+ *  Güncel tablo mağaza sunucusundan imzalı olarak gelir (POST /api/subeler, günlük site eşitlemesi) ve bunun üstüne yazılır;
+ *  bu dosya yalnız ilk/yedek değerdir. Adresi olmayan şubede "açık adres için merkezi arayın" notu gösterilir.
+ *  not: kısa Türkçe ek bilgi (ör. Outlet yanında). wa: şube WhatsApp numarası (boşsa merkez numarası). */
 export const SUBELER = {
   MRK01: {
-    ad: "İstanbul Merkez Mağaza",
-    adres: "Turgut Özal Mah. 68. Sk. No:12, E-5 Karayolu Yan Yol Üzeri, Esenyurt / İstanbul",
-    tel: "+902126900202", tel_g: "0212 690 02 02", saat: "09:30–21:30", wa: "",
+    ad: "İstanbul Merkez Mağaza", adres: "Turgut Özal Mahallesi 68. Sokak No:12 E-5 Karayolu Yan Yol Üzeri, Esenyurt / İstanbul",
+    tel: "+902126900202", tel_g: "0212 690 02 02", saat: "09:30–21:30", not: "Outlet mağazamız hemen yanında", wa: "",
   },
-  PND01: { ad: "İstanbul Pendik Mağaza", wa: "" },
-  UMR01: { ad: "İstanbul Ümraniye Mağaza", wa: "" },
-  ANK01: { ad: "Ankara Mağaza", wa: "" },
-  BRS01: { ad: "Bursa Mağaza", wa: "" },
-  SKR01: { ad: "Sakarya Mağaza", wa: "" },
-  DYB01: { ad: "Diyarbakır Mağaza", wa: "" },
-  SVS01: { ad: "Sivas Mağaza", wa: "" },
-  GZT01: { ad: "Gaziantep Mağaza", wa: "" },
-  URF01: { ad: "Şanlıurfa Mağaza", wa: "" },
-  VAN01: { ad: "Van Mağaza", wa: "" },
-  SRT01: { ad: "Siirt Mağaza", wa: "" },
-  ELZ01: { ad: "Elazığ Mağaza", wa: "" },
-  IZM01: { ad: "İzmir Mağaza", wa: "" },
-  MUS01: { ad: "Muş Mağaza", wa: "" },
+  PND01: {
+    ad: "İstanbul Pendik Mağaza", adres: "Çınardere Mahallesi Gönenli Mehmet Efendi Caddesi E-5 Yanyol Üzeri No:85, Pendik / İstanbul",
+    tel: "+902163750002", tel_g: "0216 375 00 02", wa: "",
+  },
+  UMR01: {
+    ad: "İstanbul Ümraniye Mağaza", adres: "Atakent Mahallesi Alemdağ Caddesi No:326/14, Ümraniye / İstanbul",
+    tel: "+905455138025", tel_g: "0545 513 80 25", wa: "",
+  },
+  ANK01: {
+    ad: "Ankara Mağaza", adres: "Yeşilova, Ayaş Ankara Yolu Blv. Gökdemir Tower Sitesi No:103/105, Etimesgut / Ankara",
+    tel: "+903125122525", tel_g: "0312 512 25 25", wa: "",
+  },
+  BRS01: {
+    ad: "Bursa Mağaza", adres: "Ataevler Mahallesi, Ata Caddesi No:14 A/B, Nilüfer / Bursa",
+    tel: "+902245035034", tel_g: "0224 503 50 34", wa: "",
+  },
+  SKR01: {
+    ad: "Sakarya Mağaza", adres: "Semerciler, Saray Bosna Cd No:4/1, Adapazarı / Sakarya",
+    tel: "+902645030035", tel_g: "0264 503 00 35", wa: "",
+  },
+  DYB01: {
+    ad: "Diyarbakır Mağaza", adres: "Pozitif-İnfinity, Talaytepe, 4003. Sokak A Blok No:4A/11, Kayapınar / Diyarbakır",
+    tel: "+905304461998", tel_g: "0530 446 19 98", wa: "",
+  },
+  SVS01: {
+    ad: "Sivas Mağaza", adres: "Demircilerardı Mahallesi, Atatürk Bulvarı Dış Kapı No:97/C, Merkez / Sivas",
+    tel: "+903465021658", tel_g: "0346 502 16 58", wa: "",
+  },
+  GZT01: {
+    ad: "Gaziantep Mağaza", adres: "Eydibaba Mahallesi, Çelik Sokak No:57/F, Şehitkamil / Gaziantep",
+    tel: "+905321755310", tel_g: "0532 175 53 10", wa: "",
+  },
+  URF01: {
+    ad: "Şanlıurfa Mağaza", adres: "GAP Bulvarı Canbeyli Rezidans, Atakent, Şanlıurfa - Diyarbakır Yolu, Karaköprü / Şanlıurfa",
+    tel: "+905323099863", tel_g: "0532 309 98 63", wa: "",
+  },
+  VAN01: {
+    ad: "Van Mağaza", adres: "Halilağa Mahallesi, No:111C, İpekyolu / Van",
+    tel: "+905016666865", tel_g: "0501 666 68 65", wa: "",
+  },
+  SRT01: {
+    ad: "Siirt Mağaza", adres: "Barış Mahallesi Hükümet Bulvarı No:99/18, Merkez / Siirt",
+    tel: "+905435917077", tel_g: "0543 591 70 77", wa: "",
+  },
+  ELZ01: {
+    ad: "Elazığ Mağaza", adres: "Cumhuriyet Mahallesi, Malatya Caddesi No:36 B, Elazığ Merkez / Elazığ",
+    tel: "+905016563023", tel_g: "0501 656 30 23", wa: "",
+  },
+  IZM01: {
+    ad: "İzmir Mağaza", adres: "Gazi, Akçay Cd. No:160, 35410 Gaziemir / İzmir",
+    tel: "+905527759944", tel_g: "0552 775 99 44", wa: "",
+  },
+  MUS01: {
+    ad: "Muş Mağaza", adres: "Kültür Mahallesi, Atatürk Bulvarı No:60/1, Muş Merkez / Muş",
+    tel: "+905330867649", tel_g: "0533 086 76 49", wa: "",
+  },
 };
 
 /** Merkez WhatsApp numarası (ör. "905xxxxxxxxx"). Şubenin wa'sı da bu da boşsa WhatsApp düğmesi hiç görünmez
  *  ve SSS'deki "WhatsApp'tan ekletebilirsiniz" cümlesi WhatsApp'sız haliyle gösterilir.
  *  YAPILACAK: Yusuf'tan WhatsApp birimi numarası alınıp buraya yazılacak (2026-11-26 itibarıyla gelmedi). */
-export const WHATSAPP_MERKEZ = "";
+export const WHATSAPP_MERKEZ = "905448557525";
 
 /** Kargo firması anahtarı → ad ve takip bağlantısı (n: takip no, encodeURIComponent'li). */
 export const KARGO = {
@@ -190,6 +232,7 @@ export const EK2 = {
   tr: {
     sekme: { ozet: "Özet", islemler: "İşlemler", subeler: "Şubeler", sss: "SSS" },
     burada: "Ürününüz burada", diger_subeler: "Diğer şubelerimiz", wa: "WhatsApp'tan yazın",
+    ara_b: "Şube ara", ara_ph: "İl, ilçe ya da şube adı", ara_d: "Ara", ara_yok: "Aramanıza uyan şube bulunamadı.", ara_temizle: "Aramayı temizle",
     wa_metin: "Merhaba, tadilat takip kodum: {kod}. Bilgi almak istiyorum.",
     bagli_m: "Bu fiş {n} fişle birlikte teslim edilecek.", sss_b: "Sıkça sorulan sorular", sss_dugme: "Sıkça sorulan sorular",
     sss_wa_yok: "Evet, ürün teslim edilmeden önce şubemizden ekletebilirsiniz.", bolumler: "Bölümler", kalem_yok: "Bu fiş için işlem ayrıntısı yok.", adres_yok: "Açık adres için merkez mağazamızı arayın:",
@@ -205,6 +248,7 @@ export const EK2 = {
   en: {
     sekme: { ozet: "Summary", islemler: "Alterations", subeler: "Stores", sss: "FAQ" },
     burada: "Your item is here", diger_subeler: "Our other stores", wa: "Message us on WhatsApp",
+    ara_b: "Search stores", ara_ph: "City, district or store name", ara_d: "Search", ara_yok: "No store matches your search.", ara_temizle: "Clear search",
     wa_metin: "Hello, my alteration tracking code is {kod}. I would like some information.",
     bagli_m: "This receipt will be handed over together with {n} other receipt(s).", sss_b: "Frequently asked questions", sss_dugme: "FAQ",
     sss_wa_yok: "Yes, before handover you can add it at our store.", bolumler: "Sections", kalem_yok: "No alteration details for this receipt.", adres_yok: "For the full address, call our main store:",
@@ -220,6 +264,7 @@ export const EK2 = {
   ar: {
     sekme: { ozet: "الملخص", islemler: "التعديلات", subeler: "الفروع", sss: "الأسئلة" },
     burada: "قطعتك هنا", diger_subeler: "فروعنا الأخرى", wa: "راسلنا على واتساب",
+    ara_b: "ابحث عن فرع", ara_ph: "المدينة أو الحي أو اسم الفرع", ara_d: "بحث", ara_yok: "لا يوجد فرع يطابق بحثك.", ara_temizle: "مسح البحث",
     wa_metin: "مرحبًا، رمز تتبع التعديل الخاص بي: {kod}. أود الاستفسار.",
     bagli_m: "سيتم تسليم هذا الإيصال مع {n} إيصال آخر.", sss_b: "الأسئلة الشائعة", sss_dugme: "الأسئلة الشائعة",
     sss_wa_yok: "نعم، قبل التسليم من الفرع.", bolumler: "الأقسام", kalem_yok: "لا توجد تفاصيل تعديل لهذا الإيصال.", adres_yok: "للحصول على العنوان الكامل، اتصل بمتجرنا الرئيسي:",
@@ -235,6 +280,7 @@ export const EK2 = {
   ru: {
     sekme: { ozet: "Обзор", islemler: "Работы", subeler: "Магазины", sss: "Вопросы" },
     burada: "Ваше изделие здесь", diger_subeler: "Другие наши магазины", wa: "Написать в WhatsApp",
+    ara_b: "Поиск магазина", ara_ph: "Город, район или название", ara_d: "Найти", ara_yok: "Магазинов по вашему запросу не найдено.", ara_temizle: "Сбросить поиск",
     wa_metin: "Здравствуйте, мой код отслеживания: {kod}. Хочу уточнить информацию.",
     bagli_m: "Эта квитанция выдаётся вместе с ещё {n}.", sss_b: "Частые вопросы", sss_dugme: "Вопросы",
     sss_wa_yok: "Да, до выдачи — в магазине.", bolumler: "Разделы", kalem_yok: "Подробностей работ по этой квитанции нет.", adres_yok: "Чтобы узнать адрес, позвоните в главный магазин:",
@@ -250,6 +296,7 @@ export const EK2 = {
   de: {
     sekme: { ozet: "Übersicht", islemler: "Änderungen", subeler: "Geschäfte", sss: "FAQ" },
     burada: "Ihr Artikel ist hier", diger_subeler: "Unsere weiteren Geschäfte", wa: "Per WhatsApp schreiben",
+    ara_b: "Geschäft suchen", ara_ph: "Stadt, Bezirk oder Name", ara_d: "Suchen", ara_yok: "Kein Geschäft entspricht Ihrer Suche.", ara_temizle: "Suche zurücksetzen",
     wa_metin: "Hallo, mein Änderungs-Code lautet {kod}. Ich hätte gern eine Auskunft.",
     bagli_m: "Dieser Beleg wird zusammen mit {n} weiteren ausgegeben.", sss_b: "Häufige Fragen", sss_dugme: "FAQ",
     sss_wa_yok: "Ja, vor der Abholung im Geschäft.", bolumler: "Bereiche", kalem_yok: "Für diesen Beleg liegen keine Einzelheiten vor.", adres_yok: "Für die genaue Adresse rufen Sie unser Hauptgeschäft an:",
@@ -265,6 +312,7 @@ export const EK2 = {
   fr: {
     sekme: { ozet: "Résumé", islemler: "Retouches", subeler: "Boutiques", sss: "FAQ" },
     burada: "Votre article est ici", diger_subeler: "Nos autres boutiques", wa: "Écrire sur WhatsApp",
+    ara_b: "Rechercher une boutique", ara_ph: "Ville, quartier ou nom", ara_d: "Rechercher", ara_yok: "Aucune boutique ne correspond à votre recherche.", ara_temizle: "Effacer la recherche",
     wa_metin: "Bonjour, mon code de suivi de retouche est {kod}. J’aimerais un renseignement.",
     bagli_m: "Ce ticket sera remis avec {n} autre(s).", sss_b: "Questions fréquentes", sss_dugme: "FAQ",
     sss_wa_yok: "Oui, avant le retrait, en boutique.", bolumler: "Rubriques", kalem_yok: "Aucun détail de retouche pour ce reçu.", adres_yok: "Pour l'adresse exacte, appelez notre boutique principale :",
@@ -280,6 +328,7 @@ export const EK2 = {
   es: {
     sekme: { ozet: "Resumen", islemler: "Arreglos", subeler: "Tiendas", sss: "Preguntas" },
     burada: "Su prenda está aquí", diger_subeler: "Nuestras otras tiendas", wa: "Escríbanos por WhatsApp",
+    ara_b: "Buscar tienda", ara_ph: "Ciudad, distrito o nombre", ara_d: "Buscar", ara_yok: "Ninguna tienda coincide con su búsqueda.", ara_temizle: "Borrar búsqueda",
     wa_metin: "Hola, mi código de seguimiento es {kod}. Quisiera información.",
     bagli_m: "Este recibo se entregará junto con {n} más.", sss_b: "Preguntas frecuentes", sss_dugme: "Preguntas",
     sss_wa_yok: "Sí, antes de la entrega, en tienda.", bolumler: "Secciones", kalem_yok: "No hay detalles de arreglos para este recibo.", adres_yok: "Para la dirección completa, llame a nuestra tienda principal:",
@@ -295,6 +344,7 @@ export const EK2 = {
   zh: {
     sekme: { ozet: "概览", islemler: "修改项目", subeler: "门店", sss: "常见问题" },
     burada: "您的衣物在此", diger_subeler: "其他门店", wa: "通过 WhatsApp 联系",
+    ara_b: "搜索门店", ara_ph: "城市、区或门店名称", ara_d: "搜索", ara_yok: "没有符合搜索条件的门店。", ara_temizle: "清除搜索",
     wa_metin: "您好，我的修改跟踪码是 {kod}，想咨询一下。",
     bagli_m: "此单据将与另外 {n} 张单据一起交付。", sss_b: "常见问题", sss_dugme: "常见问题",
     sss_wa_yok: "可以，交付前到店追加。", bolumler: "栏目", kalem_yok: "此收据暂无修改明细。", adres_yok: "如需详细地址，请致电总店：",
@@ -310,6 +360,7 @@ export const EK2 = {
   hi: {
     sekme: { ozet: "सारांश", islemler: "बदलाव", subeler: "दुकानें", sss: "सवाल" },
     burada: "आपका कपड़ा यहाँ है", diger_subeler: "हमारी अन्य दुकानें", wa: "WhatsApp पर लिखें",
+    ara_b: "दुकान खोजें", ara_ph: "शहर, ज़िला या दुकान का नाम", ara_d: "खोजें", ara_yok: "आपकी खोज से कोई दुकान नहीं मिली।", ara_temizle: "खोज साफ़ करें",
     wa_metin: "नमस्ते, मेरा ट्रैकिंग कोड {kod} है। मुझे जानकारी चाहिए।",
     bagli_m: "यह रसीद {n} अन्य रसीदों के साथ दी जाएगी।", sss_b: "अक्सर पूछे जाने वाले सवाल", sss_dugme: "सवाल",
     sss_wa_yok: "हाँ, देने से पहले दुकान पर।", bolumler: "अनुभाग", kalem_yok: "इस रसीद के लिए कोई विवरण नहीं है।", adres_yok: "पूरा पता जानने के लिए हमारी मुख्य दुकान पर कॉल करें:",
@@ -325,6 +376,7 @@ export const EK2 = {
   fa: {
     sekme: { ozet: "خلاصه", islemler: "اصلاحات", subeler: "شعبه‌ها", sss: "پرسش‌ها" },
     burada: "لباس شما اینجاست", diger_subeler: "شعبه‌های دیگر ما", wa: "پیام در واتساپ",
+    ara_b: "جستجوی شعبه", ara_ph: "شهر، منطقه یا نام شعبه", ara_d: "جستجو", ara_yok: "شعبه‌ای با جستجوی شما پیدا نشد.", ara_temizle: "پاک کردن جستجو",
     wa_metin: "سلام، کد پیگیری اصلاح من {kod} است. می‌خواهم اطلاعات بگیرم.",
     bagli_m: "این رسید همراه با {n} رسید دیگر تحویل داده می‌شود.", sss_b: "پرسش‌های پرتکرار", sss_dugme: "پرسش‌ها",
     sss_wa_yok: "بله، پیش از تحویل در شعبه.", bolumler: "بخش‌ها", kalem_yok: "برای این رسید جزئیات تعمیر وجود ندارد.", adres_yok: "برای نشانی کامل با فروشگاه مرکزی تماس بگیرید:",
@@ -340,6 +392,7 @@ export const EK2 = {
   ro: {
     sekme: { ozet: "Rezumat", islemler: "Ajustări", subeler: "Magazine", sss: "Întrebări" },
     burada: "Articolul dvs. este aici", diger_subeler: "Celelalte magazine", wa: "Scrieți-ne pe WhatsApp",
+    ara_b: "Caută magazin", ara_ph: "Oraș, cartier sau nume", ara_d: "Caută", ara_yok: "Niciun magazin nu corespunde căutării.", ara_temizle: "Șterge căutarea",
     wa_metin: "Bună ziua, codul meu de urmărire este {kod}. Aș dori informații.",
     bagli_m: "Acest bon se predă împreună cu încă {n}.", sss_b: "Întrebări frecvente", sss_dugme: "Întrebări",
     sss_wa_yok: "Da, înainte de predare, la magazin.", bolumler: "Secțiuni", kalem_yok: "Nu există detalii de retușuri pentru acest bon.", adres_yok: "Pentru adresa completă, sunați la magazinul central:",
@@ -355,6 +408,7 @@ export const EK2 = {
   el: {
     sekme: { ozet: "Σύνοψη", islemler: "Μεταποιήσεις", subeler: "Καταστήματα", sss: "Ερωτήσεις" },
     burada: "Το ρούχο σας είναι εδώ", diger_subeler: "Άλλα καταστήματά μας", wa: "Γράψτε μας στο WhatsApp",
+    ara_b: "Αναζήτηση καταστήματος", ara_ph: "Πόλη, περιοχή ή όνομα", ara_d: "Αναζήτηση", ara_yok: "Κανένα κατάστημα δεν ταιριάζει.", ara_temizle: "Καθαρισμός αναζήτησης",
     wa_metin: "Γεια σας, ο κωδικός παρακολούθησής μου είναι {kod}. Θα ήθελα πληροφορίες.",
     bagli_m: "Αυτή η απόδειξη παραδίδεται μαζί με άλλες {n}.", sss_b: "Συχνές ερωτήσεις", sss_dugme: "Ερωτήσεις",
     sss_wa_yok: "Ναι, πριν την παράδοση, στο κατάστημα.", bolumler: "Ενότητες", kalem_yok: "Δεν υπάρχουν λεπτομέρειες μεταποίησης για αυτή την απόδειξη.", adres_yok: "Για την πλήρη διεύθυνση, καλέστε το κεντρικό κατάστημα:",
@@ -370,6 +424,7 @@ export const EK2 = {
   bg: {
     sekme: { ozet: "Обобщение", islemler: "Корекции", subeler: "Магазини", sss: "Въпроси" },
     burada: "Дрехата ви е тук", diger_subeler: "Другите ни магазини", wa: "Пишете ни в WhatsApp",
+    ara_b: "Търсене на магазин", ara_ph: "Град, район или име", ara_d: "Търси", ara_yok: "Няма магазин, отговарящ на търсенето.", ara_temizle: "Изчисти търсенето",
     wa_metin: "Здравейте, кодът ми за проследяване е {kod}. Искам информация.",
     bagli_m: "Тази разписка се предава заедно с още {n}.", sss_b: "Често задавани въпроси", sss_dugme: "Въпроси",
     sss_wa_yok: "Да, преди предаването, в магазина.", bolumler: "Раздели", kalem_yok: "Няма подробности за поправки по тази бележка.", adres_yok: "За точния адрес се обадете в централния магазин:",
