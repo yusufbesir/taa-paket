@@ -148,3 +148,18 @@ html[data-tema="keten"][data-ton="koyu"]{
 .tk-imza-gorsel{margin-top:var(--tk-g2)}
 .tk-imza-resim{display:block;max-width:min(100%,420px);height:auto;background:#FFFFFF;border:var(--tk-kenar) solid var(--tk-line);border-radius:min(var(--tk-r),12px)}
 @media (max-width:480px){.tk-imza-tuval{height:160px}.dz-kutu.tk-teslim{padding:var(--tk-g4)}}
+/* Karekodla teslim onayı: karekod her temada beyaz zemin + koyu modül (okunabilirlik); yanında durum ve geri sayım. */
+.tk-qr{display:grid;grid-template-columns:minmax(200px,280px) 1fr;gap:var(--tk-g3);align-items:start;border:var(--tk-kenar) solid var(--tk-line);border-radius:min(var(--tk-r),12px);padding:var(--tk-g3)}
+.tk-qr-resim{background:#FFFFFF;color:#111111;border-radius:min(var(--tk-r),12px);padding:var(--tk-g2);aspect-ratio:1/1;display:grid;place-items:center;min-height:200px}
+.tk-qr-resim svg{display:block;width:100%;height:auto}
+.tk-qr-soluk svg{opacity:.15}
+.tk-qr-yan{display:grid;gap:var(--tk-g2);align-content:start}
+.tk-qr-baslik{font-weight:700;font-size:1.15em}
+.tk-qr-durum{font-weight:600}
+.tk-qr-tamam{color:var(--tk-ok)}
+.tk-qr-bilgi .tk-uyari dd{color:var(--tk-uyari);font-weight:600}
+.tk-teslim-ayrinti{margin-top:8px;display:grid;gap:6px}
+.tk-qr-sure{font-size:1.1em;min-width:5ch}
+.tk-qr-alt{align-items:center;flex-wrap:wrap}
+.tk-qr-alt .dugme{width:auto}
+@media (max-width:560px){.tk-qr{grid-template-columns:1fr}.tk-qr-resim{max-width:280px;margin-inline:auto;width:100%}}

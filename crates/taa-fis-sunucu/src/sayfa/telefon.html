@@ -762,8 +762,8 @@ html[data-tema="keten"] .rozet{border-radius:8px}
         bildir('Durum değişmedi: '+TKD.hataIleti(e))})}
 
   // B2: fişsiz teslim ve imza buraya bağlanır
-  /* Teslim akışının tamamı (ortak.js TKD.teslimSor): kutuda "Fişiyle geldi" / "Fişi yok", teslim alan ad soyad, ilişki;
-     fişsizde son 4 hane ve zorunlu imza (telefonda varsayılan olarak "fissiz-teslim" yetkisi yok, seçenek kapalı ve
+  /* Teslim akışının tamamı (ortak.js TKD.teslimSor): kutuda "Fişiyle geldi" / "Fişi yok"; varsayılan "Karekodla onay"
+     (müşteri kendi telefonuyla okutur; /teslim-qr), yedek "Telefonu yok: ekranda imza". Fişsizde son 4 hane ve karekod ya da imza (telefonda varsayılan olarak "fissiz-teslim" yetkisi yok, seçenek kapalı ve
      nedeni yazılı), fişlide isteğe bağlı imza. İstek /teslim-al ucuna gider. Bağlı açık fiş varsa 409 {soru:"bagli_teslim"}
      gelir; TKD.bagliSor kutusu açılır ve aynı istek "bagli" listesiyle yeniden gönderilir.
      Teslim kaydı kalıcı olduğu için 6 sn'lik geri alma beklemesi teslimde yoktur; kutunun kendisi onaydır.
@@ -777,7 +777,7 @@ html[data-tema="keten"] .rozet{border-radius:8px}
       return TKD.teslimSor({fis:f,oturum:OTURUM,api:function(m,y,g){return api(m,y,g)}})}).then(function(r){
       if(!r){bildir('Teslim edilmedi: '+noKisa(no));return}
       var bt=r.birlikte_teslim||[],tk=r.teslim_kaydi||{};
-      bildir('Teslim: '+noKisa(no)+(bt.length?' + '+bt.map(noKisa).join(', '):'')+(tk.fisli===false?' · fişsiz':''));
+      bildir('Teslim: '+noKisa(no)+(bt.length?' + '+bt.map(noKisa).join(', '):'')+(tk.fisli===false?' · fişsiz':'')+(tk.dogrulama&&tk.dogrulama.indexOf('qr')===0?' · karekod onaylı':''));
       yenile()})}
   /* Fiş sayfasında teslim kaydı ve imza görüntüsü (GET /api/fis/<no>/imza, telefonun kendi anahtarıyla). */
   /* İmzayı yalnız fişsiz teslim ya da düzeltme yetkisi olan telefon görür (sunucu da 403 döner); diğerinde yalnız "İmzalı" yazar. */

@@ -83,6 +83,11 @@ mod testler {
             m.contains("TaaGirisEkrani") && m.contains("'/api/giris/'") && !m.contains("@GIRIS-")
         );
         assert!(!t.contains("TaaGirisEkrani"));
+        // Karekodla teslim onayı iki sayfada da (ortak.js): karekod ucu, 2 sn sorgu, ekran imzası yedeği.
+        for s in [&m, &t] {
+            assert!(s.contains("/teslim-qr") && s.contains("onay_belirteci"));
+            assert!(s.contains("Telefonu yok: ekranda imza") && s.contains("Yeni karekod"));
+        }
     }
 
     #[test]

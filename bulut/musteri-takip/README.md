@@ -35,6 +35,43 @@ Genel anahtar: `taa-fis-sunucu --veri <klasör> --takip-genel-anahtar` (ilk çal
   düğmesi çıkmaz ve SSS'deki WhatsApp cümlesi WhatsApp'sız haliyle gösterilir. (Numara henüz girilmedi.)
 - Değiştirdikten sonra `./kopyala.sh` çalıştırın.
 
+## Fişsiz teslim onayı (karekodla imza)
+Yusuf 2026-11-26 05:33: fişsiz teslimde müşteri imzası fiziksel değil karekodla; teslim alanın adı, telefonu, telefonun
+bilgisi, tarih/saat şifreli tutulur. Ortak kod `ortak/onay.mjs` (kopyala.sh iki hedefe kopyalar).
+- Sunucu `POST /api/onay/ac` (imzalı; `t` 20 karakter, `sil` ≤ ts+900, `pk` sunucunun X25519 genel anahtarı) → karekod `<birincil>/o/<t>`.
+- Müşteri `/o/<t>` sayfasında (betiksiz, 13 dil) ad soyad, telefon ve "Ürünlerimi eksiksiz teslim aldım" kutusunu gönderir.
+  Bulut düz metni (ad, telefon, user-agent ilk 200, IP, zaman, dil) hemen şifreler: geçici X25519 + ECDH(pk) →
+  HKDF-SHA256(salt = geçici_genel‖pk, info "taa-teslim-onay-v1") → AES-256-GCM (aad = t). Kayıtta yalnız `{e, iv, c}` kalır;
+  düz metin yazılmaz/loglanmaz. Bir `t` bir kez onaylanır; aynı `t`'ye en çok 5 POST.
+- Sunucu `GET /api/onay/<t>` (`x-taa-zaman`, `x-taa-imza` = imza("onay_oku:"+t+":"+ts), ±300 sn) ile okur, kendisi çözer,
+  `POST /api/onay/kapat` (imzalı) ile siler. Cloudflare'de KV kendi siler; Vercel'de süresi geçen kayıt okurken, her
+  aç/kapat'ta ve günlük görevde silinir. Ayrıca mağaza sunucusu süresi geçen (onaylanmamış) her karekod için dakikada
+  bir iki buluta da `kapat` gönderir: Vercel'de 15 dk tavanı sunucu açık ve internete ulaşıyorsa ~16 dk'dır; sunucu
+  kapalıysa şifreli kayıt bir sonraki aç/kapat'a ya da 03:17 görevine kadar (en kötü ~24 saat) kalır.
+- Ad kuralı: bulut `[\p{L}\p{M} .'-]` + ZWNJ/ZWJ (Hintçe virama, Farsça ZWNJ, harekeli Arapça geçer); sunucunun
+  kuralı (`taa_fis::ad_karakterleri_gecerli`) bunun üst kümesidir. İki taraf aynı sahte adlarla sınanır (dene6 + Rust;
+  Rust testindeki vektörler bulutun gerçek `sifrele()` çıktısıdır).
+- Sayfa çerçevelenemez (`frame-ancestors 'none'`, `X-Frame-Options: DENY`).
+
+### Bilinen sınırlar (Yusuf'a söylenmeli)
+- **Platform erişim günlükleri:** Kod hiçbir şeyi loglamaz, ama Cloudflare ve Vercel'in kendi erişim günlükleri
+  `/o/<t>` yolunu, IP'yi ve user-agent'ı kod dışında tutar (ad ve telefon gövdede olduğu için oraya düşmez). "IP bulutta
+  loglanmaz" sözü bu günlükler için verilemez. Cloudflare'de `wrangler.toml`'da `observability` kapalıdır, Logpush
+  açılmamalı; Vercel'de log drain açılmamalı.
+- **Cloudflare KV sonunda tutarlıdır:** bir uç noktada okunan değer ~60 sn önbellekte kalabilir. Müşterinin telefonu
+  başka bir uç noktaya düşerse kasadaki "bekliyor" durumu onaydan sonra 1 dakikaya kadar sürebilir (kasa ekranında bu
+  not yazar). Aynı nedenle "bir kez onay" ve 5 POST sınırı kesin değildir (dar pencerede ikinci POST ilkinin üzerine
+  yazabilir; sunucu ilk okuduğunu alıp kapatır). Gerçek dağıtımda mağaza ağı + mobil şebekeyle gecikme ölçülmeli;
+  kabul edilemezse onay kaydı Durable Object'e (ya da D1'e) taşınmalı (atomik tek seferlik onay da böyle çözülür).
+- **Vercel yolu gerçek dağıtımda denenmedi:** `vercel/lib/onay-depo.mjs` sahte Blob ile test edilir (dene6), ama Blob
+  CDN önbelleği (`cacheControlMaxAge: 60` + `?v=` ile aşma), yeniden yazımda `istek.url`'in biçimi (işlem hem asıl
+  yoldan hem sorgudan bulunur) ve `head/put/del` davranışı bir Vercel önizleme dağıtımında elle denenmeli
+  (aç → form → onay → oku → kapat). Blob public'tir; adres t bilinmeden tahmin edilemez (bekleyen kayıtta pk, şube kodu
+  ve ürün sayısı açık, kişisel veri yok).
+- **Telefon doğrulanmaz:** karekodda yazılan ad ve telefon müşterinin beyanıdır (SMS kodu yok); "kimin telefonundan"
+  bilgisi user-agent + IP'dir (user-agent istemcinin gönderdiği değerdir). Sunucu karekoddaki telefonu fişteki numarayla
+  karşılaştırır (numarayı açmadan): farklıysa kasada "Farklı" yazar ve ilişki (yakını/diğer) seçilmeden teslim edilmez.
+
 ## Test
 `node bulut/musteri-takip/test/hepsi.mjs` (depo kökünden; yalnız sahte veri, ağ gerekmez, depoya dosya yazmaz).
 Ekran görüntüsü için HTML isterseniz: `node bulut/musteri-takip/test/dene4.mjs <klasör>`.

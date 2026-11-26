@@ -17,7 +17,7 @@ export const KOD_RE = /^[a-km-np-z2-9]{16}$/;
 const DURUMLAR = ["alindi", "terzide", "hazir", "teslim", "iptal"];
 const GUN = 86400;
 
-function hexBayt(h) {
+export function hexBayt(h) {
   if (typeof h !== "string" || !/^([0-9a-f]{2})+$/i.test(h)) return null;
   const b = new Uint8Array(h.length / 2);
   for (let i = 0; i < b.length; i++) b[i] = parseInt(h.substr(i * 2, 2), 16);
@@ -152,7 +152,7 @@ export function yeniMi(eski, yeni) {
 
 const ADIMLAR = ["alindi", "terzide", "hazir", "teslim"];
 
-function kacis(s) {
+export function kacis(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }
 
@@ -169,7 +169,7 @@ function gunMetni(t, dil) {
 }
 
 // Tasarım: bulut/musteri-takip/tasarim/KARAR.md (A+ "zanaat kartı", Stitch + Astra, 2026-11-26).
-function dilCekmecesi(dil, adres, sekme = "ozet") {
+export function dilCekmecesi(dil, adres, sekme = "ozet") {
   if (!adres) return "";
   const [, ad, kisa] = DILLER.find(([d]) => d === dil);
   // Dil değişince açık sekme korunur (özet varsayılan olduğu için yazılmaz).
@@ -455,7 +455,7 @@ ${cubuk}<main>${govde}</main>
 </div>${fab}</body></html>`;
 }
 
-const CSS = `:root{color-scheme:light dark;--zemin:#f6f3ee;--kart:#fff;--yazi:#29251f;--ince:#665c50;--vurgu:#8a5a2b;--vurgu-yazi:#fff;--cizgi:#e4ddd2;--not:#efe8dc;--golge:0 1px 2px rgba(41,37,31,.06),0 8px 24px rgba(41,37,31,.06)}
+export const CSS = `:root{color-scheme:light dark;--zemin:#f6f3ee;--kart:#fff;--yazi:#29251f;--ince:#665c50;--vurgu:#8a5a2b;--vurgu-yazi:#fff;--cizgi:#e4ddd2;--not:#efe8dc;--golge:0 1px 2px rgba(41,37,31,.06),0 8px 24px rgba(41,37,31,.06)}
 @media (prefers-color-scheme:dark){:root{--zemin:#14181c;--kart:#1d2329;--yazi:#e8ecf3;--ince:#b7c0cc;--vurgu:#d7a46b;--vurgu-yazi:#14181c;--cizgi:#323a43;--not:#262d34;--golge:none}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--zemin);color:var(--yazi);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans","Noto Sans Arabic",sans-serif;-webkit-text-size-adjust:100%}
