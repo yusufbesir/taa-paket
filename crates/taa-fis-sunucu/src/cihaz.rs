@@ -38,12 +38,20 @@ enum Kayit {
 }
 
 /// Cihaza verilebilen yetkiler: (anahtar, açıklama, mağaza PC'sinde varsayılan, telefonda varsayılan).
-pub const YETKILER: &[(&str, &str, bool, bool)] = &[(
-    "duzelt",
-    "Fiş düzeltme: sonradan işlem ekleme/çıkarma, kargo ↔ mağaza, teslim tarihi, fiş bağlama",
-    true,
-    false,
-)];
+pub const YETKILER: &[(&str, &str, bool, bool)] = &[
+    (
+        "duzelt",
+        "Fiş düzeltme: sonradan işlem ekleme/çıkarma, kargo ↔ mağaza, teslim tarihi, fiş bağlama",
+        true,
+        false,
+    ),
+    (
+        "fissiz-teslim",
+        "Fişsiz teslim: müşteri fişiyle gelmediğinde telefonun son 4 hanesi ve imzayla teslim",
+        true,
+        false,
+    ),
+];
 
 pub struct Kayitci {
     pub yol: PathBuf,
@@ -128,8 +136,8 @@ impl Kayitci {
     /// Cihaz adını değiştirir (yalnız yönetici, mağaza bilgisayarından çağrılır).
     pub fn ad_degistir(&self, id: &str, ad: &str, tarih: &str) -> Result<(), String> {
         let ad = ad.trim();
-        if ad.is_empty() || ad.chars().count() > 40 || ad.chars().any(char::is_control) {
-            return Err("cihaz adı 1-40 karakter olmalı".into());
+        if ad.is_empty() || ad.chars().count() > 40 || taa_fis::gorunmez_karakter_var(ad) {
+            return Err("cihaz adı 1-40 karakter olmalı (görünmez karakter olmadan)".into());
         }
         if !self.aktifler()?.iter().any(|c| c.id == id) {
             return Err(format!("aktif cihaz yok: {id}"));
@@ -196,8 +204,8 @@ impl Kayitci {
 
     pub fn ekle(&self, ad: &str, token: &str, tarih: &str, kisi_id: &str) -> Result<Cihaz, String> {
         let ad = ad.trim();
-        if ad.is_empty() || ad.chars().count() > 40 {
-            return Err("telefon adı 1-40 karakter olmalı".into());
+        if ad.is_empty() || ad.chars().count() > 40 || taa_fis::gorunmez_karakter_var(ad) {
+            return Err("telefon adı 1-40 karakter olmalı (görünmez karakter olmadan)".into());
         }
         let n = self
             .oku()?

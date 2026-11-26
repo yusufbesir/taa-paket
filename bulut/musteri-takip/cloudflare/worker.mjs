@@ -1,6 +1,6 @@
 // TAA müşteri takip, Cloudflare Workers + KV. Ortak kod: ./takip.mjs ve ./diller.mjs (bulut/musteri-takip/ortak'tan kopya).
 // Ayarlar (wrangler.toml): KV bağı TAKIP; değişkenler GENEL_ANAHTAR (mağaza sunucusunun genel anahtarı, gizli değil),
-// YEDEK_SAYFA (Vercel adresi). Kayıt süresi KV'nin kendi silme zamanıyla (expiration = sil) yönetilir.
+// YEDEK_SAYFA (Vercel adresi). ?sekme=ozet|islemler|subeler|sss sayfa()'ya geçer (bilinmeyen → ozet). Kayıt süresi KV'nin kendi silme zamanıyla (expiration = sil) yönetilir.
 import { dogrula, yeniMi, sayfa, KOD_RE, dilSec } from "./takip.mjs";
 
 // Çekmeceden dil seçilince (?dil=xx) seçim bir yıl hatırlanır; çerezde yalnız dil kodu vardır.
@@ -44,11 +44,11 @@ export default {
       const yedek = env.YEDEK_SAYFA && KOD_RE.test(kod) ? `${env.YEDEK_SAYFA}/t/${kod}` : "";
       const dil = dilSec(url.searchParams.get("dil"), istek.headers.get("accept-language"), istek.headers.get("cookie"));
       const adres = KOD_RE.test(kod) ? `/t/${kod}` : "";
-      return html(sayfa(kayit, { yedek, dil, adres }), kayit ? 200 : 404, dilCerezi(url, dil));
+      return html(sayfa(kayit, { yedek, dil, adres, sekme: url.searchParams.get("sekme") || "" }), kayit ? 200 : 404, dilCerezi(url, dil));
     }
     if (istek.method === "GET" && yol === "/") {
       const dil = dilSec(url.searchParams.get("dil"), istek.headers.get("accept-language"), istek.headers.get("cookie"));
-      return html(sayfa(null, { dil, adres: "/" }), 200, dilCerezi(url, dil));
+      return html(sayfa(null, { dil, adres: "/", sekme: url.searchParams.get("sekme") || "" }), 200, dilCerezi(url, dil));
     }
     return new Response("Bulunamadı", { status: 404 });
   },

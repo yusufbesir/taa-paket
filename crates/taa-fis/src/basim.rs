@@ -260,6 +260,26 @@ pub(crate) fn satirlar(f: &Fis, nusha: &str) -> Vec<(Stil, String)> {
             ),
         ));
     }
+    // Teslim alan (mağaza/terzihane nüshası ve düz metin): "Teslim alan: Ayşe Ç. (yakını) - fişsiz, imzalı".
+    // Tire yazıcıda da çıksın diye ASCII; CP857'de uzun tire yok.
+    if let Some(t) = f.teslim_kaydi.as_ref().filter(|_| !musteri_nushasi(nusha)) {
+        let mut ek = String::from(if t.fisli { "fişli" } else { "fişsiz" });
+        if !t.imza_sha256.is_empty() {
+            ek.push_str(", imzalı");
+        }
+        v.push((
+            Normal,
+            format!(
+                "Teslim alan: {} ({}) - {ek}",
+                kisa_ad(&t.teslim_alan),
+                iliski_adi(&t.iliski).unwrap_or("?")
+            ),
+        ));
+        if !t.ana_fis.is_empty() {
+            // Bağlı fiş: teslim, ana fişle birlikte yapıldı (imza ve doğrulama ana fişte).
+            v.push((Normal, format!("Birlikte teslim: {}", t.ana_fis)));
+        }
+    }
     if imza_blogu() && !musteri_nushasi(nusha) {
         v.push((Ayrac, String::new()));
         for l in [

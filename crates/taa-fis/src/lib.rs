@@ -180,6 +180,92 @@ pub struct Imza {
     pub okutan_kisi_id: String,
 }
 
+/// Ürünü teslim alanın ilişkisi: anahtar ve fişe basılan Türkçe adı.
+pub const TESLIM_ILISKILERI: &[(&str, &str)] = &[
+    ("kendisi", "kendisi"),
+    ("yakini", "yakını"),
+    ("diger", "diğer"),
+];
+
+/// Ürünü teslim alan kişinin kaydı (fişli/fişsiz teslim ve teslim imzası). Defterde kalır, silinmez.
+/// Fişsiz teslimde doğrulama telefonun son 4 hanesiyle yapılır; son 4 hane SAKLANMAZ, yalnız yöntemi yazılır.
+/// Bu kayıt müşteri takip (bulut) kaydına gitmez.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TeslimKaydi {
+    /// Teslim alanın adı soyadı.
+    pub teslim_alan: String,
+    /// `TESLIM_ILISKILERI` anahtarı: kendisi, yakini, diger.
+    pub iliski: String,
+    /// Müşteri fişiyle mi geldi?
+    pub fisli: bool,
+    /// "fis" ya da "telefon-son4".
+    pub dogrulama: String,
+    /// İmza PNG'sinin SHA-256 özeti (onaltılık); imza alınmadıysa boş.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub imza_sha256: String,
+    /// Veri klasörüne göre imza dosyası (ör. "imzalar/F-20261126-001-1.png"); imza yoksa boş.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub imza_dosyasi: String,
+    /// Teslimi yapan cihaz/kişi (kişi kimliği ya da cihaz adı).
+    pub kim: String,
+    pub tarih: String,
+    /// SS:DD:SS
+    #[serde(default)]
+    pub saat: String,
+    /// Bağlı fiş birlikte teslim edildiyse teslimin yapıldığı ana fiş no (imza ve doğrulama onda);
+    /// fişin kendi teslimiyse boş.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub ana_fis: String,
+}
+
+/// İlişki anahtarının fişe basılan adı.
+pub fn iliski_adi(anahtar: &str) -> Option<&'static str> {
+    TESLIM_ILISKILERI
+        .iter()
+        .find(|(k, _)| *k == anahtar)
+        .map(|(_, a)| *a)
+}
+
+/// Kişi adı karakterleri: harf, boşluk, tire, kesme işareti, nokta. Çift yönlü yazı işaretleri (U+202E vb.),
+/// sıfır genişlikli karakterler, rakamlar ve HTML işaretleri reddedilir (ad ekranda/fişte yanıltıcı görünmesin).
+pub fn ad_karakterleri_gecerli(ad: &str) -> bool {
+    ad.chars()
+        .all(|c| c.is_alphabetic() || c == ' ' || c == '-' || c == '\'' || c == '.' || c == '’')
+}
+
+/// Görünmez biçim karakteri var mı (çift yönlü yazı işaretleri, sıfır genişlikli karakterler, BOM)?
+/// Rakam ve işaret serbest olan alanlarda (cihaz adı vb.) kullanılır.
+pub fn gorunmez_karakter_var(s: &str) -> bool {
+    s.chars().any(|c| {
+        c.is_control()
+            || matches!(c,
+                '\u{00AD}' | '\u{061C}' | '\u{180E}' | '\u{200B}'..='\u{200F}'
+                | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{206F}' | '\u{FEFF}'
+                | '\u{FFF9}'..='\u{FFFB}')
+    })
+}
+
+/// Teslim alan adını ve ilişkiyi denetler (sunucu dosya yazmadan önce de çağırır). Ad soyad en az iki kelime.
+pub fn teslim_alan_denetle(teslim_alan: &str, iliski: &str) -> Result<(), String> {
+    let ad = teslim_alan.trim();
+    if ad.split_whitespace().count() < 2 {
+        return Err("teslim alanın adı ve soyadı yazılmalı".into());
+    }
+    if ad.chars().count() > 80 {
+        return Err("teslim alanın adı en çok 80 harf olmalı".into());
+    }
+    if !ad_karakterleri_gecerli(ad) {
+        return Err(
+            "teslim alanın adında yalnız harf, boşluk, tire, kesme işareti ve nokta olabilir"
+                .into(),
+        );
+    }
+    if iliski_adi(iliski).is_none() {
+        return Err("ilişki: kendisi, yakini ya da diger olmalı".into());
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Fis {
     pub no: String,
@@ -244,6 +330,9 @@ pub struct Fis {
     /// Birlikte teslim edilecek bağlı fişler (aynı anda alışveriş yapanlar; defterden türetilir).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub bagli: Vec<String>,
+    /// Ürünü teslim alan kişi (defterden türetilir; eski fişlerde yok).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub teslim_kaydi: Option<TeslimKaydi>,
 }
 
 fn varsayilan_saat() -> String {
@@ -549,9 +638,10 @@ mod testler {
         assert!(m.contains("Raf/Stant: B-3") && m.contains("İmza (usta): Usta A.")); // personel fişte "Ad S."
         let q = escpos_nushalar_qr(&g, 42, "http://x/telefon#fis=F");
         assert!(q.windows(22).any(|w| w == b"http://x/telefon#fis=F"));
-        for st in [Durum::Terzihanede, Durum::Hazir, Durum::Teslim] {
+        for st in [Durum::Terzihanede, Durum::Hazir] {
             d.durum_ata(&f.no, st, "2026-11-06").unwrap();
         }
+        teslim_et_deneme(&d, &f.no, "2026-11-06");
         assert!(d.raf_ata(&f.no, "C-1", "Ali", "2026-11-07").is_err());
     }
 
@@ -764,7 +854,9 @@ mod testler {
         assert_eq!(f1.kalan_kurus(), 65000);
         assert!(d.durum_ata(&f1.no, Durum::Teslim, "2026-11-05").is_err()); // Hazir'dan geçmeli
         d.durum_ata(&f1.no, Durum::Hazir, "2026-11-08").unwrap();
-        d.durum_ata(&f1.no, Durum::Teslim, "2026-11-09").unwrap();
+        // teslim yalnız teslim kaydıyla (durum_ata Teslim'e geçirmez)
+        assert!(d.durum_ata(&f1.no, Durum::Teslim, "2026-11-09").is_err());
+        teslim_et_deneme(&d, &f1.no, "2026-11-09");
         assert!(d.durum_ata(&f1.no, Durum::Iptal, "2026-11-09").is_err());
         assert_eq!(d.bul(&f1.no).unwrap().unwrap().durum, Durum::Teslim);
         assert_eq!(d.geciken("2026-11-11").unwrap().len(), 1);
@@ -805,6 +897,7 @@ mod testler {
             teslim_degisiklikleri: Vec::new(),
             duzeltmeler: Vec::new(),
             bagli: Vec::new(),
+            teslim_kaydi: None,
         };
         let m = duz_metin(&f, 42);
         assert!(m.contains("TADİLAT FİŞİ") && m.contains("F-20261104-001"));
@@ -894,7 +987,7 @@ mod testler {
         d.durum_ata(&f.no, Durum::Terzihanede, "2026-11-05")
             .unwrap();
         d.durum_ata(&f.no, Durum::Hazir, "2026-11-06").unwrap();
-        d.durum_ata(&f.no, Durum::Teslim, "2026-11-12").unwrap();
+        teslim_et_deneme(&d, &f.no, "2026-11-12");
         assert!(d
             .teslim_degistir(&f.no, "2026-11-20", "17:00", "x", "2026-11-13")
             .is_err());
@@ -1069,13 +1162,130 @@ mod testler {
             "müşteri nüshası kısa:\n{m}"
         );
         // teslim edilen fiş düzeltilemez
-        for st in [Durum::Hazir, Durum::Teslim] {
-            d.durum_ata(&a.no, st, "2026-11-07").unwrap();
-        }
+        d.durum_ata(&a.no, Durum::Hazir, "2026-11-07").unwrap();
+        teslim_et_deneme(&d, &a.no, "2026-11-07");
         assert!(d
             .kalem_ekle(&a.no, kalem("Ceket", "ütü", ""), "PC", "2026-11-07")
             .is_err());
         assert_eq!(kisa_ad("ali"), "ali");
         assert_eq!(kisa_ad("Muhammed Yusuf Beşir"), "Muhammed B.");
+    }
+
+    fn teslim_kaydi_ornek(fisli: bool) -> TeslimKaydi {
+        TeslimKaydi {
+            teslim_alan: " Zeynep   Kaya ".into(),
+            iliski: "yakini".into(),
+            fisli,
+            dogrulama: if fisli { "fis" } else { "telefon-son4" }.into(),
+            imza_sha256: "ab".repeat(32),
+            imza_dosyasi: "imzalar/F-20261104-001-1.png".into(),
+            kim: "PC".into(),
+            tarih: "2026-11-09".into(),
+            saat: "10:00:00".into(),
+            ana_fis: String::new(),
+        }
+    }
+
+    /// Deneme teslimi: fişli, imzasız, sahte ad.
+    fn teslim_et_deneme(d: &Defter, no: &str, tarih: &str) {
+        let mut k = teslim_kaydi_ornek(true);
+        k.imza_sha256 = String::new();
+        k.imza_dosyasi = String::new();
+        k.tarih = tarih.into();
+        d.teslim_et(no, k).unwrap();
+    }
+
+    #[test]
+    fn teslim_kaydi_fissiz_ve_baski() {
+        let y = yol();
+        let d = Defter { yol: &y };
+        let f = d.ekle(girdi()).unwrap();
+        // hazır olmayan fişe teslim kaydı yazılmaz
+        assert!(d.teslim_et(&f.no, teslim_kaydi_ornek(false)).is_err());
+        d.durum_ata(&f.no, Durum::Hazir, "2026-11-08").unwrap();
+        // kurallar: ad soyad, ilişki, doğrulama yöntemi, fişsizde imza
+        let mut k = teslim_kaydi_ornek(false);
+        k.teslim_alan = "Zeynep".into();
+        assert!(d.teslim_et(&f.no, k).is_err());
+        let mut k = teslim_kaydi_ornek(false);
+        k.iliski = "komsu".into();
+        assert!(d.teslim_et(&f.no, k).is_err());
+        let mut k = teslim_kaydi_ornek(false);
+        k.dogrulama = "fis".into();
+        assert!(d.teslim_et(&f.no, k).is_err());
+        let mut k = teslim_kaydi_ornek(false);
+        k.imza_sha256 = String::new();
+        k.imza_dosyasi = String::new();
+        assert!(d.teslim_et(&f.no, k).is_err());
+        let mut k = teslim_kaydi_ornek(false);
+        k.imza_sha256 = "xyz".into();
+        assert!(d.teslim_et(&f.no, k).is_err());
+        // ad: çift yönlü yazı işareti, sıfır genişlikli karakter, HTML ve rakam reddedilir
+        for ad in [
+            "Zeynep \u{202E}Kaya",
+            "Zey\u{200B}nep Kaya",
+            "Zeynep <b>Kaya</b>",
+            "Zeynep Kaya2",
+        ] {
+            let mut k = teslim_kaydi_ornek(false);
+            k.teslim_alan = ad.into();
+            assert!(d.teslim_et(&f.no, k).is_err(), "{ad}");
+        }
+        assert!(teslim_alan_denetle("Ayşe O'Neil-Çelik Jr.", "kendisi").is_ok());
+        // bağlı fiş kaydında ana fiş, fişin kendisi olamaz
+        let mut k = teslim_kaydi_ornek(false);
+        k.ana_fis = f.no.clone();
+        assert!(d.teslim_et(&f.no, k).is_err());
+        d.teslim_et(&f.no, teslim_kaydi_ornek(false)).unwrap();
+        assert!(d.teslim_et(&f.no, teslim_kaydi_ornek(false)).is_err()); // bir kez
+        let g = d.bul(&f.no).unwrap().unwrap();
+        // kayıt satırı aynı zamanda Teslim geçişi (tek satır, atomik)
+        assert_eq!(g.durum, Durum::Teslim);
+        assert!(d.durum_ata(&f.no, Durum::Iptal, "2026-11-09").is_err());
+        let gecmis = d.durum_gecmisi().unwrap();
+        assert_eq!(
+            gecmis
+                .iter()
+                .filter(|(n, st, _)| *n == f.no && *st == Durum::Teslim)
+                .count(),
+            1
+        );
+        let t = g.teslim_kaydi.clone().unwrap();
+        assert_eq!(t.teslim_alan, "Zeynep Kaya");
+        assert!(!t.fisli && t.dogrulama == "telefon-son4");
+        // 42 sütunda satır sarılabilir; satırlar birleştirilip aranır.
+        let m = duz_metin(&g, 42).replace('\n', " ");
+        assert!(
+            m.contains("Teslim alan: Zeynep K. (yakını) - fişsiz, imzalı"),
+            "{m}"
+        );
+        assert!(!m.contains("Kaya"));
+        // müşteri nüshasında basılmaz
+        assert!(!duz_metin_nusha(&g, 42, "MÜŞTERİ NÜSHASI").contains("Teslim alan:"));
+        // eski satırlar (teslim kaydı yok) okunur, alan yazılmaz
+        let mut eski = g.clone();
+        eski.teslim_kaydi = None;
+        assert!(!serde_json::to_string(&eski)
+            .unwrap()
+            .contains("teslim_kaydi"));
+    }
+
+    #[test]
+    fn teslim_kaydi_fisli_imzasiz() {
+        let y = yol();
+        let d = Defter { yol: &y };
+        let f = d.ekle(girdi()).unwrap();
+        d.durum_ata(&f.no, Durum::Hazir, "2026-11-08").unwrap();
+        let mut k = teslim_kaydi_ornek(true);
+        k.dogrulama = "telefon-son4".into();
+        assert!(d.teslim_et(&f.no, k).is_err());
+        let mut k = teslim_kaydi_ornek(true);
+        k.iliski = "kendisi".into();
+        k.teslim_alan = "Ayşe Çelik".into();
+        k.imza_sha256 = String::new();
+        k.imza_dosyasi = String::new();
+        d.teslim_et(&f.no, k).unwrap();
+        let g = d.bul(&f.no).unwrap().unwrap();
+        assert!(duz_metin(&g, 42).contains("Teslim alan: Ayşe Ç. (kendisi) - fişli\n"));
     }
 }

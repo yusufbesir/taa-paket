@@ -392,6 +392,8 @@ html[data-tema="keten"] .rozet{border-radius:8px}
         <div class="alan" id="a-islem"><label for="isl">İşlem</label><select id="isl"></select></div>
         <div class="alan" id="a-islem-serbest" hidden><label for="isl-serbest">Yapılacak işlem</label><input id="isl-serbest" maxlength="60"></div>
         <div class="alan" id="a-varyant" hidden><label for="var">Seçenek</label><select id="var"></select></div>
+        <div class="iki"><div class="alan"><label for="renk">Renk</label><select id="renk"><option value="">Renk seçilmedi</option></select></div>
+          <div class="alan"><label for="adet">Adet</label><select id="adet"></select></div></div>
         <div class="alan"><label for="olcu">Ölçü (cm)</label><input id="olcu" class="mono" inputmode="decimal" maxlength="5" placeholder="cm"></div>
         <label class="onay"><input type="checkbox" id="igne"> İğneyle işaretlendi (cm yok)</label>
         <label class="onay" id="a-onay" hidden><input type="checkbox" id="usta-onay"> <span>Usta onayladı <span class="mut kucuk" id="onay-not"></span></span></label>
@@ -529,14 +531,14 @@ html[data-tema="keten"] .rozet{border-radius:8px}
   function agDurumu(var_){var i=$('#isik');i.dataset.ag=var_?'var':'yok';$('#isik-metin').textContent=var_?'Bağlı':'Ağ yok'}
 
   /* ---------- veri ---------- */
-  var OTURUM=null, DURUM={}, FISLER=[], KISILER=[], AD={}, KATALOG={islemler:[]}, SUZ='bekleyen';
+  var OTURUM=null, DURUM={}, FISLER=[], KISILER=[], AD={}, KATALOG={islemler:[]}, SUZ='bekleyen', RENKLER=[];
   var D={bekliyor:['i-saat','Bekliyor','Terzihaneye al','terzihanede'],terzihanede:['i-igne','Terzihanede','Hazır olarak işaretle','hazir'],
          hazir:['i-aski','Hazır','Teslim et','teslim'],teslim:['i-cift','Teslim',null,null],iptal:['i-x','İptal',null,null]};
   var SIRA=['bekliyor','terzihanede','hazir','teslim'];
   function rozet(d,degisti){var x=D[d]||D.bekliyor;return '<span class="rozet'+(degisti?' degisti':'')+'">'+sm(x[0])+'<span>'+x[1]+'</span></span>'}
   function bul(no){for(var i=0;i<FISLER.length;i++)if(FISLER[i].no===no)return FISLER[i];return null}
   function acik(f){return f.durum!=='teslim'&&f.durum!=='iptal'}
-  function kalemMetni(k){return k.urun+' · '+k.islem+(k.varyant?' ('+k.varyant+')':'')}
+  function kalemMetni(k){return k.urun+' · '+k.islem+(k.varyant?' ('+k.varyant+')':'')+TKD.ekMetin(k,RENKLER)}
   function olcuMetni(k){return k.igneli?'İğneli':k.olcu_mm?String(k.olcu_mm/10).replace('.',',')+' cm':''}
   function noKisa(no){var m=String(no).match(/(\d{3})$/);return m?m[1]:no}
 
@@ -544,11 +546,15 @@ html[data-tema="keten"] .rozet{border-radius:8px}
     return api('GET','/api/oturum').then(function(o){OTURUM=o;
       $('#ay-cihaz').textContent=o.cihaz&&o.cihaz.ad||'—';
       $('#ay-giris').textContent=o.giris==='kullanici'?'Kişisel telefon · '+(o.kisi&&o.kisi.ad||''):'Mağaza telefonu';
-      $('#ay-sube').textContent=o.sube||'—'})}
+      $('#ay-sube').textContent=o.sube||'—';
+      if(EKRAN==='fis'&&FIS)fisCiz()})}
   function durumYukle(){return api('GET','/api/durum').then(function(d){DURUM=d;if(d.tarih)BUGUN=d.tarih;
     $('#ana-alt').textContent=(d.sube?'Şube '+d.sube:'Şube ayarlı değil')+(OTURUM&&OTURUM.kisi?' · '+OTURUM.kisi.ad:'')})}
   function kisilerYukle(){return api('GET','/api/kisiler').then(function(v){KISILER=v.kisiler||[];AD={};KISILER.forEach(function(k){AD[k.id]=k.ad});kisiSecenekleri()})}
   function katalogYukle(){return api('GET','/api/islemler').then(function(k){KATALOG=k&&k.islemler?k:{islemler:[]};grupCiz()})}
+  /* Renk listesi: kalem formundaki seçici DOM ile doldurulur (boş = seçilmedi). */
+  function renklerYukle(){return api('GET','/api/renkler').then(function(v){RENKLER=v.renkler||[];renkSecenekleri();kalemListeCiz();if(EKRAN==='fis'&&FIS)fisCiz()},function(){})}
+  function renkSecenekleri(){var r=$('#renk'),d=r.value;r.parentNode.replaceChild(TKD.renkSecici(RENKLER,d,{id:'renk'}),r)}
   function fislerYukle(){return api('GET','/api/fisler').then(function(l){FISLER=(l&&l.fisler)||l||[];if(BEKLEYEN){var b=bul(BEKLEYEN.no);if(b)b.durum=BEKLEYEN.durum}anaCiz();listeCiz()})}
 
   /* ---------- yönlendirme ---------- */
@@ -649,7 +655,7 @@ html[data-tema="keten"] .rozet{border-radius:8px}
   function ozetCiz(){
     var m=$('#mus').value.trim(),t=$('#tel').value.trim();
     $('#oz-kisi').textContent=[m,t,SEC.dan?'Danışman: '+AD[SEC.dan]:''].filter(Boolean).join(' · ')||'Henüz yazılmadı';
-    $('#oz-kalem').textContent=KALEM.length?KALEM.map(function(k){return k.urun+' · '+k.islem+(olcuMetni(k)?' · '+olcuMetni(k):'')}).join(' / '):'Kalem yok';
+    $('#oz-kalem').textContent=KALEM.length?KALEM.map(function(k){return kalemMetni(k)+(olcuMetni(k)?' · '+olcuMetni(k):'')}).join(' / '):'Kalem yok';
     var u=kurus($('#ucr').value),o=kurus($('#on').value);$('#kalan').textContent=tl(u-o);
     $('#oz-teslim').textContent=($('#tes').value?gunAd($('#tes').value)+' '+($('#sa').value||''):'')+' · Ücret '+tl(u)+' · Kalan '+tl(u-o);
     var e=kayitli?[]:eksikler(),x=$('#eksik');
@@ -685,10 +691,10 @@ html[data-tema="keten"] .rozet{border-radius:8px}
     var ig=$('#igne').checked, mm=ig?null:Math.round(parseFloat($('#olcu').value.replace(',','.'))*10);
     if(!ig&&!(mm>0)){bildir('Ölçüyü cm olarak yazın ya da "İğneyle işaretlendi" seçin');$('#olcu').focus();return}
     if(is&&is.sinir_mm&&mm>is.sinir_mm&&!$('#usta-onay').checked){bildir((is.uyari||'Sınır aşıldı')+': usta onayı gerekli');return}
-    KALEM.push({urun:GRUP,islem:islem,islem_kodu:is?is.kod:null,varyant:!$('#a-varyant').hidden&&$('#var').value||null,olcu_mm:mm>0?mm:null,igneli:ig,usta_onayli:$('#usta-onay').checked});
-    $('#olcu').value='';$('#igne').checked=false;$('#olcu').disabled=false;$('#usta-onay').checked=false;$('#isl-serbest').value='';kalemListeCiz()});
+    KALEM.push(TKD.kalemeEkle({urun:GRUP,islem:islem,islem_kodu:is?is.kod:null,varyant:!$('#a-varyant').hidden&&$('#var').value||null,olcu_mm:mm>0?mm:null,igneli:ig,usta_onayli:$('#usta-onay').checked},$('#renk').value,$('#adet').value));
+    $('#renk').value='';$('#adet').value='1';$('#olcu').value='';$('#igne').checked=false;$('#olcu').disabled=false;$('#usta-onay').checked=false;$('#isl-serbest').value='';kalemListeCiz()});
   function kalemListeCiz(){
-    $('#kalem-liste').innerHTML=KALEM.map(function(k,n){return '<li><span>'+esc(k.urun)+' · '+esc(k.islem)+(k.varyant?' ('+esc(k.varyant)+')':'')+' · <b class="mono">'+esc(olcuMetni(k))+'</b>'+(k.usta_onayli?' · <span class="uyari-not">usta onaylı</span>':'')+'</span>'+
+    $('#kalem-liste').innerHTML=KALEM.map(function(k,n){return '<li><span>'+esc(kalemMetni(k))+' · <b class="mono">'+esc(olcuMetni(k))+'</b>'+(k.usta_onayli?' · <span class="uyari-not">usta onaylı</span>':'')+'</span>'+
       '<button type="button" class="simge-d" data-kalem-sil="'+n+'" aria-label="Kalemi sil">'+sm('i-x')+'</button></li>'}).join('');ozetCiz()}
   $('#kalem-liste').addEventListener('click',function(ev){var b=ev.target.closest('[data-kalem-sil]');if(b){KALEM.splice(+b.dataset.kalemSil,1);kalemListeCiz()}});
   ['#mus','#tel','#ucr','#on','#tes','#sa'].forEach(function(s){$(s).addEventListener('input',ozetCiz)});
@@ -696,7 +702,7 @@ html[data-tema="keten"] .rozet{border-radius:8px}
   function yeniSifirla(){
     kayitli=false;SEC={dan:'',olc:'',duz:''};KALEM=[];
     ['#mus','#tel','#prova','#kad','#ktel','#kadres','#olcunot','#isl-serbest','#olcu'].forEach(function(s){$(s).value=''});
-    $('#ucr').value='0';$('#on').value='0';$('#sa').value='17:00';$('#tes').value=gunEkle(BUGUN,3);$('#tes').min=BUGUN;$('#usta').value='';$('#izin').checked=false;
+    $('#renk').value='';$('#adet').value='1';$('#ucr').value='0';$('#on').value='0';$('#sa').value='17:00';$('#tes').value=gunEkle(BUGUN,3);$('#tes').min=BUGUN;$('#usta').value='';$('#izin').checked=false;
     $$('[data-ac]').forEach(function(b){b.setAttribute('aria-pressed','false');$('#x-'+b.dataset.ac).hidden=true});
     $('#sonuc').hidden=true;$('#kaydet').textContent='Kaydet';$('#b-kisi').open=true;kalemListeCiz();kisiCiz()}
   $('#kaydet').addEventListener('click',function(){
@@ -741,7 +747,8 @@ html[data-tema="keten"] .rozet{border-radius:8px}
 
   /* Durum değişimi: hemen görünür, 6 sn içinde geri alınabilir; sayfa kapanırken bekleyen gönderilir. */
   var BEKLEYEN=null;
-  function ilerlet(no){var f=bul(no);if(!f)return;var x=D[f.durum];if(!x||!x[3])return;
+  function ilerlet(no,dogrudan){var f=bul(no);if(!f)return;var x=D[f.durum];if(!x||!x[3])return;
+    if(x[3]==='teslim'&&!dogrudan){teslimAkisi(no);return}
     bekleyeniGonder();var eski=f.durum;f.durum=x[3];
     BEKLEYEN={no:no,durum:x[3],eski:eski,zaman:setTimeout(bekleyeniGonder,6000)};
     tumunuCiz(true);
@@ -749,7 +756,32 @@ html[data-tema="keten"] .rozet{border-radius:8px}
   function bekleyeniGonder(keep){var b=BEKLEYEN;if(!b)return;BEKLEYEN=null;clearTimeout(b.zaman);
     if(keep){try{fetch('/api/fis/'+encodeURIComponent(b.no)+'/durum',{method:'POST',keepalive:true,headers:{'Authorization':'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify({durum:b.durum})})}catch(e){}return}
     api('POST','/api/fis/'+encodeURIComponent(b.no)+'/durum',{durum:b.durum}).then(function(r){if(r&&r.bildirim)bildir('Hazır mesajı sıraya alındı');fislerYukle().catch(function(){})},
-      function(e){var f=bul(b.no);if(f)f.durum=b.eski;tumunuCiz();bildir('Durum değişmedi: '+e.message)})}
+      function(e){var f=bul(b.no);if(f)f.durum=b.eski;tumunuCiz();
+        // Teslim /durum ile yapılmaz (sunucu 409 teslim_al_gerekli): teslim kutusu açılır.
+        if(b.durum==='teslim'&&e.kod===409){teslimAkisi(b.no);return}
+        bildir('Durum değişmedi: '+TKD.hataIleti(e))})}
+
+  // B2: fişsiz teslim ve imza buraya bağlanır
+  /* Teslim akışının tamamı (ortak.js TKD.teslimSor): kutuda "Fişiyle geldi" / "Fişi yok", teslim alan ad soyad, ilişki;
+     fişsizde son 4 hane ve zorunlu imza (telefonda varsayılan olarak "fissiz-teslim" yetkisi yok, seçenek kapalı ve
+     nedeni yazılı), fişlide isteğe bağlı imza. İstek /teslim-al ucuna gider. Bağlı açık fiş varsa 409 {soru:"bagli_teslim"}
+     gelir; TKD.bagliSor kutusu açılır ve aynı istek "bagli" listesiyle yeniden gönderilir.
+     Teslim kaydı kalıcı olduğu için 6 sn'lik geri alma beklemesi teslimde yoktur; kutunun kendisi onaydır.
+     Sunucu /durum ile teslimi reddeder (409 teslim_al_gerekli). Fiş artık hazır değilse kutu açılmaz. */
+  function teslimAkisi(no){
+    var f=bul(no)||(FIS&&FIS.no===no?FIS:null);if(!f||f.durum!=='hazir')return Promise.resolve();
+    function yenile(){fislerYukle().catch(function(){});if(EKRAN==='fis'&&ACIK_NO===no)fisAc(no)}
+    bekleyeniGonder();
+    // Oturum (yetkiler) henüz gelmediyse önce okunur.
+    return (OTURUM?Promise.resolve():oturumYukle().catch(function(){})).then(function(){
+      return TKD.teslimSor({fis:f,oturum:OTURUM,api:function(m,y,g){return api(m,y,g)}})}).then(function(r){
+      if(!r){bildir('Teslim edilmedi: '+noKisa(no));return}
+      var bt=r.birlikte_teslim||[],tk=r.teslim_kaydi||{};
+      bildir('Teslim: '+noKisa(no)+(bt.length?' + '+bt.map(noKisa).join(', '):'')+(tk.fisli===false?' · fişsiz':''));
+      yenile()})}
+  /* Fiş sayfasında teslim kaydı ve imza görüntüsü (GET /api/fis/<no>/imza, telefonun kendi anahtarıyla). */
+  /* İmzayı yalnız fişsiz teslim ya da düzeltme yetkisi olan telefon görür (sunucu da 403 döner); diğerinde yalnız "İmzalı" yazar. */
+  function teslimKaydiCiz(f){TKD.teslimKaydiCiz($('#fis-teslim-kaydi'),f,{imzaGorebilir:TKD.yetkiVar(OTURUM,'fissiz-teslim')||TKD.yetkiVar(OTURUM,'duzelt'),imzaGetir:function(no){return TKD.imzaCek(no,{'Authorization':'Bearer '+tok})}})}
   window.addEventListener('pagehide',function(){bekleyeniGonder(true)});
   function tumunuCiz(degisti){anaCiz();if(EKRAN==='liste')listeCiz();if(EKRAN==='fis'&&ACIK_NO)fisCiz(degisti)}
 
@@ -797,7 +829,7 @@ html[data-tema="keten"] .rozet{border-radius:8px}
         '<div class="iki"><button class="dugme" data-form="raf" aria-pressed="'+(FORM==='raf')+'">Rafa yerleştirdim</button><button class="dugme" data-form="imza" aria-pressed="'+(FORM==='imza')+'">İmzala</button></div>'+
         '<div class="ic-form" id="f-raf"'+(FORM==='raf'?'':' hidden')+'><div class="alan"><label for="raf">Raf kodu</label><input id="raf" class="mono" maxlength="12" value="'+esc(f.raf||'')+'" placeholder="A-12"></div><button class="dugme sonraki" id="raf-kaydet">Raf kodunu kaydet</button></div>'+
         '<div class="ic-form" id="f-imza"'+(FORM==='imza'?'':' hidden')+'>'+kisiSec('imza-kisi')+'<button class="dugme sonraki" id="imza-kaydet">Teslim edeni imzala</button></div>'+
-        '<button class="dugme genis" data-form="teslim" aria-pressed="'+(FORM==='teslim')+'">'+sm('i-takvim')+'Teslim tarihini değiştir</button>'+
+        (duzeltmeYetkisi()?'<button class="dugme genis" data-form="teslim" aria-pressed="'+(FORM==='teslim')+'">'+sm('i-takvim')+'Teslim tarihini değiştir</button>':'')+
         '<div class="ic-form" id="f-teslim"'+(FORM==='teslim'?'':' hidden')+'><div class="iki"><div class="alan"><label for="yt">Yeni tarih</label><input id="yt" type="date" min="'+BUGUN+'" value="'+esc(f.teslim)+'"></div><div class="alan"><label for="ys">Saat</label><input id="ys" type="time" value="'+esc(f.teslim_saati||'17:00')+'"></div></div><div class="alan"><label for="yn">Neden değişti?</label><input id="yn" maxlength="120"></div><button class="dugme sonraki" id="teslim-kaydet">Teslim tarihini kaydet</button></div>'+
         '<button class="dugme genis" data-foto="'+esc(f.no)+'">'+sm('i-kamera')+'Fotoğraf ekle</button>'+
         '<button class="dugme genis" data-yazdir="'+esc(f.no)+'">'+sm('i-yazici')+'Yazdır</button>'
@@ -806,13 +838,23 @@ html[data-tema="keten"] .rozet{border-radius:8px}
       '<div class="ic-form" id="f-isaret"'+(FORM==='isaret'?'':' hidden')+'><div class="alan"><label for="is-kalem">Hangi kalem?</label><select id="is-kalem">'+(f.kalemler||[]).map(function(k,n){return '<option value="'+n+'">'+(n+1)+'. '+esc(kalemMetni(k))+'</option>'}).join('')+'</select></div>'+
         '<div class="bolme" role="group" aria-label="Tür"><button type="button" class="dugme" data-is-tur="yeniden_is" aria-pressed="true">Yeniden iş</button><button type="button" class="dugme" data-is-tur="sikayet" aria-pressed="false">Müşteri şikâyeti</button></div>'+
         '<div class="alan"><label for="is-neden">Neden?</label><input id="is-neden" maxlength="200"></div><button class="dugme tehlike genis" id="isaret-kaydet">İşaretle</button><span class="mut kucuk">Yönetici tutanak yazar; puan ancak tutanakla değişir.</span></div>'+
-      '<div class="mesaj" id="fis-mesaj" role="status" hidden><svg class="sm"><use href="#i-onay"/></svg><div></div></div>'}
+      '<div class="mesaj" id="fis-mesaj" role="status" hidden><svg class="sm"><use href="#i-onay"/></svg><div></div></div><div id="fis-teslim-kaydi"></div><div id="fis-duzeltme"></div>';
+    teslimKaydiCiz(f);duzeltmeCiz(f)}
+  function duzeltmeYetkisi(){return TKD.yetkiVar(OTURUM,'duzelt')}
+  /* Fiş düzeltme bölümü (ortak.js TKD): yalnız bu telefona "duzelt" yetkisi verildiyse; teslim/iptal fişte yok. */
+  function duzeltmeCiz(f){
+    var k=$('#fis-duzeltme');if(!k)return;
+    if(!duzeltmeYetkisi()){k.textContent='';return}
+    TKD.yerlestir(k,{fis:f,api:function(m,y,g){return api(m,y,g)},katalog:KATALOG,renkler:RENKLER,
+      fisler:function(){return api('GET','/api/fisler').then(function(l){return (l&&l.fisler)||l||[]})},
+      fisBul:bul,fisAc:fisAc,kisiAd:function(kim){return AD[kim]||kim},
+      sonra:function(ileti){bildir(ileti);fislerYukle().catch(function(){});fisAc(f.no)}})}
   function fisMesaj(t,tur){var m=$('#fis-mesaj');if(!m)return bildir(t);m.hidden=false;m.className='mesaj '+(tur||'tamam');m.lastElementChild.textContent=t}
   $('#fis-ic').addEventListener('click',function(ev){
     var b=ev.target.closest('button');if(!b||!FIS)return;var no=FIS.no,yol='/api/fis/'+encodeURIComponent(no);
     if(b.dataset.form){FORM=FORM===b.dataset.form?'':b.dataset.form;fisCiz();return}
     if(b.dataset.isTur){$$('[data-is-tur]').forEach(function(x){x.setAttribute('aria-pressed',String(x===b))});return}
-    var yap=function(p,ok){b.disabled=true;p.then(function(r){FORM='';fisAc(no);fislerYukle().catch(function(){});bildir(typeof ok==='function'?ok(r):ok)},function(e){b.disabled=false;fisMesaj(e.message,'hata')})};
+    var yap=function(p,ok){b.disabled=true;p.then(function(r){FORM='';fisAc(no);fislerYukle().catch(function(){});bildir(typeof ok==='function'?ok(r):ok)},function(e){b.disabled=false;fisMesaj(TKD.hataIleti(e),'hata')})};
     if(b.id==='fi-okut')yap(api('POST',yol+'/okut',{}),function(r){return 'Okutuldu: '+(r.okutulan||[]).length+' kalem'+((r.zaten||[]).length?', zaten okutulmuş '+r.zaten.length:'')});
     else if(b.id==='raf-kaydet'){var r=$('#raf').value.trim();if(!r){fisMesaj('Raf kodunu yazın','hata');return}yap(api('POST',yol+'/raf',{raf:r}),'Raf kaydedildi')}
     else if(b.id==='imza-kaydet'){var ku=kullanici(),k=ku?ku.id:$('#imza-kisi').value;if(!k){fisMesaj('İmzalayan kişiyi seçin','hata');return}yap(api('POST',yol+'/imza',{rol:'teslim-eden',okutan:k}),'İmzalandı')}
@@ -900,9 +942,10 @@ html[data-tema="keten"] .rozet{border-radius:8px}
     try{if(/[?&]kod=/.test(location.search))history.replaceState(null,'','/telefon'+location.hash)}catch(e){}
     var h=location.hash.replace('#','');
     if(!hashAc())git(['yeni','liste','okut','ayarlar'].indexOf(h)>=0?h:'ana');
-    oturumYukle().then(function(){return Promise.all([durumYukle(),kisilerYukle(),katalogYukle()])}).then(function(){
+    oturumYukle().then(function(){return Promise.all([durumYukle(),kisilerYukle(),katalogYukle(),renklerYukle()])}).then(function(){
       if(!kayitli&&!KALEM.length)yeniSifirla();return fislerYukle()}).then(kuyrukGonder).catch(function(e){if(e.kod!==401)bildir(e.message)})}
   window.addEventListener('hashchange',hashAc);
+  (function(){var a=$('#adet');a.parentNode.replaceChild(TKD.adetSecici(1,{id:'adet'}),a)})();
   kuyrukCiz();yeniSifirla();baslat();
   setInterval(function(){if(tok&&!document.hidden&&(EKRAN==='ana'||EKRAN==='liste'))fislerYukle().catch(function(){})},30000);
 })();
