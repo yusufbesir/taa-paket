@@ -77,6 +77,10 @@
 .tg-menu kbd{margin-left:auto;font:12px ui-monospace,Consolas,monospace;color:var(--taa-soluk,#9aa5b8)}
 .tg-menu .tg-tehlike{color:var(--taa-hata,#f06a5f)}
 .tg-menu .tg-alt-menu{padding-left:16px}
+.tg-menu .tg-alt-menu[hidden]{display:none}
+.tg-menu .tg-cekmece .tg-secili{margin-left:auto;color:var(--taa-soluk,#9aa5b8);font-size:13px}
+.tg-menu .tg-cekmece .tg-ok2{display:inline-block;margin-left:8px;color:var(--taa-soluk,#9aa5b8);transition:transform .15s ease}
+.tg-menu .tg-cekmece[aria-expanded="true"] .tg-ok2{transform:rotate(90deg)}
 .tg-menu [aria-checked="true"]::after{content:"✓";margin-left:auto;color:var(--taa-vurgu,#f3a83b)}
 .tg-menu .tg-surum{padding:6px 10px 4px;font-size:11px;color:var(--taa-soluk,#9aa5b8)}
 @media print{.tg-hesap,.tg-menu{display:none}}`;
@@ -114,7 +118,8 @@
     if (gozcu) gozcu.observe(govde, { childList: true });
     const programAdi = esc(s.programAdi || 'TAA');
     let sonKullanici = s.kullanici ? String(s.kullanici) : '';
-    const altMetin = s.kilitli && sonKullanici ? 'Ekran kilitli. Devam etmek için şifrenizi yazın.' : 'TAA hesabınızla giriş yapın';
+    let kilitKipi = !!(s.kilitli && sonKullanici);
+    const kilitliKullanici = kilitKipi ? sonKullanici : '';
 
     const kapat = () => {
       kap.querySelectorAll('input[type=password]').forEach((i) => { i.value = ''; });
@@ -126,18 +131,19 @@
     const odak = (sec) => { const e = kap.querySelector(sec); if (e) e.focus(); };
 
     function girisGoster(ilk) {
+      const altMetin = kilitKipi ? 'Ekran kilitli. Devam etmek için şifrenizi yazın.' : 'TAA hesabınızla giriş yapın';
       kap.innerHTML = `<form class="tg-kart" novalidate>
         <h1 id="taa-giris-baslik">${programAdi}</h1><p class="tg-alt">${esc(altMetin)}</p>
-        <label>Kullanıcı adı<input name="kullanici" autocomplete="username" autocapitalize="off" spellcheck="false" maxlength="64" required value="${esc(sonKullanici)}"></label>
+        <label>Kullanıcı adı<input name="kullanici" autocomplete="username" autocapitalize="off" spellcheck="false" maxlength="64" required value="${esc(sonKullanici)}"${kilitKipi ? ' readonly aria-readonly="true"' : ''}></label>
         <label>Şifre<input name="parola" type="password" autocomplete="current-password" maxlength="128" required></label>
         <p class="tg-ileti" role="status" aria-live="polite"></p>
         <button class="tg-ana" type="submit">Giriş yap</button>
-        <button class="tg-bag" type="button" data-basvur>Şifremi unuttum ya da hesabım kilitli</button></form>`;
+        <button class="tg-bag" type="button" data-basvur>Şifremi unuttum ya da hesabım kilitli</button>${kilitKipi ? '<button class="tg-bag" type="button" data-baska>Başka kullanıcıyla gir</button>' : ''}</form>`;
       if (ilk) ileti(ilk.metin, ilk.tur);
       const f = kap.querySelector('form');
       f.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const kullanici = f.kullanici.value.trim();
+        const kullanici = kilitKipi ? kilitliKullanici : f.kullanici.value.trim();
         const parola = f.parola.value;
         if (!kullanici || !parola) { ileti('Kullanıcı adını ve şifreyi yazın.'); return; }
         sonKullanici = kullanici;
@@ -147,11 +153,28 @@
         try { r = await api.giris(kullanici, parola); } catch (_) { r = { tamam: false, ileti: 'Giriş yapılamadı. Yeniden deneyin.' }; }
         f.parola.value = '';
         d.disabled = false;
-        if (r && r.tamam) { kapat(); if (typeof s.girildi === 'function') s.girildi(r.oturum); return; }
+        if (r && r.tamam) {
+          const acildi = kilitKipi && r.oturum && r.oturum.kullanici === kilitliKullanici;
+          kapat();
+          if (acildi) olay(belge, 'taa-giris:kilit-acildi', { kullanici: kilitliKullanici });
+          if (typeof s.girildi === 'function') s.girildi(r.oturum);
+          return;
+        }
         ileti((r && r.ileti) || 'Giriş yapılamadı.');
         if (r && r.durum === 'kilitli') { const b = f.querySelector('[data-basvur]'); b.textContent = 'Yöneticiye başvur'; b.focus(); } else odak('input[name=parola]');
       });
       f.querySelector('[data-basvur]').addEventListener('click', () => basvurGoster());
+      // Kilitliyken başka kullanıcı: önce gerçek çıkış (ortak oturum ve yayın belirteçleri kapanır), sonra boş giriş.
+      const baska = f.querySelector('[data-baska]');
+      if (baska) baska.addEventListener('click', async () => {
+        baska.disabled = true;
+        let ilk;
+        try { const y = await api.cikis(); if (y && y.tamam === false) ilk = { metin: 'Oturum bu bilgisayarda tam kapatılamadı.', tur: 'hata' }; }
+        catch (_) { ilk = { metin: 'Oturum bu bilgisayarda tam kapatılamadı.', tur: 'hata' }; }
+        olay(belge, 'taa-giris:cikildi', { kullanici: kilitliKullanici });
+        kilitKipi = false; sonKullanici = '';
+        girisGoster(ilk);
+      });
       odak(sonKullanici ? 'input[name=parola]' : 'input[name=kullanici]');
     }
 
@@ -238,19 +261,30 @@
     return dk < 1 ? 'az önce' : dk < 60 ? dk + ' dk' : Math.floor(dk / 60) + ' sa ' + (dk % 60) + ' dk';
   };
   let girisZamani = null; // { kullanici, zaman }: bu pencerede ilk görülen giriş (oturum süresi için)
+  // Programların dinleyebileceği olaylar (belge üzerinde, CustomEvent): taa-giris:kilitlendi, taa-giris:kilit-acildi,
+  // taa-giris:cikildi. detail: { kullanici }.
+  function olay(belge, ad, detay) {
+    try { belge.dispatchEvent(new (belge.defaultView || kok).CustomEvent(ad, { detail: detay })); } catch (_) { /* eski ortam */ }
+  }
+
   let kisayolKuruldu = false;
   let etkinMenu = null;   // son kurulan hesap menüsünün seçenekleri (Ctrl+L için)
 
   // Hesap menüsü (Yusuf 11-26): sol altta baş harf rozeti + ad + rol/şube; tıklayınca yukarı açılan menü.
   // Ortak öğeler: oturum süresi, Kullanıcı değiştir, Ekranı kilitle (Ctrl+L), onaylı Çıkış yap, sürüm.
   // Program kendi öğelerini `ogeler` ile ekler (Ayarlar, Tema alt menüsü, Kısayollar, Yönetici kipinden çık…).
-  // Her üç çıkış yolu ortak oturumu kapatır (taa-kimlik cikis; sunucudaki oturum da) ve cikinca({ neden, kullanici }) çağrılır:
+  // Kullanıcı değiştir ve Çıkış yap ortak oturumu kapatır (taa-kimlik cikis; sunucudaki oturum da).
+  // Ekranı kilitle (Yusuf 11-26 "Kilit yayını durdurmasın") oturumu KAPATMAZ: api.kilitle varsa ana süreç kilit işaretini
+  //   yazar (program yeniden açılınca da kilitli açılır), yoksa yalnız arayüz kilitlenir. 'taa-giris:kilitlendi' olayı ve
+  //   s.kilitlenince({ kullanici }) çağrılır. Kilit ekranında kullanıcı adı değişmez; "Başka kullanıcıyla gir" gerçek çıkış yapar.
+  // Hepsinde cikinca({ neden, kullanici, ileti }) çağrılır:
   //   neden 'degistir' → boş giriş ekranı; 'kilit' → kullanıcı adı dolu giriş (ac(..., { kullanici, kilitli: true }));
   //   'cikis' → boş giriş ekranı. Program giriş ekranını kendisi açar.
 //   ileti doluysa (çıkış tam olmadıysa) ac(..., { ileti }) ile girişte gösterilir.
-  // secenek: { api, oturum, cikinca, hedef?, programAdi?, surum?, girisZamani?, ogeler? }
+  // secenek: { api, oturum, cikinca, kilitlenince?, hedef?, programAdi?, surum?, girisZamani?, ogeler? }
   //   hedef: düğmenin konacağı öğe (ör. kenar çubuğunun altı); yoksa ekranın sol altına sabitlenir.
   //   ogeler: [{ ad, kisayol?, tehlike?, tikla() } | { ayrac: true } | { ad, alt: [{ ad, secili?, tikla() }] }]
+  //     ya da her açılışta çağrılan bir işlev (ör. yönetici kipine göre değişen öğeler için).
   // Yeniden çağrılırsa var olan düğme güncellenir.
   function hesapMenusu(secenek) {
     const s = secenek || {};
@@ -307,12 +341,16 @@
         <span class="tg-sure">${sure ? 'Oturum açık · ' + esc(sure) : ''}</span></span></div><hr>`;
       const islem = [];
       const oge = (o, ek) => { islem.push(o.tikla); return `<button type="button" role="menuitem" tabindex="-1" data-i="${islem.length - 1}"${ek || ''}${o.tehlike ? ' class="tg-tehlike"' : ''}>${esc(o.ad)}${o.kisayol ? '<kbd>' + esc(o.kisayol) + '</kbd>' : ''}</button>`; };
-      (Array.isArray(s.ogeler) ? s.ogeler : []).forEach((o) => {
+      let ogeListe = s.ogeler;
+      if (typeof ogeListe === 'function') { try { ogeListe = ogeListe(); } catch (_) { ogeListe = []; } }
+      (Array.isArray(ogeListe) ? ogeListe : []).forEach((o) => {
         if (!o) return;
         if (o.ayrac) { html += '<hr>'; return; }
         if (Array.isArray(o.alt)) {
-          html += `<div role="group" aria-label="${esc(o.ad)}"><div class="tg-surum" aria-hidden="true">${esc(o.ad)}</div><div class="tg-alt-menu">`;
-          o.alt.forEach((a) => { islem.push(a.tikla); html += `<button type="button" role="menuitemradio" tabindex="-1" aria-checked="${a.secili ? 'true' : 'false'}" data-i="${islem.length - 1}">${esc(a.ad)}</button>`; });
+          // Çekmece (Yusuf 11-26): kapalıyken tek satır "Tema · Çivit ›"; Enter/tık/sağ ok açar, sol ok/Esc kapatır.
+          const secili = o.alt.find((a) => a && a.secili);
+          html += `<div class="tg-grup"><button type="button" role="menuitem" tabindex="-1" class="tg-cekmece" aria-haspopup="true" aria-expanded="false">${esc(o.ad)}<span class="tg-secili">${secili ? esc(secili.ad) : ''}</span><span class="tg-ok2" aria-hidden="true">›</span></button><div class="tg-alt-menu" role="group" aria-label="${esc(o.ad)}" hidden>`;
+          o.alt.forEach((a) => { if (!a) return; islem.push(a.tikla); html += `<button type="button" role="menuitemradio" tabindex="-1" aria-checked="${a.secili ? 'true' : 'false'}" data-i="${islem.length - 1}">${esc(a.ad)}</button>`; });
           html += '</div></div>';
           return;
         }
@@ -320,27 +358,48 @@
       });
       if (islem.length) html += '<hr>';
       html += `<button type="button" role="menuitem" tabindex="-1" data-ortak="degistir">Kullanıcı değiştir</button>
-        <button type="button" role="menuitem" tabindex="-1" data-ortak="kilit" title="Oturum kapanır; bu bilgisayardaki öteki TAA programlarından da çıkılır. Geri girmek için sunucu bağlantısı gerekir.">Ekranı kilitle<kbd>Ctrl+L</kbd></button>
+        <button type="button" role="menuitem" tabindex="-1" data-ortak="kilit" title="Yalnız bu programın ekranı kilitlenir; diğer TAA programları açık kalır. Oturum sürer, süren işler (yayın gibi) durmaz. Açmak için şifre gerekir.">Ekranı kilitle<kbd>Ctrl+L</kbd></button>
         <hr><button type="button" role="menuitem" tabindex="-1" data-ortak="cikis" class="tg-tehlike">Çıkış yap</button>`;
       const alt = [s.programAdi, s.surum ? 'sürüm ' + s.surum : ''].filter(Boolean).join(' · ');
       if (alt) html += `<div class="tg-surum">${esc(alt)}</div>`;
       m.innerHTML = html;
       belge.body.appendChild(m);
-      // Düğmenin üstüne aç; yer yoksa altına. Sola yasla, ekrandan taşma.
-      const r = d.getBoundingClientRect();
-      const g = belge.documentElement.clientWidth, y = belge.documentElement.clientHeight;
-      const mr = m.getBoundingClientRect();
-      m.style.left = Math.max(8, Math.min(r.left, g - mr.width - 8)) + 'px';
-      m.style.top = (r.top - mr.height - 6 >= 8 ? r.top - mr.height - 6 : Math.min(r.bottom + 6, y - mr.height - 8)) + 'px';
+      // Düğmenin üstüne aç; yer yoksa altına. Sola yasla, ekrandan taşma. Çekmece açılıp kapanınca yeniden yerleşir.
+      const yerlestir = () => {
+        const r = d.getBoundingClientRect();
+        const g = belge.documentElement.clientWidth, y = belge.documentElement.clientHeight;
+        const mr = m.getBoundingClientRect();
+        m.style.left = Math.max(8, Math.min(r.left, g - mr.width - 8)) + 'px';
+        m.style.top = Math.max(8, r.top - mr.height - 6 >= 8 ? r.top - mr.height - 6 : Math.min(r.bottom + 6, y - mr.height - 8)) + 'px';
+      };
+      yerlestir();
+      const cekmece = (c, ac) => {
+        const l = c.nextElementSibling;
+        c.setAttribute('aria-expanded', ac ? 'true' : 'false');
+        l.hidden = !ac;
+        yerlestir();
+        if (ac) { const sec = l.querySelector('[aria-checked="true"]') || l.querySelector('[role=menuitemradio]'); if (sec) sec.focus(); } else c.focus();
+      };
       d.setAttribute('aria-expanded', 'true');
-      const ogeler = () => Array.from(m.querySelectorAll('[role=menuitem],[role=menuitemradio]'));
+      const ogeler = () => Array.from(m.querySelectorAll('[role=menuitem],[role=menuitemradio]')).filter((e) => !e.closest('[hidden]'));
       m.addEventListener('click', (e) => {
         const b = e.target.closest('button'); if (!b) return;
         if (b.dataset.ortak === 'cikis' && !b.dataset.onay) {
           b.dataset.onay = '1'; b.textContent = 'Emin misiniz? Çıkmak için yeniden basın'; b.focus(); return;
         }
         if (b.dataset.ortak) { cik(ayar, b.dataset.ortak); return; }
+        if (b.classList.contains('tg-cekmece')) { cekmece(b, b.getAttribute('aria-expanded') !== 'true'); return; }
         const f = islem[Number(b.dataset.i)];
+        if (b.getAttribute('role') === 'menuitemradio') {
+          // Seçim: işaret ve satırdaki ad güncellenir, çekmece kapanır; menü açık kalır.
+          const l = b.parentNode;
+          l.querySelectorAll('[role=menuitemradio]').forEach((x) => x.setAttribute('aria-checked', x === b ? 'true' : 'false'));
+          const c = l.previousElementSibling;
+          c.querySelector('.tg-secili').textContent = b.textContent;
+          cekmece(c, false);
+          if (typeof f === 'function') f();
+          return;
+        }
         menuKapat(belge, true);
         if (typeof f === 'function') f();
       });
@@ -350,6 +409,11 @@
         else if (e.key === 'ArrowUp') { e.preventDefault(); l[(i - 1 + l.length) % l.length].focus(); }
         else if (e.key === 'Home') { e.preventDefault(); l[0].focus(); }
         else if (e.key === 'End') { e.preventDefault(); l[l.length - 1].focus(); }
+        else if (e.key === 'ArrowRight' && belge.activeElement.classList.contains('tg-cekmece')) { e.preventDefault(); cekmece(belge.activeElement, true); }
+        else if ((e.key === 'ArrowLeft' || e.key === 'Escape') && belge.activeElement.getAttribute('role') === 'menuitemradio') {
+          e.preventDefault(); cekmece(belge.activeElement.parentNode.previousElementSibling, false);
+        }
+        else if (e.key === 'ArrowLeft' && belge.activeElement.classList.contains('tg-cekmece')) { e.preventDefault(); cekmece(belge.activeElement, false); }
         else if (e.key === 'Escape') { e.preventDefault(); menuKapat(belge, true); }
         else if (e.key === 'Tab') menuKapat(belge, false);
       });
@@ -379,13 +443,25 @@
     menuKapat(belge, false);
     d.disabled = true;
     let ileti = '';
-    try {
-      const y = await api.cikis();
-      if (y && y.tamam === false) ileti = 'Oturum bu bilgisayarda tam kapatılamadı; program yeniden açılınca kendiliğinden girebilir.';
-    } catch (_) { ileti = 'Oturum bu bilgisayarda tam kapatılamadı; program yeniden açılınca kendiliğinden girebilir.'; }
+    if (neden === 'kilit') {
+      // Oturum kapanmaz. Kilit işareti yazılamazsa yalnız arayüz kilitlenir (program yeniden açılınca kilit kalmaz).
+      if (typeof api.kilitle === 'function') {
+        try { const y = await api.kilitle(); if (!y || y.tamam !== true) ileti = 'Ekran kilitlendi; ancak program yeniden açılırsa kilit kalmayabilir.'; }
+        catch (_) { ileti = 'Ekran kilitlendi; ancak program yeniden açılırsa kilit kalmayabilir.'; }
+      }
+    } else {
+      try {
+        const y = await api.cikis();
+        if (y && y.tamam === false) ileti = 'Oturum bu bilgisayarda tam kapatılamadı; program yeniden açılınca kendiliğinden girebilir.';
+      } catch (_) { ileti = 'Oturum bu bilgisayarda tam kapatılamadı; program yeniden açılınca kendiliğinden girebilir.'; }
+      girisZamani = null;
+    }
     d.remove();
-    girisZamani = null;
     if (etkinMenu === ayar) etkinMenu = null;
+    if (neden === 'kilit') {
+      olay(belge, 'taa-giris:kilitlendi', { kullanici: ad });
+      if (typeof s.kilitlenince === 'function') { try { s.kilitlenince({ kullanici: ad }); } catch (_) { /* program hatası kilidi bozmasın */ } }
+    } else olay(belge, 'taa-giris:cikildi', { kullanici: ad });
     if (typeof s.cikinca === 'function') s.cikinca({ neden, kullanici: neden === 'kilit' ? ad : '', ileti });
   }
 
