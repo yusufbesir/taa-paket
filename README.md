@@ -40,6 +40,7 @@ TAA Paketi çekirdek deposu: TaaDön ve diğer TAA programlarının paylaştığ
 | taa-veri | var | Veri alanları (T2): tek yazar sahipliği, SAHIP.toml, salt okunur okuyucu, öneri kutusu; silmez (`eski\`); bkz. `docs/veri-alani.md` |
 | taa-guncelle | var | Güncelleme (T3): `yayin.json` kontrolü, geri alma koruması, SHA256 + ed25519 doğrulama, `kur --sec`, hatada önceki sürüme dönme; yerel klasör kaynağı (HTTP T4) |
 | taa-imza | var | ed25519 imza (T3): anahtar üret/imzala/doğrula, `ed25519:<hex>` genel anahtar dosyası; özel anahtar yalnız verilen dosyadan okunur, depoya yazılmaz |
+| taa-zincir | var | Yalnız-ekleme özet zinciri, RFC 6962 Merkle kökü, ed25519 mühür (İşlem Gücü defteri, DG2a); kalıcılık çağıranın işidir |
 | taa-log | planlı | Günlükleme |
 
 ## Mobil
