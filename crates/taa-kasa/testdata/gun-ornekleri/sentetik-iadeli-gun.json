@@ -1,0 +1,9 @@
+{
+  "_aciklama": "SENTETİK (uydurma) örnek: iade ve değişim olan gün. Gerçek iadeli gün gelince anonim tutarlarla aynı biçimde yeni dosya eklenir ve 'sentetik': false yazılır.",
+  "sentetik": true,
+  "ciro": {"nakit": 100000, "ziraat_pos": 50000, "iyzico_pos": 30000, "degisim": 5000, "iade": 2000, "internet_degisimi": 1000},
+  "doviz": [{"kod": "USD", "tutar": 1000, "kur_onbinde": 400000}],
+  "masraf_kurus": 3000,
+  "beklenen_genel_toplam_kurus": 224000,
+  "beklenen_z_toplam_kurus": 230000
+}

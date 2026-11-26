@@ -85,8 +85,48 @@ pub fn ciro_toplami(ciro: &BTreeMap<String, i64>, doviz: &[DovizSatiri], masraf_
 /// değişiminde geri alınan ürün mağazada satılmadığı için Z'ye girmez. (25.11.2026 dolu dosyalarında üç yazarkasanın
 /// Z toplamı bu formülle kuruşu kuruşuna tuttu.)
 pub fn z_beklenen(ciro_toplam: i64, ciro: &BTreeMap<String, i64>) -> i64 {
+    z_beklenen_ayarli(ciro_toplam, ciro, &ZFormulu::default())
+}
+
+/// Z beklenen formülünün ayarlanabilir kalemleri. Şablonun genel toplam formülü değişmez; yalnız Z ile
+/// karşılaştırmada hangi bilgi/ödeme satırlarının eklenip düşüleceği ayardır. Kanıt durumu:
+/// - `degisim_eklenir`, `internet_degisimi_dusulur`: 25.11 dolu dosyalarıyla doğrulandı.
+/// - `iade_eklenir`: çıkarım (25.11'de iade satırı boş); iadeli gün örneğiyle doğrulanacak.
+/// - `kredi_ceki_dusulur`, `efatura_dusulur`: bilinmiyor (iki satır da örnek günlerde boş). Varsayılan
+///   kapalı = genel toplamdaki tutar Z'de de beklenir. E-fatura satışları yazarkasa Z'sine girmiyorsa açılır.
+///
+/// Gün örneği gelince `testdata/gun-ornekleri/` altına anonim JSON eklenir; test kendiliğinden doğrular.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ZFormulu {
+    pub degisim_eklenir: bool,
+    pub internet_degisimi_dusulur: bool,
+    pub iade_eklenir: bool,
+    pub kredi_ceki_dusulur: bool,
+    pub efatura_dusulur: bool,
+}
+
+impl Default for ZFormulu {
+    fn default() -> Self {
+        ZFormulu {
+            degisim_eklenir: true,
+            internet_degisimi_dusulur: true,
+            iade_eklenir: true,
+            kredi_ceki_dusulur: false,
+            efatura_dusulur: false,
+        }
+    }
+}
+
+/// `z_beklenen`, ayarlı formülle.
+pub fn z_beklenen_ayarli(ciro_toplam: i64, ciro: &BTreeMap<String, i64>, f: &ZFormulu) -> i64 {
     let c = |k: &str| ciro.get(k).copied().unwrap_or(0);
-    ciro_toplam + c("degisim") - c("internet_degisimi") + c("iade")
+    let e = |acik: bool, k: &str| if acik { c(k) } else { 0 };
+    ciro_toplam + e(f.degisim_eklenir, "degisim")
+        - e(f.internet_degisimi_dusulur, "internet_degisimi")
+        + e(f.iade_eklenir, "iade")
+        - e(f.kredi_ceki_dusulur, "kredi_ceki")
+        - e(f.efatura_dusulur, "efatura_pos")
 }
 
 /// Dövizler (kod, ad).
@@ -214,6 +254,8 @@ pub struct KasaAyar {
     pub excel_baslik: String,
     /// WhatsApp özetinde mağaza başlığı ve toplam satırları kalın (*…*) yazılsın.
     pub whatsapp_kalin: bool,
+    /// Z raporu karşılaştırmasının ayarlanabilir kalemleri (kanıtsız olanlar belgelenmiş varsayılanla).
+    pub z_formulu: ZFormulu,
 }
 
 impl Default for KasaAyar {
@@ -259,6 +301,7 @@ impl Default for KasaAyar {
             havale_hesap_adi: String::new(),
             excel_baslik: String::new(),
             whatsapp_kalin: false,
+            z_formulu: ZFormulu::default(),
         }
     }
 }
@@ -668,7 +711,7 @@ pub fn karsilastir(
         FarkSatiri {
             ad: "Z raporu toplamı ↔ genel toplam + değişim (internet hariç) + iade".into(),
             beklenen_kurus: z,
-            bulunan_kurus: z_beklenen(ciro_toplam, &girdi.ciro),
+            bulunan_kurus: z_beklenen_ayarli(ciro_toplam, &girdi.ciro, &ayar.z_formulu),
             fark_kurus: 0,
         },
     ];
@@ -1954,6 +1997,10 @@ pub fn magaza_toplami(gun_sonlari: &[GunSonuKaydi], tarih: &str) -> Value {
         "kasa_ciro_uyusmuyor": g.iter().any(|s| s.karsilastirma.kasa_ciro_uyusmuyor),
     })
 }
+
+#[cfg(test)]
+#[path = "testler_gun_ornekleri.rs"]
+mod testler_gun_ornekleri;
 
 #[cfg(test)]
 #[path = "testler_gunsonu.rs"]
