@@ -255,6 +255,7 @@
   // secenek: { api, oturum, cikinca, hedef?, programAdi?, surum?, girisZamani?, ogeler? }
   //   hedef: düğmenin konacağı öğe (ör. kenar çubuğunun altı); yoksa ekranın sol altına sabitlenir.
   //   ogeler: [{ ad, kisayol?, tehlike?, tikla() } | { ayrac: true } | { ad, alt: [{ ad, secili?, tikla() }] }]
+  //     ya da her açılışta çağrılan bir işlev (ör. yönetici kipine göre değişen öğeler için).
   // Yeniden çağrılırsa var olan düğme güncellenir.
   function hesapMenusu(secenek) {
     const s = secenek || {};
@@ -311,7 +312,9 @@
         <span class="tg-sure">${sure ? 'Oturum açık · ' + esc(sure) : ''}</span></span></div><hr>`;
       const islem = [];
       const oge = (o, ek) => { islem.push(o.tikla); return `<button type="button" role="menuitem" tabindex="-1" data-i="${islem.length - 1}"${ek || ''}${o.tehlike ? ' class="tg-tehlike"' : ''}>${esc(o.ad)}${o.kisayol ? '<kbd>' + esc(o.kisayol) + '</kbd>' : ''}</button>`; };
-      (Array.isArray(s.ogeler) ? s.ogeler : []).forEach((o) => {
+      let ogeListe = s.ogeler;
+      if (typeof ogeListe === 'function') { try { ogeListe = ogeListe(); } catch (_) { ogeListe = []; } }
+      (Array.isArray(ogeListe) ? ogeListe : []).forEach((o) => {
         if (!o) return;
         if (o.ayrac) { html += '<hr>'; return; }
         if (Array.isArray(o.alt)) {
