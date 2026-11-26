@@ -238,6 +238,13 @@ pub fn kayit(dizin: &Path, f: &Fis, simdi: u64) -> Result<Value, String> {
             if let Some(var) = k.varyant.as_deref().and_then(varyant_anahtari) {
                 v["v"] = json!(var);
             }
+            // Renk yalnız sabit listedeki anahtar olarak, adet 2-20 ise gider (2026-11-26 04:31).
+            if let Some(r) = k.renk.as_deref().filter(|r| taa_fis::renk_adi(r).is_some()) {
+                v["r"] = json!(r);
+            }
+            if let Some(a) = k.adet.filter(|a| (2..=20).contains(a)) {
+                v["a"] = json!(a);
+            }
             v
         })
         .collect();
@@ -246,7 +253,7 @@ pub fn kayit(dizin: &Path, f: &Fis, simdi: u64) -> Result<Value, String> {
     } else {
         String::new()
     };
-    Ok(json!({
+    let mut k = json!({
         "v": 2,
         "k": takip_kodu(dizin, &f.no)?,
         "d": durum_adi(f.durum),
@@ -257,7 +264,18 @@ pub fn kayit(dizin: &Path, f: &Fis, simdi: u64) -> Result<Value, String> {
         "u": kalemler,
         "ts": simdi,
         "sil": sil,
-    }))
+    });
+    // Bağlı (birlikte teslim) fiş sayısı; fiş numaraları gitmez.
+    if !f.bagli.is_empty() {
+        k["b"] = json!(f.bagli.len().min(20));
+    }
+    // Kargo: yalnız "kargoya hazırlanıyor" bilgisi; firma/takip no Telegram kargo kaydından eklenir.
+    // Ad, telefon, açık adres GİTMEZ.
+    if f.kargo && !matches!(f.durum, Durum::Teslim | Durum::Iptal) {
+        k["v"] = json!(3);
+        k["kg"] = json!({ "d": "hazirlaniyor", "f": "diger", "n": "", "t": "", "y": "" });
+    }
+    Ok(k)
 }
 
 /// Ürün adını sabit bir anahtara çevirir; bilinmeyen ürün "diger" olur (serbest metin dışarı çıkmaz).
