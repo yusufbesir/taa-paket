@@ -72,9 +72,10 @@ t_("SSS: 6 akordeon, başlık, FAB yok", () => { const h = htmller.sss;
 t_("diğer sekmelerde FAB var", () => { for (const s of ["ozet","islemler","subeler"]) assert(htmller[s].includes(`class="sss-fab" href="/t/${t.k}?sekme=sss&amp;dil=tr" aria-label="Sıkça sorulan sorular"`), s); });
 
 // 3) WhatsApp
-t_("WHATSAPP_MERKEZ ve şube wa boşken düğme yok", () => { assert.equal(WHATSAPP_MERKEZ, "");
+t_("WHATSAPP_MERKEZ site numarası; numara boşken düğme yok", () => { assert.equal(WHATSAPP_MERKEZ, "905448557525");
+  assert(htmller.subeler.includes("https://wa.me/905448557525?text="), "varsayılan merkez numarası");
   for (const s of Object.values(SUBELER)) assert.equal(s.wa || "", "");
-  for (const s of sekmeler) assert(!htmller[s].includes("wa.me"), s); });
+  for (const s of sekmeler) assert(!sayfa(sakli, { dil: "tr", sekme: s, adres: `/t/${t.k}`, wa: "" }).includes("wa.me"), s); });
 const waSss = sayfa(sakli, { dil:"tr", sekme:"sss", adres:`/t/${t.k}`, wa:"+90 (555) 000 00 00" });
 const waSube = sayfa(sakli, { dil:"tr", sekme:"subeler", adres:`/t/${t.k}`, wa:"+90 (555) 000 00 00" });
 const beklenenWa = `https://wa.me/905550000000?text=${encodeURIComponent(EK2.tr.wa_metin.replace("{kod}", t.k))}`;
@@ -152,16 +153,21 @@ t_("İşlemler ve Şubeler sekmesinde h2 var", () => { assert(/<h2 id="islemler"
 t_("kalemsiz / v1 kayıtta İşlemler boş durum metni", () => { for (const k of [{ ...sakli, u: [] }, { v: 1, k: t.k, d: "terzide", s: "MRK01", t: "2026-11-29", ts: now, sil: now + 99 }]) {
   const h = sayfa(k, { dil: "tr", sekme: "islemler", adres: "/t/x" }); assert(h.includes("Bu fiş için işlem ayrıntısı yok.") && !h.includes('<ul class="kalemler">'), JSON.stringify(k.v)); } });
 // WhatsApp numarası yokken SSS WhatsApp'ı anmaz; numara varken anar.
-t_("SSS: numara yokken WhatsApp cümlesi yok, varken var", () => { assert(!htmller.sss.includes("WhatsApp&#39;tan ekletebilirsiniz") && htmller.sss.includes(EK2.tr.sss_wa_yok));
+t_("SSS: numara yokken WhatsApp cümlesi yok, varken var", () => { const yokSss = sayfa(sakli, { dil: "tr", sekme: "sss", adres: `/t/${t.k}`, wa: "" });
+  assert(!yokSss.includes("WhatsApp&#39;tan ekletebilirsiniz") && yokSss.includes(EK2.tr.sss_wa_yok));
   assert(waSss.includes("WhatsApp&#39;tan ekletebilirsiniz")); });
 // Adressiz şube: not + merkez telefonu; diğer şubeler listesinde adresliler önce.
 const pnd = { ...sakli, s: "PND01" };
 t_("adressiz şube: merkez telefonlu not, Merkez listede ilk", () => {
+  const eskiAdres = SUBELER.PND01.adres; SUBELER.PND01.adres = "";
+  try {
   const oz = sayfa(pnd, { dil: "tr", adres: "/t/x" }); assert(oz.includes("Açık adres için merkez mağazamızı arayın:") && oz.includes('href="tel:+902126900202"'));
   const sb = sayfa(pnd, { dil: "tr", sekme: "subeler", adres: "/t/x" });
   const lis = sb.slice(sb.indexOf('<ul class="subeler">')); assert(lis.indexOf("İstanbul Merkez Mağaza") < lis.indexOf("Ümraniye"), "Merkez önce");
-  assert(htmller.subeler.includes("Açık adres için merkez mağazamızı arayın:"), "merkez kaydında diğerleri için tek not");
-  assert.equal((htmller.subeler.match(/class="adres-yok"/g) || []).length, 1); });
+  const mrk = sayfa(sakli, { dil: "tr", sekme: "subeler", adres: "/t/x" });
+  assert(mrk.includes("Açık adres için merkez mağazamızı arayın:"), "merkez kaydında diğerleri için tek not");
+  assert.equal((mrk.match(/class="adres-yok"/g) || []).length, 1);
+  } finally { SUBELER.PND01.adres = eskiAdres; } });
 t_("daireler dolu: gelecek adım kesikli değil", () => assert(!/li\.sonra \.nokta\{[^}]*dashed/.test(htmller.ozet) && /li\.sonra \.nokta\{background:var\(--cizgi\)/.test(htmller.ozet)));
 
 // Kişisel veri sızmıyor
