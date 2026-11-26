@@ -3,10 +3,14 @@
 // YEDEK_SAYFA (Vercel adresi). Kayıt süresi KV'nin kendi silme zamanıyla (expiration = sil) yönetilir.
 import { dogrula, yeniMi, sayfa, KOD_RE, dilSec } from "./takip.mjs";
 
-const html = (h, kod = 200) =>
+// Çekmeceden dil seçilince (?dil=xx) seçim bir yıl hatırlanır; çerezde yalnız dil kodu vardır.
+const dilCerezi = (url, dil) =>
+  url.searchParams.get("dil") === dil ? { "set-cookie": `dil=${dil}; Path=/; Max-Age=31536000; SameSite=Lax; Secure` } : {};
+const html = (h, kod = 200, ek = {}) =>
   new Response(h, {
     status: kod,
     headers: {
+      ...ek,
       "content-type": "text/html; charset=utf-8",
       "cache-control": "no-store",
       "x-robots-tag": "noindex",
@@ -38,13 +42,13 @@ export default {
       if (kayit && kayit.sil <= Date.now() / 1000) kayit = null;
       if (m[1] === "api/durum") return kayit ? json(kayit) : json({ hata: "bulunamadı" }, 404);
       const yedek = env.YEDEK_SAYFA && KOD_RE.test(kod) ? `${env.YEDEK_SAYFA}/t/${kod}` : "";
-      const dil = dilSec(url.searchParams.get("dil"), istek.headers.get("accept-language"));
+      const dil = dilSec(url.searchParams.get("dil"), istek.headers.get("accept-language"), istek.headers.get("cookie"));
       const adres = KOD_RE.test(kod) ? `/t/${kod}` : "";
-      return html(sayfa(kayit, { yedek, dil, adres }), kayit ? 200 : 404);
+      return html(sayfa(kayit, { yedek, dil, adres }), kayit ? 200 : 404, dilCerezi(url, dil));
     }
     if (istek.method === "GET" && yol === "/") {
-      const dil = dilSec(url.searchParams.get("dil"), istek.headers.get("accept-language"));
-      return html(sayfa(null, { dil, adres: "/" }));
+      const dil = dilSec(url.searchParams.get("dil"), istek.headers.get("accept-language"), istek.headers.get("cookie"));
+      return html(sayfa(null, { dil, adres: "/" }), 200, dilCerezi(url, dil));
     }
     return new Response("Bulunamadı", { status: 404 });
   },

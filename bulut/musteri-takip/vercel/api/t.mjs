@@ -18,8 +18,9 @@ export default {
     if (u.searchParams.get("bicim") === "json") {
       return Response.json(kayit || { hata: "bulunamadı" }, { status: kayit ? 200 : 404, headers: { "cache-control": "no-store" } });
     }
-    const dil = dilSec(u.searchParams.get("dil"), istek.headers.get("accept-language"));
-    const adres = KOD_RE.test(kod) ? `/t/${kod}` : "";
-    return new Response(sayfa(kayit, { dil, adres }), { status: kayit ? 200 : 404, headers: BASLIK });
+    const dil = dilSec(u.searchParams.get("dil"), istek.headers.get("accept-language"), istek.headers.get("cookie"));
+    const adres = KOD_RE.test(kod) ? `/t/${kod}` : u.pathname === "/" ? "/" : "";
+    const cerez = u.searchParams.get("dil") === dil ? { "set-cookie": `dil=${dil}; Path=/; Max-Age=31536000; SameSite=Lax; Secure` } : {};
+    return new Response(sayfa(kayit, { dil, adres }), { status: kayit ? 200 : 404, headers: { ...BASLIK, ...cerez } });
   },
 };
