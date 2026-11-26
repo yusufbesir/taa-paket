@@ -6,6 +6,10 @@
 
 ## Yayınlanmamış
 
+### Raporlar: dönem, grafik, .xlsx
+
+- Raporlar ekranına dönem seçici (bugün / 7 / 30 gün / özel), SVG sütun grafikleri, gerçek .xlsx indirme (bağımlılıksız yazıcı) ve "kasa kapanışı girilmeyen gün" kuralı eklendi. Şube karşılaştırması ve ciro kuralları veri kaynağı olmadığından yapılmadı. Ayrıntı: docs/S3-CATI-PANEL.md.
+
 ### TAA Çatı: Raporlar bölümü (yalnız yönetici)
 
 - **Ne:** TAA Çatı paneline "Raporlar" ekranı: tüm TAA uygulamalarından (TerziTakip, TAA Kasa, Tutaa, TAA Etiket, TaaRkod, TaaDön, TAA Giydir, Video Yapıcı, paket) özet, yorum ve bölümler; Excel (CSV) indir, Yazdır/PDF. Usta Puan ayrı program değil: TerziTakip raporunda, `usta-puan` açıksa (varsayılan kapalı) görünür.

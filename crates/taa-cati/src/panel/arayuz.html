@@ -232,7 +232,8 @@ dialog .dugmeler{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
 .pin-durum.var{color:var(--ok)}.pin-durum.yok{color:var(--muted)}
 @media (prefers-reduced-motion:reduce){:root:not(.hareket-normal) *,:root:not(.hareket-normal) *::before,:root:not(.hareket-normal) *::after{animation:none!important;transition:none!important}}
 :root.az-hareket *,:root.az-hareket *::before,:root.az-hareket *::after{animation:none!important;transition:none!important}
-@media print{.menu,.arac,#bildirim,.ust .durum{display:none!important}.uygulama{display:block!important}main{overflow:visible!important}.kart{break-inside:avoid;border-color:#bbb}:root{--bg:#fff}body{background:#fff!important;color:#000!important}}
+/* yazdır başlığı yalnız çıktıda */.yazdir-baslik{display:none}
+@media print{.menu,.arac,#bildirim,.ust .durum,details>summary{display:none!important}details{display:block}details:not([open])>*:not(summary){display:block}thead{display:table-header-group}tr{break-inside:avoid}.yazdir-baslik{display:block!important;font-weight:600;margin:0 0 8px}.uygulama{display:block!important}main{overflow:visible!important}.kart{break-inside:avoid;border-color:#bbb}:root{--bg:#fff}body{background:#fff!important;color:#000!important}}
 </style>
 </head>
 <body>
@@ -343,7 +344,8 @@ const hataBildir=e=>bildir(e.message||String(e),true);
 // ---- durum ----
 let oturum=null,saglik=null,veri={cihazlar:[],kullanicilar:[],subeler:[],yetkiler:[],roller:[],olaylar:[],pinler:[],hesaplar:[],basvurular:[],eslestirmeler:[],hatalar:[],uyari:{yeni:0,denemeler:[],sifre_degisiklikleri:[]}};
 let suzgec='bekliyor',arama='',sor=null,gunlukIslem='',gunlukSon=null;
-let rapor={uyg:'hepsi',liste:null,veri:null,yukleniyor:false,hata:''};
+let rapor={uyg:'hepsi',donem:'30',bas:'',bit:'',liste:null,veri:null,yukleniyor:false,hata:''};
+const raporQ=()=>'uygulama='+encodeURIComponent(rapor.uyg)+'&donem='+encodeURIComponent(rapor.donem)+(rapor.donem==='ozel'?'&bas='+encodeURIComponent(rapor.bas)+'&bit='+encodeURIComponent(rapor.bit):'');
 const izinli=i=>!!(oturum&&oturum.izinler&&oturum.izinler.includes(i));
 const EKRANLAR=[
   ['genel','Genel bakış','◐',null],['onaylar','Onay bekleyenler','✓','kullanici.yonet'],['cihazlar','Cihazlar','▣','cihaz.yonet'],['kullanicilar','Kullanıcılar','◍','kullanici.yonet'],
@@ -532,19 +534,30 @@ const SAYFA={
   },
   raporlar(){
     const SEV={'uyarı':['hata','Uyarı'],'dikkat':['uy','Dikkat'],'bilgi':['ok','Bilgi']};
-    const r=rapor,liste=(r.liste&&r.liste.uygulamalar)||[];
+    const r=rapor,hazir=!!r.veri&&!r.yukleniyor&&!r.hata,liste=(r.liste&&r.liste.uygulamalar)||[];
     const secici=`<label class="alan" style="min-width:220px">Uygulama<select class="girdi" id="rapor-uyg"><option value="hepsi" ${r.uyg==='hepsi'?'selected':''}>Tüm uygulamalar</option>${liste.map(u=>`<option value="${esc(u.kimlik)}" ${r.uyg===u.kimlik?'selected':''}>${esc(u.ad)}</option>`).join('')}</select></label>`;
-    const arac=`<div class="kart"><div class="arac" style="align-items:end">${secici}<span style="flex:1"></span>
+    const arac=`<div class="kart"><div class="arac" style="align-items:end">${secici}<div class="segment" role="group" aria-label="Dönem">${[['bugun','Bugün'],['7','7 gün'],['30','30 gün'],['ozel','Özel']].map(([d,ad])=>`<button data-rapor-donem="${d}" aria-pressed="${r.donem===d}">${ad}</button>`).join('')}</div>
+      ${r.donem==='ozel'?`<label class="alan">Başlangıç<input class="girdi" type="date" id="rapor-bas" value="${esc(r.bas)}"></label><label class="alan">Bitiş<input class="girdi" type="date" id="rapor-bit" value="${esc(r.bit)}"></label>`:''}
+      <span style="flex:1"></span>
       <button class="dugme" data-rapor-yenile ${r.yukleniyor?'disabled':''}>${r.yukleniyor?'Hazırlanıyor…':'Yenile'}</button>
-      <a class="dugme" style="text-decoration:none" href="/api/raporlar/csv?uygulama=${encodeURIComponent(r.uyg)}" download>Excel (CSV) indir</a>
-      <button class="dugme birincil" data-rapor-yazdir>Yazdır / PDF</button></div>
-      <div class="muted" style="font-size:12px;margin-top:8px">Rapor bu bilgisayardaki veriden hazırlanır; internete ya da yapay zekâya gönderilmez. CSV dosyası Excel'de doğrudan açılır. PDF için yazdırma penceresinde "PDF olarak kaydet" seçin.</div></div>`;
+      ${hazir?`<a class="dugme birincil" style="text-decoration:none" href="/api/raporlar/xlsx?${raporQ()}" download>Excel (.xlsx) indir</a>
+      <a class="dugme" style="text-decoration:none;color:inherit" href="/api/raporlar/csv?${raporQ()}" download>CSV</a>`:`<button class="dugme birincil" disabled>Excel (.xlsx) indir</button><button class="dugme" disabled>CSV</button>`}
+      <button class="dugme" data-rapor-yazdir ${hazir?'':'disabled'}>Yazdır / PDF</button></div>
+      ${r.veri&&r.guncellendi?`<div class="muted" style="font-size:12px;margin-top:8px">Gösterilen dönem: <b>${esc(r.veri.donem.bas===r.veri.donem.bit?r.veri.donem.bas:r.veri.donem.bas+' – '+r.veri.donem.bit)}</b> · Son yenileme: ${esc(r.guncellendi)}${r.yukleniyor?' · yenileniyor…':''}</div>`:''}
+      <div class="muted" style="font-size:12px;margin-top:8px">Rapor bu bilgisayardaki veriden hazırlanır; internete ya da yapay zekâya gönderilmez. Excel dosyasında özet, bölümler, yorumlar ve grafik verisi ayrı sayfalardadır. PDF için yazdırma penceresinde "PDF olarak kaydet" seçin.</div></div>`;
     if(r.hata)return ust('Raporlar','Tüm TAA uygulamalarından · yalnız yöneticiler')+arac+`<div class="kart"><div class="hata-kutu" style="display:block" role="alert">${esc(r.hata)}</div></div>`;
     if(!r.veri)return ust('Raporlar','Tüm TAA uygulamalarından · yalnız yöneticiler')+arac+bosDurum('Rapor hazırlanıyor…');
-    const v=r.veri,sayac=(u,sv)=>u.yorumlar.filter(y=>y.seviye===sv).length;
-    const ozet=`<div class="kart"><h2>Özet <span class="muted" style="font-size:12px;font-weight:400">${esc(v.bugun)}</span></h2>${v.uygulamalar.map(u=>{
+    const v=r.veri,uygAd=r.uyg==='hepsi'?'Tüm uygulamalar':((liste.find(u=>u.kimlik===r.uyg)||{}).ad||r.uyg),sayac=(u,sv)=>u.yorumlar.filter(y=>y.seviye===sv).length;
+    const ozet=`<div class="yazdir-baslik">TAA Raporu · ${esc(uygAd)} · ${esc(v.donem.bas===v.donem.bit?v.donem.bas:v.donem.bas+' – '+v.donem.bit)}</div><div class="kart"><h2>Özet <span class="muted" style="font-size:12px;font-weight:400">${esc(v.donem.bas===v.donem.bit?v.donem.bas:v.donem.bas+' – '+v.donem.bit)}</span></h2>${v.uygulamalar.map(u=>{
       const uy=sayac(u,'uyarı'),di=sayac(u,'dikkat');
-      return `<div class="satir"><div class="ana"><b>${esc(u.ad)}</b><span>${esc(u.aciklama)}</span></div>${uy?`<span class="etk hata">${uy} uyarı</span>`:''}${di?`<span class="etk uy">${di} dikkat</span>`:''}${!uy&&!di?(u.bolumler.every(b=>b.durum==='yok')?'<span class="etk" style="color:var(--muted)">Veri yok</span>':'<span class="etk ok">Sorun yok</span>'):''}</div>`}).join('')}</div>`;
+      return `<div class="satir"><div class="ana"><b>${esc(u.ad)}</b><span>${esc(u.aciklama)}</span></div>${uy?`<span class="etk hata">${uy} uyarı</span>`:''}${di?`<span class="etk uy">${di} dikkat</span>`:''}${!uy&&!di?(u.bolumler.every(b=>b.durum==='yok')?'<span class="etk" style="color:var(--muted)">Veri yok</span>':u.bolumler.some(b=>b.durum==='hata')?'<span class="etk hata">Okunamadı</span>':u.bolumler.some(b=>b.durum==='yok')?'<span class="etk uy">Kısmi veri</span>':'<span class="etk ok">Sorun yok</span>'):''}</div>`}).join('')}</div>`;
+    const grafik=g=>{
+      const n=g.noktalar;if(!n.length)return '';
+      const mx=Math.max(...n.map(x=>x.deger),1),W=Math.max(320,n.length*38),H=132,gen=Math.min(26,Math.floor((W-20)/n.length)-6);
+      const bicim=d=>Number.isInteger(d)?String(d):d.toLocaleString('tr',{maximumFractionDigits:2});
+      const cubuk=n.map((x,i)=>{const h=Math.round(x.deger/mx*(H-34)),px=10+i*((W-20)/n.length)+((W-20)/n.length-gen)/2;
+        return `<g><title>${esc(x.etiket)}: ${esc(bicim(x.deger))} ${esc(g.birim)}</title><rect x="${px}" y="${H-18-h}" width="${gen}" height="${Math.max(h,1)}" rx="3" fill="var(--accent)" opacity=".85"/><text x="${px+gen/2}" y="${H-18-h-3}" text-anchor="middle" font-size="12" fill="var(--fg)">${esc(bicim(x.deger))}</text><text x="${px+gen/2}" y="${H-5}" text-anchor="middle" font-size="12" fill="var(--muted)">${esc(String(x.etiket).length>10&&/^\d{4}-/.test(x.etiket)?x.etiket.slice(5):x.etiket)}</text></g>`}).join('');
+      return `<div style="margin-top:14px"><b style="font-weight:500;font-size:13px">${esc(g.baslik)}</b> <span class="muted" style="font-size:12px">(${esc(g.birim)})</span><div style="overflow-x:auto" class="grafik-kap"><svg role="img" aria-label="${esc(g.baslik)}" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${cubuk}</svg></div><details style="margin-top:4px"><summary class="muted" style="font-size:12px;cursor:pointer">Tablo olarak göster</summary><table style="border-collapse:collapse;font-size:13px;margin-top:4px"><tbody>${n.map(x=>`<tr><td style="padding:2px 12px 2px 0">${esc(x.etiket)}</td><td class="mono" style="text-align:right">${esc(bicim(x.deger))} ${esc(g.birim)}</td></tr>`).join('')}</tbody></table></details></div>`};
     const bolum=b=>{
       const dur=b.durum==='var'?'':`<span class="etk ${b.durum==='hata'?'hata':'uy'}">${b.durum==='hata'?'Okunamadı':'Veri yok'}</span>`;
       const sat=b.satirlar.map(x=>`<tr><td>${esc(x.anahtar)}</td><td class="mono" style="text-align:right">${esc(x.deger)}</td></tr>`).join('');
@@ -555,6 +568,7 @@ const SAYFA={
       const y=u.yorumlar.slice().sort((a,b)=>['uyarı','dikkat','bilgi'].indexOf(a.seviye)-['uyarı','dikkat','bilgi'].indexOf(b.seviye));
       return `<div class="kart rapor-kart"><h2>${esc(u.ad)}</h2>
         ${y.length?y.map(k=>`<div class="satir"><span class="etk ${(SEV[k.seviye]||SEV.bilgi)[0]}">${(SEV[k.seviye]||SEV.bilgi)[1]}</span><div class="ana"><b>${esc(k.metin)}</b></div></div>`).join(''):'<div class="muted" style="font-size:13px">Olağan dışı bir durum yok.</div>'}
+        ${(u.grafikler||[]).map(grafik).join('')}
         ${u.bolumler.map(bolum).join('')}</div>`}).join('');
     return ust('Raporlar','Tüm TAA uygulamalarından · yalnız yöneticiler')+arac+ozet+detay;
   },
@@ -587,9 +601,9 @@ async function raporYukle(){
   rapor.yukleniyor=true;rapor.hata='';
   try{
     if(!rapor.liste)rapor.liste=await istek('/api/raporlar/liste');
-    rapor.veri=await istek('/api/raporlar?uygulama='+encodeURIComponent(rapor.uyg));
+    rapor.veri=await istek('/api/raporlar?'+raporQ());
   }catch(err){rapor.hata=err.message||'Rapor alınamadı'}
-  rapor.yukleniyor=false;if(aktifEkran()==='raporlar')ciz();
+  rapor.yukleniyor=false;if(!rapor.hata)rapor.guncellendi=new Date().toLocaleString('tr');if(aktifEkran()==='raporlar')ciz();
 }
 function aktifEkran(){const h=location.hash.slice(1);return gorunur().some(e=>e[0]===h)?h:'genel'}
 function ciz(odak){
@@ -712,6 +726,7 @@ document.addEventListener('click',async e=>{
         async f=>{await api('/api/eslestirme/onay',{id,sayi:f.sayi.value.trim()});await yukle('onay');ciz();bildir('Telefon onaylandı; mağaza bilgisayarı eşleştirmeyi tamamlar')},'Onayla');
       return}
     if(ds.eslestirmeRed){d.disabled=true;await api('/api/eslestirme/red',{id:+ds.eslestirmeRed});await yukle('onay');ciz();bildir('Eşleştirme reddedildi');return}
+    if(ds.raporDonem){rapor.donem=ds.raporDonem;if(rapor.donem==='ozel'&&!rapor.bas){const t=new Date().toISOString().slice(0,10);rapor.bas=t;rapor.bit=t}rapor.veri=null;rapor.hata='';ciz();return}
     if('raporYenile' in ds){rapor.veri=null;rapor.hata='';ciz();return}
     if('raporYazdir' in ds){window.print();d.disabled=false;return}
     if('uyariGordum' in ds){d.disabled=true;await api('/api/uyari/goruldu',{});await yukle('uyari');ciz();bildir('Uyarılar görüldü olarak işaretlendi');return}
@@ -771,6 +786,7 @@ document.addEventListener('input',e=>{
 });
 // Renk seçici: sürüklerken önizleme, bırakınca kaydet (sunucu kontrastı düzeltir ya da reddeder).
 document.addEventListener('change',e=>{if(e.target.id==='vurgu')gorKaydet({vurgu:e.target.value});
+  if(e.target.id==='rapor-bas'||e.target.id==='rapor-bit'){rapor[e.target.id==='rapor-bas'?'bas':'bit']=e.target.value;if(rapor.bas&&rapor.bit){rapor.veri=null;rapor.hata='';ciz()}}
   if(e.target.id==='rapor-uyg'){rapor.uyg=e.target.value;rapor.veri=null;rapor.hata='';ciz()}});
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='gunluk-islem'){$('[data-gunluk-suz]').click()}});
 window.addEventListener('hashchange',()=>{sor=null;ciz();$('#ana').focus({preventScroll:true})});
