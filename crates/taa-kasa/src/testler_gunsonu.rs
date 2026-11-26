@@ -657,6 +657,7 @@ fn kuyruk_cevrimdisi_bekletir_sonra_teslim_eder_ve_matris() {
             kasa_ciro_uyusmuyor: true,
             ikinci_imza_atmadi: true,
             ikinci_imza_gerekcesi: Some("ikinci kişi izinli".into()),
+            ..Default::default()
         },
         GelenPaket {
             sube: "ESY".into(),
@@ -665,6 +666,7 @@ fn kuyruk_cevrimdisi_bekletir_sonra_teslim_eder_ve_matris() {
             kasa_ciro_uyusmuyor: false,
             ikinci_imza_atmadi: false,
             ikinci_imza_gerekcesi: None,
+            ..Default::default()
         },
     ];
     let tarihler: Vec<String> = ["2026-11-24", "2026-11-25", "2026-11-26", "2026-11-27"]

@@ -471,6 +471,12 @@ function gsYeni(eski){const c=D.cekmeceler.find(x=>x.id===D.cekmece);
     devreden_kurus:eski?eski.devreden_kurus:0,kontrol:eski?[...eski.kontrol]:Array(7).fill(false),not:eski?eski.not:'',aciklamalar:eski?{...(eski.aciklamalar||{})}:{},k:null}}
 function gsGirdi(){return {tarih:D.tarih,cekmece:D.cekmece,nakit_adetler:GS.nakit_adetler,noktalar:GS.noktalar,nebim_toplam_kurus:GS.nebim_toplam_kurus,ciro:GS.ciro,doviz:GS.doviz,devreden_kurus:GS.devreden_kurus,kontrol:GS.kontrol,not:GS.not,aciklamalar:GS.aciklamalar||{}}}
 const ADIMLAR=['Nakit ve döviz','Z raporu ve POS','Satış sistemi ve ödeme türleri','Kapanış listesi ve not','Özet ve kayıt'];
+function kontrolHtml(adim){const L=D.sabitler.kapanis_listesi,A=D.sabitler.kapanis_adimlari||L.map(()=>3);
+  const bu=L.map((m,i)=>[m,i]).filter(([,i])=>A[i]===adim);
+  let h=bu.length?`<h2 style="margin-top:8px">Kapanış listesi (bu adım)</h2><div class="kontrol">${bu.map(([m,i])=>`<label><input type="checkbox" data-k="${i}" ${GS.kontrol[i]?'checked':''}>${esc(m)}</label>`).join('')}</div>`:'';
+  if(adim===3){const o=L.map((m,i)=>[m,i]).filter(([,i])=>A[i]!==3);
+    h+=`<p class="mut kucuk">Öteki maddeler ilgili adımda işaretlenir:</p><ul class="kucuk">${o.map(([m,i])=>`<li>${GS.kontrol[i]?'✓':'✗'} ${esc(m)} <button class="dugme" type="button" data-adim="${A[i]}">${A[i]+1}. adıma git</button></li>`).join('')}</ul>`}
+  return h}
 function gunSonuCiz(){const g=D.gun,s=bolum('gunsonu');
   if(g.gun_sonu&&!(GS&&GS.duzelt===g.gun_sonu.id)){return gsKayitli(s,g)}
   if(!GS||GS.tarih!==D.tarih||GS.cekmece!==D.cekmece){GS=gsYeni(null);GS.tarih=D.tarih;GS.cekmece=D.cekmece}
@@ -478,11 +484,11 @@ function gunSonuCiz(){const g=D.gun,s=bolum('gunsonu');
   let govde='';
   if(GS.adim===0)govde=`<h2>Çekmece nakit sayımı</h2>${izgaraHtml('g',GS.nakit_adetler)}<div class="toplam-kutu"><span>Sayılan nakit</span><span class="tutar" id="g-nakit"></span></div>
     <h2 style="margin-top:8px">Döviz</h2><table class="tablo"><thead><tr><th>Döviz</th><th>Tutar</th><th>Günlük kur (TL)</th><th style="text-align:right">TL karşılığı</th></tr></thead><tbody>${GS.doviz.map((d,i)=>`<tr><td>${esc(D.sabitler.dovizler[i][1])} (${d.kod})</td><td><input class="girdi tutar" data-dv="${i}" inputmode="decimal" value="${d.tutar?tl(d.tutar).replace(' TL',''):''}"></td><td><input class="girdi tutar" data-kur="${i}" inputmode="decimal" placeholder="0,0000" value="${d.kur_onbinde?(d.kur_onbinde/10000).toFixed(4).replace('.',','):''}"></td><td class="s" data-dvtl="${i}"></td></tr>`).join('')}</tbody></table>
-    <p class="mut kucuk">Kur elle girilir (günlük kur ve kaynağı mağaza düzenine göre); hiçbir dış hizmete bağlanılmaz.</p>`;
+    <p class="mut kucuk">Kur elle girilir (günlük kur ve kaynağı mağaza düzenine göre); hiçbir dış hizmete bağlanılmaz.</p>${kontrolHtml(0)}`;
   if(GS.adim===1)govde=`<h2>Kasa noktası başına Z raporu ve POS gün sonu</h2>${c.noktalar.map((n,i)=>`<div class="kart yigin" style="background:var(--panel2)"><b>${esc(n.ad)}</b><div class="form-uc">
     <label class="alan">Z raporu toplamı<input class="girdi tutar" data-z="${i}" inputmode="decimal" value="${GS.noktalar[i].z_toplam_kurus?tl(GS.noktalar[i].z_toplam_kurus).replace(' TL',''):''}"></label>
     ${n.poslar.map(p=>`<label class="alan">${esc(p.ad)} gün sonu<input class="girdi tutar" data-pos="${i}:${esc(p.id)}" inputmode="decimal" value="${GS.noktalar[i].pos[p.id]?tl(GS.noktalar[i].pos[p.id]).replace(' TL',''):''}"></label>`).join('')}</div></div>`).join('')}
-    <p class="mut kucuk">Z raporu ve POS gün sonu fişinin fotoğrafı: dosya ekleme bir sonraki adımda bağlanacak.</p>`;
+    <p class="mut kucuk">Z raporu ve POS gün sonu fişinin fotoğrafı: dosya ekleme bir sonraki adımda bağlanacak.</p>${kontrolHtml(1)}`;
   if(GS.adim===2)govde=`<h2>Satış sistemi toplamı ve ödeme türleri</h2><label class="alan" style="max-width:320px">Nebim mağaza raporu toplamı<input class="girdi tutar" id="g-nebim" inputmode="decimal" value="${GS.nebim_toplam_kurus?tl(GS.nebim_toplam_kurus).replace(' TL',''):''}"></label>
     <p class="mut kucuk">Satırlar şubelerin akşam ciro Excel'iyle aynı sıradadır; Excel bu kayıtlardan üretilir (Kayıtlar ve Excel).</p>
     <div class="form-iki">${D.sabitler.odeme_turleri.map(([k,a])=>`<label class="alan">${esc(a)}<input class="girdi tutar" data-ciro="${k}" inputmode="decimal" value="${GS.ciro[k]?tl(GS.ciro[k]).replace(' TL',''):''}"></label>`).join('')}</div>
@@ -490,8 +496,8 @@ function gunSonuCiz(){const g=D.gun,s=bolum('gunsonu');
     <p class="mut kucuk">NAKİT TL: Nebim/sistem nakdi (masraf ve para üstü düşülmüş). Kasa fazlası ve açığı elle girilmez: sayılan nakitten hesaplanır.</p>
     <div class="form-iki">${D.sabitler.bilgi_alanlari.filter(([k])=>k!=='kasa_fazlasi').map(([k,a])=>`<label class="alan">${esc(a)}<input class="girdi tutar" data-ciro="${k}" data-eksi="1" inputmode="decimal" value="${GS.ciro[k]?tl(GS.ciro[k]).replace(' TL',''):''}"></label>`).join('')}</div>
     <div class="form-iki"><label class="alan">Havale +/- açıklaması (fark varsa zorunlu)<input class="girdi" data-acik="havale_fark" maxlength="300" value="${esc((GS.aciklamalar||{}).havale_fark||'')}"></label>
-    <label class="alan">Kredi kartı +/- açıklaması (fark varsa zorunlu)<input class="girdi" data-acik="kredi_karti_fark" maxlength="300" value="${esc((GS.aciklamalar||{}).kredi_karti_fark||'')}"></label></div>`;
-  if(GS.adim===3)govde=`<h2>Kapanış kontrol listesi</h2><div class="kontrol">${D.sabitler.kapanis_listesi.map((m,i)=>`<label><input type="checkbox" data-k="${i}" ${GS.kontrol[i]?'checked':''}>${esc(m)}</label>`).join('')}</div>
+    <label class="alan">Kredi kartı +/- açıklaması (fark varsa zorunlu)<input class="girdi" data-acik="kredi_karti_fark" maxlength="300" value="${esc((GS.aciklamalar||{}).kredi_karti_fark||'')}"></label></div>${kontrolHtml(2)}`;
+  if(GS.adim===3)govde=`<h2>Kapanış ve not</h2>${kontrolHtml(3)}
     <div class="form-iki"><label class="alan">Ertesi güne devreden nakit (bozukluk)<input class="girdi tutar" id="g-devreden" inputmode="decimal" value="${GS.devreden_kurus?tl(GS.devreden_kurus).replace(' TL',''):''}"></label>
     <label class="alan">Açıklama notu (fark varsa zorunlu)<textarea class="girdi" id="g-not" maxlength="600">${esc(GS.not)}</textarea></label></div>
     <p class="mut kucuk">İmza isteği 7 madde de işaretliyse kayıttan sonra çıkar. En az bir imza gerekli; ikinci imzayı giren atamaz, ikinci kişi yoksa "ikinci imza atmadı" yazılır.</p>`;
@@ -620,7 +626,7 @@ async function matrisCiz(){const s=bolum('matris');s.innerHTML='<h1>Merkez matri
   try{const v=await api('GET','/api/matris?gun=14');const SY={geldi:['✓','Geldi'],gec:['⏱','Geç'],eksik:['✕','Eksik'],bekleniyor:['…','Bekleniyor']};
     s.innerHTML=`<div class="sayfa-bas"><div><h1>Merkez matrisi</h1><div class="mut">Mağaza × gün: ✓ geldi · ⏱ geç · ✕ eksik · … bekleniyor · ⚠ kasa ile ciro uyuşmuyor · ½ ikinci imza atmadı (tek imza). ${esc(v.not)}</div></div></div>
     <div class="kart" style="overflow:auto"><table class="tablo matris"><thead><tr><th>Şube</th>${v.tarihler.map(t=>`<th>${esc(t.slice(5))}</th>`).join('')}</tr></thead><tbody>
-    ${v.satirlar.map(r=>`<tr><th>${esc(r.sube)}</th>${r.hucreler.map(h=>`<td class="m-${h.durum}" title="${SY[h.durum][1]}${h.kasa_ciro_uyusmuyor?' · kasa ile ciro uyuşmuyor':''}${h.ikinci_imza_atmadi?' · ikinci imza atmadı'+(h.ikinci_imza_gerekceleri.length?' (gerekçe: '+esc(h.ikinci_imza_gerekceleri.join('; '))+')':''):''}">${SY[h.durum][0]}${h.kasa_ciro_uyusmuyor?' ⚠':''}${h.ikinci_imza_atmadi?' ½':''}</td>`).join('')}</tr>`).join('')}</tbody></table>
+    ${v.satirlar.map(r=>`<tr><th>${esc(r.sube)}${r.tek_imza_uyarisi?` <span class="hata" title="Son ${v.tek_imza_uyarisi.pencere_gun} günde ${r.tek_imza_gun_sayisi} gün ikinci imzasız gönderildi (eşik ${v.tek_imza_uyarisi.esik})">⚠ sık tek imza (${r.tek_imza_gun_sayisi})</span>`:''}</th>${r.hucreler.map(h=>`<td class="m-${h.durum}" title="${SY[h.durum][1]}${h.telefon_imza_sorunlari.length?' · telefon imzası: '+esc(h.telefon_imza_sorunlari.join('; ')):''}${h.telefon_imza_dogrulanamadi?' · telefon imzası merkezde doğrulanamadı':''}${h.kasa_ciro_uyusmuyor?' · kasa ile ciro uyuşmuyor':''}${h.ikinci_imza_atmadi?' · ikinci imza atmadı'+(h.ikinci_imza_gerekceleri.length?' (gerekçe: '+esc(h.ikinci_imza_gerekceleri.join('; '))+')':''):''}">${SY[h.durum][0]}${h.kasa_ciro_uyusmuyor?' ⚠':''}${h.ikinci_imza_atmadi?' ½':''}${h.telefon_imza_sorunlari.length?' ✗':''}</td>`).join('')}</tr>`).join('')}</tbody></table>
     ${v.okunamayan?`<p class="hata">${v.okunamayan} dosya okunamadı.</p>`:''}</div>`}catch(e){s.innerHTML=`<h1>Merkez matrisi</h1><p class="hata">${esc(e.message)}</p>`}}
 
 basla().catch(e=>{document.body.innerHTML='<p style="padding:24px">TAA Kasa açılamadı: '+esc(e.message)+'</p>'});

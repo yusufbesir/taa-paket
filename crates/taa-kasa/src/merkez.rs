@@ -10,6 +10,7 @@ use crate::gunsonu::{
     GunSonuKaydi, ImzaKanali, ImzaKaydi, MasrafGorunum, SayimKaydi, IKINCI_IMZA_ATMADI,
     KAPANIS_LISTESI, ODEME_TURLERI,
 };
+use crate::telefon_imza::{ozet_sha256, CihazDurumu, CihazKaydi, MerkezKaydiYok};
 use crate::xlsx::{Hucre, Sayfa};
 use crate::zaman;
 use serde::Serialize;
@@ -144,16 +145,24 @@ pub struct MatrisHucre {
     pub ikinci_imza_atmadi: bool,
     /// İkinci imza atılmayan paketlerin gerekçeleri.
     pub ikinci_imza_gerekceleri: Vec<String>,
+    /// Telefonla imza merkezde doğrulanamadı ya da sorunlu (özet tutmuyor, cihaz iptal / başka kişide).
+    pub telefon_imza_sorunlari: Vec<String>,
+    /// Merkez cihaz kaydı olmadığı için doğrulanamayan telefon imzası sayısı.
+    pub telefon_imza_dogrulanamadi: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct MatrisSatiri {
     pub sube: String,
     pub hucreler: Vec<MatrisHucre>,
+    /// Son `pencere_gun` günde ikinci imzasız gönderilen gün sayısı (`tek_imza_uyarisi_uygula`).
+    pub tek_imza_gun_sayisi: usize,
+    /// Sayı ayardaki eşiğe ulaştı: merkez ekranında uyarı.
+    pub tek_imza_uyarisi: bool,
 }
 
 /// Merkeze ulaşmış bir paketin özeti.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct GelenPaket {
     pub sube: String,
     pub tarih: String,
@@ -161,10 +170,50 @@ pub struct GelenPaket {
     pub kasa_ciro_uyusmuyor: bool,
     pub ikinci_imza_atmadi: bool,
     pub ikinci_imza_gerekcesi: Option<String>,
+    pub telefon_imza_sorunlari: Vec<String>,
+    pub telefon_imza_dogrulanamadi: usize,
 }
 
-/// Merkez klasöründeki paketleri okur (bozuk ya da tanınmayan dosyalar atlanır, sayısı döner).
+/// Paketteki telefonla imzaları merkezde denetler: imzanın onayladığı özet paketteki gün sonundan yeniden
+/// hesaplanır; cihaz-kişi bağı ve iptal TAA Merkez cihaz kaydından sorulur. Dönen: (sorunlar, doğrulanamayan).
+pub fn telefon_imzalarini_denetle(p: &Value, kayit: &dyn CihazKaydi) -> (Vec<String>, usize) {
+    let mut sorun = Vec::new();
+    let mut bilinmiyor = 0;
+    let gs: Option<GunSonuKaydi> = serde_json::from_value(p["gun_sonu"].clone()).ok();
+    for i in p["imzalar"].as_array().into_iter().flatten() {
+        if i["kanal"] != "telefon" {
+            continue;
+        }
+        let sira = i["sira"].as_i64().unwrap_or(0);
+        let kisi = i["kisi"].as_str().unwrap_or("");
+        let cihaz = i["cihaz"].as_str().unwrap_or("");
+        match (i["ozet"].as_str(), &gs) {
+            (Some(o), Some(g)) if o == ozet_sha256(g) => {}
+            (Some(_), Some(_)) => sorun.push(format!("{sira}. imza: özet gün sonuyla tutmuyor")),
+            _ => sorun.push(format!("{sira}. imza: özet yok")),
+        }
+        if cihaz.is_empty() {
+            sorun.push(format!("{sira}. imza: cihaz kimliği yok"));
+            continue;
+        }
+        match kayit.denetle(cihaz, kisi) {
+            CihazDurumu::Gecerli => {}
+            CihazDurumu::Bilinmiyor => bilinmiyor += 1,
+            CihazDurumu::Iptal => sorun.push(format!("{sira}. imza: cihaz iptal edilmiş")),
+            CihazDurumu::BaskaKisi => sorun.push(format!("{sira}. imza: cihaz başka kişiye bağlı")),
+        }
+    }
+    (sorun, bilinmiyor)
+}
+
+/// Merkez klasöründeki paketleri okur (bozuk ya da tanınmayan dosyalar atlanır, sayısı döner). TAA Merkez cihaz
+/// kaydı bağlanana kadar telefon imzaları `MerkezKaydiYok` ile denetlenir.
 pub fn gelenleri_oku(klasor: &Path) -> (Vec<GelenPaket>, usize) {
+    gelenleri_oku_denetle(klasor, &MerkezKaydiYok)
+}
+
+/// `gelenleri_oku`, TAA Merkez cihaz kaydıyla.
+pub fn gelenleri_oku_denetle(klasor: &Path, kayit: &dyn CihazKaydi) -> (Vec<GelenPaket>, usize) {
     let mut v = Vec::new();
     let mut bozuk = 0;
     let Ok(d) = std::fs::read_dir(klasor) else {
@@ -186,17 +235,23 @@ pub fn gelenleri_oku(klasor: &Path) -> (Vec<GelenPaket>, usize) {
             .ok()
             .and_then(|b| serde_json::from_slice(&b).ok());
         match p.filter(|p| p["tur"] == "kasa.gunsonu@1") {
-            Some(p) => v.push(GelenPaket {
-                sube: p["sube"].as_str().unwrap_or("").to_string(),
-                tarih: p["tarih"].as_str().unwrap_or("").to_string(),
-                // Mağazada imzalanıp kuyruğa alındığı an esas alınır (ağ kesintisi "geç" saydırmaz);
-                // alan yoksa dosyanın merkeze yazıldığı an.
-                alinma_sn: p["olusturma"].as_i64().unwrap_or(alinma),
-                kasa_ciro_uyusmuyor: p["gun_sonu"]["karsilastirma"]["kasa_ciro_uyusmuyor"]
-                    .as_bool()
-                    .unwrap_or(false),
-                ikinci_imza_atmadi: p["ikinci_imza_durumu"] == IKINCI_IMZA_ATMADI,
-                ikinci_imza_gerekcesi: p["ikinci_imza_gerekcesi"].as_str().map(str::to_string),
+            Some(p) => v.push({
+                let (telefon_imza_sorunlari, telefon_imza_dogrulanamadi) =
+                    telefon_imzalarini_denetle(&p, kayit);
+                GelenPaket {
+                    sube: p["sube"].as_str().unwrap_or("").to_string(),
+                    tarih: p["tarih"].as_str().unwrap_or("").to_string(),
+                    // Mağazada imzalanıp kuyruğa alındığı an esas alınır (ağ kesintisi "geç" saydırmaz);
+                    // alan yoksa dosyanın merkeze yazıldığı an.
+                    alinma_sn: p["olusturma"].as_i64().unwrap_or(alinma),
+                    kasa_ciro_uyusmuyor: p["gun_sonu"]["karsilastirma"]["kasa_ciro_uyusmuyor"]
+                        .as_bool()
+                        .unwrap_or(false),
+                    ikinci_imza_atmadi: p["ikinci_imza_durumu"] == IKINCI_IMZA_ATMADI,
+                    ikinci_imza_gerekcesi: p["ikinci_imza_gerekcesi"].as_str().map(str::to_string),
+                    telefon_imza_sorunlari,
+                    telefon_imza_dogrulanamadi,
+                }
             }),
             None => bozuk += 1,
         }
@@ -218,6 +273,8 @@ pub fn matris(
         .iter()
         .map(|s| MatrisSatiri {
             sube: s.clone(),
+            tek_imza_gun_sayisi: 0,
+            tek_imza_uyarisi: false,
             hucreler: tarihler
                 .iter()
                 .map(|t| {
@@ -247,11 +304,45 @@ pub fn matris(
                             .iter()
                             .filter_map(|g| g.ikinci_imza_gerekcesi.clone())
                             .collect(),
+                        telefon_imza_sorunlari: p
+                            .iter()
+                            .flat_map(|g| g.telefon_imza_sorunlari.clone())
+                            .collect(),
+                        telefon_imza_dogrulanamadi: p
+                            .iter()
+                            .map(|g| g.telefon_imza_dogrulanamadi)
+                            .sum(),
                     }
                 })
                 .collect(),
         })
         .collect()
+}
+
+/// Sık tek imzalı gönderim uyarısı: her şube için `bitis` dahil son `pencere_gun` günde ikinci imzasız gönderilen
+/// gün sayısı; `esik`e ulaşırsa uyarı. Ayar: `KasaAyar.tek_imza_uyarisi`.
+pub fn tek_imza_uyarisi_uygula(
+    satirlar: &mut [MatrisSatiri],
+    gelenler: &[GelenPaket],
+    bitis: &str,
+    pencere_gun: u32,
+    esik: u32,
+) {
+    let Some(bas) = zaman::gun_ekle(bitis, 1 - i64::from(pencere_gun.max(1))) else {
+        return;
+    };
+    for s in satirlar.iter_mut() {
+        let mut gunler: Vec<&str> = gelenler
+            .iter()
+            .filter(|g| g.sube == s.sube && g.ikinci_imza_atmadi)
+            .filter(|g| g.tarih.as_str() >= bas.as_str() && g.tarih.as_str() <= bitis)
+            .map(|g| g.tarih.as_str())
+            .collect();
+        gunler.sort();
+        gunler.dedup();
+        s.tek_imza_gun_sayisi = gunler.len();
+        s.tek_imza_uyarisi = esik > 0 && gunler.len() >= esik as usize;
+    }
 }
 
 // ---------------------------------------------------------------- Excel

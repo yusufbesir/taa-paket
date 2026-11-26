@@ -563,6 +563,7 @@ impl Uygulama {
                 "bilgi_alanlari": BILGI_ALANLARI.iter().map(|(k, a)| json!([k, a])).collect::<Vec<_>>(),
                 "dovizler": DOVIZLER.iter().map(|(k, a)| json!([k, a])).collect::<Vec<_>>(),
                 "kapanis_listesi": KAPANIS_LISTESI,
+                "kapanis_adimlari": taa_kasa::gunsonu::KAPANIS_ADIMLARI,
             },
         }))
     }
@@ -732,7 +733,7 @@ impl Uygulama {
         }
         subeler.sort();
         subeler.dedup();
-        let m = merkez::matris(
+        let mut m = merkez::matris(
             &gelen,
             &subeler,
             &tarihler,
@@ -740,8 +741,16 @@ impl Uygulama {
             ayar.saat_farki_dk,
             zaman::simdi_sn(),
         );
+        merkez::tek_imza_uyarisi_uygula(
+            &mut m,
+            &gelen,
+            &bugun,
+            ayar.tek_imza_uyarisi.pencere_gun,
+            ayar.tek_imza_uyarisi.esik,
+        );
         tamam(
             json!({"tarihler": tarihler, "satirlar": m, "okunamayan": bozuk,
+            "tek_imza_uyarisi": ayar.tek_imza_uyarisi,
             "not": "Şube listesi şimdilik merkeze paket gönderen şubelerden çıkar; tam liste Çatı'daki şube kaydından gelecek."}),
         )
     }

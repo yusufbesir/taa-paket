@@ -33,6 +33,13 @@ Fark varsa açıklama zorunlu; nakit ya da Z↔ciro tutmazsa "kasa ile ciro uyu�
   gerekçe zorunlu (`POST /api/gerekce`, defter kaydı `gerekce`, son kayıt geçerli). Gerekçe gün durumunda, pakette
   (`ikinci_imza_gerekcesi`, `imzalar[1].gerekce`), A4 tutanakta, kayıt Excel'inde ve merkez matrisinde görünür. İkinci imza
   atılırsa gerekçe gösterilmez.
+- **Sık tek imza uyarısı** (karar 2026-11-26): gerekçe kısa serbest not kalır. Aynı mağaza son `pencere_gun` günde en az
+  `esik` gün ikinci imzasız gönderirse merkez matrisinde şube adının yanında "⚠ sık tek imza (n)" çıkar. Ayar
+  `KasaAyar.tek_imza_uyarisi`, varsayılan 14 günde 3 gün; `esik: 0` kapatır. Aynı günün iki çekmecesi bir gün sayılır.
+- **Kapanış listesi sihirbaza dağıtıldı** (karar 2026-11-26): madde, işin yapıldığı adımda işaretlenir
+  (`KAPANIS_ADIMLARI`): "Fiili sayım tutanağı" → 1. adım (nakit); "Z raporu alındı" → 2. adım; "Z, POS ve satış sistemi
+  karşılaştırıldı" → 3. adım; kasa kilidi, kamera, masraf fişleri, bozukluk → 4. adım. 4. adım ötekilerin durumunu ve
+  ilgili adıma dönüş düğmesini gösterir. Kayıt biçimi aynı (7 × bool).
 - **Tutanak kilidi:** ilk imzadan sonra tutanak ekleri (ERP içe aktarma, yapılan işlem) değişmez; değişiklik yönetici iptali
   ve yeniden girişle.
 - **Z formülü ayarı** (`KasaAyar.z_formulu`): şablonun genel toplam formülü sabit; Z karşılaştırmasında `degisim_eklenir`,
@@ -60,9 +67,9 @@ Gemini Neon'a akış, gerekçe/kilit ve telefon onayı soruldu. Değerlendirme:
 - Pencere: Edge `--app` (ProgramFiles(x86), ProgramFiles, ProgramW6432, LOCALAPPDATA), yoksa varsayılan tarayıcı.
 - İndirme adları ASCII'ye sadeleştirilir, asıl ad `filename*` ile gider (Türkçe şube adı başlığı düşürmez).
 - Yazdırma: tutanak A4 (`@page`), "Yazdır / PDF" düğmesi Edge'de çalışmalı; ilk Windows denemesinde doğrulanmalı.
-- Açık risk: veri kökü `%APPDATA%\TAA\veri` (dolaşan profil olan etki alanlarında eşitleme çakışması olabilir;
-  gerekirse `TAA_VERI_KOK` ile yerel klasör verilir). Excel açıkken aynı dosyaya atomik yazma reddedilebilir (yalnız
-  indirmeler etkilenmez).
+- Veri kökü `%APPDATA%\TAA\veri` (karar 2026-11-26): öteki TAA programlarıyla aynı yerde kalır, değişiklik yok. Dolaşan
+  profilli etki alanında gerekirse `TAA_VERI_KOK` ile yerel klasör verilebilir. Excel açıkken aynı dosyaya atomik yazma
+  reddedilebilir (indirmeler etkilenmez).
 
 ## Yer tutucular (henüz bağlanmadı)
 
@@ -135,6 +142,12 @@ Durum: istemci `crates/taa-kasa/src/telefon_imza.rs` hazır ve testli (sahte kan
   sonra düzeltme/iptal olduysa imza atılmaz.
 - **Cihaz kimliği:** `eslesme_kimligi:pc_pin` (pc_pin = telefon sertifikasının SHA-256'sı); imza kaydında `cihaz`, onaylanan
   özet `ozet` alanına yazılır. Telefon imzasının (P-256) doğrulanması köprünün işidir.
+- **Merkez doğrulaması** (karar 2026-11-26): cihaz-kişi bağı ve iptal TAA Merkez'de tutulur; kasa tarafı yalnız sonucu
+  kullanır (`telefon_imza::CihazKaydi` → `gecerli` | `baska_kisi` | `iptal` | `bilinmiyor`). Kasada iptal edilmiş ya da
+  başka kişiye bağlı cihazın onayı geçersizdir; sonuç imza kaydına `cihaz_dogrulama` olarak yazılır. Merkezde paket okunurken
+  (`merkez::telefon_imzalarini_denetle`) imzanın `ozet`i paketteki gün sonundan yeniden hesaplanır ve cihaz yeniden
+  denetlenir; sorun ve "doğrulanamadı" matris hücresinde görünür. TAA Merkez kaydı gelene kadar yer tutucu `MerkezKaydiYok`
+  her cihaz için `bilinmiyor` döner (imza engellenmez).
 - **Kişi doğrulama:** bugün yok; kişi ekranda seçilir, telefondaki kişi farklı bildirilirse onay geçersizdir. Planlı: telefonda
   Keystore + BiometricPrompt (`kisi_dogrulandi: true`), cihaz↔kişi bağı TAA Merkez'de.
 - **Durumlar:** `bekliyor`, `onaylandi`, `reddedildi`, `zaman_asimi` (60 sn), `kanal_yok` (→ 501), `gecersiz` (özet/istek/kişi

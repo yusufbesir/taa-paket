@@ -154,6 +154,11 @@ pub const KAPANIS_LISTESI: [&str; 7] = [
     "Ertesi gün bozukluğu hazırlandı",
 ];
 
+/// Kapanış listesi maddelerinin gün sonu sihirbazındaki adımı (0 nakit ve döviz, 1 Z raporu ve POS, 2 satış sistemi
+/// ve ödeme türleri, 3 kapanış ve not). Madde ilgili işin yapıldığı adımda işaretlenir; 3. adım hepsinin özetini
+/// gösterir. Kayıt biçimi değişmez (`kontrol`: 7 × bool).
+pub const KAPANIS_ADIMLARI: [u8; 7] = [1, 2, 0, 3, 3, 3, 3];
+
 /// Gün sonu imza rolleri (Tutaa kasa çift doğrulama tutanağı ile aynı adlar). Birinci imza kasa sorumlusu,
 /// ikinci imza mağaza sorumlusu ya da vekilidir.
 pub const IMZA_ROLLERI: [(&str, &str); 2] = [
@@ -262,6 +267,27 @@ pub struct KasaAyar {
     pub whatsapp_kalin: bool,
     /// Z raporu karşılaştırmasının ayarlanabilir kalemleri (kanıtsız olanlar belgelenmiş varsayılanla).
     pub z_formulu: ZFormulu,
+    /// Merkez matrisi: sık tek imzalı gönderim uyarısı.
+    pub tek_imza_uyarisi: TekImzaUyarisi,
+}
+
+/// Aynı mağaza son `pencere_gun` günde en az `esik` gün ikinci imzasız gönderirse merkez ekranında uyarı.
+/// Varsayılan: 14 günde 3 gün (haftada bir tek imza olağan sayılır, iki haftada üç tekrar dikkat ister).
+/// `esik: 0` uyarıyı kapatır.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TekImzaUyarisi {
+    pub pencere_gun: u32,
+    pub esik: u32,
+}
+
+impl Default for TekImzaUyarisi {
+    fn default() -> Self {
+        TekImzaUyarisi {
+            pencere_gun: 14,
+            esik: 3,
+        }
+    }
 }
 
 impl Default for KasaAyar {
@@ -308,6 +334,7 @@ impl Default for KasaAyar {
             excel_baslik: String::new(),
             whatsapp_kalin: false,
             z_formulu: ZFormulu::default(),
+            tek_imza_uyarisi: TekImzaUyarisi::default(),
         }
     }
 }
@@ -516,6 +543,9 @@ pub struct ImzaKaydi {
     /// Telefonla imzada onaylanan gün sonu özetinin SHA-256'sı (`telefon_imza::ozet_sha256`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ozet: Option<String>,
+    /// Telefonla imzada cihaz-kişi bağının TAA Merkez denetim sonucu (`gecerli` | `bilinmiyor`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cihaz_dogrulama: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1559,6 +1589,7 @@ impl KasaDefteri {
                     kanal: ImzaKanali::Ekran,
                     cihaz: None,
                     ozet: None,
+                    cihaz_dogrulama: None,
                 }),
                 _ => {}
             }
@@ -1610,7 +1641,7 @@ impl KasaDefteri {
         cihaz: Option<&str>,
         kisi: &Kisi,
     ) -> Result<ImzaKaydi, String> {
-        self.imzala_ic(id, kanal, cihaz, None, kisi)
+        self.imzala_ic(id, kanal, cihaz, None, None, kisi)
     }
 
     /// `imzala` ile aynı kurallar; telefonla imzada onaylanan özet de deftere yazılır.
@@ -1620,6 +1651,7 @@ impl KasaDefteri {
         kanal: ImzaKanali,
         cihaz: Option<&str>,
         ozet: Option<&str>,
+        cihaz_dogrulama: Option<&str>,
         kisi: &Kisi,
     ) -> Result<ImzaKaydi, String> {
         let gs = self
@@ -1648,6 +1680,7 @@ impl KasaDefteri {
             kanal,
             cihaz,
             ozet: ozet.map(str::to_string),
+            cihaz_dogrulama: cihaz_dogrulama.map(str::to_string),
         };
         self.gun_ekle(&GunKaydi::Imza(i.clone()))?;
         Ok(i)
@@ -1971,7 +2004,8 @@ pub fn imza_listesi(imzalar: &[ImzaKaydi]) -> Vec<Value> {
         .map(|(n, (rol, ad))| match imzalar.get(n) {
             Some(i) => json!({
                 "sira": n + 1, "rol": rol, "rol_adi": ad, "kisi": i.kisi, "zaman": i.zaman,
-                "kanal": i.kanal, "cihaz": i.cihaz, "durum": "imzaladi", "imzalamadi": false,
+                "kanal": i.kanal, "cihaz": i.cihaz, "ozet": i.ozet, "cihaz_dogrulama": i.cihaz_dogrulama,
+                "durum": "imzaladi", "imzalamadi": false,
             }),
             None => json!({
                 "sira": n + 1, "rol": rol, "rol_adi": ad, "kisi": null, "zaman": null,
