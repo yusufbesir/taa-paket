@@ -309,7 +309,7 @@ h1{text-align:center;font-size:15pt;letter-spacing:.04em;margin:10px 0 14px}h2{f
 table{width:100%;border-collapse:collapse;font-size:10pt}th,td{border:1px solid #666;padding:4px 6px;vertical-align:top}th{background:#eee}
 td.s{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}tfoot td{font-weight:700}.kutu{font-family:monospace}
 .dipnot{font-size:9pt;color:#333;margin-top:12px;text-align:justify}.imzalar{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px}
-.imza{border:1px solid #666;padding:8px;min-height:34mm}.imza b{display:block}.yok{color:#a00;font-weight:700}.taslak{color:#a00;font-weight:700;text-align:center}
+.imza{border:1px solid #666;padding:8px;min-height:34mm}.imza b{display:block}.yok{color:#a00;font-weight:700}.gerekce{margin-top:4px;font-size:9pt}.taslak{color:#a00;font-weight:700;text-align:center}
 @media print{.yazdir{display:none}}</style></head><body><div class="sayfa">"#);
     h.push_str(&format!(
         r#"<div class="ust"><div>{}</div><div style="text-align:right">No: <b>{}</b><br>Tarih: {}<br>Düzenlenme: {}</div></div>"#,
@@ -387,10 +387,15 @@ td.s{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}tfoot
             } else {
                 "imza atmadı"
             };
+            let gerekce = match i["gerekce"].as_str() {
+                Some(g) => format!(r#"<div class="gerekce">Gerekçe: {}</div>"#, kac(g)),
+                None => String::new(),
+            };
             h.push_str(&format!(
-                r#"<div class="imza"><b>{}</b><div class="yok">{}</div></div>"#,
+                r#"<div class="imza"><b>{}</b><div class="yok">{}</div>{}</div>"#,
                 kac(rol),
-                kac(&crate::sablon::buyuk_tr(m))
+                kac(&crate::sablon::buyuk_tr(m)),
+                gerekce
             ));
         } else {
             let kanal = match i["kanal"].as_str() {
