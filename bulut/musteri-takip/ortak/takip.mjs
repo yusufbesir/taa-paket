@@ -95,12 +95,15 @@ function gunMetni(t, dil) {
 
 function dilCubugu(dil, adres) {
   if (!adres) return "";
-  const lis = DILLER.map(([d, ad]) =>
+  const kisa = DILLER.find(([d]) => d === dil)[2];
+  const lis = DILLER.map(([d, ad, k]) =>
     d === dil
-      ? `<b lang="${d}" aria-current="true">${ad}</b>`
-      : `<a lang="${d}" hreflang="${d}" href="${kacis(adres)}?dil=${d}">${ad}</a>`,
+      ? `<li><span class="secili" lang="${d}" aria-current="true"><b>${k}</b> = ${ad}</span></li>`
+      : `<li><a lang="${d}" hreflang="${d}" href="${kacis(adres)}?dil=${d}"><b>${k}</b> = ${ad}</a></li>`,
   ).join("");
-  return `<nav class="diller" aria-label="${kacis(METIN[dil].dil)}">${lis}</nav>`;
+  // Betiksiz çekmece: <details>/<summary> klavye ve ekran okuyucuyla çalışır.
+  return `<details class="diller"><summary aria-label="${kacis(METIN[dil].dil)}: ${kisa}"><span aria-hidden="true">${kisa}</span></summary>
+    <ul dir="ltr">${lis}</ul></details>`;
 }
 
 function fisOzeti(kayit, dil, m) {
@@ -149,11 +152,18 @@ export function sayfa(kayit, { yedek = "", dil = "tr", adres = "" } = {}) {
 <style>
 :root{--zemin:#f6f3ee;--kart:#fff;--yazi:#1d1b18;--ince:#6b655c;--vurgu:#8a5a2b;--cizgi:#e4ddd2}
 @media (prefers-color-scheme:dark){:root{--zemin:#16140f;--kart:#211e18;--yazi:#f1ece4;--ince:#a59d90;--vurgu:#d7a46b;--cizgi:#3a352c}}
-*{box-sizing:border-box}body{margin:0;background:var(--zemin);color:var(--yazi);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans Arabic",sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:24px 16px}
-header{font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:13px;color:var(--vurgu);margin:8px 0 12px}
-.diller{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin:0 0 16px;max-width:440px}
-.diller a,.diller b{font-size:13px;padding:4px 10px;border-radius:999px;border:1px solid var(--cizgi);text-decoration:none;color:var(--ince)}
-.diller b{background:var(--vurgu);border-color:var(--vurgu);color:var(--kart)}
+*{box-sizing:border-box}body{margin:0;background:var(--zemin);color:var(--yazi);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans Arabic",sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:16px;position:relative}
+header{font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:13px;color:var(--vurgu);margin:8px 0 20px;min-height:36px;display:flex;align-items:center}
+.diller{position:absolute;top:16px;inset-inline-end:16px;z-index:2}
+.diller summary{list-style:none;cursor:pointer;min-width:48px;height:36px;padding:0 12px;border-radius:999px;border:1px solid var(--cizgi);background:var(--kart);display:flex;align-items:center;justify-content:center;gap:6px;font-weight:700;font-size:14px;letter-spacing:.04em}
+.diller summary::-webkit-details-marker{display:none}
+.diller summary::after{content:"";width:6px;height:6px;border:solid var(--ince);border-width:0 2px 2px 0;transform:rotate(45deg) translateY(-2px)}
+.diller[open] summary::after{transform:rotate(-135deg) translateY(-1px)}
+.diller summary:focus-visible,.diller a:focus-visible{outline:2px solid var(--vurgu);outline-offset:2px}
+.diller ul{list-style:none;margin:8px 0 0;padding:6px;position:absolute;inset-inline-end:0;background:var(--kart);border:1px solid var(--cizgi);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.15);min-width:200px;max-height:70vh;overflow:auto}
+.diller li a,.diller .secili{display:block;padding:9px 12px;border-radius:8px;text-decoration:none;color:var(--yazi);font-size:15px;white-space:nowrap}
+.diller li a:hover{background:var(--zemin)}.diller .secili{background:var(--vurgu);color:var(--kart)}
+.diller b{display:inline-block;min-width:2.2em;font-weight:700}
 .kutu{background:var(--kart);border:1px solid var(--cizgi);border-radius:16px;padding:24px;max-width:440px;width:100%}
 h1{font-size:24px;margin:4px 0 18px}h2{font-size:16px;margin:0 0 10px}h3{font-size:14px;margin:14px 0 6px;color:var(--ince);font-weight:600}
 .ust,.ince{color:var(--ince);font-size:14px;margin:0}
@@ -166,6 +176,6 @@ h1{font-size:24px;margin:4px 0 18px}h2{font-size:16px;margin:0 0 10px}h3{font-si
 .kalemler{list-style:none;padding:0;margin:0}.kalemler li{display:flex;flex-direction:column;padding:6px 0;border-bottom:1px solid var(--cizgi)}
 .kalemler li:last-child{border-bottom:0}.kalemler span{color:var(--ince);font-size:15px}
 a{color:var(--vurgu)}
-</style></head><body><header>Terzi Adem Altun</header>${dilCubugu(dil, adres)}${govde}
+</style></head><body>${dilCubugu(dil, adres)}<header>Terzi Adem Altun</header>${govde}
 </body></html>`;
 }
