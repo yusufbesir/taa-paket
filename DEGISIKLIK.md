@@ -6,6 +6,13 @@
 
 ## Yayınlanmamış
 
+### TAA Çatı: Raporlar bölümü (yalnız yönetici)
+
+- **Ne:** TAA Çatı paneline "Raporlar" ekranı: tüm TAA uygulamalarından (TerziTakip, TAA Kasa, Tutaa, TAA Etiket, TaaRkod, TaaDön, TAA Giydir, Video Yapıcı, paket) özet, yorum ve bölümler; Excel (CSV) indir, Yazdır/PDF. Usta Puan ayrı program değil: TerziTakip raporunda, `usta-puan` açıksa (varsayılan kapalı) görünür.
+- **Yetki:** yalnız `yonetici` rolü; başka rolde uçlar 403 döner, menüde görünmez. Rapor yerel veri kökünden salt okunur üretilir.
+- **Kod:** `taa-raporlar::uygulamalar` (katalog, veri alanı özeti, CSV), `taa-cati::raporlar_api` (yetki + uçlar), panel `--fis-klasoru`. Testler: taa-cati +3, taa-raporlar +4. Ayrıntı: docs/S3-CATI-PANEL.md.
+- **Sınır:** Windows'ta elle denenmedi; dönem süzgeci, şube karşılaştırması, ciro kuralları, grafikler ve gerçek .xlsx sonraki adım.
+
 ### Dinamik sunucu adresi (taa-yol otomatik güncelleme, taa-dns)
 
 - **Sorun:** sunucu dizüstü dolaşır; yol listesindeki `yerel` IP'si (192.168.1.19) eskiyince "hiçbir sunucu yoluna ulaşılamadı" oluşuyordu.

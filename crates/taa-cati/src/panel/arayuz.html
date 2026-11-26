@@ -232,6 +232,7 @@ dialog .dugmeler{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
 .pin-durum.var{color:var(--ok)}.pin-durum.yok{color:var(--muted)}
 @media (prefers-reduced-motion:reduce){:root:not(.hareket-normal) *,:root:not(.hareket-normal) *::before,:root:not(.hareket-normal) *::after{animation:none!important;transition:none!important}}
 :root.az-hareket *,:root.az-hareket *::before,:root.az-hareket *::after{animation:none!important;transition:none!important}
+@media print{.menu,.arac,#bildirim,.ust .durum{display:none!important}.uygulama{display:block!important}main{overflow:visible!important}.kart{break-inside:avoid;border-color:#bbb}:root{--bg:#fff}body{background:#fff!important;color:#000!important}}
 </style>
 </head>
 <body>
@@ -342,14 +343,17 @@ const hataBildir=e=>bildir(e.message||String(e),true);
 // ---- durum ----
 let oturum=null,saglik=null,veri={cihazlar:[],kullanicilar:[],subeler:[],yetkiler:[],roller:[],olaylar:[],pinler:[],hesaplar:[],basvurular:[],eslestirmeler:[],hatalar:[],uyari:{yeni:0,denemeler:[],sifre_degisiklikleri:[]}};
 let suzgec='bekliyor',arama='',sor=null,gunlukIslem='',gunlukSon=null;
+let rapor={uyg:'hepsi',liste:null,veri:null,yukleniyor:false,hata:''};
 const izinli=i=>!!(oturum&&oturum.izinler&&oturum.izinler.includes(i));
 const EKRANLAR=[
   ['genel','Genel bakış','◐',null],['onaylar','Onay bekleyenler','✓','kullanici.yonet'],['cihazlar','Cihazlar','▣','cihaz.yonet'],['kullanicilar','Kullanıcılar','◍','kullanici.yonet'],
-  ['subeler','Şubeler','⌂','kullanici.yonet'],['yetkiler','Program yetkileri','▦','program.yonet'],['pinler','Yönetici PIN\'leri','✱','program.yonet'],['gunluk','Günlük','≡','gunluk.gor'],['hatalar','Hatalar','⚠','gunluk.gor'],['ayarlar','Ayarlar','⚙',null]
+  ['subeler','Şubeler','⌂','kullanici.yonet'],['yetkiler','Program yetkileri','▦','program.yonet'],['pinler','Yönetici PIN\'leri','✱','program.yonet'],['gunluk','Günlük','≡','gunluk.gor'],['hatalar','Hatalar','⚠','gunluk.gor'],['raporlar','Raporlar','▤','rol:yonetici'],['ayarlar','Ayarlar','⚙',null]
 ];
 const BILINEN=['terzitakip','tutaa','taarkod','taadon','taa-etiket','taa-giydir','taa-video'];
 const PROGRAM_AD={terzitakip:'TerziTakip',tutaa:'Tutaa',taarkod:'TaaRkod',taadon:'TaaDön','taa-etiket':'TAA Etiket','taa-giydir':'TAA Giydir','taa-video':'TAA Video Yapıcı'};
-const gorunur=()=>EKRANLAR.filter(e=>!e[3]||izinli(e[3]));
+// Raporlar yalnız yöneticiye görünür (asıl denetim yerel panel sunucusunda: 403).
+const rolVar=r=>!!(oturum&&(oturum.roller||[]).includes(r));
+const gorunur=()=>EKRANLAR.filter(e=>!e[3]||(e[3].startsWith('rol:')?rolVar(e[3].slice(4)):izinli(e[3])));
 const bekleyen=()=>veri.cihazlar.filter(c=>c.durum==='bekliyor').length;
 const onayBekleyen=()=>veri.hesaplar.length+veri.basvurular.length+veri.eslestirmeler.length;
 const subeAd=id=>{if(id==null||id==='')return 'Merkez';const s=veri.subeler.find(x=>x.id===id);return s?s.ad:'Şube '+id};
@@ -526,6 +530,34 @@ const SAYFA={
       ${satir(p,null)}${ozel.map(x=>satir(p,x.sube_id)).join('')}</div>`}).join('')+
     `<div class="ipucu"><span class="nokta"></span>PIN sunucuda geri çevrilemez biçimde saklanır, kimse göremez; unutulursa yenisi belirlenir. Şubeye özel PIN, o şubede genel PIN'in yerine geçer. Bir cihazda 5 yanlış denemede o cihaz 5 dakika bekler.</div>`;
   },
+  raporlar(){
+    const SEV={'uyarı':['hata','Uyarı'],'dikkat':['uy','Dikkat'],'bilgi':['ok','Bilgi']};
+    const r=rapor,liste=(r.liste&&r.liste.uygulamalar)||[];
+    const secici=`<label class="alan" style="min-width:220px">Uygulama<select class="girdi" id="rapor-uyg"><option value="hepsi" ${r.uyg==='hepsi'?'selected':''}>Tüm uygulamalar</option>${liste.map(u=>`<option value="${esc(u.kimlik)}" ${r.uyg===u.kimlik?'selected':''}>${esc(u.ad)}</option>`).join('')}</select></label>`;
+    const arac=`<div class="kart"><div class="arac" style="align-items:end">${secici}<span style="flex:1"></span>
+      <button class="dugme" data-rapor-yenile ${r.yukleniyor?'disabled':''}>${r.yukleniyor?'Hazırlanıyor…':'Yenile'}</button>
+      <a class="dugme" style="text-decoration:none" href="/api/raporlar/csv?uygulama=${encodeURIComponent(r.uyg)}" download>Excel (CSV) indir</a>
+      <button class="dugme birincil" data-rapor-yazdir>Yazdır / PDF</button></div>
+      <div class="muted" style="font-size:12px;margin-top:8px">Rapor bu bilgisayardaki veriden hazırlanır; internete ya da yapay zekâya gönderilmez. CSV dosyası Excel'de doğrudan açılır. PDF için yazdırma penceresinde "PDF olarak kaydet" seçin.</div></div>`;
+    if(r.hata)return ust('Raporlar','Tüm TAA uygulamalarından · yalnız yöneticiler')+arac+`<div class="kart"><div class="hata-kutu" style="display:block" role="alert">${esc(r.hata)}</div></div>`;
+    if(!r.veri)return ust('Raporlar','Tüm TAA uygulamalarından · yalnız yöneticiler')+arac+bosDurum('Rapor hazırlanıyor…');
+    const v=r.veri,sayac=(u,sv)=>u.yorumlar.filter(y=>y.seviye===sv).length;
+    const ozet=`<div class="kart"><h2>Özet <span class="muted" style="font-size:12px;font-weight:400">${esc(v.bugun)}</span></h2>${v.uygulamalar.map(u=>{
+      const uy=sayac(u,'uyarı'),di=sayac(u,'dikkat');
+      return `<div class="satir"><div class="ana"><b>${esc(u.ad)}</b><span>${esc(u.aciklama)}</span></div>${uy?`<span class="etk hata">${uy} uyarı</span>`:''}${di?`<span class="etk uy">${di} dikkat</span>`:''}${!uy&&!di?(u.bolumler.every(b=>b.durum==='yok')?'<span class="etk" style="color:var(--muted)">Veri yok</span>':'<span class="etk ok">Sorun yok</span>'):''}</div>`}).join('')}</div>`;
+    const bolum=b=>{
+      const dur=b.durum==='var'?'':`<span class="etk ${b.durum==='hata'?'hata':'uy'}">${b.durum==='hata'?'Okunamadı':'Veri yok'}</span>`;
+      const sat=b.satirlar.map(x=>`<tr><td>${esc(x.anahtar)}</td><td class="mono" style="text-align:right">${esc(x.deger)}</td></tr>`).join('');
+      return `<div style="margin-top:12px"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="font-weight:500">${esc(b.baslik)}</b>${dur}</div>
+        ${sat?`<div class="tablo-kap"><table style="width:100%;border-collapse:collapse;font-size:13px"><tbody>${sat}</tbody></table></div>`:''}
+        ${b.uyarilar.map(x=>`<div class="muted" style="font-size:12px;margin-top:4px">${esc(x)}</div>`).join('')}</div>`};
+    const detay=v.uygulamalar.map(u=>{
+      const y=u.yorumlar.slice().sort((a,b)=>['uyarı','dikkat','bilgi'].indexOf(a.seviye)-['uyarı','dikkat','bilgi'].indexOf(b.seviye));
+      return `<div class="kart rapor-kart"><h2>${esc(u.ad)}</h2>
+        ${y.length?y.map(k=>`<div class="satir"><span class="etk ${(SEV[k.seviye]||SEV.bilgi)[0]}">${(SEV[k.seviye]||SEV.bilgi)[1]}</span><div class="ana"><b>${esc(k.metin)}</b></div></div>`).join(''):'<div class="muted" style="font-size:13px">Olağan dışı bir durum yok.</div>'}
+        ${u.bolumler.map(bolum).join('')}</div>`}).join('');
+    return ust('Raporlar','Tüm TAA uygulamalarından · yalnız yöneticiler')+arac+ozet+detay;
+  },
   ayarlar(){
     const t=gor.tema,k=gor.kip,ha=gor.hareketi_azalt;
     const ornek={kule:['#0E1420','#151D2C','#F2A93B','Koyu kontrol odası, amber vurgu'],defter:['#FAF7F1','#FFFFFF','#2B4C9B','Açık defter, mürekkep lacivert'],tas:['#D8D9D2','#ECEDE7','#4A5C24','Mat taş, zeytin vurgu']};
@@ -551,11 +583,20 @@ const SAYFA={
     </div>`;
   }
 };
+async function raporYukle(){
+  rapor.yukleniyor=true;rapor.hata='';
+  try{
+    if(!rapor.liste)rapor.liste=await istek('/api/raporlar/liste');
+    rapor.veri=await istek('/api/raporlar?uygulama='+encodeURIComponent(rapor.uyg));
+  }catch(err){rapor.hata=err.message||'Rapor alınamadı'}
+  rapor.yukleniyor=false;if(aktifEkran()==='raporlar')ciz();
+}
 function aktifEkran(){const h=location.hash.slice(1);return gorunur().some(e=>e[0]===h)?h:'genel'}
 function ciz(odak){
   if(!oturum)return;
   const e=aktifEkran();menu(e);
   $('#ana').innerHTML=`<div class="ekran">${SAYFA[e]()}</div>`;
+  if(e==='raporlar'&&!rapor.veri&&!rapor.yukleniyor&&!rapor.hata)raporYukle();
   if(odak){const a=$('#ara');if(a){a.focus();a.setSelectionRange(a.value.length,a.value.length)}}
 }
 // ---- görünüm ---- tercih veri kökünde cati/gorunum.json (yerel panel /api/gorunum); kontrast düzeltmesi sunucu tarafında.
@@ -671,6 +712,8 @@ document.addEventListener('click',async e=>{
         async f=>{await api('/api/eslestirme/onay',{id,sayi:f.sayi.value.trim()});await yukle('onay');ciz();bildir('Telefon onaylandı; mağaza bilgisayarı eşleştirmeyi tamamlar')},'Onayla');
       return}
     if(ds.eslestirmeRed){d.disabled=true;await api('/api/eslestirme/red',{id:+ds.eslestirmeRed});await yukle('onay');ciz();bildir('Eşleştirme reddedildi');return}
+    if('raporYenile' in ds){rapor.veri=null;rapor.hata='';ciz();return}
+    if('raporYazdir' in ds){window.print();d.disabled=false;return}
     if('uyariGordum' in ds){d.disabled=true;await api('/api/uyari/goruldu',{});await yukle('uyari');ciz();bildir('Uyarılar görüldü olarak işaretlendi');return}
     if(ds.yenile){d.disabled=true;await yukle(ds.yenile);ciz();bildir('Yenilendi');return}
     if(ds.onayla){d.disabled=true;await api('/api/cihaz/onay',{kimlik:ds.onayla,sube_id:sayi(ds.sube)});await yukle('cihaz');ciz();bildir('Cihaz onaylandı');return}
@@ -727,7 +770,8 @@ document.addEventListener('input',e=>{
   if(e.target.id==='vurgu'){kok.style.setProperty('--accent',e.target.value)}
 });
 // Renk seçici: sürüklerken önizleme, bırakınca kaydet (sunucu kontrastı düzeltir ya da reddeder).
-document.addEventListener('change',e=>{if(e.target.id==='vurgu')gorKaydet({vurgu:e.target.value})});
+document.addEventListener('change',e=>{if(e.target.id==='vurgu')gorKaydet({vurgu:e.target.value});
+  if(e.target.id==='rapor-uyg'){rapor.uyg=e.target.value;rapor.veri=null;rapor.hata='';ciz()}});
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='gunluk-islem'){$('[data-gunluk-suz]').click()}});
 window.addEventListener('hashchange',()=>{sor=null;ciz();$('#ana').focus({preventScroll:true})});
 
