@@ -4,7 +4,7 @@
 ad = "taa-raporlar"
 surum = "0.1.0"
 arayuz = "1"
-gerektirir = { "taa-dosya" = "1", "taa-hata" = "1", "taa-kimlik" = "1", "taa-rapor" = "1" }
+gerektirir = { "taa-ayar" = "1", "taa-dosya" = "1", "taa-hata" = "1", "taa-kimlik" = "1", "taa-rapor" = "1", "taa-takip" = "1" }
 ozellikler = ["raporlar", "yorum"]
 program = "taa-raporlar"
 sunar = ["rapor.yorumla@1"]
