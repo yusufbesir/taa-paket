@@ -28,6 +28,10 @@ test_edildi = false
 "taa-yazici" = "0.1.0"
 "taa-yedek" = "0.1.0"
 "taa-zincir" = "0.1.0"
+"taa-rehber-model" = "0.1.0"
+"taa-egitim" = "0.1.0"
+"taa-ihbar" = "0.1.0"
+"taa-olcum" = "0.1.0"
 
 [kume.uyeler.program]
 "tutaa" = "2.5.0"  # kaynak: /home/user/tutaa/tutaa-paketi/masaustu/package.json (belirsiz: tutaa/masaustu/package.json adı taarnak 2.4.5)

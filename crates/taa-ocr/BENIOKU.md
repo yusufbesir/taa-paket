@@ -18,6 +18,6 @@ Model Python ya da yürütülebilir olabilir (mevcut el yazısı Python prototip
 `taa-ocr oku|kod|tablo <dosya> [--tur] [--dil] [--sozluk] --json`, `bilgi`, `model-liste`, `model-etkinlestir <klasor> [--genel-anahtar]`, `model-geri-al <ad>`. Kök: `--kok`, `TAA_KOK` ya da exe klasörü; varsayılan genel anahtar `<kök>/ocr/model-imza.pub`.
 
 ## Henüz yok
-- IPC yolu (`taa-ipc`); şimdilik yalnız komut satırı.
+- IPC yolu eklendi (`src/ipc.rs`, `taa-ocr ipc-sun [--bir-kez]`); açık noktalar: istek yükünde bayt yalnız sayı dizisi olarak taşınır (taa-ipc zarf sınırı 1 MiB; büyük görüntü için `dosya` yolu kullanılmalı), yük alan adları (`dosya`, `bayt`, `tur`, `dil`, `sozluk`, `sozluk_dosya`) docs/OCR-MOTORU.md'de henüz yazılı değil (Yusuf onayı), boru taşıyıcısı (`BoruTasiyici`) bağlanmadı (yalnız dosya tabanlı `GelenKutusu`), Windows'ta denenmedi, `taa-ocr` sunucusunun hizmet olarak başlatılması (kurulum) yok.
 - Görüntü OCR modeli (eğitim proje kuralıyla en sona bırakıldı). PDF sayfasını görüntüye çevirme (yalnız gömülü JPEG kullanılır). docx dışı Office biçimleri.
 - Windows'ta denenmedi; testler Linux'ta (`cargo test -p taa-ocr`).

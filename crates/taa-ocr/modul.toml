@@ -2,7 +2,7 @@
 ad = "taa-ocr"
 surum = "0.1.0"
 arayuz = "1"
-gerektirir = { "taa-dosya" = "1", "taa-hata" = "1", "taa-imza" = "1" }
+gerektirir = { "taa-dosya" = "1", "taa-hata" = "1", "taa-imza" = "1", "taa-ipc" = "1" }
 program = "ortak"
 sunar = ["ocr.oku@1", "ocr.kod@1", "ocr.tablo@1", "ocr.bilgi@1"]
 ister = []

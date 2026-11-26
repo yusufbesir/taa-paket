@@ -1,0 +1,22 @@
+# Sahip: Yusuf. yazan: [Claude#olcum 2026-11-26]
+# taa-olcum: DG1a ölçüm aracı. Yeni bağımlılık yok (sha2, serde, serde_json zaten kullanılıyor).
+[package]
+name = "taa-olcum"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "TAA İşlem Gücü ölçüm aracı: envanter, pay basamaklarında hız ve ön plan gecikmesi iskeleti (DG1a)"
+
+[lib]
+name = "taa_olcum"
+path = "src/lib.rs"
+
+[[bin]]
+name = "taa-olcum"
+path = "src/main.rs"
+
+[dependencies]
+sha2 = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

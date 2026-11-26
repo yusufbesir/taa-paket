@@ -819,6 +819,15 @@ name = "taa-dosya"
 version = "0.2.0"
 
 [[package]]
+name = "taa-egitim"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "taa-rehber-model",
+]
+
+[[package]]
 name = "taa-fis"
 version = "0.1.0"
 dependencies = [
@@ -884,6 +893,17 @@ dependencies = [
  "sha2",
  "taa-dosya",
  "taa-kuyruk",
+]
+
+[[package]]
+name = "taa-ihbar"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+ "taa-ayar",
+ "taa-dosya",
 ]
 
 [[package]]
@@ -999,7 +1019,17 @@ dependencies = [
  "taa-dosya",
  "taa-hata",
  "taa-imza",
+ "taa-ipc",
  "zip",
+]
+
+[[package]]
+name = "taa-olcum"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]
@@ -1047,6 +1077,15 @@ version = "0.1.0"
 dependencies = [
  "taa-ayar",
  "taa-nebim",
+ "taa-rehber-model",
+]
+
+[[package]]
+name = "taa-rehber-model"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -5,6 +5,7 @@
 
 pub mod eslestir;
 pub mod girdi;
+pub mod ipc;
 pub mod metin;
 pub mod model;
 pub mod okuyucu;

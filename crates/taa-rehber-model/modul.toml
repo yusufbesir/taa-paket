@@ -1,0 +1,12 @@
+# taa-rehber-model modül tanımı. Sahip: Yusuf. yazan: [Claude#rehber-model 2026-11-26]
+ad = "taa-rehber-model"
+surum = "0.1.0"
+arayuz = "1"
+gerektirir = {}
+ozellikler = ["rehber-model"]
+program = "ortak"
+sunar = []
+ister = []
+veri_sahibi = []
+veri_okur = []
+ayar_alani = "programlar.ortak"

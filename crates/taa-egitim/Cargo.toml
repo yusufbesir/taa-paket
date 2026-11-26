@@ -1,0 +1,18 @@
+# Sahip: Yusuf. yazan: [Claude#egitim 2026-11-26]
+# taa-egitim: EG0 çekirdeği. Yeni dış bağımlılık yok (serde, serde_json; kimlik/zaman denetimi için taa-rehber).
+[package]
+name = "taa-egitim"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "TAA Eğitim çekirdeği: ders kataloğu, atama, izleme durumu, JSONL günlük ve Range hesaplayıcı (EG0)"
+
+[lib]
+name = "taa_egitim"
+path = "src/lib.rs"
+
+[dependencies]
+taa-rehber-model = { path = "../taa-rehber-model" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
