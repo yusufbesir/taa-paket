@@ -21,7 +21,7 @@
 | `sayim` | `id` (`AC-`/`AS-`/`DV-` + `YYYYAAGG-<çekmece>-<sıra>`), `tur` (acilis, ara, devir), `tarih`, `cekmece`, `kisi`, `ikinci_kisi` (ikinci sayan ya da devralan), `adetler` {kuruş: adet}, `sayilan_kurus`, `beklenen_kurus`, `fark_kurus`, `limit_asildi`, `not`, `zaman`, `duzeltir` | Açılışta beklenen = önceki gün sonunun `devreden_kurus`'u. Ara sayım ve devir iki kişilidir. |
 | `gun_sonu` | `id` (`GS-...`), `tarih`, `sube`, `cekmece`, `kisi`, `nakit_adetler`, `nakit_sayilan_kurus`, `noktalar` [{`nokta`, `z_toplam_kurus`, `pos` {pos_id: kuruş}}], `nebim_toplam_kurus`, `ciro` {alan: kuruş}, `doviz` [{`kod`, `tutar` (yabancı para kuruşu), `kur_onbinde`}], `devreden_kurus`, `kontrol` [7 × bool], `not`, `aciklamalar` {alan: metin}, `karsilastirma`, `zaman`, `duzeltir` | `ciro` alanları akşam ciro şablonunun satırlarıdır. Genel toplama girenler: `nakit` (NAKİT TL = Nebim/sistem nakdi, masraf ve para üstü düşülmüş), `ziraat_pos`, `iyzico_pos`, `havale` (firma hesabı), `iyzico_odemesi`, `kredi_ceki`, `internet_degisimi`, döviz TL karşılığı ve masraflar. `kasa_fazlasi` / `kasa_acigi` elle girilmez: nakit sayım farkından yazılır (açık MASRAFLAR'ın ilk satırıdır, toplamı değiştirmez). Bilgi satırları (toplama girmez, eksi olabilir): `kredi_karti_fark`, `kasa_fazlasi`, `havale_fark`, `degisim`, `iade`. `aciklamalar` yalnız `havale_fark` ve `kredi_karti_fark` için; o satırda fark varsa zorunlu (ör. "… iadesine istinaden fark"). Döviz: USD, EUR, GBP, CHF (kur elle). |
 | `onay` | `id` (gün sonu), `kisi`, `onay` (ikinci_kisi, ertesi_gun), `zaman` | Ertesi gün gözden geçirmesi müdür ya da yönetici. `ikinci_kisi` onayı eski defterlerde vardır; artık imzadır (`imza`). |
-| `imza` | `id` (gün sonu), `sira` (1, 2), `rol` (`kasa_sorumlusu`, `magaza_sorumlusu`), `kisi`, `zaman`, `kanal` (`telefon` \| `ekran`), `cihaz` (telefonla imzada zorunlu, `eslesme_kimligi:pc_pin`), `ozet` (telefonla imzada onaylanan özetin SHA-256'sı; isteğe bağlı) | İmza isteği yalnız kapanış listesi tamamlanınca açılır. En çok iki imza; aynı kişi iki kez imzalayamaz; ikinci imzayı giren atamaz. Gönderilmiş güne imza eklenmez. |
+| `imza` | `id` (gün sonu), `sira` (1, 2), `rol` (`kasa_sorumlusu`, `magaza_sorumlusu`), `kisi`, `zaman`, `kanal` (`telefon` \| `ekran`), `cihaz` (telefonla imzada zorunlu, `eslesme_kimligi:pc_pin`), `ozet` (telefonla imzada onaylanan özetin SHA-256'sı; isteğe bağlı), `cihaz_dogrulama`, `kisi_rol` (`mudur` \| `yonetici`; eski kayıtta yok) | Yalnız yöneticiler (mağaza müdürü, yönetici) imzalar ve onaylar. İmza isteği yalnız kapanış listesi tamamlanınca açılır. En çok iki imza; aynı kişi iki kez imzalayamaz; ikinci imzayı giren atamaz. Gönderilmiş güne imza eklenmez. |
 | `tutanak` | `id` (gün sonu), `erp` {kalem kodu: kuruş}, `islem`, `kisi`, `zaman` | Çift doğrulama tutanağı ekleri: Nebim kasa Excel'inden içe aktarılan ERP sütunu ve "Yapılan İşlem". Son kayıt geçerli. |
 | `iptal` | `id`, `neden`, `kisi`, `zaman` | Yalnız yönetici girişiyle; neden zorunlu. **Silme yok.** |
 | (not) | `ciro.efatura_pos` 2026-11-26'da kaldırıldı: yeni kayıtta 0 dışı değer reddedilir, eski kayıtlarda okunur ve toplama girer. `ciro.kredi_ceki` eksi olabilir. | |
@@ -31,7 +31,7 @@
 ## Karşılaştırma (`karsilastirma`)
 Satırlar (her biri `beklenen_kurus`, `bulunan_kurus`, `fark_kurus = bulunan − beklenen`):
 1. Nakit: sayılan ↔ açılış + NAKİT TL. (Şablonda NAKİT TL masraflar çıktıktan sonra kalan nakittir; masraf genel toplama ayrıca eklenir.)
-2. Z raporu toplamı (tüm kasa noktaları) ↔ genel toplam + DEĞİŞİM − İNTERNET DEĞİŞİMİ + İADE. Genel toplam: şablonun son GENEL TOPLAM'ına çekmecenin payı (genel toplama giren alanlar + döviz TL karşılığı + çekmecenin masrafları); `ciro_toplam_kurus` budur. (25.11.2026 dolu dosyalarında kuruşu kuruşuna doğrulandı: Z = Nebim "Peşin Satış Normal", genel toplam = Nebim "Peşin Satış Toplam".)
+2. Z raporu toplamı (tüm kasa noktaları) ↔ genel toplam + DEĞİŞİM − İNTERNET DEĞİŞİMİ + İADE − KREDİ ÇEKİ (kredi çeki kalemi 27.09 Z raporlarıyla koşullu doğrulandı; `KasaAyar.z_formulu` ile ayarlanır). Genel toplam: şablonun son GENEL TOPLAM'ına çekmecenin payı (genel toplama giren alanlar + döviz TL karşılığı + çekmecenin masrafları); `ciro_toplam_kurus` budur. (25.11.2026 dolu dosyalarında kuruşu kuruşuna doğrulandı: Z = Nebim "Peşin Satış Normal", genel toplam = Nebim "Peşin Satış Toplam".)
 3. Her POS ödeme türü için: POS gün sonları toplamı ↔ o türün cirosu (Ziraat ve İyzico ayrı satır).
 4. Satış sistemi (Nebim) mağaza raporu toplamı ↔ genel toplam.
 
@@ -41,6 +41,7 @@ Satırlar (her biri `beklenen_kurus`, `bulunan_kurus`, `fark_kurus = bulunan −
 ## Kurallar
 - Aynı gün ve çekmece için tek açılış ve tek gün sonu; ikincisi reddedilir, düzeltme yönetici girişiyle "iptal et ve yeniden gir"
   (eski kayıt `iptal` satırıyla kapanır, yeni kayıt `duzeltir` alanında eskisini gösterir). Geçersiz düzeltme eski kaydı iptal etmez.
+- Tek imzalı gönderimde ayrıca `kasa.tek-imza@1` raporu TAA Çatı kuyruğuna alınır (engellemez). Her gönderimden sonra şifreli yedek `kasa.yedek@1` kuyruğa alınır.
 - Gönderim ön koşulu: kapanış listesinin 7 maddesi, **en az bir imza** ve tek imzada **gerekçe**. İlk imzadan sonra `tutanak` kaydı (ekler) eklenmez.
 - İkinci imza yoksa gün yine kapanır ve gerekçeyle gönderilir;
   kayıtta, pakette (`ikinci_imza_durumu`), Excel'de, tutanakta, ekranda ve matriste "ikinci imza atmadı" yazar.
@@ -51,7 +52,7 @@ Satırlar (her biri `beklenen_kurus`, `bulunan_kurus`, `fark_kurus = bulunan −
 ## Gönderim paketi (merkeze)
 `{"tur":"kasa.gunsonu@1","surum":1,"sube","tarih","cekmece","gun_sonu","sayimlar","masraflar","onaylar":{"ikinci_kisi","ertesi_gun"},"imzalar","ikinci_imza_durumu","ikinci_imza_gerekcesi","cift_dogrulama","olusturma","imza"}`.
 
-- `imzalar`: iki rol de yazılır: `{sira, rol, rol_adi, kisi, zaman, kanal, cihaz, ozet, cihaz_dogrulama, durum: "imzaladi"|"imza_atmadi", imzalamadi}`;
+- `imzalar`: iki rol de yazılır: `{sira, rol, rol_adi, kisi, zaman, kanal, cihaz, ozet, cihaz_dogrulama, kisi_rol, durum: "imzaladi"|"imza_atmadi", imzalamadi}`;
   atılmamış ikinci imzada `not: "ikinci imza atmadı"` ve varsa `gerekce`. `cift_dogrulama.ikinci_imza_gerekcesi` aynı değer.
 - `cift_dogrulama` (`taa-kasa.cift_dogrulama@1`, Kasa Çift Doğrulama Tutanağı; şablon Tutaa'dan alındı:
   `crates/taa-kasa/sablonlar/kasa-cift-dogrulama.json`): `numara` (KCD-yıl-<gün sonu>), `baslik`, `sube`, `tarih`, `cekmece`,

@@ -208,6 +208,13 @@ impl Uygulama {
                     Err(e) => hata(422, e),
                 }
             }
+            ("GET", "/api/yedek") => tamam(self.yedek_durumu()),
+            ("POST", "/api/yedek") => {
+                if self.islem_kisisi().is_none() {
+                    return hata(401, "Önce giriş yapın.");
+                }
+                tamam(self.yedek_al_gonder(&ayar))
+            }
             ("POST", "/api/gerekce") => self.yaz(govde, |d, k, g| {
                 let id = g.get("id").and_then(Value::as_str).unwrap_or("");
                 let gr = g.get("gerekce").and_then(Value::as_str).unwrap_or("");
@@ -540,6 +547,7 @@ impl Uygulama {
             "cekmeceler": ayar.cekmeceler,
             "personel": ayar.personel.iter().map(|p| json!({"ad": p.ad, "rol": p.rol})).collect::<Vec<_>>(),
             "masraf_turleri": ayar.masraf_turleri,
+            "gerekce_sablonlari": ayar.gerekce_sablonlari,
             "masraf_merkez_esigi_kurus": ayar.masraf_merkez_esigi_kurus,
             "kasa_limiti_kurus": ayar.kasa_limiti_kurus,
             "kisi": self.kisi,
@@ -592,10 +600,47 @@ impl Uygulama {
             return hata(500, e);
         }
         let (n, h) = self.teslim(ayar);
+        // Tek imzalı gönderim TAA Çatı'ya raporlanır; kasa işlemi durmaz (rapor ucu yokken kuyrukta bekler).
+        let cati = match taa_kasa::cati::raporla(&self.kasa(), &p) {
+            Ok(r) => {
+                let k = taa_kasa::cati::cati_kuyrugu(&self.kasa());
+                let (_, ch) = k.bosalt(&taa_kasa::cati::CatiUcuYok);
+                json!({"rapor": r, "bekleyen": k.bekleyenler().len(), "hata": r.as_ref().and(ch)})
+            }
+            Err(e) => json!({"rapor": null, "hata": e}),
+        };
+        // Gönderimden sonra şifreli yedek kuyruğa alınır; hata gönderimi engellemez.
+        let yedek = self.yedek_al_gonder(ayar);
         tamam(
             json!({"kuyrukta": true, "imzali": imzali, "teslim": n, "hata": h,
-            "bekleyen": self.kuyruk().bekleyenler().len()}),
+            "bekleyen": self.kuyruk().bekleyenler().len(), "cati": cati, "yedek": yedek}),
         )
+    }
+
+    fn yedek_anahtari(&self) -> PathBuf {
+        self.kok.join("cihaz").join("yedek.key")
+    }
+
+    /// Şifreli yedek alır ve kuyruğu sunucuya boşaltmayı dener (uç yokken `SunucuYok`). Hata döndürmez, yazar.
+    fn yedek_al_gonder(&self, ayar: &KasaAyar) -> Value {
+        let alinan = crate::yedek::yedek_al(&self.kasa(), &self.yedek_anahtari(), &ayar.sube);
+        let mut v = self.yedek_durumu();
+        let k = crate::yedek::YedekKuyrugu::kasa_icin(&self.kasa());
+        let (n, h) = k.bosalt(&crate::yedek::SunucuYok);
+        v["alinan"] = json!(alinan.as_ref().ok().and_then(|m| m["dosya"].as_str()));
+        v["gonderilen_simdi"] = json!(n);
+        v["hata"] = json!(alinan.err().or(h));
+        v["bekleyen"] = json!(k.bekleyenler().len());
+        v["gonderilen"] = json!(k.gonderilenler().len());
+        v
+    }
+
+    fn yedek_durumu(&self) -> Value {
+        let k = crate::yedek::YedekKuyrugu::kasa_icin(&self.kasa());
+        let b = k.bekleyenler();
+        json!({"bekleyen": b.len(), "gonderilen": k.gonderilenler().len(),
+            "son": b.last().or(k.gonderilenler().last()),
+            "sunucu": "yok (yer tutucu)", "anahtar_var": self.yedek_anahtari().is_file()})
     }
 
     fn teslim(&self, ayar: &KasaAyar) -> (usize, Option<String>) {
@@ -829,6 +874,19 @@ mod testler {
         let (d, gs) = json_of(u.istek("POST", "/api/gunsonu", "", &g));
         assert_eq!(d, 200, "{gs}");
         let id = gs["id"].as_str().unwrap().to_string();
+        // Yalnız yöneticiler imzalar: ilk kurulumda (liste boş) giren personeldir, imza 422.
+        let (d, v) = json_of(u.istek("POST", "/api/imza", "", &json!({"id":id,"kanal":"ekran"})));
+        assert_eq!(d, 422);
+        assert!(v.to_string().contains("yalnız yöneticiler"), "{v}");
+        let (d, _) = json_of(u.istek("POST", "/api/imza", "", &json!({"id":id,"kanal":"telefon"})));
+        assert_eq!(d, 422, "personel telefonla da imzalayamaz");
+        let mut a = u.ayar().unwrap();
+        a.personel = vec![taa_kasa::gunsonu::PersonelKaydi {
+            ad: "Ayşe".into(),
+            rol: Rol::Mudur,
+        }];
+        a.kaydet(&u.ayar_yolu()).unwrap();
+        u.istek("POST", "/api/giris", "", &json!({"ad":"Ayşe"}));
         // Telefon köprüsü yok: açıkça reddedilir.
         let (d, v) = json_of(u.istek("POST", "/api/imza", "", &json!({"id":id,"kanal":"telefon"})));
         assert_eq!(d, 501);
@@ -859,6 +917,20 @@ mod testler {
         assert_eq!(d, 422);
         let (d, _) = json_of(u.istek("POST", "/api/imza", "", &json!({"id":id,"kanal":"telefon"})));
         assert_eq!(d, 422);
+        // Tek imzalı gönderim: paket kuyruğa, Çatı raporu kuyruğa (uç yok), şifreli yedek kuyruğa (sunucu yok).
+        let (d, v) = json_of(u.istek("POST", "/api/gonder", "", &json!({"id":id})));
+        assert_eq!(d, 200, "{v}");
+        assert_eq!(v["cati"]["rapor"], format!("tek-imza-{id}.json"));
+        assert_eq!(v["cati"]["hata"], taa_kasa::cati::CATI_UCU_YOK);
+        assert_eq!(v["yedek"]["bekleyen"], 1, "{v}");
+        assert_eq!(v["yedek"]["hata"], crate::yedek::SUNUCU_YOK);
+        let (_, y) = json_of(u.istek("GET", "/api/yedek", "", &Value::Null));
+        assert_eq!(
+            (y["bekleyen"].as_u64(), y["anahtar_var"].as_bool()),
+            (Some(1), Some(true))
+        );
+        let (d, y) = json_of(u.istek("POST", "/api/yedek", "", &Value::Null));
+        assert_eq!((d, y["bekleyen"].as_u64()), (200, Some(2)));
     }
 
     #[test]

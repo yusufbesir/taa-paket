@@ -115,14 +115,14 @@ fn gun_ornekleri_genel_toplam_ve_z_tutar() {
 }
 
 #[test]
-fn z_formulu_varsayilani_eski_formulle_ayni() {
+fn z_formulu_varsayilani_kredi_cekini_duser() {
     let ciro = BTreeMap::from([
         ("degisim".to_string(), 500),
         ("internet_degisimi".to_string(), 200),
         ("iade".to_string(), 100),
         ("kredi_ceki".to_string(), 50),
     ]);
-    assert_eq!(z_beklenen(10_000, &ciro), 10_000 + 500 - 200 + 100);
+    assert_eq!(z_beklenen(10_000, &ciro), 10_000 + 500 - 200 + 100 - 50);
     let hepsi_kapali = ZFormulu {
         degisim_eklenir: false,
         internet_degisimi_dusulur: false,

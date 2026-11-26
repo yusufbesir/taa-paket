@@ -13,6 +13,7 @@
 //!   KM1 bağlanınca bu yol kaldırılır.
 
 pub mod api;
+pub mod yedek;
 
 use sha2::{Digest, Sha256};
 

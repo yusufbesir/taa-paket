@@ -312,7 +312,9 @@ async function basla(){
 }
 async function yukle(){D=await api('GET','/api/durum?'+(D?sorgu():''));}
 
-function personelSecenek(sel,haric){const l=(D.personel||[]).filter(p=>!haric||p.ad.toLowerCase()!==haric.toLowerCase());
+// yalnizYonetici: gün sonu imzası ve onayı yalnız yöneticilerin (mağaza müdürü, yönetici); personel listelenmez.
+const IMZA_YETKILI=r=>r==='mudur'||r==='yonetici';
+function personelSecenek(sel,haric,yalnizYonetici){const l=(D.personel||[]).filter(p=>(!haric||p.ad.toLowerCase()!==haric.toLowerCase())&&(!yalnizYonetici||IMZA_YETKILI(p.rol)));
   sel.innerHTML=l.map(p=>`<option value="${esc(p.ad)}">${esc(p.ad)} · ${esc(rolAd(p.rol))}</option>`).join('');return l.length}
 const rolAd=r=>({personel:'Personel',mudur:'Mağaza müdürü',yonetici:'Yönetici'}[r]||r);
 
@@ -357,8 +359,8 @@ $('#dy-tamam').onclick=async()=>{const kur=!D.yonetici_pin_kurulu,p=$('#dy-pin')
   try{await api('POST','/api/yonetici',kur?{ad:$('#dy-ad').value,pin_yeni:p}:{pin:p});$('#dy-pin').value='';$('#d-yonetici').close();yonBitis=Date.now()+600000;await yenile();bildir('Yönetici girişi açık (10 dakika)')}catch(e){$('#dy-hata').textContent=e.message}};
 $('#dy-pin').onkeydown=e=>{if(e.key==='Enter')$('#dy-tamam').click()};
 
-function kisiSec(baslik,aciklama,haric){return new Promise(res=>{$('#dk-baslik').textContent=baslik;$('#dk-aciklama').textContent=aciklama;$('#dk-hata').textContent='';
-  const n=personelSecenek($('#dk-ad'),haric);if(!n){bildir('Personel listesi boş. Yönetici Mağaza ayarları ekranından ekler.');res(null);return}
+function kisiSec(baslik,aciklama,haric,yalnizYonetici){return new Promise(res=>{$('#dk-baslik').textContent=baslik;$('#dk-aciklama').textContent=aciklama;$('#dk-hata').textContent='';
+  const n=personelSecenek($('#dk-ad'),haric,yalnizYonetici);if(!n){bildir(yalnizYonetici?'İmza yetkili kişi yok: imzayı yalnız mağaza müdürü ya da yönetici atar. Yönetici Mağaza ayarları ekranından rol verir.':'Personel listesi boş. Yönetici Mağaza ayarları ekranından ekler.');res(null);return}
   const d=$('#d-kisi');d.showModal();$('#dk-tamam').onclick=()=>{d.close();res($('#dk-ad').value)};$('#dk-vazgec').onclick=()=>{d.close();res(null)}})}
 function nedenSor(baslik,aciklama){return new Promise(res=>{$('#dn-baslik').textContent=baslik;$('#dn-aciklama').textContent=aciklama;$('#dn-neden').value='';$('#dn-hata').textContent='';
   const d=$('#d-neden');d.showModal();$('#dn-neden').focus();$('#dn-tamam').onclick=()=>{const n=$('#dn-neden').value.trim();if(!n){$('#dn-hata').textContent='Gerekçe yazın.';return}d.close();res(n)};$('#dn-vazgec').onclick=()=>{d.close();res(null)}})}
@@ -382,7 +384,7 @@ function bugunCiz(){const g=D.gun,s=bolum('bugun');
    ${g.acilis?`<span>Açılış: <b class="tutar">${tl(g.acilis.sayilan_kurus)}</b> (${esc(g.acilis.kisi)})</span>`:''}
    <span>Masraf: <b class="tutar">${tl(g.masraflar.filter(m=>m.durum!=='reddedildi'&&m.durum!=='iptal').reduce((a,m)=>a+m.tutar_kurus,0))}</b>${masrafBek?` · ${masrafBek} onay bekliyor`:''}</span>
    ${g.limit_asildi?'<span style="color:var(--eksik);font-weight:600">▲ Kasa limiti aşıldı: bankaya/kasa odasına aktarın</span>':''}</div>
-  ${g.imza_istegi?`<div class="serit"><span>✍</span><span><b>İmza isteği: ${g.imzalar.length}/2.</b> ${g.imzalar.map(i=>esc(i.kisi)).join(', ')||'Henüz imza yok.'} İkinci imza: <b>${esc(g.ikinci_imza_durumu)}</b>. Kaydı giren ikinci imzayı atamaz. Telefon köprüsü bağlanana kadar imza bu ekrandan atılır.</span></div>`:''}
+  ${g.imza_istegi?`<div class="serit"><span>✍</span><span><b>İmza isteği: ${g.imzalar.length}/2.</b> ${g.imzalar.map(i=>esc(i.kisi)).join(', ')||'Henüz imza yok.'} İkinci imza: <b>${esc(g.ikinci_imza_durumu)}</b>. Yalnız yöneticiler imzalar; kaydı giren ikinci imzayı atamaz. Telefon köprüsü bağlanana kadar imza bu ekrandan atılır.</span></div>`:''}
   <div class="eylemler">
    <button class="dugme ana" id="b-ana"><span>${esc(ANA[1])}</span><small>${esc(ANA[2])}</small></button>
    <button class="dugme" data-git2="masraf" ${acik?'':'disabled title="Önce açılış sayımı"'}><span>Masraf gir</span><small>Eşik altı müdür, üstü merkez onayı</small></button>
@@ -397,9 +399,9 @@ async function anaEylem(e){
   if(e.startsWith('sayim:')){SAYIM.tur=e.split(':')[1];git('sayim');return}
   if(e==='whatsapp'){waAc(null);return}
   if(e==='imza'){const ikinci=D.gun.imzalar.length===1;
-    const ad=await kisiSec(ikinci?'İkinci imza (Mağaza Sorumlusu / Vekili)':'Birinci imza (Kasa Sorumlusu)',ikinci?'Kaydı giren kişi ikinci imzayı atamaz. İmzalayacak kişiyi seçin.':'İmzalayacak kişiyi seçin. Telefon köprüsü bağlanana kadar imza bu ekrandan atılır (yer tutucu).',ikinci?D.gun.gun_sonu.kisi:null);if(!ad)return;
+    const ad=await kisiSec(ikinci?'İkinci imza (Mağaza Sorumlusu / Vekili)':'Birinci imza (Kasa Sorumlusu)',ikinci?'Kaydı giren kişi ikinci imzayı atamaz. İmzalayacak kişiyi seçin.':'İmzalayacak yöneticiyi seçin (yalnız mağaza müdürü ya da yönetici imzalar). Telefonla imza tüm şubelerde geçerli; Telefon Köprüsü bağlanana kadar imza bu ekrandan atılır (yer tutucu).',ikinci?D.gun.gun_sonu.kisi:null,true);if(!ad)return;
     try{await api('POST','/api/giris',{ad});await api('POST','/api/imza',{id:D.gun.gun_sonu.id,kanal:'ekran'});bildir(ikinci?'İkinci imza kaydedildi':'İmza kaydedildi. İkinci kişi yoksa gün "ikinci imza atmadı" ile gönderilebilir.');yenile()}catch(x){bildir(x.message);yenile()}return}
-  if(e==='gonder'){if(D.gun.imzalar.length===1&&!D.gun.ikinci_imza_gerekcesi){bildir('İkinci imza atılmadı: önce kısa gerekçe yazın (Gün sonu ekranı → Gerekçe).');return}try{const v=await api('POST','/api/gonder',{id:D.gun.gun_sonu.id});bildir((v.imzali?'İmzalandı, ':'Cihaz anahtarı yok, imzasız; ')+(v.teslim?'merkeze teslim edildi.':'kuyruğa alındı. '+(v.hata||'')));yenile()}catch(x){bildir(x.message)}return}
+  if(e==='gonder'){if(D.gun.imzalar.length===1&&!D.gun.ikinci_imza_gerekcesi){bildir('İkinci imza atılmadı: önce kısa gerekçe yazın (Gün sonu ekranı → Gerekçe).');return}try{const v=await api('POST','/api/gonder',{id:D.gun.gun_sonu.id});bildir((v.imzali?'İmzalandı, ':'Cihaz anahtarı yok, imzasız; ')+(v.teslim?'merkeze teslim edildi.':'kuyruğa alındı. '+(v.hata||''))+(v.cati&&v.cati.rapor?' Tek imza TAA Çatı\'ya raporlanacak.':'')+(v.yedek?` Şifreli yedek: ${v.yedek.bekleyen} kuyrukta.`:''));yenile()}catch(x){bildir(x.message)}return}
   git(e)}
 
 // ---------------- sayım ızgarası (sayısal tuş takımı: Enter/↓ sonraki, ↑ önceki; odakta seçili; boş = 0)
@@ -442,7 +444,7 @@ function masrafCiz(){const g=D.gun,s=bolum('masraf'),ben=(D.yonetici||D.kisi||{}
   const DUR={bekliyor:'⏳ Onay bekliyor',onaylandi:'✓ Onaylandı',reddedildi:'✕ Reddedildi',iptal:'— İptal'};
   s.innerHTML=`<div class="sayfa-bas"><div><h1>Masraf ve kasa çıkışı</h1><div class="mut">${tl(D.masraf_merkez_esigi_kurus)} altı mağaza müdürü, ${tl(D.masraf_merkez_esigi_kurus)} ve üstü talep formu ve merkez onayı. Giren onaylayamaz.</div></div></div>
   <div class="kart yigin"><div class="form-uc">
-    <label class="alan">Tür<select class="girdi" id="m-tur">${D.masraf_turleri.map(t=>`<option>${esc(t)}</option>`).join('')}</select></label>
+    <label class="alan">Tür (listeden seçin ya da yazın)<input class="girdi" id="m-tur" maxlength="60" list="masraf-turleri" value="${esc(D.masraf_turleri[0]||'')}"><datalist id="masraf-turleri">${D.masraf_turleri.map(t=>`<option value="${esc(t)}">`).join('')}</datalist></label>
     <label class="alan">Tutar (TL)<input class="girdi tutar" id="m-tutar" inputmode="decimal" placeholder="0,00"></label>
     <label class="alan">Kalem (ör. Ekmek, Nalbur)<input class="girdi" id="m-aciklama" maxlength="300"></label>
     <label class="alan">Not (isteğe bağlı: nereye / kime)<input class="girdi" id="m-not" maxlength="200"></label></div>
@@ -564,7 +566,7 @@ function gsKayitli(s,g){const x=g.gun_sonu,k=x.karsilastirma;
     ${g.imzalar.length&&!g.gonderildi?`<button class="dugme ana" data-e="gonder">Merkeze gönder${g.imzalar.length<2?' (ikinci imza atmadı)':''}</button>`:''}
     <button class="dugme" data-e="whatsapp">WhatsApp özeti</button>
     <button class="dugme" data-e="tutanak">Çift doğrulama tutanağı (A4)</button>
-    ${g.imzalar.length===1&&!g.gonderildi?`<label class="alan">İkinci imza atılmama gerekçesi (zorunlu)<input class="girdi" id="t-gerekce" maxlength="300" list="gerekce-onerileri" value="${esc(g.ikinci_imza_gerekcesi||'')}"><datalist id="gerekce-onerileri"><option value="Mağaza sorumlusu izinli: "><option value="Tek personel vardiyası: "><option value="Mağaza sorumlusu erken çıktı: "><option value="Vekil atanmadı: "></datalist></label><button class="dugme" data-e="gerekce">Gerekçeyi kaydet</button>`:''}
+    ${g.imzalar.length===1&&!g.gonderildi?`<label class="alan">İkinci imza atılmama gerekçesi (zorunlu)<input class="girdi" id="t-gerekce" maxlength="300" list="gerekce-onerileri" value="${esc(g.ikinci_imza_gerekcesi||'')}"><datalist id="gerekce-onerileri">${(D.gerekce_sablonlari||[]).map(t=>`<option value="${esc(t)}">`).join('')}</datalist></label><button class="dugme" data-e="gerekce">Gerekçeyi kaydet</button>`:''}
     ${g.imzalar.length&&!g.gonderildi?'<div class="mut kucuk">İlk imza atıldı: tutanak ekleri (ERP, yapılan işlem) kilitli.</div>':''}
     ${!g.gonderildi&&!g.imzalar.length?`<label class="alan">Nebim kasa Excel'i (ERP sütunu)<input type="file" accept=".xlsx" id="t-excel" class="girdi"></label>
     <label class="alan">Yapılan işlem (tutanak)<input class="girdi" id="t-islem" maxlength="600"></label><button class="dugme" data-e="tutanak-kaydet">Tutanağa işle</button>`:''}
@@ -610,7 +612,8 @@ async function ayarlarCiz(){const s=bolum('ayarlar');if(!D.yonetici){s.innerHTML
    <label class="alan"><span><input type="checkbox" id="a-wakalin" ${a.whatsapp_kalin?'checked':''}> WhatsApp özetinde başlık ve toplamlar kalın (*…*)</span></label></div>
    <p class="mut kucuk">Ciro Excel'inde her çekmece bir mağaza sütunudur; sütun başlığı çekmecenin adıdır (ör. Outlet Mağaza, Ana Mağaza).</p>
    <div class="form-iki"><label class="alan">Personel (her satır: Ad;rol — rol: personel, mudur, yonetici)<textarea class="girdi" id="a-personel">${esc(a.personel.map(p=>p.ad+';'+p.rol).join('\n'))}</textarea></label>
-   <label class="alan">Masraf türleri (her satır bir tür)<textarea class="girdi" id="a-turler">${esc(a.masraf_turleri.join('\n'))}</textarea></label></div>
+   <label class="alan">Masraf türleri (her satır bir tür)<textarea class="girdi" id="a-turler">${esc(a.masraf_turleri.join('\n'))}</textarea></label>
+   <label class="alan">İkinci imza gerekçe şablonları (her satır bir şablon; serbest yazım her zaman açık)<textarea class="girdi" id="a-gerekce">${esc((a.gerekce_sablonlari||[]).join('\n'))}</textarea></label></div>
    <label class="alan">Çekmeceler ve kasa noktaları (gelişmiş, JSON)<textarea class="girdi mono" id="a-cekmece" style="min-height:180px">${esc(JSON.stringify(a.cekmeceler,null,2))}</textarea></label>
    <div class="hata" id="a-hata" role="alert"></div><div class="sira"><button class="dugme ana" id="a-kaydet">Ayarları kaydet</button></div></div>`;
   s.querySelector('#a-kaydet').onclick=async()=>{const h=s.querySelector('#a-hata');h.textContent='';
@@ -618,7 +621,7 @@ async function ayarlarCiz(){const s=bolum('ayarlar');if(!D.yonetici){s.innerHTML
       if(es==null||to==null||(lim&&li==null))throw new Error('Tutar alanları sayı olmalı.');
       const personel=s.querySelector('#a-personel').value.split('\n').map(x=>x.trim()).filter(Boolean).map(x=>{const [ad,rol='personel']=x.split(';').map(y=>y.trim());if(!['personel','mudur','yonetici'].includes(rol))throw new Error('Rol geçersiz: '+x);return {ad,rol}});
       const y={...a,sube:s.querySelector('#a-sube').value.trim(),kasa_limiti_kurus:li,masraf_merkez_esigi_kurus:es,fark_toleransi_kurus:to,gonderim_son_saat:s.querySelector('#a-saat').value.trim(),
-        merkez_klasoru:s.querySelector('#a-merkez').value.trim()||null,excel_baslik:s.querySelector('#a-baslik').value.trim(),havale_hesap_adi:s.querySelector('#a-havale').value.trim(),whatsapp_kalin:s.querySelector('#a-wakalin').checked,personel,masraf_turleri:s.querySelector('#a-turler').value.split('\n').map(x=>x.trim()).filter(Boolean),cekmeceler:JSON.parse(s.querySelector('#a-cekmece').value)};
+        merkez_klasoru:s.querySelector('#a-merkez').value.trim()||null,excel_baslik:s.querySelector('#a-baslik').value.trim(),havale_hesap_adi:s.querySelector('#a-havale').value.trim(),whatsapp_kalin:s.querySelector('#a-wakalin').checked,personel,masraf_turleri:s.querySelector('#a-turler').value.split('\n').map(x=>x.trim()).filter(Boolean),gerekce_sablonlari:s.querySelector('#a-gerekce').value.split('\n').map(x=>x.trimStart()).filter(x=>x.trim()),cekmeceler:JSON.parse(s.querySelector('#a-cekmece').value)};
       await api('POST','/api/ayar',y);bildir('Ayarlar kaydedildi');await yenile();uygulamaGoster()}catch(e){h.textContent=e.message}}}
 
 // ---------------- Merkez matrisi (yönetici)

@@ -1,5 +1,5 @@
 {
-  "_aciklama": "SENTETİK (uydurma tutarlar): 27.09.2026 gününün yalnız YAPISI: döviz, kasa fazlası (bilgi satırı, toplama girmez), iki POS, havale, masraf (müşteriye para iadesi masraf kalemi), EKSİ kredi çeki. Gerçek gün yerelde aynı formülle doğrulandı; gerçek tutar depoya yazılmaz. Z verisi yok.",
+  "_aciklama": "SENTETİK (uydurma tutarlar): 27.09.2026 gününün yalnız YAPISI: döviz, kasa fazlası (bilgi satırı, toplama girmez), iki POS, havale, masraf (müşteriye para iadesi masraf kalemi), EKSİ kredi çeki. Gerçek gün yerelde aynı formülle doğrulandı; gerçek tutar depoya yazılmaz. Z (uydurma): genel toplam + değişim − (eksi) kredi çeki; 27.09 gerçek Z'si aynı formülle depo dışında tuttu.",
   "sentetik": true,
   "magaza": "ornek-eksi-kredi-ceki",
   "ciro": {
@@ -10,7 +10,8 @@
     "havale": 6000000,
     "iyzico_odemesi": 0,
     "kredi_ceki": -150000,
-    "internet_degisimi": 0
+    "internet_degisimi": 0,
+    "degisim": 200000
   },
   "doviz": [
     {
@@ -39,5 +40,6 @@
   ],
   "masraf_kurus": 32000,
   "beklenen_genel_toplam_kurus": 27282000,
-  "beklenen_magaza_toplam_kurus": 32082000
+  "beklenen_magaza_toplam_kurus": 32082000,
+  "beklenen_z_toplam_kurus": 27632000
 }

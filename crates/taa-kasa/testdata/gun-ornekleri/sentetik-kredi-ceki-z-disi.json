@@ -1,9 +1,6 @@
 {
-  "_aciklama": "SENTETİK örnek: kredi çeki Z'den düşülüyor varsayımı (ayar açık). Gerçek Z verisiyle doğrulanırsa varsayılan değişir.",
+  "_aciklama": "SENTETİK örnek: kredi çeki Z'den düşülür (varsayılan; 27.09 Z raporlarıyla depo dışında koşullu doğrulandı). Ayar kapatılırsa genel toplam beklenir: bkz. z_formulu alanı yok = varsayılan.",
   "sentetik": true,
-  "z_formulu": {
-    "kredi_ceki_dusulur": true
-  },
   "ciro": {
     "nakit": 80000,
     "ziraat_pos": 20000,
