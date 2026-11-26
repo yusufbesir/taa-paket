@@ -223,7 +223,7 @@ async function cikis(secenek) {
 // ---- Ekran kilidi (Yusuf 11-26: "Kilit yayını durdurmasın") ----
 // Kilit oturumu kapatmaz (sunucudaki oturum ve ona bağlı yayın belirteçleri sürer); yalnız bu programın arayüzü kilitlenir.
 // Program kapatılıp açılınca kilit atlanmasın diye işaret programın veri klasörüne yazılır; baslangic işaret varken
-// oturumu vermez (giriş ekranı kullanıcı adı dolu, kilitli açılır). İşareti başarılı giriş ya da çıkış kaldırır.
+// oturumu vermez (giriş ekranı kullanıcı adı dolu, kilitli açılır). İşareti başarılı giriş ya da çıkış boşaltır (dosya silinmez).
 // Kullanıcı adı renderer'dan alınmaz: süren oturumdan okunur.
 function kilitDosyasi(s) {
   if (s && s.kilitDosyasi) return String(s.kilitDosyasi);
@@ -239,9 +239,10 @@ function kilitOku(s) {
     return v && typeof v.kullanici === 'string' && KULLANICI_RE.test(v.kullanici) ? v : null;
   } catch (_) { return null; }
 }
+// Silme kuralı gereği dosya kalıcı silinmez, "{}" ile ezilir (taa-kimlik cikis emsali); kilitOku bunu kilit yok sayar.
 function kilitSil(s) {
   const y = kilitDosyasi(s);
-  if (y) { try { fs.unlinkSync(y); } catch (_) { /* yoksa sorun değil */ } }
+  if (y && fs.existsSync(y)) { try { fs.writeFileSync(y, '{}', { mode: 0o600 }); } catch (_) { /* yazılamazsa sorun değil */ } }
 }
 async function kilitle(secenek) {
   const s = secenek || {};

@@ -175,19 +175,19 @@ test('ekran kilidi: oturum kapanmaz, işaret yeniden açılışta kilitli başla
   assert.deepStrictEqual(await g.baslangic(s), { arac: true, oturum: null, kilitli: { kullanici: 'ali' } }, 'yeniden açılış kilitli');
   const r = await g.giris({ kullanici: 'ali', parola: 'p' }, s);
   assert.strictEqual(r.tamam, true);
-  assert.strictEqual(fs.existsSync(kilitDosyasi), false, 'başarılı giriş kilidi kaldırır');
+  assert.strictEqual(fs.readFileSync(kilitDosyasi, 'utf8'), '{}', 'başarılı giriş kilidi boşaltır (dosya silinmez)');
   assert.strictEqual((await g.baslangic(s)).oturum.kullanici, 'ali');
   await g.kilitle(s);
   await g.giris({ kullanici: 'ali', parola: 'p' }, { ...s, env: ortam('hatali').env });
-  assert.strictEqual(fs.existsSync(kilitDosyasi), true, 'hatalı şifre kilidi kaldırmaz');
+  assert.strictEqual(JSON.parse(fs.readFileSync(kilitDosyasi, 'utf8')).kullanici, 'ali', 'hatalı şifre kilidi kaldırmaz');
   await g.cikis(s);
-  assert.strictEqual(fs.existsSync(kilitDosyasi), false, 'çıkış kilidi kaldırır');
+  assert.strictEqual(fs.readFileSync(kilitDosyasi, 'utf8'), '{}', 'çıkış kilidi boşaltır');
   // Oturum yoksa kilitlenmez; başka kullanıcıya ait eski işaret geçersizdir ve silinir.
   assert.deepStrictEqual(await g.kilitle({ ...s, env: ortam('cihaz').env }), { tamam: false });
   fs.mkdirSync(path.dirname(kilitDosyasi), { recursive: true });
   fs.writeFileSync(kilitDosyasi, JSON.stringify({ kullanici: 'veli' }));
   assert.strictEqual((await g.baslangic(s)).oturum.kullanici, 'ali');
-  assert.strictEqual(fs.existsSync(kilitDosyasi), false);
+  assert.strictEqual(fs.readFileSync(kilitDosyasi, 'utf8'), '{}', 'eski işaret boşaltılır');
   fs.writeFileSync(kilitDosyasi, JSON.stringify({ kullanici: 'bozuk ad' }));
   assert.strictEqual((await g.baslangic(s)).oturum.kullanici, 'ali', 'bozuk işaret yok sayılır');
 });

@@ -358,7 +358,7 @@
       });
       if (islem.length) html += '<hr>';
       html += `<button type="button" role="menuitem" tabindex="-1" data-ortak="degistir">Kullanıcı değiştir</button>
-        <button type="button" role="menuitem" tabindex="-1" data-ortak="kilit" title="Ekran kilitlenir; oturum açık kalır, süren işler (yayın gibi) durmaz. Açmak için şifre gerekir.">Ekranı kilitle<kbd>Ctrl+L</kbd></button>
+        <button type="button" role="menuitem" tabindex="-1" data-ortak="kilit" title="Yalnız bu programın ekranı kilitlenir; diğer TAA programları açık kalır. Oturum sürer, süren işler (yayın gibi) durmaz. Açmak için şifre gerekir.">Ekranı kilitle<kbd>Ctrl+L</kbd></button>
         <hr><button type="button" role="menuitem" tabindex="-1" data-ortak="cikis" class="tg-tehlike">Çıkış yap</button>`;
       const alt = [s.programAdi, s.surum ? 'sürüm ' + s.surum : ''].filter(Boolean).join(' · ');
       if (alt) html += `<div class="tg-surum">${esc(alt)}</div>`;
