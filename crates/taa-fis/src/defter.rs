@@ -74,6 +74,12 @@ pub(crate) enum Kayit {
         kim: String,
         tarih: String,
     },
+    /// Ürünü teslim alan kişi (fişli/fişsiz teslim, teslim imzası). Bu satır aynı zamanda Hazır -> Teslim
+    /// geçişidir: kayıt ile durum tek satırda yazılır, arada yarım kalmaz (ayrı Durum satırı gerekmez).
+    TeslimKaydi {
+        no: String,
+        kayit: TeslimKaydi,
+    },
     /// Zincir başlangıcı (TT1): bu satırdan sonraki satırlar zincire girer. Eski satırlar yeniden yazılmaz.
     ZincirBasi {
         tarih: String,
@@ -290,6 +296,12 @@ impl Defter<'_> {
                         }
                     }
                 }
+                Kayit::TeslimKaydi { no, kayit } => {
+                    if let Some(x) = f.iter_mut().find(|x| x.no == no) {
+                        x.teslim_kaydi = Some(kayit);
+                        x.durum = Durum::Teslim;
+                    }
+                }
                 Kayit::ZincirBasi { .. } => {}
             }
         }
@@ -473,6 +485,12 @@ impl Defter<'_> {
             if g.kargo_ad.split_whitespace().count() < 2 {
                 return Err("kargo: alıcının ad ve soyadı yazılmalı".into());
             }
+            if !crate::ad_karakterleri_gecerli(g.kargo_ad.trim()) {
+                return Err(
+                    "kargo: alıcı adında yalnız harf, boşluk, tire, kesme işareti ve nokta olabilir"
+                        .into(),
+                );
+            }
             if g.kargo_adres.trim().chars().count() < 15 {
                 return Err("kargo: açık adres (mahalle, sokak, no, ilçe/il) yazılmalı".into());
             }
@@ -520,6 +538,7 @@ impl Defter<'_> {
             sube: g.sube.trim().into(),
             duzeltmeler: Vec::new(),
             bagli: Vec::new(),
+            teslim_kaydi: None,
         };
         let s = serde_json::to_string(&Kayit::Fis(fis.clone())).map_err(|e| e.to_string())?;
         taa_dosya::satir_ekle(self.yol, &s).map_err(|e| e.to_string())?;
@@ -563,9 +582,17 @@ impl Defter<'_> {
         taa_dosya::satir_ekle(self.yol, &s).map_err(|e| e.to_string())
     }
 
-    /// Durumu ilerletir: Bekliyor -> (Terzihanede) -> Hazir -> Teslim; Iptal Teslim'den önce. Geri dönüş yok.
+    /// Durumu ilerletir: Bekliyor -> (Terzihanede) -> Hazir; Iptal Teslim'den önce. Geri dönüş yok.
+    /// Hazir -> Teslim geçişi burada YAPILMAZ: teslim, teslim alan kaydıyla birlikte `teslim_et` ile yazılır
+    /// (fişsiz teslim yetkisi, son 4 doğrulaması ve imza kuralı atlanmasın).
     pub fn durum_ata(&self, no: &str, yeni: Durum, tarih: &str) -> Result<(), String> {
         kapali()?;
+        if yeni == Durum::Teslim {
+            return Err(
+                "teslim, teslim alan kaydıyla yapılır (teslim-al: ad soyad, ilişki, gerekiyorsa imza)"
+                    .into(),
+            );
+        }
         let f = self.bul(no)?.ok_or_else(|| format!("fiş yok: {no}"))?;
         let izin = matches!(
             (f.durum, yeni),
@@ -593,6 +620,64 @@ impl Defter<'_> {
         })
         .map_err(|e| e.to_string())?;
         taa_dosya::satir_ekle(self.yol, &s).map_err(|e| e.to_string())
+    }
+
+    /// Fişi teslim eder: ürünü teslim alanı yazar ve durumu Hazır -> Teslim yapar (tek satır, atomik).
+    /// Fiş Hazır olmalı, bir kez yazılır. Fişsiz teslimde doğrulama "telefon-son4" ve imza zorunludur;
+    /// fişlide doğrulama "fis", imza isteğe bağlı. Bağlı fiş birlikte teslim edildiyse `ana_fis` dolu olur.
+    /// Telefonun son 4 hanesi bu kayda girmez (çağıran sunucu doğrular).
+    pub fn teslim_et(&self, no: &str, kayit: TeslimKaydi) -> Result<(), String> {
+        kapali()?;
+        let f = self.bul(no)?.ok_or_else(|| format!("fiş yok: {no}"))?;
+        if f.durum != Durum::Hazir {
+            return Err("yalnız hazır fiş teslim edilir".into());
+        }
+        if f.teslim_kaydi.is_some() {
+            return Err("bu fişin teslim kaydı zaten var".into());
+        }
+        teslim_alan_denetle(&kayit.teslim_alan, &kayit.iliski)?;
+        match (kayit.fisli, kayit.dogrulama.as_str()) {
+            (true, "fis") | (false, "telefon-son4") => {}
+            (true, _) => return Err("fişli teslimde doğrulama \"fis\" olmalı".into()),
+            (false, _) => return Err("fişsiz teslimde doğrulama \"telefon-son4\" olmalı".into()),
+        }
+        let ozet_gecerli = |o: &str| {
+            o.len() == 64
+                && o.bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        };
+        if kayit.imza_sha256.is_empty() {
+            if !kayit.fisli {
+                return Err("fişsiz teslimde teslim alanın imzası zorunlu".into());
+            }
+            if !kayit.imza_dosyasi.is_empty() {
+                return Err("imza dosyası var ama özeti yok".into());
+            }
+        } else if !ozet_gecerli(&kayit.imza_sha256) || kayit.imza_dosyasi.trim().is_empty() {
+            return Err("imza özeti (sha-256) ya da dosyası geçersiz".into());
+        }
+        if kayit.kim.trim().is_empty() {
+            return Err("teslimi yapan cihaz/kişi boş olamaz".into());
+        }
+        if kayit.ana_fis == no {
+            return Err("ana fiş, fişin kendisi olamaz".into());
+        }
+        if !tarih_gecerli(&kayit.tarih) {
+            return Err("tarih YYYY-AA-GG olmalı".into());
+        }
+        let kayit = TeslimKaydi {
+            teslim_alan: kayit
+                .teslim_alan
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" "),
+            kim: kayit.kim.trim().into(),
+            ..kayit
+        };
+        self.yaz(&Kayit::TeslimKaydi {
+            no: no.into(),
+            kayit,
+        })
     }
 
     fn duzeltilebilir(&self, no: &str) -> Result<Fis, String> {
@@ -683,6 +768,12 @@ impl Defter<'_> {
             if kargo_ad.split_whitespace().count() < 2 {
                 return Err("kargo: alıcının ad ve soyadı yazılmalı".into());
             }
+            if !crate::ad_karakterleri_gecerli(kargo_ad.trim()) {
+                return Err(
+                    "kargo: alıcı adında yalnız harf, boşluk, tire, kesme işareti ve nokta olabilir"
+                        .into(),
+                );
+            }
             if kargo_adres.trim().chars().count() < 15 {
                 return Err("kargo: açık adres (mahalle, sokak, no, ilçe/il) yazılmalı".into());
             }
@@ -744,12 +835,25 @@ impl Defter<'_> {
 
     /// Durum değişikliklerinin tarihli geçmişi: (fiş no, yeni durum, tarih), defter sırasıyla.
     /// Takip raporları (usta zamanında bitirme vb.) bunu kullanır.
+    /// Teslim kaydı satırı Teslim geçişi sayılır; ondan sonra gelen eski biçim Teslim satırı tekrar sayılmaz.
     pub fn durum_gecmisi(&self) -> Result<Vec<(String, Durum, String)>, String> {
+        let mut teslim_edilen = std::collections::BTreeSet::new();
         Ok(self
             .kayitlar()?
             .into_iter()
             .filter_map(|k| match k {
-                Kayit::Durum { no, durum, tarih } => Some((no, durum, tarih)),
+                Kayit::Durum { no, durum, tarih } => {
+                    if durum == Durum::Teslim && !teslim_edilen.insert(no.clone()) {
+                        return None;
+                    }
+                    Some((no, durum, tarih))
+                }
+                Kayit::TeslimKaydi { no, kayit } => {
+                    if !teslim_edilen.insert(no.clone()) {
+                        return None;
+                    }
+                    Some((no, Durum::Teslim, kayit.tarih))
+                }
                 _ => None,
             })
             .collect())

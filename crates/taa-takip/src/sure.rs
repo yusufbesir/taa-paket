@@ -424,6 +424,7 @@ mod testler {
             imzalar: Vec::new(),
             duzeltmeler: Vec::new(),
             bagli: Vec::new(),
+            teslim_kaydi: None,
         }
     }
 

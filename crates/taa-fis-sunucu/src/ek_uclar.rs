@@ -36,6 +36,8 @@ impl Uygulama {
                 "cihaz": { "id": c.id, "ad": c.ad },
                 "kisi": kisi,
                 "sube": sube,
+                // Arayüz düzeltme gibi bölümleri bu listeye göre gösterir (asıl denetim sunucuda).
+                "yetkiler": self.cihazlar().yetkileri(&c.id),
             }),
         )
     }

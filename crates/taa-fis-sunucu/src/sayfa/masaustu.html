@@ -210,11 +210,17 @@ kbd{font:600 max(12px,.75em) var(--tk-fm);padding:1px 6px;border:1px solid curre
 .duz-not svg.sm{width:16px;height:16px}
 .izgara2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--tk-g3)}
 .izgara4{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--tk-g3)}
-.kalem{display:grid;grid-template-columns:88px minmax(0,1fr) 84px max-content auto;gap:var(--tk-g2);align-items:center;
+.kalem{display:grid;grid-template-columns:88px minmax(0,1fr) 84px minmax(120px,150px) 96px auto;grid-template-areas:"u i o r a s" "u g g g g s";gap:var(--tk-g2);align-items:center;
   padding:var(--tk-g2) 0;border-bottom:var(--tk-kenar) solid var(--tk-panel2)}
 .kalem input:not([type=checkbox]),.kalem select{min-height:var(--tk-hedef);width:100%;min-width:0;padding:var(--tk-g1) var(--tk-g2);border:var(--tk-kenar) solid var(--tk-line);
   border-radius:min(var(--tk-r),12px);background:var(--tk-panel)}
 .kalem .onay{font-weight:400;font-size:max(13px,.875em);white-space:nowrap}
+.kalem>b{grid-area:u}.kalem>.k-islem{grid-area:i}.kalem>input{grid-area:o}.kalem>.k-renk{grid-area:r}.kalem>.k-adet{grid-area:a}.kalem>.k-onay{grid-area:g}.kalem>.simge-d{grid-area:s}
+/* Telefonlar: cihaz yetkileri (açık/kapalı) ve ad değiştirme */
+.yetkiler{display:grid;gap:var(--tk-g1);min-width:200px;max-width:280px}
+.yetkiler .onay{font-weight:400;min-height:32px}
+.ad-duzen{display:flex;flex-wrap:wrap;gap:var(--tk-g1);align-items:center}
+.ad-duzen input{flex:1 1 140px;min-width:0;min-height:var(--tk-hedef);padding:var(--tk-g1) var(--tk-g2);border:var(--tk-kenar) solid var(--tk-line);border-radius:min(var(--tk-r),12px);background:var(--tk-panel);color:var(--tk-tx)}
 .simge-d{width:var(--tk-hedef);height:var(--tk-hedef);display:grid;place-items:center;border:0;background:none;border-radius:var(--tk-r);cursor:pointer}
 .simge-d:hover{background:var(--tk-panel2)}
 .cipler{display:flex;flex-wrap:wrap;gap:var(--tk-g2);align-items:center}
@@ -444,8 +450,7 @@ html[data-tema="cozgu"] .acilis .iz{height:2px}
 }
 /* 1340 px altı: kalem satırı iki sıraya iner (işlem listesi tam genişlik; "Paça ve kol kısaltma" kesilmesin) */
 @container pencere (max-width:1340px){
-  .kalem{grid-template-columns:88px 84px minmax(0,1fr) auto;grid-template-areas:"u i i s" "u o g s"}
-  .kalem>b{grid-area:u}.kalem>select{grid-area:i}.kalem>input{grid-area:o}.kalem>.k-islem{grid-area:i}.kalem>.k-onay{grid-area:g}.kalem>.simge-d{grid-area:s}
+  .kalem{grid-template-columns:88px 84px minmax(110px,150px) 96px minmax(0,1fr) auto;grid-template-areas:"u i i i i s" "u o r a g s"}
 }
 /* geniş pencere (1920): yazı 1 px büyür, gezinti genişler, liste tek satıra açılır */
 @container pencere (min-width:1500px){
@@ -892,6 +897,8 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
           <hr class="ayrac">
           <div class="adim"><b>2</b><span>Telefonda görünen 4 haneli kodu yazın</span></div>
           <p class="mut kucuk" id="esles-bekleyen" style="width:100%;text-align:left;margin:0">Telefon birinci kodu girince ekranında 4 haneli ikinci kod çıkar. Telefon, bu kod burada onaylanana kadar siteye giremez.</p>
+          <div class="alan" style="width:100%;text-align:start"><label for="esles-ad">Telefonun adı</label>
+            <input id="esles-ad" maxlength="40" autocomplete="off" placeholder="Boş bırakılırsa telefonun önerdiği ad kalır"></div>
           <div class="kod4"><label class="sr" for="esles-kod2">Telefondaki 4 haneli kod</label>
             <input id="esles-kod2" inputmode="numeric" autocomplete="off" maxlength="4" pattern="[0-9]{4}" placeholder="····">
             <button class="dugme sonraki" id="esles-onayla" disabled>Onayla</button></div>
@@ -901,7 +908,7 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
         <div class="yigin">
           <div class="sira ara-bosluk"><h2>Tanımlı telefonlar</h2><span class="mut kucuk" id="tel-ozet"></span></div>
           <div class="tablo-sar"><table>
-            <thead><tr><th>Telefon</th><th>Son görülme</th><th>Durum</th><th><span class="sr">İşlem</span></th></tr></thead>
+            <thead><tr><th>Cihaz</th><th>Yetkiler</th><th>Son görülme</th><th>Durum</th><th><span class="sr">İşlem</span></th></tr></thead>
             <tbody id="tel-liste"></tbody></table></div>
           <div class="mesaj"><svg class="sm"><use href="#i-tel"/></svg><div>Kapatılan telefon siteye giremez; yeniden kullanmak için baştan eşleştirilir. Kişisel telefonda fişi düzenleyen her zaman o kişidir.</div></div>
         </div>
@@ -921,7 +928,7 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
           </div>
           <div class="kart yigin" id="k-ekle-kart">
             <h2>Kişi kaydına ekle</h2>
-            <div class="alan"><label for="k-ad">Ad soyad</label><input id="k-ad" maxlength="40" autocomplete="off"></div>
+            <div class="alan"><label for="k-ad">Ad Soyad</label><input id="k-ad" maxlength="40" autocomplete="off" placeholder="Ad Soyad" aria-describedby="k-ad-not"><span class="mut kucuk" id="k-ad-not">Adı ve soyadı birlikte yazın; fişe "Ad S." olarak basılır.</span></div>
             <div class="cipler" role="group" aria-label="Rol" id="k-rol"><button class="cip" data-rol="danisman" aria-pressed="true">Danışman</button><button class="cip" data-rol="usta" aria-pressed="false">Usta</button><button class="cip" data-rol="personel" aria-pressed="false">Personel</button><button class="cip" data-rol="yonetici" aria-pressed="false">Yönetici</button></div>
             <button class="dugme sonraki genis" id="k-ekle"><svg class="sm"><use href="#i-arti"/></svg>Ekle</button>
             <div class="mesaj hata kucuk" id="k-mesaj" hidden><svg class="sm"><use href="#i-uyari"/></svg><span></span></div>
@@ -1126,7 +1133,7 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
     },function(e){var h=new Error('Yerel sunucuya ulaşılamadı');h.ag=true;throw h})}
 
   /* ---------- veri ---------- */
-  var BUGUN=tIso(new Date()), DURUM={}, FISLER=[], KISILER=[], KATALOG={islemler:[]}, AD={};
+  var BUGUN=tIso(new Date()), DURUM={}, FISLER=[], KISILER=[], KATALOG={islemler:[]}, AD={}, RENKLER=[], OTURUM=null;
   var D={bekliyor:['i-saat','Bekliyor','Terzihaneye al','terzihanede'],terzihanede:['i-igne','Terzihanede','Hazır olarak işaretle','hazir'],
          hazir:['i-aski','Hazır','Teslim et','teslim'],teslim:['i-cift','Teslim',null,null],iptal:['i-x','İptal',null,null]};
   var SIRA=['bekliyor','terzihanede','hazir','teslim'];
@@ -1134,7 +1141,7 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
   function acik(f){return f.durum!=='teslim'&&f.durum!=='iptal'}
   function gecik(f){return acik(f)&&f.teslim<BUGUN}
   function rozet(d,degisti){var x=D[d]||D.bekliyor;return '<span class="rozet'+(degisti?' degisti':'')+'">'+sm(x[0])+'<span>'+x[1]+'</span></span>'}
-  function kalemMetni(k){return k.islem+(k.varyant?' ('+k.varyant+')':'')}
+  function kalemMetni(k){return k.islem+(k.varyant?' ('+k.varyant+')':'')+TKD.ekMetin(k,RENKLER)}
   function olcuMetni(k){return k.igneli?'iğneli':k.olcu_mm?String(k.olcu_mm/10).replace('.',',')+' cm':''}
 
   function durumYukle(){
@@ -1159,6 +1166,11 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
     return api('GET','/api/kisiler').then(function(v){KISILER=v.kisiler||[];AD={};KISILER.forEach(function(k){AD[k.id]=k.ad});kisiSecenekleri();onizle()},function(){})}
   function katalogYukle(){
     return api('GET','/api/islemler').then(function(k){KATALOG=k||{islemler:[]};kalemDugmeleri();kalemCiz()},function(){})}
+  /* Renk listesi (anahtar + Türkçe ad) ve bu cihazın yetkileri ("duzelt" yoksa düzeltme bölümü görünmez). */
+  function renklerYukle(){
+    return api('GET','/api/renkler').then(function(v){RENKLER=v.renkler||[];kalemCiz();ayrintiCiz()},function(){})}
+  function oturumYukle(){
+    return api('GET','/api/oturum').then(function(o){OTURUM=o;ayrintiCiz()},function(){})}
 
   /* ---------- bildirim ---------- */
   function bildir(metin,geriAl,sure){var b=document.createElement('div');b.className='bildirim';b.setAttribute('role','status');b.innerHTML='<span></span>';b.firstChild.textContent=metin;
@@ -1242,24 +1254,34 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
       (f.durum==='iptal'?'<div class="mesaj hata">'+sm('i-x')+'<span>Bu fiş iptal edildi.</span></div>':
       '<ol class="yol">'+SIRA.map(function(d,j){return '<li class="'+(j<i?'gecti':j===i?'simdi':'')+'"><span>'+sm(D[d][0])+'</span>'+D[d][1]+'</li>'}).join('')+'</ol>')+
       '<div class="sira ara-bosluk"><div><span class="mut kucuk">Teslim</span><div class="ay-teslim">'+esc(gunAd(f.teslim))+' '+esc(f.teslim_saati)+'</div></div>'+
-      (gecik(f)?'<span class="rozet" style="color:var(--tk-hata)">'+sm('i-uyari')+'Gecikti</span>':'')+(f.kargo?'<span class="rozet">KARGO</span>':'')+'</div>'+
+      (gecik(f)?'<span class="rozet" style="color:var(--tk-hata)">'+sm('i-uyari')+'Gecikti</span>':'')+(f.kargo?'<span class="rozet">KARGO</span>':'')+((f.bagli||[]).length?'<span class="rozet">BAĞLI · '+f.bagli.length+'</span>':'')+'</div>'+
       '<dl class="bilgi"><div><dt>Müşteri</dt><dd>'+esc(f.musteri)+'</dd></div><div><dt>Telefon</dt><dd class="mono">'+esc(f.telefon)+'</dd></div>'+
       '<div><dt>Raf</dt><dd'+(f.raf?' class="mono"':'')+'>'+(f.raf?esc(f.raf):'Rafta değil')+'</dd></div><div><dt>Usta</dt><dd>'+esc(f.usta||'Atanmadı')+'</dd></div>'+
       '<div><dt>Ücret</dt><dd class="mono">'+tl(f.ucret_kurus)+'</dd></div><div><dt>Kalan</dt><dd class="mono">'+(f.kalan_kurus>0?tl(f.kalan_kurus):'Ödendi')+'</dd></div></dl>'+
       '<ul class="kalemler">'+f.kalemler.map(function(x){return '<li><b>'+esc(x.urun+' · '+kalemMetni(x))+'</b><span class="mono">'+esc(olcuMetni(x))+'</span></li>'}).join('')+'</ul>'+
       (f.olcu_notu?'<p class="kucuk"><b>Ölçü notu:</b> '+esc(f.olcu_notu)+'</p>':'')+
       (D[f.durum][2]?'<button class="dugme ana genis" id="sonraki">'+D[f.durum][2]+' <kbd>Ctrl+Enter</kbd></button>':
-        f.durum==='teslim'?'<div class="mesaj tamam">'+sm('i-cift')+'<span>Müşteriye teslim edildi.</span></div>':'')+
+        f.durum==='teslim'?'<div class="mesaj tamam">'+sm('i-cift')+'<span>Müşteriye teslim edildi.</span></div>':'')+'<div id="ay-teslim-kaydi"></div>'+
       '<div class="diger-islem"><button class="dugme" data-is="yazdir">'+sm('i-yazici')+'Yazdır</button>'+
       '<button class="dugme" data-is="foto">'+sm('i-kamera')+'Foto <span id="foto-say"></span></button>'+
       (acik(f)?'<button class="dugme" data-is="teslim">'+sm('i-takvim')+'Teslim tarihini değiştir</button>':'')+
       '<button class="dugme tehlike" data-is="isaret">Yeniden iş / şikâyet işaretle</button>'+
       (acik(f)?'<button class="dugme tehlike" data-is="iptal">'+sm('i-x')+'İptal et</button>':'')+'</div>'+
-      '<div id="ay-form"></div><div class="sira" id="foto-sira" style="flex-wrap:wrap"></div>'+
+      '<div id="ay-form"></div><div class="sira" id="foto-sira" style="flex-wrap:wrap"></div><div id="ay-duzeltme"></div>'+
       '<p class="mut kucuk">Danışman: '+esc(kisiAd(f,'satis_danismani')||'—')+' · Ölçü: '+esc(kisiAd(f,'olcu_alan')||'—')+' · Düzenleyen: '+esc(duz||'—')+' · Fiş '+esc(tKisa(f.tarih))+' tarihinde yazıldı'+(f.sube?' · Şube '+esc(f.sube):'')+'</p>';
     if(ACIK_FORM&&ACIK_FORM.no===f.no)formAc(ACIK_FORM.tur);
     fotoSay(f.no);
+    duzeltmeCiz(f);
+    teslimKaydiCiz(f);
   }
+  /* Fiş düzeltme bölümü (ortak.js TKD): yalnız bu cihazda "duzelt" yetkisi varsa; teslim/iptal fişte yok. */
+  function duzeltmeCiz(f){
+    var k=$('#ay-duzeltme');if(!k)return;
+    if(!TKD.yetkiVar(OTURUM,'duzelt')){k.textContent='';return}
+    TKD.yerlestir(k,{fis:f,api:api,katalog:KATALOG,renkler:RENKLER,
+      fisler:function(){return api('GET','/api/fisler').then(function(v){return v.fisler||[]})},
+      fisBul:bul,fisAc:function(no){fisAc(no,'elle')},kisiAd:function(kim){return AD[kim]||kim},
+      sonra:function(ileti){bildir(f.no+': '+ileti,null,6000);fislerYukle(true)}})}
   var FOTO_URL=[];
   function fotoSay(no){
     api('GET','/api/fis/'+encodeURIComponent(no)+'/foto').then(function(v){var s=$('#foto-say');if(s&&acikNo===no)s.textContent=v.adet?'('+v.adet+')':''},function(){})}
@@ -1312,9 +1334,32 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
     var b=BEKLEYEN;if(!b)return Promise.resolve();clearTimeout(b.t);BEKLEYEN=null;
     return b.liste.reduce(function(p,x){return p.then(function(){
       return api('POST','/api/fis/'+encodeURIComponent(x.no)+'/durum',{durum:x.yeni},{keepalive:!!kapanis}).catch(function(e){
-        var f=bul(x.no);if(f)f.durum=x.eski;if(!kapanis)bildir(x.no+': durum değişmedi ('+e.message+')',null,6000)})})},Promise.resolve())
+        var f=bul(x.no);if(f)f.durum=x.eski;if(kapanis)return;
+        // Teslim /durum ile yapılmaz (sunucu 409 teslim_al_gerekli): teslim kutusu açılır.
+        if(x.yeni==='teslim'&&e.kod===409){tumunuCiz(true);return teslimAkisi(x.no)}
+        bildir(x.no+': durum değişmedi ('+TKD.hataIleti(e)+')',null,6000)})})},Promise.resolve())
       .then(function(){if(!kapanis)fislerYukle(true)})}
   function tumunuCiz(degisti){listeCiz();ayrintiCiz(degisti);anaCiz()}
+
+  // B2: fişsiz teslim ve imza buraya bağlanır
+  /* Teslim akışının tamamı (ortak.js TKD.teslimSor): kutuda "Fişiyle geldi" / "Fişi yok", teslim alan ad soyad, ilişki;
+     fişsizde müşteri telefonunun son 4 hanesi ve zorunlu imza, fişlide isteğe bağlı imza. İstek /teslim-al ucuna gider.
+     Bağlı açık fiş varsa sunucu 409 {soru:"bagli_teslim"} ile sorar; TKD.bagliSor kutusu teslim kutusunun üstünde açılır,
+     seçimden sonra aynı istek (son 4 ve imza dahil) "bagli" listesiyle yeniden gönderilir.
+     Teslim kaydı defterde kalıcıdır; bu yüzden 10 sn'lik geri alma beklemesi teslimde yoktur, kutunun kendisi onaydır.
+     Sunucu /durum ile teslimi reddeder (409 teslim_al_gerekli); toplu işlemde de her fiş sırayla bu kutudan geçer.
+     Fiş artık hazır değilse (ör. bağlı fişle birlikte teslim edildi) kutu açılmaz. */
+  function teslimAkisi(no){
+    var f=bul(no);if(!f||f.durum!=='hazir')return Promise.resolve();
+    bekleyeniGonder();
+    // Oturum (yetkiler) henüz gelmediyse önce okunur; yoksa "Fişi yok" yanlışlıkla kapalı görünürdü.
+    return (OTURUM?Promise.resolve():oturumYukle()).then(function(){return TKD.teslimSor({fis:f,oturum:OTURUM,api:api})}).then(function(r){
+      if(!r){bildir(no+': teslim edilmedi');return}
+      var bt=r.birlikte_teslim||[],tk=r.teslim_kaydi||{};
+      bildir(no+(bt.length?' ve '+bt.join(', '):'')+': Teslim · '+(tk.teslim_alan?kisaAd(tk.teslim_alan)+' ('+TKD.iliskiAd(tk.iliski)+')':'')+(tk.fisli===false?' · fişsiz':''),null,6000);
+      return fislerYukle(true)})}
+  /* Fiş ayrıntısında teslim kaydı ve imza görüntüsü (GET /api/fis/<no>/imza). */
+  function teslimKaydiCiz(f){TKD.teslimKaydiCiz($('#ay-teslim-kaydi'),f,{imzaGorebilir:true,imzaGetir:function(no){return TKD.imzaCek(no,{'X-TAA-Masaustu':'1'})}})}
 
   /* ---------- karekod tabancası ---------- */
   var testAcik=false;
@@ -1415,7 +1460,7 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
   function islemBul(kod){for(var i=0;i<KATALOG.islemler.length;i++)if(KATALOG.islemler[i].kod===kod)return KATALOG.islemler[i];return null}
   function kalemDugmeleri(){$('#kalem-ekle').innerHTML='<span class="etiket">Kalem ekle</span>'+gruplar().map(function(g){return '<button type="button" class="cip" data-ekle="'+esc(g)+'">'+esc(g)+'</button>'}).join('')}
   function yeniKalem(g){var l=KATALOG.islemler.filter(function(i){return i.grup===g}),i=l[0];
-    return {grup:g,kod:i?i.kod:'',islem:i?i.ad:'',varyant:i&&i.varyantlar&&i.varyantlar.length?i.varyantlar[0]:'',olcu:'',ig:false,onay:false}}
+    return {grup:g,kod:i?i.kod:'',islem:i?i.ad:'',varyant:i&&i.varyantlar&&i.varyantlar.length?i.varyantlar[0]:'',olcu:'',ig:false,onay:false,renk:'',adet:1}}
   function kalemCiz(){
     $('#kalemler').innerHTML=KALEM.length?KALEM.map(function(k,n){
       var l=KATALOG.islemler.filter(function(i){return i.grup===k.grup}), is=islemBul(k.kod);
@@ -1427,6 +1472,10 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
         '<div class="k-onay"><label class="onay"><input type="checkbox" data-k="ig"'+(k.ig?' checked':'')+'>İğneyle işaretlendi</label>'+
         (is&&is.sinir_mm?'<label class="onay" title="'+esc(is.uyari||'')+'"><input type="checkbox" data-k="onay"'+(k.onay?' checked':'')+'>Usta onayladı</label>':'')+'</div>'+
         '<button type="button" class="simge-d" data-sil aria-label="'+esc(k.grup)+' kalemini sil">'+sm('i-x')+'</button></div>'}).join(''):'<p class="mut">Aşağıdan ürün seçerek kalem ekleyin.</p>';
+    /* renk (boş = seçilmedi) ve adet (1-20): seçenekler DOM ile eklenir */
+    $$('#kalemler .kalem').forEach(function(r){var k=KALEM[+r.dataset.n],ony=r.querySelector('.k-onay');
+      r.insertBefore(TKD.renkSecici(RENKLER,k.renk,{'class':'k-renk','data-k':'renk','aria-label':k.grup+' rengi'}),ony);
+      r.insertBefore(TKD.adetSecici(k.adet,{'class':'k-adet','data-k':'adet','aria-label':k.grup+' adedi'}),ony)});
     onizle()}
   function kisiSecenekleri(){
     $('#kisi-yok').hidden=KISILER.length>0;
@@ -1448,7 +1497,7 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
     var u=kurus($('#f-ucret').value),o=kurus($('#f-on').value);
     return {no:KAYITLI_NO,tarih:BUGUN,musteri:$('#f-ad').value.trim(),telefon:$('#f-tel').value.trim(),
       kalemler:KALEM.map(function(k){var mm=k.ig||!k.olcu?null:Math.round(parseFloat(String(k.olcu).replace(',','.'))*10);
-        return {urun:k.grup,islem:k.islem,islem_kodu:k.grup==='Diğer'?null:(k.kod||null),varyant:k.varyant||null,olcu_mm:isFinite(mm)&&mm>0?mm:null,igneli:!!k.ig,usta_onayli:!!k.onay}}),
+        return TKD.kalemeEkle({urun:k.grup,islem:k.islem,islem_kodu:k.grup==='Diğer'?null:(k.kod||null),varyant:k.varyant||null,olcu_mm:isFinite(mm)&&mm>0?mm:null,igneli:!!k.ig,usta_onayli:!!k.onay},k.renk,k.adet)}),
       teslim:$('#f-tar').value,teslim_saati:$('#f-saat').value||'17:00',ucret_kurus:u,on_odeme_kurus:o,kalan_kurus:u-o,usta:$('#f-usta').value,
       satis_danismani:AD[SEC_K.dan]||'',olcu_alan:AD[SEC_K.olc]||'',sube:DURUM.sube||''}}
   /* 80 mm fiş: müşteri nüshası + ürün üstü nüsha. Düzenleyen fişe basılmaz. */
@@ -1603,7 +1652,7 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
   function telefonlarAc(){
     var s=$('#esles-kisi'),v=s.value;s.innerHTML='<option value="">Mağaza telefonu (ortak)</option>'+KISILER.map(function(k){return '<option value="'+esc(k.id)+'">Kişisel: '+esc(k.ad)+'</option>'}).join('');s.value=v;
     if(Date.now()>esles.bitis-5000||esles.kisi!==s.value)yeniKod();
-    cihazlarYukle();clearInterval(telPoll);telPoll=setInterval(cihazlarYukle,5000)}
+    TEL_IMZA='';yetkilerYukle().then(cihazlarYukle);clearInterval(telPoll);telPoll=setInterval(function(){yetkilerYukle().then(cihazlarYukle)},5000)}
   function yeniKod(){var kisi=$('#esles-kisi').value;
     api('GET','/api/yonetim/eslestirme'+(kisi?'?kisi='+encodeURIComponent(kisi):'')).then(function(v){
       esles={bitis:Date.now()+v.gecerli_sn*1000,kisi:kisi};$('#esles-kare').innerHTML=v.qr_svg;$('#esles-kod').textContent=v.kod.slice(0,3)+' '+v.kod.slice(3);
@@ -1612,7 +1661,8 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
   function eslesOnayla(){var g=$('#esles-kod2'),k=g.value.replace(/\D/g,'');
     if(k.length!==4){eslesSonuc('Telefonda görünen 4 haneli kodu yazın.','uyari');g.focus();return}
     var d=$('#esles-onayla');d.disabled=true;
-    api('POST','/api/yonetim/eslestir/onayla',{kod2:k}).then(function(v){g.value='';
+    var ad=$('#esles-ad').value.trim(),gv={kod2:k};if(ad)gv.ad=ad;
+    api('POST','/api/yonetim/eslestir/onayla',gv).then(function(v){g.value='';$('#esles-ad').value='';
       eslesSonuc('Eşleşti: '+v.ad+'. Telefon birkaç saniye içinde açılır.','tamam');bildir(v.ad+' eşleşti');cihazlarYukle();yeniKod()},
       function(e){d.disabled=false;if(e.kod===401)return;
         eslesSonuc(/5 yanlış/.test(e.message)?'5 yanlış deneme: bekleyen eşleştirmeler iptal edildi. Telefonda baştan başlayın.':e.kod===403?'Kod yanlış ya da süresi dolmuş. Telefondaki kodu yeniden okuyun.':e.message,'hata');g.select()})}
@@ -1620,13 +1670,60 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
   setInterval(function(){if($('.ekran.acik')&&$('.ekran.acik').dataset.ekran==='telefonlar'){eslesSure();if(esles.bitis&&Date.now()>esles.bitis)yeniKod()}},1000);
   function sureMetni(sn){if(sn==null)return 'Bu oturumda görülmedi';if(sn<60)return 'Şimdi';if(sn<3600)return Math.round(sn/60)+' dk önce';return Math.round(sn/3600)+' sa önce'}
   function cihazlarYukle(){api('GET','/api/yonetim/cihazlar').then(function(v){var l=v.cihazlar||[],b=l.filter(function(c){return c.son_gorulme_sn!=null&&c.son_gorulme_sn<120}).length;
-    $('#tel-ozet').textContent=l.length+' telefon · '+b+' tanesi şu an bağlı';
+    $('#tel-ozet').textContent=l.length+' telefon · '+b+' tanesi şu an bağlı · Yetkiler: düzeltme varsayılan olarak yalnız bu bilgisayarda açıktır';
     var bk=v.bekleyen||0,g2=$('#esles-kod2');
     if(bk&&!esles.bk){g2.scrollIntoView({block:'nearest'});if(document.activeElement===document.body||!document.activeElement)g2.focus()}esles.bk=bk;$('#esles-bekleyen').textContent=bk?bk+' telefon ikinci kodun onayını bekliyor. Telefonun ekranındaki 4 haneli kodu aşağıya yazın.':'Telefon birinci kodu girince ekranında 4 haneli ikinci kod çıkar. Telefon, bu kod burada onaylanana kadar siteye giremez.';
     $('#esles-bekleyen').className=bk?'kucuk':'mut kucuk';
-    $('#tel-liste').innerHTML=l.length?l.map(function(c){var bg=c.son_gorulme_sn!=null&&c.son_gorulme_sn<120;
-      return '<tr><td><b>'+esc(c.ad)+'</b><br><span class="mut kucuk"><span class="mono">'+esc(c.id)+'</span> · '+esc(c.tarih)+(c.kisi?' · kişisel: '+esc(c.kisi):' · mağaza telefonu')+'</span></td><td>'+sureMetni(c.son_gorulme_sn)+'</td><td><span class="nokta'+(bg?'':' yok')+'"><i></i>'+(bg?'Bağlı':'Bağlı değil')+'</span></td><td><button class="dugme kucuk tehlike" data-cihaz-kapat="'+esc(c.id)+'">Kapat</button></td></tr>'}).join(''):
-      '<tr><td colspan="4" class="mut">Henüz eşleşmiş telefon yok. Soldaki karekodu telefonla okutun.</td></tr>'},function(){})}
+    cihazTablosu(l)},function(){})}
+  /* Cihaz tablosu: Mağaza bilgisayarı satırı + eşleşmiş telefonlar; her satırda yetki anahtarları (açık/kapalı).
+     Satırlar yalnız cihaz/ad/yetki değişince yeniden kurulur (5 sn yoklamada odak ve açık ad formu korunur);
+     son görülme ve bağlılık hücreleri yerinde güncellenir. Metinler textContent ile yazılır. */
+  var YETKI_TANIM=[], PC_YETKI=[], TEL_IMZA='', AD_DUZEN=null;
+  function yetkilerYukle(){return api('GET','/api/yonetim/yetkiler').then(function(v){
+    YETKI_TANIM=v.yetkiler||[];var pc=(v.cihazlar||[]).filter(function(c){return c.id==='PC'})[0];PC_YETKI=pc?pc.yetkiler||[]:[]},function(){})}
+  function cihazTablosu(l){
+    var el=TKD.el,tb=$('#tel-liste');
+    var imza=JSON.stringify([YETKI_TANIM,PC_YETKI,l.map(function(c){return [c.id,c.ad,c.tarih,c.kisi,c.yetkiler]})]);
+    if(imza===TEL_IMZA&&!AD_DUZEN){l.forEach(function(c){var r=tb.querySelector('tr[data-cihaz="'+c.id.replace(/["\\]/g,'')+'"]');if(r)gorulmeYaz(r,c)});return}
+    if(AD_DUZEN)return;
+    TEL_IMZA=imza;tb.textContent='';
+    tb.appendChild(cihazSatiri({id:'PC',ad:'Mağaza bilgisayarı',yetkiler:PC_YETKI},true));
+    l.forEach(function(c){tb.appendChild(cihazSatiri(c,false))});
+    if(!l.length)tb.appendChild(el('tr',{},el('td',{colspan:5,sinif:'mut',metin:'Henüz eşleşmiş telefon yok. Soldaki karekodu telefonla okutun.'})))}
+  function gorulmeYaz(r,c){var bg=c.son_gorulme_sn!=null&&c.son_gorulme_sn<120,h=r.querySelectorAll('td');
+    h[2].textContent=sureMetni(c.son_gorulme_sn);var n=h[3].firstChild;n.className='nokta'+(bg?'':' yok');n.lastChild.textContent=bg?'Bağlı':'Bağlı değil'}
+  function cihazSatiri(c,pc){
+    var el=TKD.el,acik=c.yetkiler||[];
+    var ad=el('td',{},el('b',{metin:c.ad}),el('br'),el('span',{sinif:'mut kucuk'},pc?'Bu bilgisayar':[el('span',{sinif:'mono',metin:c.id}),' · '+(c.tarih||'')+(c.kisi?' · kişisel: '+c.kisi:' · mağaza telefonu')]));
+    var yt=el('td',{},el('div',{sinif:'yetkiler',role:'group','aria-label':c.ad+' yetkileri'},YETKI_TANIM.map(function(t){
+      var v=pc?t.pc_varsayilan:t.telefon_varsayilan,g=el('input',{type:'checkbox',role:'switch'});g.checked=acik.indexOf(t.anahtar)>=0;
+      g.addEventListener('change',function(){var ver=g.checked;g.disabled=true;
+        api('POST','/api/yonetim/cihaz/'+encodeURIComponent(c.id)+'/yetki',{yetki:t.anahtar,ver:ver}).then(function(){
+          bildir(c.ad+': '+t.aciklama+(ver?' açıldı':' kapatıldı'));TEL_IMZA='';return yetkilerYukle().then(cihazlarYukle)},
+          function(x){g.checked=!ver;if(x.kod!==401)bildir(c.ad+': yetki değişmedi ('+x.message+')',null,6000)}).then(function(){g.disabled=false})});
+      return el('label',{sinif:'onay',title:'Varsayılan: '+(v?'açık':'kapalı')},g,el('span',{metin:t.aciklama}))})));
+    var gor=el('td',{metin:pc?'—':sureMetni(c.son_gorulme_sn)});
+    var bg=c.son_gorulme_sn!=null&&c.son_gorulme_sn<120;
+    var dur=el('td',{},pc?el('span',{sinif:'nokta'},el('i'),el('span',{metin:'Bu bilgisayar'})):el('span',{sinif:'nokta'+(bg?'':' yok')},el('i'),el('span',{metin:bg?'Bağlı':'Bağlı değil'})));
+    var is=el('td',{});
+    if(!pc){
+      var adD=el('button',{type:'button',sinif:'dugme kucuk',metin:'Adı değiştir','aria-label':c.ad+': adı değiştir'});
+      adD.addEventListener('click',function(){adDuzenle(c,ad)});
+      is.appendChild(el('div',{sinif:'sira',style:'flex-wrap:wrap'},adD,el('button',{type:'button',sinif:'dugme kucuk tehlike','data-cihaz-kapat':c.id,metin:'Kapat'})))}
+    return el('tr',{'data-cihaz':c.id},ad,yt,gor,dur,is)}
+  /* Cihaz adı yalnız bu programdan değişir (sunucu masaüstü başlığı ve yönetici oturumu ister). */
+  function adDuzenle(c,hucre){
+    var el=TKD.el,g=el('input',{maxlength:40,autocomplete:'off','aria-label':'Yeni cihaz adı'}),m=el('span',{sinif:'kucuk',role:'alert'});g.value=c.ad;
+    function bitir(){AD_DUZEN=null;TEL_IMZA='';cihazlarYukle()}
+    var kay=el('button',{type:'button',sinif:'dugme kucuk sonraki',metin:'Kaydet'});
+    function kaydet(){var y=g.value.trim();if(!y){m.textContent='Ad boş olamaz.';g.focus();return}kay.disabled=true;
+      api('POST','/api/yonetim/cihaz/'+encodeURIComponent(c.id)+'/ad',{ad:y}).then(function(){bildir('Cihaz adı değişti: '+y);bitir()},
+        function(x){kay.disabled=false;m.textContent=x.message})}
+    kay.addEventListener('click',kaydet);
+    g.addEventListener('keydown',function(e){if(e.key==='Enter')kaydet();if(e.key==='Escape'){e.stopPropagation();bitir()}});
+    AD_DUZEN=c.id;hucre.textContent='';
+    hucre.appendChild(el('div',{sinif:'ad-duzen'},g,kay,el('button',{type:'button',sinif:'dugme kucuk',metin:'Vazgeç',tikla:bitir}),m));
+    g.focus();g.select()}
 
   /* ---------- personel ve usta ---------- */
   var YONETICI_AD='Yönetici (PIN)';
@@ -1704,11 +1801,13 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
     if(b.id==='okutarak'){okutarak=!okutarak;b.setAttribute('aria-pressed',String(okutarak));return}
     if(d.no&&b.classList.contains('satir')){ if(e.target.classList.contains('s-sec')){if(e.target.checked)SEC[d.no]=1;else delete SEC[d.no];topluCiz();return}
       if(acikNo!==d.no)formKapat();acikNo=d.no;$$('.satir').forEach(function(s){s.setAttribute('aria-selected',String(s===b))});ayrintiCiz();return}
-    if(b.id==='sonraki'){var f=bul(acikNo);if(!f||!D[f.durum][3])return;var y=D[f.durum][3];durumDegistir([{f:f,yeni:y}],f.no+': '+D[y][1]);return}
+    if(b.id==='sonraki'){var f=bul(acikNo);if(!f||!D[f.durum][3])return;var y=D[f.durum][3];if(y==='teslim'){teslimAkisi(f.no);return}durumDegistir([{f:f,yeni:y}],f.no+': '+D[y][1]);return}
     if(d.toplu){var s=Object.keys(SEC).map(bul).filter(Boolean);
       if(d.toplu==='birak'){SEC={};listeCiz();return}
       if(d.toplu==='yazdir'){fisYazdir(s.map(function(f){return f.no}));return}
       var h=s.filter(function(f){return f.durum===d.toplu}),yeni=D[d.toplu][3];SEC={};
+      // Teslim toplu /durum ile yapılmaz: her fiş sırayla teslim kutusundan geçer (teslim alan, gerekiyorsa imza).
+      if(yeni==='teslim'){listeCiz();h.reduce(function(p,f){return p.then(function(){return teslimAkisi(f.no)})},Promise.resolve());return}
       durumDegistir(h.map(function(f){return {f:f,yeni:yeni}}),h.length+' fiş: '+D[yeni][1]);return}
     if(d.is){var fi=bul(acikNo);if(!fi)return;
       if(d.is==='yazdir'){fisYazdir([fi.no]);return}
@@ -1733,7 +1832,8 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
     if(d.cihazKapat){if(!confirm(d.cihazKapat+' kapatılsın mı? Telefon yeniden eşleşene kadar siteye giremez.'))return;
       api('POST','/api/yonetim/cihaz/'+encodeURIComponent(d.cihazKapat)+'/kapat').then(function(){bildir('Telefon kapatıldı');cihazlarYukle()},function(x){bildir(x.message)});return}
     if(b.id==='k-ekle'){var rol=($('#k-rol [aria-pressed="true"]')||{dataset:{rol:'personel'}}).dataset.rol,km=$('#k-mesaj');
-      api('POST','/api/yonetim/kisi',{ad:$('#k-ad').value,rol:rol}).then(function(k){km.hidden=true;$('#k-ad').value='';bildir(k.ad+' kişi kaydına eklendi');personelYukle();kisilerYukle()},
+      if($('#k-ad').value.trim().split(/\s+/).filter(Boolean).length<2){km.hidden=false;km.lastElementChild.textContent='Personelin adını ve soyadını birlikte yazın (ör. Ayşe Yılmaz).';$('#k-ad').focus();return}
+      api('POST','/api/yonetim/kisi',{ad:$('#k-ad').value.trim(),rol:rol}).then(function(k){km.hidden=true;$('#k-ad').value='';bildir(k.ad+' kişi kaydına eklendi');personelYukle();kisilerYukle()},
         function(x){km.hidden=false;km.lastElementChild.textContent=x.message});return}
     if(d.kisiKapat){if(!confirm('Bu kişi seçim listelerinden çıkarılsın mı? Eski fişlerde adı görünmeye devam eder.'))return;
       api('POST','/api/yonetim/kisi/'+encodeURIComponent(d.kisiKapat)+'/kapat').then(function(){personelYukle();kisilerYukle()},function(x){bildir(x.message)});return}
@@ -1775,7 +1875,7 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
   $('.fis-iki').addEventListener('input',function(e){var k=e.target.closest('.kalem');
     if(e.target.dataset.kisiSec){SEC_K[e.target.dataset.kisiSec]=e.target.value}
     if(k){var x=KALEM[+k.dataset.n],a=e.target.dataset.k;
-      if(a==='ig'||a==='onay')x[a]=e.target.checked;else x[a]=e.target.value;
+      if(a==='ig'||a==='onay')x[a]=e.target.checked;else if(a==='adet')x.adet=parseInt(e.target.value,10)||1;else x[a]=e.target.value;
       if(a==='kod'){var is=islemBul(x.kod);x.islem=is?is.ad:'';x.varyant=is&&is.varyantlar&&is.varyantlar.length?is.varyantlar[0]:'';x.onay=false}
       if(a==='ig'||a==='kod'){kalemCiz();return}}
     if(e.target.id==='f-ucret'||e.target.id==='f-on')e.target.value=e.target.value.replace(/[^\d.,]/g,'');
@@ -1819,7 +1919,7 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
   var ilk=(location.hash||'').replace('#','');
   durumYukle().then(function(){
     $('#f-tar').value=gunEkle(BUGUN,3);$('#f-tar').min=BUGUN;
-    return Promise.all([fislerYukle(),kisilerYukle(),katalogYukle(),kurulumYukle()])}).then(function(){taslakYukle();onizle();
+    return Promise.all([fislerYukle(),kisilerYukle(),katalogYukle(),kurulumYukle(),renklerYukle(),oturumYukle()])}).then(function(){taslakYukle();onizle();
       if(KURULUM.ilk_kurulum_acik&&(KURULUM.kisi_bos||KURULUM.sube_yok)&&!ilk)git('kurulum',false)});
   setInterval(function(){durumYukle()},15000);
   setInterval(function(){var ek=$('.ekran.acik').dataset.ekran;if(!BEKLEYEN&&(ek==='ana'||ek==='fisler'))fislerYukle(true)},20000);

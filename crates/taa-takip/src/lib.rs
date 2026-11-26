@@ -353,9 +353,24 @@ mod testler {
             .unwrap();
         d.durum_ata(&f1.no, Durum::Hazir, "2026-11-08").unwrap();
         d.durum_ata(&f2.no, Durum::Hazir, "2026-11-05").unwrap(); // teslim 11-03: geç
-        for st in [Durum::Hazir, Durum::Teslim] {
-            d.durum_ata(&f5.no, st, "2026-11-06").unwrap();
-        }
+        d.durum_ata(&f5.no, Durum::Hazir, "2026-11-06").unwrap();
+        // teslim, teslim alan kaydıyla (sahte ad; fişli, imzasız)
+        d.teslim_et(
+            &f5.no,
+            taa_fis::TeslimKaydi {
+                teslim_alan: "Deneme Kişi".into(),
+                iliski: "kendisi".into(),
+                fisli: true,
+                dogrulama: "fis".into(),
+                imza_sha256: String::new(),
+                imza_dosyasi: String::new(),
+                kim: "PC".into(),
+                tarih: "2026-11-06".into(),
+                saat: "10:00:00".into(),
+                ana_fis: String::new(),
+            },
+        )
+        .unwrap();
         let t = Takip::defterden(&d).unwrap();
         assert_eq!(t.kargo_bekleyen().len(), 1);
         assert_eq!(t.kargo_bekleyen()[0].no, f4.no);

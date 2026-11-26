@@ -149,6 +149,7 @@ fn ornek() -> Fis {
         imzalar: vec![],
         duzeltmeler: Vec::new(),
         bagli: Vec::new(),
+        teslim_kaydi: None,
     };
     f.kalemler.push(f.kalemler[0].clone());
     f
