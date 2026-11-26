@@ -1,0 +1,15 @@
+{
+  "_aciklama": "SENTETİK: aynı günün ikinci çekmecesi/mağazası (yalnız nakit, iki POS, havale).",
+  "sentetik": true,
+  "magaza": "ornek-eksi-kredi-ceki",
+  "ciro": {
+    "nakit": 1000000,
+    "ziraat_pos": 2000000,
+    "iyzico_pos": 1500000,
+    "havale": 300000
+  },
+  "doviz": [],
+  "masraf_kurus": 0,
+  "beklenen_genel_toplam_kurus": 4800000,
+  "beklenen_magaza_toplam_kurus": 32082000
+}

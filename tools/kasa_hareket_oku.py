@@ -14,7 +14,7 @@ Yalnız yapı okunur; müşteri adı, kasiyer adı ve firma adı hiçbir çıkt�
 Ödeme tipleri şablon satırlarına:
   NAKİT TL      = Nakit TRY peşinat + Para Üstü − masraf      (= ödeme listesindeki "Elden Teslim")
   döviz         = Nakit <döviz> peşinat (TL karşılığı)
-  KREDİ KARTI   = tüm Kredi Kartı satırları (banka = kartı veren banka; QR dahil) = ZİRAAT + İYZİCO + E-FATURA POS
+  KREDİ KARTI   = tüm Kredi Kartı satırları (banka = kartı veren banka; QR dahil) = ZİRAAT + İYZİCO (iki POS terminali; E-FATURA POS kaldırıldı)
   HAVALE        = Banka Havalesi / EFT = BANKAYA HAVALE + İYZİCO ÖDEMESİ
   masraf        = Masraflar genel toplamı
   İNTERNET DEĞİŞİMİ hareket özetinde ödeme olarak yoktur; Excel'den alınır.

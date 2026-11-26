@@ -99,7 +99,8 @@ pub fn bolum(m: &MagazaOzeti, tarih: &str, k: bool) -> String {
     }
     s.push_str(&nakit);
     s.push('\n');
-    let kart = c("ziraat_pos") + c("iyzico_pos") + c("efatura_pos");
+    // Kredi kartı = iki POS (Ziraat + İyzico); eski kayıtlardaki E-FATURA POS da okunur.
+    let kart = c("ziraat_pos") + c("iyzico_pos") + c(crate::gunsonu::ESKI_EFATURA);
     let masraf: i64 = m.masraflar.iter().map(|x| x.1).sum();
     for (ad, anahtar, t) in [
         ("Kasa Fazlası", "kasa_fazlasi", c("kasa_fazlasi")),

@@ -8,6 +8,7 @@
 
 ### TAA Kasa gün sonu programı (yeni: taa-kasa-ekran, taa-kasa 0.2.0)
 
+- **E-FATURA POS kaldırıldı** (iki POS terminali): yeni girişte reddedilir, eski kayıtlar okunur ve toplama girer; ciro şablonunda 9. satır boş (formül/satır no aynı). **Kredi çeki eksi olabilir**; 27.09.2026 günü (iki mağaza + mağaza genel toplamı) formülle kuruşu kuruşuna doğrulandı (gerçek tutar depoda yok; sentetik yapı örneği ve depo dışı doğrulama için `TAA_GUN_ORNEKLERI_EK`).
 - **İkinci imza gerekçesi ve tutanak kilidi (gözetimsiz varsayılan):** tek imzayla gönderimde 5–300 karakter gerekçe zorunlu (`POST /api/gerekce`, kayıt `gerekce`); gerekçe pakette, tutanakta, kayıt Excel'inde ve matriste görünür. İlk imzadan sonra tutanak ekleri kilitli.
 - **Z formülü ayarı:** `KasaAyar.z_formulu` (iade, kredi çeki, e-fatura kanıtsız; varsayılan eski davranış). Gün örneği test iskeleti `crates/taa-kasa/testdata/gun-ornekleri/` (şimdilik sentetik).
 - **Windows:** indirme başlığı ASCII + `filename*`; Edge yolu ProgramW6432; Windows hedefi için check/clippy temiz.

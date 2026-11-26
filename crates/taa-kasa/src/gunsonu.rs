@@ -32,16 +32,21 @@ pub const TUTAR_EN_COK: i64 = 1_000_000_000_000;
 
 /// Genel toplama giren ciro satırları (anahtar, şablondaki ad), akşam ciro şablonundaki sırayla.
 /// `havale` şablonda "BANKAYA HAVALE" bölümündeki firma hesabı satırıdır (adı ayarlardan: `havale_hesap_adi`).
-pub const ODEME_TURLERI: [(&str, &str); 8] = [
+/// İki POS terminali vardır: Ziraat ve İyzico (QR ve tüm banka kartları İyzico'dan).
+pub const ODEME_TURLERI: [(&str, &str); 7] = [
     ("nakit", "NAKİT TL"),
     ("ziraat_pos", "ZİRAAT BANKASI POS:1"),
     ("iyzico_pos", "İYZİCO POS:2"),
-    ("efatura_pos", "E-FATURA POS:2"),
     ("havale", "BANKAYA HAVALE (firma hesabı)"),
     ("iyzico_odemesi", "İYZİCO ÖDEMESİ"),
     ("kredi_ceki", "KREDİ ÇEKİ"),
     ("internet_degisimi", "İNTERNET DEĞİŞİMİ"),
 ];
+
+/// Kaldırılan ödeme satırı (Yusuf, 2026-11-26: "E-fatura POS yok artık, iki POS terminali var"). Yeni girişte
+/// reddedilir; eski kayıtlarda okunur ve genel toplama eklenmeye devam eder (eski günlerin toplamı değişmez).
+/// Şablonda 9. satır boş kalır (formüller ve satır numaraları değişmez).
+pub const ESKI_EFATURA: &str = "efatura_pos";
 
 /// Kasa açığı: şablonda MASRAFLAR bölümünün ilk satırı. Elle girilmez: gün sonu sayımından hesaplanır
 /// (beklenen nakitten eksik sayılan). Fazlası `kasa_fazlasi` bilgi satırına yazılır.
@@ -58,7 +63,10 @@ pub const BILGI_ALANLARI: [(&str, &str); 5] = [
 
 /// `ciro` alanında geçerli anahtar mı; ikinci değer: eksi olabilir mi.
 pub fn ciro_anahtari(k: &str) -> Option<bool> {
-    if ODEME_TURLERI.iter().any(|(a, _)| *a == k) || k == KASA_ACIGI.0 {
+    // Kredi çeki eksi olabilir (27.09.2026 örneği: eksi kredi çeki genel toplamdan düşer).
+    if k == "kredi_ceki" {
+        Some(true)
+    } else if ODEME_TURLERI.iter().any(|(a, _)| *a == k) || k == KASA_ACIGI.0 {
         Some(false)
     } else if BILGI_ALANLARI.iter().any(|(a, _)| *a == k) {
         Some(true)
@@ -76,6 +84,7 @@ pub fn ciro_anahtari(k: &str) -> Option<bool> {
 pub fn ciro_toplami(ciro: &BTreeMap<String, i64>, doviz: &[DovizSatiri], masraf_kurus: i64) -> i64 {
     let c = |k: &str| ciro.get(k).copied().unwrap_or(0);
     ODEME_TURLERI.iter().map(|(k, _)| c(k)).sum::<i64>()
+        + c(ESKI_EFATURA)
         + doviz.iter().map(DovizSatiri::tl_kurus).sum::<i64>()
         + masraf_kurus
 }
@@ -92,8 +101,8 @@ pub fn z_beklenen(ciro_toplam: i64, ciro: &BTreeMap<String, i64>) -> i64 {
 /// karşılaştırmada hangi bilgi/ödeme satırlarının eklenip düşüleceği ayardır. Kanıt durumu:
 /// - `degisim_eklenir`, `internet_degisimi_dusulur`: 25.11 dolu dosyalarıyla doğrulandı.
 /// - `iade_eklenir`: çıkarım (25.11'de iade satırı boş); iadeli gün örneğiyle doğrulanacak.
-/// - `kredi_ceki_dusulur`, `efatura_dusulur`: bilinmiyor (iki satır da örnek günlerde boş). Varsayılan
-///   kapalı = genel toplamdaki tutar Z'de de beklenir. E-fatura satışları yazarkasa Z'sine girmiyorsa açılır.
+/// - `kredi_ceki_dusulur`: bilinmiyor (27.09 örneğinde Z verisi yok). Varsayılan kapalı = genel toplamdaki
+///   tutar (eksi olabilir) Z'de de beklenir.
 ///
 /// Gün örneği gelince `testdata/gun-ornekleri/` altına anonim JSON eklenir; test kendiliğinden doğrular.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -103,7 +112,6 @@ pub struct ZFormulu {
     pub internet_degisimi_dusulur: bool,
     pub iade_eklenir: bool,
     pub kredi_ceki_dusulur: bool,
-    pub efatura_dusulur: bool,
 }
 
 impl Default for ZFormulu {
@@ -113,7 +121,6 @@ impl Default for ZFormulu {
             internet_degisimi_dusulur: true,
             iade_eklenir: true,
             kredi_ceki_dusulur: false,
-            efatura_dusulur: false,
         }
     }
 }
@@ -126,7 +133,6 @@ pub fn z_beklenen_ayarli(ciro_toplam: i64, ciro: &BTreeMap<String, i64>, f: &ZFo
         - e(f.internet_degisimi_dusulur, "internet_degisimi")
         + e(f.iade_eklenir, "iade")
         - e(f.kredi_ceki_dusulur, "kredi_ceki")
-        - e(f.efatura_dusulur, "efatura_pos")
 }
 
 /// Dövizler (kod, ad).
@@ -332,7 +338,8 @@ impl KasaAyar {
                 }
                 for p in &n.poslar {
                     if !kimlik_gecerli(&p.id)
-                        || !ODEME_TURLERI.iter().any(|(k, _)| *k == p.odeme_turu)
+                        || !(ODEME_TURLERI.iter().any(|(k, _)| *k == p.odeme_turu)
+                            || p.odeme_turu == ESKI_EFATURA)
                     {
                         return Err(format!("POS tanımı geçersiz: {}", p.ad));
                     }
@@ -1187,6 +1194,14 @@ impl KasaDefteri {
             }
         }
         for (k, t) in &g.ciro {
+            if k == ESKI_EFATURA {
+                if *t != 0 {
+                    return Err(
+                        "E-FATURA POS kaldırıldı (iki POS terminali var): tutarı İYZİCO POS'a yazın".into(),
+                    );
+                }
+                continue;
+            }
             match ciro_anahtari(k) {
                 None => return Err(format!("bilinmeyen ciro alanı: {k}")),
                 Some(true) => tutar_denetle(k, t.abs())?,
