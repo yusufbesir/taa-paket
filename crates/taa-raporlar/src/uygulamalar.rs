@@ -117,20 +117,103 @@ pub fn tanim(kimlik: &str) -> Option<&'static UygulamaTanim> {
     UYGULAMALAR.iter().find(|u| u.kimlik == kimlik)
 }
 
-/// Bir uygulamanın raporu: bölümler + yorumlar.
+/// Rapor dönemi (YYYY-AA-GG, iki uç dahil). En çok 366 gün.
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Donem {
+    pub bas: String,
+    pub bit: String,
+}
+
+impl Donem {
+    /// `secim`: "bugun" | "7" | "30" | "ozel" (özelde `bas` ve `bit` gerekir). Boş seçim 30 gün sayılır.
+    pub fn coz(secim: &str, bas: &str, bit: &str, bugun: &str) -> Result<Donem, String> {
+        let g = crate::tarih_gunu(bugun).ok_or("bugün tarihi çözülemedi")?;
+        let gun_metni = |d: i64| tarih::tarih_metni(d * 86_400);
+        let d = match secim {
+            "bugun" => Donem {
+                bas: bugun.into(),
+                bit: bugun.into(),
+            },
+            "7" => Donem {
+                bas: gun_metni(g - 6),
+                bit: bugun.into(),
+            },
+            "" | "30" => Donem {
+                bas: gun_metni(g - 29),
+                bit: bugun.into(),
+            },
+            "ozel" => {
+                if !tarih::tarih_gecerli(bas) || !tarih::tarih_gecerli(bit) {
+                    return Err("özel dönemde bas ve bit YYYY-AA-GG olmalı".into());
+                }
+                Donem {
+                    bas: bas.into(),
+                    bit: bit.into(),
+                }
+            }
+            x => return Err(format!("bilinmeyen dönem: {x}")),
+        };
+        let (a, b) = (
+            crate::tarih_gunu(&d.bas).ok_or("başlangıç çözülemedi")?,
+            crate::tarih_gunu(&d.bit).ok_or("bitiş çözülemedi")?,
+        );
+        if b < a {
+            return Err("bitiş başlangıçtan önce olamaz".into());
+        }
+        if b - a > 365 {
+            return Err("dönem en çok 366 gün olabilir".into());
+        }
+        Ok(d)
+    }
+
+    fn gunler(&self) -> Vec<String> {
+        let (a, b) = (
+            crate::tarih_gunu(&self.bas).unwrap_or(0),
+            crate::tarih_gunu(&self.bit).unwrap_or(-1),
+        );
+        (a..=b)
+            .take(366)
+            .map(|d| tarih::tarih_metni(d * 86_400))
+            .collect()
+    }
+
+    fn icinde(&self, t: &str) -> bool {
+        t >= self.bas.as_str() && t <= self.bit.as_str()
+    }
+
+    pub fn metin(&self) -> String {
+        if self.bas == self.bit {
+            self.bas.clone()
+        } else {
+            format!("{} – {}", self.bas, self.bit)
+        }
+    }
+}
+
+/// Sütun grafiği verisi (arayüz SVG çizer).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Grafik {
+    pub baslik: String,
+    pub birim: String,
+    pub noktalar: Vec<(String, f64)>,
+}
+
+/// Bir uygulamanın raporu: bölümler + yorumlar.
+#[derive(Debug, Clone, PartialEq)]
 pub struct UygulamaRaporu {
     pub kimlik: String,
     pub ad: String,
     pub aciklama: String,
     pub bolumler: Vec<Bolum>,
     pub yorumlar: Vec<Yorum>,
+    pub grafikler: Vec<Grafik>,
 }
 
 /// Tüm uygulamaların raporu (tek tarihli).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PaketRaporu {
     pub bugun: String,
+    pub donem: Donem,
     pub uygulamalar: Vec<UygulamaRaporu>,
 }
 
@@ -152,7 +235,11 @@ fn boyut_metni(b: u64) -> String {
 }
 
 fn sahip_oku(klasor: &Path) -> Option<String> {
-    let m = std::fs::read_to_string(klasor.join("SAHIP.toml")).ok()?;
+    let yol = klasor.join("SAHIP.toml");
+    if !normal_dosya(&yol) {
+        return None;
+    }
+    let m = std::fs::read_to_string(yol).ok()?;
     m.lines().find_map(|s| {
         let s = s.trim();
         let r = s.strip_prefix("sahip")?.trim_start().strip_prefix('=')?;
@@ -181,6 +268,9 @@ pub fn alan_ozeti(kok: &Path, alan: &str, kisisel: bool) -> Bolum {
         return yok("geçersiz alan adı");
     }
     let klasor = kok.join(alan);
+    if !normal_klasor(&klasor) {
+        return yok("");
+    }
     let Ok(girdiler) = std::fs::read_dir(&klasor) else {
         return yok("");
     };
@@ -188,8 +278,11 @@ pub fn alan_ozeti(kok: &Path, alan: &str, kisisel: bool) -> Bolum {
     let mut uyarilar = vec![];
     for g in girdiler.flatten() {
         let ad_g = g.file_name().to_string_lossy().to_string();
-        let Ok(meta) = g.metadata() else { continue };
-        if !meta.is_file() || ad_g == "SAHIP.toml" {
+        // symlink_metadata: bağlantı izlenmez (veri kökü dışına çıkış olmaz).
+        let Ok(meta) = std::fs::symlink_metadata(g.path()) else {
+            continue;
+        };
+        if !meta.is_file() || meta.file_type().is_symlink() || ad_g == "SAHIP.toml" {
             continue;
         }
         dosya += 1;
@@ -234,7 +327,12 @@ pub fn alan_ozeti(kok: &Path, alan: &str, kisisel: bool) -> Bolum {
 }
 
 /// Usta puanı bölümü (TerziTakip, gölge mod). `usta-puan` kapalıysa yalnız açıklama döner.
-pub fn usta_puani_bolumu(fis_klasoru: Option<&Path>, bugun: &str) -> Bolum {
+pub fn usta_puani_bolumu(
+    fis_klasoru: Option<&Path>,
+    bugun: &str,
+    donem: &Donem,
+    grafik: &mut Vec<Grafik>,
+) -> Bolum {
     let mut b = Bolum {
         ad: "usta-puan".into(),
         baslik: "Usta puanı (yalnız yönetici)".into(),
@@ -256,15 +354,15 @@ pub fn usta_puani_bolumu(fis_klasoru: Option<&Path>, bugun: &str) -> Bolum {
         return b;
     };
     b.kaynak = dizin.display().to_string();
-    let Some(gun) = crate::tarih_gunu(bugun) else {
-        b.durum = Durum::Hata;
-        b.uyarilar.push("bugün tarihi çözülemedi".into());
-        return b;
-    };
-    let bas = tarih::tarih_metni((gun - 30) * 86_400);
+    let _ = bugun;
     // Puan hesabı TerziTakip'in (taa-takip) işidir; ince çizgi kuralı gereği burada o crate'e bağlanılmaz.
     // Rapor, `usta-puan.jsonl` defterinden yalnız ham sayıları okur (okutma, işaret, tutanak).
-    let metin = match std::fs::read_to_string(dizin.join("usta-puan.jsonl")) {
+    let usta_yol = dizin.join("usta-puan.jsonl");
+    let metin = match if usta_yol.exists() && !normal_dosya(&usta_yol) {
+        Err(std::io::Error::other("defter sıradan bir dosya değil"))
+    } else {
+        std::fs::read_to_string(&usta_yol)
+    } {
         Ok(m) => m,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
         Err(e) => {
@@ -283,7 +381,7 @@ pub fn usta_puani_bolumu(fis_klasoru: Option<&Path>, bugun: &str) -> Bolum {
         let tarih_ok = k
             .get("tarih")
             .and_then(Value::as_str)
-            .is_some_and(|t| t >= bas.as_str() && t <= bugun);
+            .is_some_and(|t| donem.icinde(t));
         match k.get("kayit").and_then(Value::as_str) {
             Some("olay") if tarih_ok => {
                 let usta = k.get("usta").and_then(Value::as_str).unwrap_or("?");
@@ -295,8 +393,14 @@ pub fn usta_puani_bolumu(fis_klasoru: Option<&Path>, bugun: &str) -> Bolum {
         }
     }
     b.durum = Durum::Var;
-    b.satirlar
-        .push(("dönem".into(), format!("{bas} – {bugun}")));
+    b.satirlar.push(("dönem".into(), donem.metin()));
+    if !okutma.is_empty() {
+        grafik.push(Grafik {
+            baslik: "Ustaya göre okutma (dönem)".into(),
+            birim: "okutma".into(),
+            noktalar: okutma.iter().map(|(u, n)| (u.clone(), *n as f64)).collect(),
+        });
+    }
     for (usta, n) in okutma {
         b.satirlar.push((usta, format!("{n} okutma")));
     }
@@ -314,6 +418,265 @@ pub fn usta_puani_bolumu(fis_klasoru: Option<&Path>, bugun: &str) -> Bolum {
     b
 }
 
+/// Sembolik bağlantı / junction izlenmez: yalnız gerçek, sıradan dosya.
+fn normal_dosya(yol: &Path) -> bool {
+    std::fs::symlink_metadata(yol)
+        .map(|m| m.is_file() && !m.file_type().is_symlink())
+        .unwrap_or(false)
+}
+
+/// Sembolik bağlantı / junction olmayan gerçek klasör.
+fn normal_klasor(yol: &Path) -> bool {
+    std::fs::symlink_metadata(yol)
+        .map(|m| m.is_dir() && !m.file_type().is_symlink())
+        .unwrap_or(false)
+}
+
+const JSONL_ENCOK: u64 = 64 * 1024 * 1024;
+
+/// JSONL defterini okur: (geçerli kayıtlar, bozuk satır sayısı). Okunamayan, bağlantı olan
+/// ya da çok büyük dosya hata sayılır; boş dosya ile okunamayan dosya karışmaz.
+fn jsonl_oku(yol: &Path) -> Result<(Vec<Value>, usize), String> {
+    use std::io::BufRead;
+    if !normal_dosya(yol) {
+        return Err("defter sıradan bir dosya değil".into());
+    }
+    let boy = std::fs::metadata(yol).map_err(|e| e.to_string())?.len();
+    if boy > JSONL_ENCOK {
+        return Err(format!(
+            "defter çok büyük ({} MB üstü)",
+            JSONL_ENCOK / 1024 / 1024
+        ));
+    }
+    let f = std::fs::File::open(yol).map_err(|e| e.to_string())?;
+    let (mut kayit, mut bozuk) = (vec![], 0usize);
+    for satir in std::io::BufReader::new(f).lines() {
+        let satir = satir.map_err(|e| e.to_string())?;
+        if satir.trim().is_empty() {
+            continue;
+        }
+        match serde_json::from_str::<Value>(&satir) {
+            Ok(v) => kayit.push(v),
+            Err(_) => bozuk += 1,
+        }
+    }
+    Ok((kayit, bozuk))
+}
+
+fn kurus_tl(k: i64) -> String {
+    taa_rapor::kurus_metni(k)
+}
+
+/// Kasa: dönemdeki kapanışlar, toplam sayılan/fark, kapanışı girilmeyen günler (kural) ve günlük sayım grafiği.
+fn kasa_donemi(
+    kok: &Path,
+    donem: &Donem,
+    bugun: &str,
+    bolumler: &mut Vec<Bolum>,
+    yorumlar: &mut Vec<Yorum>,
+    grafikler: &mut Vec<Grafik>,
+) {
+    let yol = kok.join("kasa-defteri").join("kasa.jsonl");
+    if !yol.exists() {
+        return;
+    }
+    let (kayitlar, bozuk) = match jsonl_oku(&yol) {
+        Ok(x) => x,
+        Err(e) => {
+            let metin = format!("Kasa defteri okunamadı: {e}");
+            bolumler.push(Bolum {
+                ad: "kasa-donem".into(),
+                baslik: format!("Kasa kapanışları ({})", donem.metin()),
+                durum: Durum::Hata,
+                kaynak: String::new(),
+                satirlar: vec![],
+                uyarilar: vec![metin.clone()],
+            });
+            yorumlar.push(Yorum {
+                seviye: Seviye::Uyari,
+                bolum: "kasa".into(),
+                metin,
+            });
+            return;
+        }
+    };
+    let str_ = |v: &Value, a: &str| v.get(a).and_then(Value::as_str).unwrap_or("").to_string();
+    let iptal: Vec<String> = kayitlar
+        .iter()
+        .filter(|k| str_(k, "tur") == "iptal")
+        .map(|k| str_(k.get("v").unwrap_or(&Value::Null), "id"))
+        .collect();
+    let mut gunluk: std::collections::BTreeMap<String, i64> = Default::default();
+    let (mut n, mut fark, mut sayilan, mut tasti) = (0u64, 0i64, 0i64, false);
+    for k in kayitlar.iter().filter(|k| str_(k, "tur") == "kapanis") {
+        let v = k.get("v").unwrap_or(&Value::Null);
+        if iptal.contains(&str_(v, "id")) || !donem.icinde(&str_(v, "tarih")) {
+            continue;
+        }
+        n += 1;
+        let (sy, fk) = (
+            v.get("sayilan_kurus").and_then(Value::as_i64).unwrap_or(0),
+            v.get("fark_kurus").and_then(Value::as_i64).unwrap_or(0),
+        );
+        match (sayilan.checked_add(sy), fark.checked_add(fk)) {
+            (Some(a), Some(b)) => {
+                sayilan = a;
+                fark = b;
+            }
+            _ => {
+                tasti = true;
+            }
+        }
+        let g = gunluk.entry(str_(v, "tarih")).or_default();
+        *g = g.saturating_add(sy);
+    }
+    let eksik: Vec<String> = donem
+        .gunler()
+        .into_iter()
+        .filter(|g| g.as_str() < bugun && !gunluk.contains_key(g))
+        .collect();
+    let mut b = Bolum {
+        ad: "kasa-donem".into(),
+        baslik: format!("Kasa kapanışları ({})", donem.metin()),
+        durum: Durum::Var,
+        kaynak: String::new(),
+        satirlar: vec![
+            ("kapanış".into(), n.to_string()),
+            ("toplam sayılan".into(), kurus_tl(sayilan)),
+            ("toplam fark".into(), kurus_tl(fark)),
+            ("kapanışı girilmeyen gün".into(), eksik.len().to_string()),
+        ],
+        uyarilar: vec![],
+    };
+    if bozuk > 0 {
+        let metin =
+            format!("Kasa defterinde {bozuk} bozuk satır atlandı; toplamlar eksik olabilir.");
+        b.uyarilar.push(metin.clone());
+        yorumlar.push(Yorum {
+            seviye: Seviye::Dikkat,
+            bolum: "kasa".into(),
+            metin,
+        });
+    }
+    if tasti {
+        b.durum = Durum::Hata;
+        let metin =
+            "Kasa toplamları sayı sınırını aştı; toplamlar güvenilmez, kayıtları kontrol edin."
+                .to_string();
+        b.uyarilar.push(metin.clone());
+        yorumlar.push(Yorum {
+            seviye: Seviye::Uyari,
+            bolum: "kasa".into(),
+            metin,
+        });
+    }
+    if !eksik.is_empty() {
+        let ilk: Vec<&str> = eksik.iter().take(5).map(String::as_str).collect();
+        let metin = format!(
+            "{} günde kasa kapanışı girilmemiş (ör. {}). Mağaza kapalı günler de bu sayıya girer.",
+            eksik.len(),
+            ilk.join(", ")
+        );
+        b.uyarilar.push(metin.clone());
+        yorumlar.push(Yorum {
+            seviye: Seviye::Dikkat,
+            bolum: "kasa".into(),
+            metin,
+        });
+    }
+    if !gunluk.is_empty() {
+        grafikler.push(Grafik {
+            baslik: "Günlük sayılan kasa".into(),
+            birim: "TL".into(),
+            noktalar: gunluk
+                .into_iter()
+                .map(|(g, k)| (g, k as f64 / 100.0))
+                .collect(),
+        });
+    }
+    bolumler.push(b);
+}
+
+/// TerziTakip: dönemde teslimi gelen açık fişler (iş yükü) ve gün gün grafik.
+fn fis_donemi(
+    kok: &Path,
+    fis_klasoru: Option<&Path>,
+    donem: &Donem,
+    bolumler: &mut Vec<Bolum>,
+    grafikler: &mut Vec<Grafik>,
+) {
+    let yol = fis_klasoru
+        .map(|f| f.join("fisler.jsonl"))
+        .filter(|y| y.exists())
+        .unwrap_or_else(|| kok.join("fis-defteri").join("fisler.jsonl"));
+    if !yol.exists() {
+        return;
+    }
+    let mut fisler: Vec<(String, String, String)> = vec![]; // no, teslim, durum
+    let (kayitlar, bozuk) = match jsonl_oku(&yol) {
+        Ok(x) => x,
+        Err(e) => {
+            bolumler.push(Bolum {
+                ad: "fis-donem".into(),
+                baslik: format!("Teslimi gelen açık fişler ({})", donem.metin()),
+                durum: Durum::Hata,
+                kaynak: String::new(),
+                satirlar: vec![],
+                uyarilar: vec![format!("Fiş defteri okunamadı: {e}")],
+            });
+            return;
+        }
+    };
+    for k in kayitlar {
+        let v = k.get("v").unwrap_or(&Value::Null);
+        let al = |a: &str| v.get(a).and_then(Value::as_str).unwrap_or("").to_string();
+        let no = al("no");
+        match k.get("tur").and_then(Value::as_str) {
+            Some("fis") => fisler.push((no, al("teslim"), al("durum"))),
+            Some("durum") => {
+                if let Some(f) = fisler.iter_mut().find(|f| f.0 == no) {
+                    f.2 = al("durum");
+                }
+            }
+            Some("teslim") => {
+                if let (Some(f), Some(y)) = (
+                    fisler.iter_mut().find(|f| f.0 == no),
+                    v.pointer("/degisiklik/yeni").and_then(Value::as_str),
+                ) {
+                    f.1 = y.to_string();
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut gunluk: std::collections::BTreeMap<String, u64> = Default::default();
+    for (_, teslim, durum) in &fisler {
+        if durum != "teslim" && donem.icinde(teslim) {
+            *gunluk.entry(teslim.clone()).or_default() += 1;
+        }
+    }
+    let toplam: u64 = gunluk.values().sum();
+    bolumler.push(Bolum {
+        ad: "fis-donem".into(),
+        baslik: format!("Teslimi gelen açık fişler ({})", donem.metin()),
+        durum: Durum::Var,
+        kaynak: String::new(),
+        satirlar: vec![("açık fiş".into(), toplam.to_string())],
+        uyarilar: if bozuk > 0 {
+            vec![format!("Fiş defterinde {bozuk} bozuk satır atlandı.")]
+        } else {
+            vec![]
+        },
+    });
+    if !gunluk.is_empty() {
+        grafikler.push(Grafik {
+            baslik: "Gün gün teslimi gelen açık fiş".into(),
+            birim: "fiş".into(),
+            noktalar: gunluk.into_iter().map(|(g, n)| (g, n as f64)).collect(),
+        });
+    }
+}
+
 /// Tek uygulamanın raporu. `rapor`: `taa_rapor::uret` çıktısı (bir kez üretilip paylaşılır).
 pub fn uygulama_raporu(
     kok: &Path,
@@ -321,7 +684,9 @@ pub fn uygulama_raporu(
     t: &UygulamaTanim,
     rapor: &Rapor,
     tum_yorumlar: &[Yorum],
+    donem: &Donem,
 ) -> UygulamaRaporu {
+    let mut grafikler: Vec<Grafik> = vec![];
     let mut bolumler: Vec<Bolum> = t
         .bolumler
         .iter()
@@ -331,13 +696,53 @@ pub fn uygulama_raporu(
         bolumler.push(alan_ozeti(kok, a, t.kisisel_alanlar.contains(a)));
     }
     if t.usta_puani {
-        bolumler.push(usta_puani_bolumu(fis_klasoru, &rapor.bugun));
+        bolumler.push(usta_puani_bolumu(
+            fis_klasoru,
+            &rapor.bugun,
+            donem,
+            &mut grafikler,
+        ));
     }
     let mut yorumlar: Vec<Yorum> = tum_yorumlar
         .iter()
         .filter(|y| t.bolumler.contains(&y.bolum.as_str()))
         .cloned()
         .collect();
+    // Dönem bölümleri (kasa kapanışı, teslim iş yükü) ve grafikler.
+    match t.kimlik {
+        "kasa" => kasa_donemi(
+            kok,
+            donem,
+            &rapor.bugun,
+            &mut bolumler,
+            &mut yorumlar,
+            &mut grafikler,
+        ),
+        "terzitakip" => fis_donemi(kok, fis_klasoru, donem, &mut bolumler, &mut grafikler),
+        _ => {}
+    }
+    for b in &rapor.bolumler {
+        if t.bolumler.contains(&b.ad.as_str()) && b.durum == Durum::Var && b.ad == "fis" {
+            let sayilar: Vec<(String, f64)> =
+                ["acik", "bekliyor", "terzihanede", "hazir", "teslim"]
+                    .iter()
+                    .filter_map(|k| {
+                        b.satirlar
+                            .iter()
+                            .find(|(a, _)| a == k)
+                            .and_then(|(_, v)| v.parse::<f64>().ok())
+                            .map(|n| (k.to_string(), n))
+                    })
+                    .collect();
+            if sayilar.iter().any(|(_, n)| *n > 0.0) {
+                grafikler.push(Grafik {
+                    baslik: "Fişlerin durumu".into(),
+                    birim: "fiş".into(),
+                    noktalar: sayilar,
+                });
+            }
+        }
+    }
     if bolumler.iter().all(|b| b.durum == Durum::Yok) {
         let metin = if t.alanlar.is_empty() && t.bolumler.is_empty() {
             format!("{} ortak veri alanı yazmaz; rapor verisi yok.", t.ad)
@@ -356,6 +761,7 @@ pub fn uygulama_raporu(
         aciklama: t.aciklama.into(),
         bolumler,
         yorumlar,
+        grafikler,
     }
 }
 
@@ -366,6 +772,7 @@ pub fn paket_raporu(
     bugun: &str,
     esikler: &Esikler,
     yalniz: Option<&str>,
+    donem: &Donem,
 ) -> Result<PaketRaporu, String> {
     let secili: Vec<&UygulamaTanim> = match yalniz {
         None | Some("") | Some("hepsi") => UYGULAMALAR.iter().collect(),
@@ -379,16 +786,19 @@ pub fn paket_raporu(
     let yorumlar = yorumla(&rapor, esikler);
     Ok(PaketRaporu {
         bugun: bugun.into(),
+        donem: donem.clone(),
         uygulamalar: secili
             .into_iter()
-            .map(|t| uygulama_raporu(kok, fis_klasoru, t, &rapor, &yorumlar))
+            .map(|t| uygulama_raporu(kok, fis_klasoru, t, &rapor, &yorumlar, donem))
             .collect(),
     })
 }
 
 fn hucre(s: &str) -> String {
     // Excel'de formül olarak çalışmasın: =, +, -, @ ile başlayanın önüne kesme konur.
-    let s = if s.starts_with(['=', '+', '-', '@']) {
+    // Baştaki boşluk/denetim karakterini atan içe aktarıcılar için de korunur.
+    let ilk = s.trim_start_matches(|c: char| c.is_whitespace() || c.is_control());
+    let s = if ilk.starts_with(['=', '+', '-', '@']) {
         format!("'{s}")
     } else {
         s.to_string()
@@ -401,9 +811,85 @@ fn hucre(s: &str) -> String {
 }
 
 impl PaketRaporu {
+    /// Excel çalışma kitabı (.xlsx): Özet, Bölümler, Yorumlar, Grafik verisi sayfaları.
+    pub fn xlsx(&self) -> Vec<u8> {
+        use crate::xlsx::{xlsx_yaz, Sayfa};
+        let r = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        let mut ozet = vec![r(&["Uygulama", "Uyarı", "Dikkat", "Bilgi", "Dönem"])];
+        let mut bol = vec![r(&["Uygulama", "Bölüm", "Durum", "Anahtar", "Değer"])];
+        let mut yor = vec![r(&["Uygulama", "Seviye", "Bölüm", "Yorum"])];
+        let mut gra = vec![r(&["Uygulama", "Grafik", "Etiket", "Değer", "Birim"])];
+        for u in &self.uygulamalar {
+            let say = |s: Seviye| {
+                u.yorumlar
+                    .iter()
+                    .filter(|y| y.seviye == s)
+                    .count()
+                    .to_string()
+            };
+            ozet.push(vec![
+                u.ad.clone(),
+                say(Seviye::Uyari),
+                say(Seviye::Dikkat),
+                say(Seviye::Bilgi),
+                self.donem.metin(),
+            ]);
+            for b in &u.bolumler {
+                for (k, v) in &b.satirlar {
+                    bol.push(vec![
+                        u.ad.clone(),
+                        b.baslik.clone(),
+                        b.durum.metin().into(),
+                        k.clone(),
+                        v.clone(),
+                    ]);
+                }
+                for w in &b.uyarilar {
+                    bol.push(vec![
+                        u.ad.clone(),
+                        b.baslik.clone(),
+                        b.durum.metin().into(),
+                        "uyarı".into(),
+                        w.clone(),
+                    ]);
+                }
+            }
+            for y in &u.yorumlar {
+                yor.push(vec![
+                    u.ad.clone(),
+                    y.seviye.metin().into(),
+                    y.bolum.clone(),
+                    y.metin.clone(),
+                ]);
+            }
+            for g in &u.grafikler {
+                for (e, d) in &g.noktalar {
+                    gra.push(vec![
+                        u.ad.clone(),
+                        g.baslik.clone(),
+                        e.clone(),
+                        d.to_string(),
+                        g.birim.clone(),
+                    ]);
+                }
+            }
+        }
+        let sayfa = |ad: &str, satirlar| Sayfa {
+            ad: ad.into(),
+            satirlar,
+        };
+        xlsx_yaz(&[
+            sayfa("Özet", ozet),
+            sayfa("Bölümler", bol),
+            sayfa("Yorumlar", yor),
+            sayfa("Grafik verisi", gra),
+        ])
+    }
+
     pub fn json(&self) -> Value {
         json!({
             "bugun": self.bugun,
+            "donem": {"bas": self.donem.bas, "bit": self.donem.bit},
             "uygulamalar": self.uygulamalar.iter().map(|u| json!({
                 "kimlik": u.kimlik,
                 "ad": u.ad,
@@ -416,6 +902,11 @@ impl PaketRaporu {
                     "uyarilar": b.uyarilar,
                 })).collect::<Vec<_>>(),
                 "yorumlar": u.yorumlar.iter().map(|y| json!({"seviye": y.seviye.metin(), "bolum": y.bolum, "metin": y.metin})).collect::<Vec<_>>(),
+                "grafikler": u.grafikler.iter().map(|g| json!({
+                    "baslik": g.baslik,
+                    "birim": g.birim,
+                    "noktalar": g.noktalar.iter().map(|(e, d)| json!({"etiket": e, "deger": d})).collect::<Vec<_>>(),
+                })).collect::<Vec<_>>(),
             })).collect::<Vec<_>>(),
         })
     }
@@ -425,6 +916,7 @@ impl PaketRaporu {
     pub fn csv(&self) -> String {
         let mut s = String::from("\u{feff}uygulama;bolum;durum;anahtar;deger\r\n");
         s.push_str(&format!("rapor;;var;tarih;{}\r\n", self.bugun));
+        s.push_str(&format!("rapor;;var;dönem;{}\r\n", self.donem.metin()));
         for u in &self.uygulamalar {
             for b in &u.bolumler {
                 for (k, v) in &b.satirlar {
@@ -465,6 +957,36 @@ impl PaketRaporu {
 mod testler {
     use super::*;
 
+    #[test]
+    fn hucre_bastaki_bosluktan_sonra_formul_korunur() {
+        assert!(hucre(" =1+1").starts_with("'"));
+        assert!(hucre("\t@x").starts_with("'"));
+        assert_eq!(hucre("normal"), "normal");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn sembolik_baglanti_izlenmez() {
+        let d = gecici("symlink");
+        let disari = gecici("symlink-disari");
+        std::fs::write(disari.join("x.jsonl"), "{}\n").unwrap();
+        std::fs::create_dir_all(d.join("kasa-defteri")).unwrap();
+        std::os::unix::fs::symlink(disari.join("x.jsonl"), d.join("kasa-defteri/kasa.jsonl"))
+            .unwrap();
+        assert!(jsonl_oku(&d.join("kasa-defteri/kasa.jsonl")).is_err());
+        std::os::unix::fs::symlink(&disari, d.join("kimlik")).unwrap();
+        assert!(!normal_klasor(&d.join("kimlik")));
+    }
+
+    #[test]
+    fn jsonl_bozuk_satir_sayilir() {
+        let d = gecici("bozuk");
+        std::fs::write(d.join("a.jsonl"), "{\"a\":1}\nbozuk\n\n{\"b\":2}\n").unwrap();
+        let (k, b) = jsonl_oku(&d.join("a.jsonl")).unwrap();
+        assert_eq!((k.len(), b), (2, 1));
+        assert!(jsonl_oku(&d.join("yok.jsonl")).is_err());
+    }
+
     fn gecici(ad: &str) -> std::path::PathBuf {
         let d = std::env::temp_dir().join(format!("taa-uyg-{}-{ad}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
@@ -498,7 +1020,8 @@ mod testler {
 
     #[test]
     fn usta_puani_kapaliyken_hesaplanmaz() {
-        let b = usta_puani_bolumu(None, "2026-11-26");
+        let dn = Donem::coz("30", "", "", "2026-11-26").unwrap();
+        let b = usta_puani_bolumu(None, "2026-11-26", &dn, &mut vec![]);
         if !taa_ayar::ozellik_acik("usta-puan", false) {
             assert_eq!(b.durum, Durum::Yok);
             assert!(b.uyarilar[0].contains("kapalı"));
@@ -509,11 +1032,20 @@ mod testler {
     #[test]
     fn bos_kokte_tum_uygulamalar_calisir() {
         let d = gecici("bos");
-        let r = paket_raporu(&d, None, "2026-11-26", &Esikler::default(), None).unwrap();
+        let dn = Donem::coz("30", "", "", "2026-11-26").unwrap();
+        let r = paket_raporu(&d, None, "2026-11-26", &Esikler::default(), None, &dn).unwrap();
         assert_eq!(r.uygulamalar.len(), UYGULAMALAR.len());
         let vidyo = r.uygulamalar.iter().find(|u| u.kimlik == "vidyo").unwrap();
         assert!(vidyo.yorumlar[0].metin.contains("yazmaz"));
-        assert!(paket_raporu(&d, None, "2026-11-26", &Esikler::default(), Some("yok")).is_err());
+        assert!(paket_raporu(
+            &d,
+            None,
+            "2026-11-26",
+            &Esikler::default(),
+            Some("yok"),
+            &dn
+        )
+        .is_err());
     }
 
     #[test]

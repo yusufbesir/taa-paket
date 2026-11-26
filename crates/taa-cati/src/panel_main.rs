@@ -407,7 +407,7 @@ fn raporlar(istek: Request, ayar: &Ayar, yol: &str, sorgu: &str) {
         sorgu,
         &taa_rapor::tarih::bugun(),
     );
-    let mut y = Response::from_string(govde).with_status_code(durum);
+    let mut y = Response::from_data(govde).with_status_code(durum);
     if let Some(ad) = indir {
         // Dosya adı yalnız [a-z0-9.-] içerir (uygulama kimliği + tarih doğrulanmıştır).
         let guvenli: String = ad
