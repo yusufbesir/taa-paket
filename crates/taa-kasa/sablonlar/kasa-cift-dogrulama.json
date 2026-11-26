@@ -1,0 +1,181 @@
+{
+  "kimlik": "kasa-cift-dogrulama",
+  "ad": "Kasa Çift Doğrulama Tutanağı",
+  "kategori": "sirket-ici",
+  "sinif": "tutanak",
+  "etiketler": [
+    "Kasa",
+    "Fark",
+    "Tek sayfa",
+    "Şahit gerekmez"
+  ],
+  "surum": 2,
+  "baslik": "KASA ÇİFT DOĞRULAMA TUTANAĞI",
+  "hukuki": {
+    "dipnot": "Şubemizdeki kasada bulunan nakit, POS slipleri, havale/EFT, kredi çeki ve diğer kıymetli evrak, şirket prosedürleri doğrultusunda iki yetkili tarafından birlikte sayılarak tabloda kalem bazında doğrulanmıştır. Tutanak, çift doğrulamanın kayıt altına alınması için düzenlenmiş ve görevlilerce imzalanmıştır.",
+    "saklamaYil": 10,
+    "kvkk": false,
+    "avukatOnayi": false
+  },
+  "numara": {
+    "onek": "KCD",
+    "seri": "yil"
+  },
+  "ust": {
+    "tarihSaat": "sag-ust"
+  },
+  "kayit": {
+    "ozne": "sube",
+    "mahiyet": "Kasa çift doğrulama"
+  },
+  "bolumler": [
+    {
+      "baslik": "1. Şube Bilgisi",
+      "alanlar": [
+        {
+          "id": "sube",
+          "etiket": "Şube Adı",
+          "tur": "metin",
+          "zorunlu": true
+        }
+      ]
+    },
+    {
+      "baslik": "3. Yapılan Kontroller ve Sonuç",
+      "alanlar": [
+        {
+          "id": "kontroller",
+          "etiket": "Yapılan kontroller",
+          "tur": "coklu",
+          "secenekler": [
+            "ERP (Nebim) kasa bakiyesi ile fiili kasa bakiyesi karşılaştırılmıştır.",
+            "Gün sonu Z raporu / POS gün sonu / Nebim mağaza raporu karşılaştırılmıştır.",
+            "Tahsilat ve ödeme belgeleri (fiş, fatura, slip) incelenmiştir.",
+            "Nakit, kredi çeki ve kıymetli evrak iki yetkili tarafından birlikte sayılmıştır.",
+            "Havale/EFT ve sanal POS kayıtları banka / İyzico ekstresiyle eşleştirilmiştir."
+          ]
+        },
+        {
+          "id": "sonuc",
+          "etiket": "Sonuç",
+          "tur": "secim",
+          "zorunlu": true,
+          "secenekler": [
+            "Fark yoktur.",
+            "Fark tespit edilmiştir."
+          ]
+        }
+      ]
+    },
+    {
+      "baslik": "4. Fark Detayı (fark varsa)",
+      "alanlar": [
+        {
+          "id": "fark_tutar",
+          "etiket": "Fark Tutarı (TL)",
+          "tur": "sayi"
+        },
+        {
+          "id": "fark_kalem",
+          "etiket": "Hangi Kalemde",
+          "tur": "metin"
+        },
+        {
+          "id": "neden",
+          "etiket": "Olası Neden / Açıklama",
+          "tur": "uzunmetin"
+        },
+        {
+          "id": "islem",
+          "etiket": "Yapılan İşlem (kamera incelemesi / müşteri ile iletişim / tahsilat / tutanak)",
+          "tur": "uzunmetin"
+        }
+      ]
+    }
+  ],
+  "tablo": {
+    "baslik": "2. Kalem Bazında Doğrulama",
+    "enAzSatir": 8,
+    "sabitSatirlar": [
+      "Nakit (TL)",
+      "Ziraat Bankası POS",
+      "İyzico Fiziksel POS",
+      "İyzico Sanal POS",
+      "Havale / EFT",
+      "Kredi Çeki",
+      "E-ticaret Değişimi",
+      "Diğer"
+    ],
+    "sutunlar": [
+      {
+        "id": "kalem",
+        "etiket": "Kalem",
+        "tur": "metin"
+      },
+      {
+        "id": "erp",
+        "etiket": "ERP (Nebim) Bakiyesi",
+        "tur": "sayi",
+        "toplam": true
+      },
+      {
+        "id": "fiili",
+        "etiket": "Fiili Sayım",
+        "tur": "sayi",
+        "toplam": true
+      },
+      {
+        "id": "fark",
+        "etiket": "Fark (+/-)",
+        "tur": "hesap",
+        "formul": {
+          "fark": [
+            "erp",
+            "fiili"
+          ]
+        }
+      },
+      {
+        "id": "gerekce",
+        "etiket": "Fark gerekçesi",
+        "tur": "metin",
+        "farkGerekce": true
+      }
+    ],
+    "sonra": 1
+  },
+  "tanik": {
+    "mod": "yok"
+  },
+  "imzalar": [
+    {
+      "rol": "Kasa Sorumlusu",
+      "imtinaKaydi": false
+    },
+    {
+      "rol": "Mağaza Sorumlusu / Vekili",
+      "imtinaKaydi": false
+    }
+  ],
+  "eposta": {
+    "konu": "Kasa çift doğrulama: {{sube}} ({{sonuc}})",
+    "govde": "Merhaba,\n\n{{sube}} şubesinde kasa çift doğrulaması yapılmıştır. Sonuç: {{sonuc}} Fark tutarı: {{fark_tutar}} TL ({{fark_kalem}}). İmzalı tutanak ektedir.\n\nBilgilerinize sunarım.",
+    "oneri": [
+      {
+        "rol": "finans",
+        "ipucu": "Kasa farkı ve gün sonu doğrulaması için"
+      },
+      {
+        "rol": "muhasebe",
+        "ipucu": "Fark varsa muhasebe kaydı için"
+      },
+      {
+        "rol": "mudur",
+        "ipucu": "Mağaza / bölüm müdürüne bilgi ve takip için"
+      }
+    ]
+  },
+  "arayuz": {
+    "profil": "kasa"
+  }
+}

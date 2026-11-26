@@ -1,11 +1,11 @@
-# taa-kasa: TaaKasaDefteri çekirdeği: günlük kasa kapanış sayımı. Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-04].
+# taa-kasa: TAA Kasa çekirdeği (eski TaaKasaDefteri korunur). Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-04]. güncelleme: [Claude#taa-kasa-KS2 2026-11-26] gün sonu, masraf, kuyruk, matris, xlsx; yeni dış bağımlılık yok.
 [package]
 name = "taa-kasa"
-version = "0.1.0"
+version = "0.2.0"
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "TaaKasaDefteri çekirdeği: günlük kasa kapanış sayımı"
+description = "TAA Kasa çekirdeği: açılış, sayım, devir, masraf, gün sonu karşılaştırması, kuyruk, matris, xlsx (eski TaaKasaDefteri korunur)"
 
 [lib]
 path = "src/lib.rs"
@@ -15,3 +15,5 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 taa-ayar = { path = "../taa-ayar" }
 taa-dosya = { path = "../taa-dosya" }
+# Nebim kasa Excel içe aktarma (Tutaa kasa-excel.js karşılığı); çalışma alanında zaten var.
+zip = { version = "9.3.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }

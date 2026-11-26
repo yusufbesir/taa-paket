@@ -206,6 +206,21 @@ def denetle(kok: Path) -> dict:
         if len(liste) > 1:
             hatalar.append(f"[paket] yetenek '{y}' birden çok crate tarafından sunuluyor: {', '.join(liste)}")
 
+    # (11) aynı depoda yaşayan programlar: crates/<ad>/program.toml varsa program modunda denetlenir
+    # (sürüm o crate'in Cargo.toml'u ile, veri sahipliği docs/veri-sahipleri.toml ile) ve `ad`'ı
+    # modul.toml `program` alanıyla aynı olmalıdır. [Claude#taa-kasa-KS2 2026-11-26]
+    for k in klasorler:
+        pt = k / "program.toml"
+        if not pt.is_file():
+            continue
+        ps = program_denetle(pt, k / "Cargo.toml", kok)
+        hatalar.extend(f"[{k.name}] program.toml: {h}" for h in ps["hatalar"])
+        uyarilar.extend(f"[{k.name}] program.toml: {u}" for u in ps["uyarilar"])
+        pm, _ = _oku(pt)
+        mm = modeller.get(k.name) or {}
+        if isinstance(pm, dict) and pm.get("ad") != mm.get("program"):
+            hatalar.append(f"[{k.name}] program.toml ad ({pm.get('ad')!r}) modul.toml program ({mm.get('program')!r}) ile aynı değil")
+
     return {
         "kok": str(kok),
         "crate_sayisi": len(klasorler),

@@ -12,3 +12,7 @@ cihaz = "taa-cihaz"
 giydir-kombinleri = "taagiydir"
 yol = "taa-yol"
 ocr-modeller = "taa-ocr"
+# TAA Kasa (ana plan §15; [Claude#taa-kasa-KS2 2026-11-26]): tek yazar taakasa, Tutaa yalnız okur (T6b).
+kasa-defteri = "taakasa"
+kasa-gunsonu = "taakasa"
+kasa-masraf = "taakasa"

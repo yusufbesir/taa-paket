@@ -42,6 +42,20 @@ class Calisma(unittest.TestCase):
 
 
 class Testler(Calisma):
+    def test_depodaki_program_toml(self):
+        (self.kok / "docs").mkdir()
+        (self.kok / "docs" / "veri-sahipleri.toml").write_text('[alanlar]\nkasa-gunsonu = "taakasa"\n')
+        self.crate("taa-kasa-ekran", program="taakasa")
+        pt = self.kok / "crates" / "taa-kasa-ekran" / "program.toml"
+        pt.write_text('ad = "taakasa"\ngorunen_ad = "TAA Kasa"\nsurum = "0.1.0"\narayuz = "1"\ngerektirir = {}\n'
+                      'sunar = ["kasa.gunsonu@1"]\nister = []\nveri_sahibi = ["kasa-gunsonu"]\nveri_okur = []\n'
+                      'ayar_alani = "programlar.taakasa"\n')
+        self.assertTrue(self.sonuc()["basarili"], self.sonuc()["hatalar"])
+        pt.write_text(pt.read_text().replace('surum = "0.1.0"', 'surum = "0.2.0"'))
+        self.assertTrue(self.hata_var("program.toml"))
+        pt.write_text(pt.read_text().replace('surum = "0.2.0"', 'surum = "0.1.0"').replace('ad = "taakasa"', 'ad = "baska"'))
+        self.assertTrue(self.hata_var("modul.toml program"))
+
     def test_temiz(self):
         self.crate("taa-a")
         self.crate("taa-b", gerektirir='{ "taa-a" = "1" }',

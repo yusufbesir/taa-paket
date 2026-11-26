@@ -6,6 +6,20 @@
 
 ## Yayınlanmamış
 
+### TAA Kasa gün sonu programı (yeni: taa-kasa-ekran, taa-kasa 0.2.0)
+
+- **Yeni program `taakasa` (exe `taa-kasa`):** gömülü pencereli tek exe; yerel güvenlik taa-cati panel kalıbı (127.0.0.1, rastgele kapı, tek seferlik açılış belirteci → HttpOnly/SameSite=Strict çerez, Host/Origin/içerik türü denetimi, sıkı CSP). Çekmece sayımı (açılış/ara/devir), ödeme türlerine göre ciro, döviz, Z/POS/Nebim karşılaştırması, masraf (2.000 TL altı müdür, üstü merkez onayı), "giren onaylayamaz", ikinci kişi onayı, kapanış listesi, imzalı paketle merkeze gönderim + çevrimdışı kuyruk, merkez matrisi (geldi/eksik/geç), Excel (xlsx) dışa aktarım.
+- **taa-kasa çekirdeği:** `gunsonu`, `merkez`, `xlsx`, `zaman` modülleri; eski `Defter` aynen duruyor. Kayıtlar yalnız eklenir; düzeltme = yönetici iptali + `duzeltir` izli yeni kayıt, silme yok.
+- **Sözleşmeler:** `kasa.gunsonu@1`, `kasa.masraf@1` (docs/sozlesmeler), veri sahibi `taakasa`; sözleşme denetleyicisi artık depodaki her `program.toml`'u program kipinde de denetliyor.
+- **Sınır / yer tutucu:** ortak giriş (KM1/KM2) bağlanmadı — personel adı listeden seçiliyor, yönetici girişi geçici yerel PIN; mağaza imzası cihaz anahtarıyla; sunucu kasa ucu yok (klasöre teslim); fiş fotoğrafı yalnız yol. Ayrıntı: docs/TAA-KASA.md. Windows'ta denenmedi.
+- **Akşam ciro Excel'i:** ciro alanları şubelerin "CİRO ŞABLONU V2" Excel'ine birebir uyarlandı (NAKİT TL, döviz, ZİRAAT POS:1, İYZİCO POS:2, E-FATURA POS:2, firma havalesi, İyzico ödemesi, kasa açığı, masraflar, kredi çeki, internet değişimi; +/- ve iade bilgi satırları). Yeni `sablon` modülü aylık xlsx üretir: gün başına sayfa, iki çekmecede A1:E40 hücre adresleri, formüller, renkler, koruma ve dondurma şablonla aynı (LibreOffice yeniden hesabında 30 sayfada fark yok). xlsx yazıcısına stil, formül, sütun genişliği, dondurma, koruma ve yazdırma alanı eklendi. `tools/kasa_ciro_karsilastir.py`: dolu Excel'i program çıktısıyla satır adına göre karşılaştırır.
+
+- **İmza (telefon modeli):** imza isteği kapanış listesi tamamlanınca çıkar; en az bir imza zorunlu (imzasız gün kapanmaz/gönderilmez); ikinci imzayı giren atamaz; ikinci kişi yoksa kayıt, Excel, paket, tutanak, ekran ve matriste "ikinci imza atmadı". Telefon kanalı çekirdekte (cihaz kimliği zorunlu); ekran yalnız 127.0.0.1'de olduğundan telefon köprüsü bağlı değil, imza ekrandan (yer tutucu).
+- **Kasa Çift Doğrulama Tutanağı Tutaa'dan TAA Kasa'ya taşındı (T6b iptal):** Tutaa şablonu birebir (`sablonlar/kasa-cift-dogrulama.json`), 8 sabit kalem (erp/fiili/fark/gerekçe), sonuç farktan kendiliğinden, kontroller gün sonundan, KCD numarası, A4 yazdırılabilir çıktı, Nebim kasa Excel'i içe aktarma (ERP sütunu); paketin `cift_dogrulama` bloğu.
+- **WhatsApp özeti:** akşam metni biçiminde düz yazı, alanlar doldukça güncellenir, kopyala; masraf kalemleri tek tek (kalem, tutar, not), havale farkı açıklamalı, isteğe bağlı kalın başlık.
+- **Ciro kuralları (dolu dosyalardan kanıtlı):** Z = genel toplam + değişim − internet değişimi + iade; kasa fazlası/açığı sayımdan hesaplanır; masraf satırları eklendikçe artar; havale/kredi kartı farkı açıklaması zorunlu; tutarı olmayan masraf kalemi reddedilir.
+- **Okuyucular:** `tools/kasa_hareket_oku.py` (Nebim hareket özeti PDF, alınan ödemeler listesi, üçlü karşılaştırma; ad yazılmaz), `kasa_ciro_karsilastir.py --dolu-sayfa`.
+
 ### Raporlar: dönem, grafik, .xlsx
 
 - Raporlar ekranına dönem seçici (bugün / 7 / 30 gün / özel), SVG sütun grafikleri, gerçek .xlsx indirme (bağımlılıksız yazıcı) ve "kasa kapanışı girilmeyen gün" kuralı eklendi. Şube karşılaştırması ve ciro kuralları veri kaynağı olmadığından yapılmadı. Ayrıntı: docs/S3-CATI-PANEL.md.

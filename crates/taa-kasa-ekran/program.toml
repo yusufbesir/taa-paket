@@ -1,0 +1,13 @@
+# Sahip: Yusuf. yazan: [Claude#taa-kasa-KS2 2026-11-26]
+# TAA Kasa programı (ana plan §15, mağaza işleyişi §4.1). Program bu depoda yaşar (crates/taa-kasa-ekran, ikili taa-kasa).
+# Ad karışmasın: Fiyat Etiketi'ndeki "Kasa" satış ekranıdır; bu program gün sonu kasa kontrolüdür.
+ad = "taakasa"
+gorunen_ad = "TAA Kasa"
+surum = "0.1.0"                 # crates/taa-kasa-ekran/Cargo.toml ile aynı
+arayuz = "1"
+gerektirir = { taa-kasa = "1", taa-dosya = "1", taa-hata = "1", taa-imza = "1" }
+sunar  = ["kasa.gunsonu@1", "kasa.masraf@1"]
+ister  = []                     # ortak giriş (kimlik.yonetici@1, KM2) bağlanınca buraya eklenecek
+veri_sahibi = ["kasa-defteri", "kasa-gunsonu", "kasa-masraf"]
+veri_okur   = []
+ayar_alani  = "programlar.taakasa"
