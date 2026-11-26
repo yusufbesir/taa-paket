@@ -1,5 +1,5 @@
 // GET /t/<kod> (vercel.json yeniden yazımıyla /api/t?kod=<kod>) ve /api/durum/<kod>.
-import { sayfa, KOD_RE } from "../lib/takip.mjs";
+import { sayfa, KOD_RE, dilSec } from "../lib/takip.mjs";
 import { oku } from "../lib/depo.mjs";
 
 const BASLIK = {
@@ -18,6 +18,8 @@ export default {
     if (u.searchParams.get("bicim") === "json") {
       return Response.json(kayit || { hata: "bulunamadı" }, { status: kayit ? 200 : 404, headers: { "cache-control": "no-store" } });
     }
-    return new Response(sayfa(kayit), { status: kayit ? 200 : 404, headers: BASLIK });
+    const dil = dilSec(u.searchParams.get("dil"), istek.headers.get("accept-language"));
+    const adres = KOD_RE.test(kod) ? `/t/${kod}` : "";
+    return new Response(sayfa(kayit, { dil, adres }), { status: kayit ? 200 : 404, headers: BASLIK });
   },
 };

@@ -17,9 +17,9 @@ Müşteri, fişin MÜŞTERİ nüshasındaki karekodu okutup tadilatının durumu
 Veri klasörüne `musteri-takip.json`:
 ```json
 {"acik": true,
- "sayfa": "https://taa-takip.<hesap>.workers.dev",
- "yedek_sayfa": "https://taa-takip.vercel.app",
- "hedefler": ["https://taa-takip.<hesap>.workers.dev/api/yaz", "https://taa-takip.vercel.app/api/yaz"]}
+ "sayfa": "https://terzitakip.terziademaltun.workers.dev",
+ "yedek_sayfa": "https://terzitakip-terziademaltun.vercel.app",
+ "hedefler": ["https://terzitakip.terziademaltun.workers.dev/api/yaz", "https://terzitakip-terziademaltun.vercel.app/api/yaz"]}
 ```
 Genel anahtar: `taa-fis-sunucu --veri <klasör> --takip-genel-anahtar` (ilk çalıştırmada anahtarlar oluşur).
 

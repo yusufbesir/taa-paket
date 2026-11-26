@@ -3,8 +3,9 @@
 //! Güvenlik ve KVKK:
 //! - Mağaza sunucusu internete AÇILMAZ (gelen bağlantı yok). Durum değişince sunucu kaydı kendisi dışarı
 //!   iter (Cloudflare ve Vercel'deki takip sayfalarına; ikisi birbirinin yedeği).
-//! - Dışarı giden kayıt yalnız: takip kodu, durum, şube kodu, teslim günü, zaman. Müşteri adı, telefonu,
-//!   ölçü, fiyat, fiş numarası GİTMEZ.
+//! - Dışarı giden kayıt yalnız: takip kodu, durum, şube kodu, teslim günü/saati, kesim günü, fiş özeti, zaman. Müşteri adı, telefonu,
+//!   ölçü, fiyat, fiş numarası, serbest metin GİTMEZ.
+//!   Fiş özeti yalnız sabit anahtarlarla gider (ürün türü, katalog işlem kodu, varyant, kesim/teslim günü).
 //! - Takip kodu fiş numarasından bu kuruluma özel gizli anahtarla (HMAC-SHA256) türetilir; tahmin edilemez,
 //!   saklanması gerekmez. Anahtar `musteri-takip/anahtar` dosyasındadır, dışarı çıkmaz.
 //! - Kayıtlar ed25519 ile imzalanır; bulut tarafı yalnız GENEL anahtarı bilir (sızsa bile kayıt yazılamaz).
@@ -222,15 +223,96 @@ pub fn kayit(dizin: &Path, f: &Fis, simdi: u64) -> Result<Value, String> {
         // Teslim edilmeyen ürün en geç 120 gün sonra silinir (14 gün kuralı + pay).
         _ => simdi + 120 * GUN,
     };
+    // Fişin sayfada (müşterinin dilinde) gösterilecek özeti (Yusuf 2026-11-26 03:42). Yalnız SABİT
+    // anahtarlar gider: ürün türü, katalog işlem kodu, varyant. Serbest metin, not, ölçü, fiyat GİTMEZ;
+    // böylece bulut sayfası her şeyi kendi sözlüğüyle çevirebilir ve kişisel veri sızmaz.
+    let kalemler: Vec<Value> = f
+        .kalemler
+        .iter()
+        .take(20)
+        .map(|k| {
+            let mut v = json!({ "u": urun_anahtari(&k.urun) });
+            if let Some(kod) = k.islem_kodu.as_deref().filter(|c| islem_kodu_gecerli(c)) {
+                v["i"] = json!(kod);
+            }
+            if let Some(var) = k.varyant.as_deref().and_then(varyant_anahtari) {
+                v["v"] = json!(var);
+            }
+            v
+        })
+        .collect();
+    let saat = if f.teslim_saati.len() == 5 && f.teslim_saati.as_bytes()[2] == b':' {
+        f.teslim_saati.clone()
+    } else {
+        String::new()
+    };
     Ok(json!({
-        "v": 1,
+        "v": 2,
         "k": takip_kodu(dizin, &f.no)?,
         "d": durum_adi(f.durum),
         "s": f.sube,
         "t": f.teslim,
+        "g": f.tarih,
+        "h": saat,
+        "u": kalemler,
         "ts": simdi,
         "sil": sil,
     }))
+}
+
+/// Ürün adını sabit bir anahtara çevirir; bilinmeyen ürün "diger" olur (serbest metin dışarı çıkmaz).
+fn urun_anahtari(urun: &str) -> &'static str {
+    let a: String = urun
+        .trim()
+        .chars()
+        .map(|c| match c {
+            'İ' | 'I' | 'ı' => 'i',
+            'Ş' | 'ş' => 's',
+            'Ğ' | 'ğ' => 'g',
+            'Ü' | 'ü' => 'u',
+            'Ö' | 'ö' => 'o',
+            'Ç' | 'ç' => 'c',
+            c => c.to_ascii_lowercase(),
+        })
+        .collect();
+    const BILINEN: [(&str, &str); 16] = [
+        ("pantolon", "pantolon"),
+        ("ceket", "ceket"),
+        ("gomlek", "gomlek"),
+        ("yelek", "yelek"),
+        ("takim", "takim"),
+        ("takim elbise", "takim"),
+        ("etek", "etek"),
+        ("elbise", "elbise"),
+        ("mont", "mont"),
+        ("palto", "palto"),
+        ("kaban", "palto"),
+        ("bluz", "bluz"),
+        ("kot", "kot"),
+        ("jean", "kot"),
+        ("tisort", "tisort"),
+        ("trenckot", "palto"),
+    ];
+    BILINEN
+        .iter()
+        .find(|(k, _)| *k == a)
+        .map(|(_, v)| *v)
+        .unwrap_or("diger")
+}
+
+/// Katalog işlem kodu biçimi (ör. "pant-paca-kisalt"): yalnız küçük harf, rakam, tire.
+fn islem_kodu_gecerli(k: &str) -> bool {
+    !k.is_empty()
+        && k.len() <= 40
+        && k.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+
+fn varyant_anahtari(v: &str) -> Option<&'static str> {
+    match v.trim() {
+        "Düz paça" => Some("duz"),
+        "Duble paça" => Some("duble"),
+        _ => None,
+    }
 }
 
 /// Kaydı imzalar: (gövde, imza hex). Gövde tam bu baytlarla gönderilir, imza bu baytların üzerindedir.
@@ -459,7 +541,7 @@ mod testler {
             "Yılmaz",
             "0532",
             "5321234567",
-            "Ceket",
+            "kol",
             "45000",
             "F-20261126-007",
         ] {
@@ -471,6 +553,19 @@ mod testler {
         assert_eq!(k["d"], "hazir");
         assert_eq!(k["s"], "MRK01");
         assert_eq!(k["t"], "2026-11-29");
+        assert_eq!(k["u"], json!([{"u": "ceket"}]), "serbest metin işlem dışarı gitmemeli");
+        let mut f2 = fis("F-2", Durum::Bekliyor);
+        f2.kalemler[0].urun = "Pantolon".into();
+        f2.kalemler[0].islem_kodu = Some("pant-paca-kisalt".into());
+        f2.kalemler[0].varyant = Some("Duble paça".into());
+        f2.kalemler[0].olcu_mm = Some(25);
+        f2.kalemler[0].not = "Ayşe Hanım acele".into();
+        let k2 = kayit(&d, &f2, 1_000).unwrap();
+        assert_eq!(k2["u"], json!([{"u": "pantolon", "i": "pant-paca-kisalt", "v": "duble"}]));
+        let g2 = serde_json::to_string(&k2).unwrap();
+        assert!(!g2.contains("Ayşe") && !g2.contains("acele"), "{g2}");
+        assert_eq!(urun_anahtari("GÖMLEK"), "gomlek");
+        assert_eq!(urun_anahtari("Kız çocuk elbisesi"), "diger");
         let g: [u8; 32] = hex_coz(&genel_anahtar(&d).unwrap())
             .unwrap()
             .try_into()
