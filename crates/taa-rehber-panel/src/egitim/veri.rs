@@ -6,7 +6,7 @@
 //!   Panel rehbere yazmaz. Dosya yoksa ya da tutarsızsa rehber boştur (kimse etkin değil) ve ekranda uyarı çıkar.
 //! - Örnek veri yalnız `--demo` ile kurulur ve her yerde "ÖRNEK" etiketlidir; video içermez.
 
-use crate::video::VideoKaynagi;
+use crate::egitim::video::VideoKaynagi;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use taa_egitim::{Ders, Katalog, KONU_KASA};

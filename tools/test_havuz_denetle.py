@@ -51,8 +51,8 @@ class Program(unittest.TestCase):
         self.assertTrue(any("yüksek" in x for x in h))
 
     def test_ilgi_ailesi(self):
-        self.assertEqual(hd.program_denetle({"ad": "taaegitim", "havuz_ilgi": ["egitim"]}, KAT, "p"), [])
-        self.assertTrue(hd.program_denetle({"ad": "taaegitim", "havuz_ilgi": ["yok"]}, KAT, "p"))
+        self.assertEqual(hd.program_denetle({"ad": "taarehber", "havuz_ilgi": ["egitim"]}, KAT, "p"), [])
+        self.assertTrue(hd.program_denetle({"ad": "taarehber", "havuz_ilgi": ["yok"]}, KAT, "p"))
 
 
 if __name__ == "__main__":

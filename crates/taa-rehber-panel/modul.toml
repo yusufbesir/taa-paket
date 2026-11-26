@@ -6,11 +6,11 @@
 ad = "taa-rehber-panel"
 surum = "0.1.0"
 arayuz = "1"
-gerektirir = { "taa-hata" = "1", "taa-ihbar" = "1", "taa-kimlik" = "1", "taa-rehber-model" = "1", "taa-yol" = "1" }
+gerektirir = { "taa-egitim" = "1", "taa-hata" = "1", "taa-ihbar" = "1", "taa-kimlik" = "1", "taa-rehber-model" = "1", "taa-yol" = "1" }
 ozellikler = ["rehber-panel"]
 program = "taarehber"
 sunar = []
-ister = []
+ister = ["rehber.oku@1"]
 veri_sahibi = []
 veri_okur = []
 ayar_alani = "programlar.taarehber"

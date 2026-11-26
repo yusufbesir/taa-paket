@@ -9,11 +9,11 @@
 //! - Video yoksa (bağ yok ya da dosya yok) konum ve "izledim" kaydedilmez: dürüst boş durum.
 //! - Her değişiklik önce JSONL günlüğe sonra belleğe işlenir (`taa-egitim`); günlük yazılamazsa 500, kayıp sessiz olmaz.
 
-use crate::gorunum::{self, Tema};
+use crate::egitim::gorunum::{self, Tema};
+use crate::egitim::kimlik::Kullanici;
+use crate::egitim::veri::{self, YuklenenKatalog};
+use crate::egitim::video::{self, Karar, KaynakTuru, VideoDurumu, VideoKaynagi};
 use crate::guvenlik::{sorgu_degeri, yuzde_coz};
-use crate::kimlik::Kullanici;
-use crate::veri::{self, YuklenenKatalog};
-use crate::video::{self, Karar, KaynakTuru, VideoDurumu, VideoKaynagi};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -382,7 +382,7 @@ impl Panel {
         let saniye = saniye.min(sure);
         let r = RehberVeri {
             veri: &self.rehber,
-            bugun: crate::zaman::gun_kismi(simdi),
+            bugun: crate::egitim::zaman::gun_kismi(simdi),
         };
         match self
             .egitim
@@ -412,7 +412,7 @@ impl Panel {
         }
         let r = RehberVeri {
             veri: &self.rehber,
-            bugun: crate::zaman::gun_kismi(simdi),
+            bugun: crate::egitim::zaman::gun_kismi(simdi),
         };
         match self
             .egitim
@@ -513,7 +513,7 @@ impl Panel {
         };
         let r = RehberVeri {
             veri: &self.rehber,
-            bugun: crate::zaman::gun_kismi(simdi),
+            bugun: crate::egitim::zaman::gun_kismi(simdi),
         };
         let sonuc = if iptal {
             self.egitim
@@ -546,7 +546,7 @@ impl Panel {
         };
         let r = RehberVeri {
             veri: &self.rehber,
-            bugun: crate::zaman::gun_kismi(simdi),
+            bugun: crate::egitim::zaman::gun_kismi(simdi),
         };
         match self
             .egitim

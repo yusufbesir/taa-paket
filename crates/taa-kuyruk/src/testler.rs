@@ -565,7 +565,7 @@ fn curl_ham_get_aralik_ve_ikili_govde() {
     });
     let g = CurlGonderici::yeni(&adres).unwrap().oturum("tok").unwrap();
     let y = g
-        .al_ham("/v1/havuz/icerik/ab?program=taaegitim", Some((0, 7)))
+        .al_ham("/v1/havuz/icerik/ab?program=taarehber", Some((0, 7)))
         .unwrap();
     assert_eq!(y, icerik);
     assert!(alinan

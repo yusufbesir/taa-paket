@@ -2,7 +2,8 @@
 //!
 //! 127.0.0.1'de rastgele kapıda yerel bir sunucu açar, Edge'i uygulama penceresi olarak (`--app`) başlatır; pencere
 //! kapanıp istek gelmeyince kendiliğinden kapanır (taa-cati panel kalıbı). Ekranlar: Kişiler ve Görevler, El Kitabı
-//! (`rehber.belge@1`), İhbar Hattı (`taa-ihbar`; gönderim bağlı değil, dürüstçe bildirilir) ve yönetici ekleme formları.
+//! (`rehber.belge@1`), İhbar Hattı (`taa-ihbar`; gönderim bağlı değil, dürüstçe bildirilir), yönetici ekleme formları ve Eğitim bölümü (`egitim`, video listesi,
+//! oynatıcı, atamalarım, yönetici izleme özeti; Eğitim ayrı program değildir, Yusuf 11-26).
 //!
 //! Güvenlik ilkeleri:
 //! - Görünürlük (şube kapsamı, docs/rehber-sozlesmesi.md §5) sunucuda `taa-rehber-model` ile uygulanır; istemciye güvenilmez.
@@ -17,6 +18,7 @@ pub mod api;
 pub mod belge;
 pub mod demo;
 pub mod durum;
+pub mod egitim;
 pub mod gorunum;
 pub mod guvenlik;
 pub mod ihbar;

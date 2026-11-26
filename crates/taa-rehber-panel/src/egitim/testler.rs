@@ -1,11 +1,11 @@
 // Sahip: Yusuf. yazan: [Claude#egitim-panel 2026-11-26]
 //! API testleri (saf işlevler; HTTP ve pencere yok). Gerçek kişi, parola ya da anahtar yok: tüm adlar kurgusaldır.
 
-use crate::api::{Panel, VideoYaniti};
-use crate::gorunum::Tema;
-use crate::kimlik::Kullanici;
-use crate::veri::{katalog_yukle, rehber_yukle};
-use crate::video::Karar;
+use crate::egitim::api::{Panel, VideoYaniti};
+use crate::egitim::gorunum::Tema;
+use crate::egitim::kimlik::Kullanici;
+use crate::egitim::veri::{katalog_yukle, rehber_yukle};
+use crate::egitim::video::Karar;
 use serde_json::{json, Value};
 use std::path::PathBuf;
 
@@ -630,8 +630,8 @@ fn gunluksuz_kipte_diske_yazilmaz() {
 fn demo_kipi_ornek_etiketli_ve_diske_yazmaz() {
     let k = kok("demo");
     let mut p = Panel::kur(
-        crate::veri::demo_katalog(),
-        crate::veri::demo_rehber(),
+        crate::egitim::veri::demo_katalog(),
+        crate::egitim::veri::demo_rehber(),
         k.join("video"),
         None,
         true,
@@ -679,8 +679,6 @@ fn gorunum_kaydi() {
     // yeniden açılışta hatırlanır ve ekrana açılıştan itibaren yazılır
     let p2 = kur(&k, false);
     assert_eq!(p2.tema, Tema::Koyu);
-    let html = crate::arayuz_html(p2.tema);
-    assert!(html.contains("data-theme=\"koyu\"") && !html.contains("__TEMA__"));
     let _ = std::fs::remove_dir_all(&k);
 }
 

@@ -828,21 +828,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "taa-egitim-panel"
-version = "0.1.0"
-dependencies = [
- "getrandom 0.3.4",
- "serde",
- "serde_json",
- "taa-egitim",
- "taa-hata",
- "taa-kimlik",
- "taa-rehber-model",
- "taa-yol",
- "tiny_http",
-]
-
-[[package]]
 name = "taa-fis"
 version = "0.1.0"
 dependencies = [
@@ -1111,6 +1096,7 @@ dependencies = [
  "serde",
  "serde_json",
  "taa-dosya",
+ "taa-egitim",
  "taa-hata",
  "taa-ihbar",
  "taa-kimlik",

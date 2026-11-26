@@ -44,9 +44,8 @@ TAA Paketi çekirdek deposu: TaaDön ve diğer TAA programlarının paylaştığ
 | taa-olcum | var | İşlem Gücü ölçüm aracı (DG1a): envanter, pay basamaklarında ölçüm, kilitli eşik yöntemi; Windows'ta denenmedi |
 | taa-rehber-model | var | Rehber alan modeli (kişi, birim, görevlendirme, rol), bellek deposu, şube süzgeci |
 | taa-ihbar | var | İhbar hattı çekirdeği (varsayılan anonim, JSONL defter, Telegram/e-posta biçimleyici; ağ yok) |
-| taa-egitim | var | TAA Eğitim çekirdeği (EG0): ders kataloğu, atama, izleme günlüğü, Range hesaplayıcı |
-| taa-rehber-panel | var | TAA Rehber yerel paneli (Kişiler ve Görevler, El Kitabı, İhbar Hattı, yönetici formları); yönetici uçları varsayılan reddet; yazma hizmeti bağlı değil, kayıtlar bellekte |
-| taa-egitim-panel | var | TAA Eğitim yerel paneli (video listesi, oynatıcı, devam, atama, yönetici izleme özeti); yetki belgesi olmadan yönetici uçları 403 |
+| taa-egitim (TAA Rehber'in Eğitim çekirdeği) | var | TAA Eğitim çekirdeği (EG0): ders kataloğu, atama, izleme günlüğü, Range hesaplayıcı |
+| taa-rehber-panel | var | TAA Rehber yerel paneli (Kişiler ve Görevler, El Kitabı, İhbar Hattı, Eğitim bölümü, yönetici formları); yönetici uçları varsayılan reddet; yazma hizmeti bağlı değil, kayıtlar bellekte |
 | taa-log | planlı | Günlükleme |
 
 ## Mobil

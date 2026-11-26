@@ -2,7 +2,7 @@
 # TAA ortak OCR motoru (`taa-ocr`) sözleşmesi
 
 Karar (Yusuf, 2026-11-12): OCR tek olacak, zorunlu kurulacak, eğitim ve düzey arttıkça güncellenecek.
-Tutaa, TAA Terzi Takip, TaaRkod, stok kodu programı, taa-tara ve yeni programlar (TAA Rehber, TAA Eğitim)
+Tutaa, TAA Terzi Takip, TaaRkod, stok kodu programı, taa-tara ve yeni programlar (TAA Rehber; Eğitim onun bölümü)
 kendi OCR'ını taşımaz; bu motoru çağırır.
 
 ## 1. Paket
@@ -161,7 +161,7 @@ Kaynak: depoların main dalı, ayrıntı `/mnt/project-files/ocr/OCR-BAGLANTI-TE
 | TAA Etiket | yok | gerek yok |
 | taa-tara (bu depo) | `ocr()` "henüz yok" hatası döner | motor çağrısına bağla |
 | TAA Terzi Takip (taa-fis) | yok, "sonraki aşama" notu | fiş ve foto çözümleme için `ocr.oku@1` |
-| TAA Rehber, TAA Eğitim | yeni | gerekirse baştan `ocr.oku@1` |
+| TAA Rehber (Eğitim bölümü dahil) | yeni | gerekirse baştan `ocr.oku@1` |
 
 ## 7. Hedef ve yol haritası (Yusuf, 2026-11-12)
 

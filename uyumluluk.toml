@@ -32,7 +32,6 @@ test_edildi = false
 "taa-egitim" = "0.1.0"
 "taa-ihbar" = "0.1.0"
 "taa-olcum" = "0.1.0"
-"taa-egitim-panel" = "0.1.0"
 "taa-rehber-panel" = "0.1.0"
 
 [kume.uyeler.program]

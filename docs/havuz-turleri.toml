@@ -8,7 +8,7 @@
 # Katalogdaki program adları (program.toml `ad`). Havuz bildirimleri yalnız bu adlara bağlanabilir.
 adlar = [
   "fiyatetiketi", "taarkod", "taadon", "tutaa", "taavideo", "terzitakip",
-  "taayonetici", "taagiydir", "taarehber", "taaegitim", "taaocr", "taaveri",
+  "taayonetici", "taagiydir", "taarehber", "taaocr", "taaveri",
   # Program değil, sunucu yazma hizmeti: rehber.yaz@1 (ana plan v2 §3.2). Doğrulayıcı nokta/@ kabul etmediği için
   # "rehber-yaz" biçiminde yazıldı. AÇIK: doğrulayıcıya ayrı [hizmetler] listesi eklenmeli (docs/rehber-sozlesmesi.md §11).
   "rehber-yaz",
@@ -86,8 +86,8 @@ alanlar = { anahtar = "urun_kodu+beden (urun_kodu doluysa) | tur+beden (urun_kod
 surum = 1
 aile = "egitim"
 kip = "dosya"
-yazanlar = ["taayonetici", "taaegitim"]
-okuyanlar = ["taaegitim", "taarehber", "terzitakip"]
+yazanlar = ["taayonetici", "taarehber"]
+okuyanlar = ["taarehber", "terzitakip"]
 mime = ["video/mp4", "video/webm"]
 kisisel = false
 aciklama = "Eğitim videosu"
@@ -96,8 +96,8 @@ aciklama = "Eğitim videosu"
 surum = 1
 aile = "egitim"
 kip = "dosya"
-yazanlar = ["taayonetici", "taaegitim"]
-okuyanlar = ["taaegitim", "taarehber"]
+yazanlar = ["taayonetici", "taarehber"]
+okuyanlar = ["taarehber"]
 mime = ["application/pdf"]
 kisisel = false
 aciklama = "Eğitim belgesi, sunum (PDF)"
@@ -168,7 +168,7 @@ surum = 1
 aile = "rehber"
 kip = "tablo"
 yazanlar = ["rehber-yaz"]
-okuyanlar = ["taarehber", "tutaa", "taaegitim", "terzitakip", "taayonetici"]
+okuyanlar = ["taarehber", "tutaa", "terzitakip", "taayonetici"]
 kisisel = true
 aciklama = "Kişi: yalnız kalıcı kimlik, ad, iş e-postası, etkin/pasif, sürüm (görev/rol/amir görevlendirmede; telefon yok)"
 
@@ -177,7 +177,7 @@ surum = 1
 aile = "rehber"
 kip = "tablo"
 yazanlar = ["rehber-yaz"]
-okuyanlar = ["taarehber", "tutaa", "taaegitim", "terzitakip", "taayonetici"]
+okuyanlar = ["taarehber", "tutaa", "terzitakip", "taayonetici"]
 kisisel = false
 aciklama = "Birim (departman ve mağaza kişi değil birimdir): tür, üst birim, şube kodu, ortak e-posta, durum"
 
@@ -186,7 +186,7 @@ surum = 1
 aile = "rehber"
 kip = "tablo"
 yazanlar = ["rehber-yaz"]
-okuyanlar = ["taarehber", "tutaa", "taaegitim", "terzitakip", "taayonetici"]
+okuyanlar = ["taarehber", "tutaa", "terzitakip", "taayonetici"]
 kisisel = true
 aciklama = "Kim nerede görevli: kişi, birim, rol, görev, amir, tür (asıl/geçici/vekil), durum, başlangıç/bitiş"
 
@@ -195,7 +195,7 @@ surum = 1
 aile = "rehber"
 kip = "tablo"
 yazanlar = ["rehber-yaz"]
-okuyanlar = ["taarehber", "tutaa", "taaegitim", "terzitakip", "taayonetici"]
+okuyanlar = ["taarehber", "tutaa", "terzitakip", "taayonetici"]
 kisisel = false
 aciklama = "İletişim rolü kodu ve adı (eposta.oneri rolleri bu kodlara bağlanır); erişim yetkisi değildir"
 
@@ -204,6 +204,6 @@ surum = 1
 aile = "rehber"
 kip = "tablo"
 yazanlar = ["rehber-yaz"]
-okuyanlar = ["taarehber", "taaegitim", "taayonetici"]
+okuyanlar = ["taarehber", "taayonetici"]
 kisisel = false
 aciklama = "El kitabı içeriği (sürümlü konu metni)"

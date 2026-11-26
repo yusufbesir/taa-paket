@@ -1,7 +1,20 @@
-<!-- Sahip: Yusuf. yazan: [Claude#egitim-panel 2026-11-26] -->
-# taa-egitim-panel
+<!-- Sahip: Yusuf. yazan: [Claude#rehber-panel 2026-11-26] -->
+# taa-rehber-panel (TAA Rehber, Eğitim bölümü dahil)
 
-TAA Eğitim'in yerel grafik paneli (bin `taa-egitim-panel`). `taa-cati-panel` ile aynı kalıp: 127.0.0.1'de rastgele kapı, Edge `--app` penceresi, pencere kapanınca (3 dk sessizlik) kendiliğinden kapanma. Tasarım kaynağı: `docs/tasarim/GPT-REHBER-EGITIM-TASARIM.md` (Mezura dili; açık, koyu, tek renkli tema; hesap menüsü sırası kullanıcı, çizgi, Yönetici girişi, çizgi, Ayarlar / tema; üst çubuk tema rengini alır; açılış animasyonundan sonra giriş). Tek HTML dosyası, dış kaynak yok.
+TAA Rehber'in yerel grafik paneli (bin `taa-rehber-panel`, program `taarehber`). Yusuf 11-26: **Eğitim ayrı program değildir**; Rehber'in bir bölümüdür. Tek pencere, tek yerel sunucu, tek tema.
+
+Bölümler (sol gezinme): Rehber (Kişiler ve Görevler, El Kitabı, İhbar Hattı) ve Eğitim (Eğitimler, Atamalarım, yalnız yönetici için İzleme Özeti). Rehber bölümü giriş istemez; Eğitim bölümü kişiye bağlı olduğu için taa-kimlik oturumu ister (giriş formu Eğitimler sayfasındadır). Eğitim uçları `/api/egitim/...`, video `/video/<ders>`.
+
+Kod: Rehber çekirdeği bu crate'te; Eğitim ekran mantığı `src/egitim/` altında (api, veri, video, kimlik, zaman); eğitim kuralları (katalog, atama, günlük, Range) `taa-egitim` crate'indedir. Eğitim kurulamazsa (ör. bozuk katalog) Rehber yine açılır, Eğitim nedenini gösterir.
+
+Ek bayraklar: `--katalog`, `--rehber-onbellek`, `--video-klasoru` (aşağıdaki Eğitim notlarındaki `--rehber` bayrağı artık `--rehber-onbellek`).
+
+Bilinen ayrım: Rehber'in "Yönetici girişi" (kişi ekleme formları, `rehber.yaz`) ile Eğitim oturumu (izleme özeti, atama, `kimlik.yonetici`) ayrı denetlenir; ikisi de taa-kimlik kimlik bilgisiyle yapılır ama ortak bir oturumda birleşmedi. Tek oturuma indirmek sonraki iştir.
+
+---
+## Eski TAA Eğitim paneli notları (birleştirmeden önce yazıldı, geçerli kısımları)
+
+TAA Eğitim'in yerel grafik paneli (bin `taa-rehber-panel`). `taa-cati-panel` ile aynı kalıp: 127.0.0.1'de rastgele kapı, Edge `--app` penceresi, pencere kapanınca (3 dk sessizlik) kendiliğinden kapanma. Tasarım kaynağı: `docs/tasarim/GPT-REHBER-EGITIM-TASARIM.md` (Mezura dili; açık, koyu, tek renkli tema; hesap menüsü sırası kullanıcı, çizgi, Yönetici girişi, çizgi, Ayarlar / tema; üst çubuk tema rengini alır; açılış animasyonundan sonra giriş). Tek HTML dosyası, dış kaynak yok.
 
 ## Ekranlar
 - **Eğitimler**: konu ve görev süzgeci (kasa eğitimi bir konudur), video listesi (atandı, başladı %, izledi, video yok / dosya yok etiketleri), "Kaldığın yerden devam et".
@@ -10,7 +23,7 @@ TAA Eğitim'in yerel grafik paneli (bin `taa-egitim-panel`). `taa-cati-panel` il
 - **İzleme Özeti** ve **+ Atama** (yalnız yönetici): eğitim ve kişi başına durum, atama (kişi + eğitim, ya da "görevine göre ata"), atamayı iptal (kayıt günlükte kalır).
 
 ## Çalıştırma
-`taa-egitim-panel [--sunucu <adres>] [--kok <veri kökü>] [--sertifika <pem>] [--katalog <json>] [--rehber <json>] [--video-klasoru <klasör>] [--demo] [--pencere-acma]`
+`taa-rehber-panel [--sunucu <adres>] [--kok <veri kökü>] [--sertifika <pem>] [--katalog <json>] [--rehber <json>] [--video-klasoru <klasör>] [--demo] [--pencere-acma]`
 
 Veri kökü altındaki dosyalar (varsayılanlar): `egitim/katalog.json`, `rehber/rehber.json` (rehberin salt okunur önbelleği), `egitim/video/` (yerel videolar), `egitim/izleme.jsonl` (yalnız-ekleme izleme günlüğü), `egitim/gorunum.json` (tema). Katalog yoksa liste boş görünür; rehber yoksa kimse etkin sayılmaz ve ekranda uyarı çıkar.
 
@@ -20,12 +33,12 @@ Veri kökü altındaki dosyalar (varsayılanlar): `egitim/katalog.json`, `rehber
 
 ## Kimlik ve yetki (varsayılan REDDET)
 - Giriş `taa-kimlik` ortak girişidir (cihaz imzalı, sunucu yanıt imzası doğrulanır, oturum depoya yazılır). Sahte ya da kodlanmış giriş yoktur.
-- Yönetici uçları (`/api/ozet`, `/api/yonetim`, `/api/atama*`) yalnız şu dört koşul birlikte sağlanırsa açılır: yetki belgesi okunabiliyor ve süresi geçmemiş; belge aynı kullanıcıya ait; imza sunucu genel anahtarıyla doğrulanmış (anahtar kurulu değilse yönetici yok); `izinler` içinde `kimlik.yonetici` var. Aksi halde 403 (`kimlik::kullanici_olustur`).
+- Yönetici uçları (`/api/egitim/ozet`, `/api/egitim/yonetim`, `/api/egitim/atama*`) yalnız şu dört koşul birlikte sağlanırsa açılır: yetki belgesi okunabiliyor ve süresi geçmemiş; belge aynı kullanıcıya ait; imza sunucu genel anahtarıyla doğrulanmış (anahtar kurulu değilse yönetici yok); `izinler` içinde `kimlik.yonetici` var. Aksi halde 403 (`kimlik::kullanici_olustur`).
 - Atayan kişinin rehberde etkin olması gerekir (`taa-egitim` kuralı). Kişi yalnız kendi konum ve "izledim" kaydını yazar.
 - Yerel sunucu: `Host` tam `127.0.0.1:<kapı>`, tek seferlik açılış bağlantısı, `HttpOnly; SameSite=Strict` çerez, POST'ta `Origin` ve JSON gövde, gövde en çok 64 KB, sıkı CSP (video için yalnız kendi sunucusu ve https).
 
 ## Test
-`cargo test -p taa-egitim-panel` (42 test: güvenlik denetimleri, kimlik kararı, Range kararı, video yol/URL kuralları, katalog ve rehber yükleme, API uçları: oturumsuz 401, yönetici kapısı 403, süzgeç, konum/devam/izledim, atama/iptal/özet, günlükten yeniden kurma, demo, tema). Canlı duman testi (Linux, sahte kök): açılış çerezi, Range 206/416, konum yazımı, çerezsiz 401, başka köken 403, yönetici ucu 403, tema kalıcılığı; Chrome başsız ekran görüntüsü alındı.
+`cargo test -p taa-rehber-panel` (42 test: güvenlik denetimleri, kimlik kararı, Range kararı, video yol/URL kuralları, katalog ve rehber yükleme, API uçları: oturumsuz 401, yönetici kapısı 403, süzgeç, konum/devam/izledim, atama/iptal/özet, günlükten yeniden kurma, demo, tema). Canlı duman testi (Linux, sahte kök): açılış çerezi, Range 206/416, konum yazımı, çerezsiz 401, başka köken 403, yönetici ucu 403, tema kalıcılığı; Chrome başsız ekran görüntüsü alındı.
 
 ## Henüz yok / açık
 - Giriş adı ile rehber kişi kimliği eşlemesi: giriş adı küçük harfe çevrilip rehber kimliğiyle (`[a-z0-9][a-z0-9_-]{0,63}`) birebir eşleşiyor. Gerçek eşleme sözleşmesi (Çatı kullanıcısı ile rehber kişisi) yok; eşleşmeyen kullanıcı izleme kaydı yazamaz ve atama alamaz.

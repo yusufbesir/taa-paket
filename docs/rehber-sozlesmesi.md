@@ -10,7 +10,7 @@ Bağlı belgeler: `docs/havuz-sozlesmesi.md`, `docs/havuz-turleri.toml`, `docs/s
 - Hizmete komutu **yalnız merkezi yönetici girişi** (`kimlik.yonetici@1`) yapmış kişi gönderir. Yönetim ekranı TAA Rehber'dedir (Yusuf kararı); TAA Çatı aynı hizmete bağlanabilir ama ikinci ekran yazılmaz.
 - Yönetici girişi olmayan TAA Rehber (ör. şube PC'si) yalnız okur ve öneri bırakır (§7).
 - **Çevrimdışı yazma yoktur.** Kişi, birim, görevlendirme, rol ve belge yalnız sunucuya bağlıyken değişir; çevrimdışı çakışma doğmaz. Yerel önbellek salt okunurdur (§9).
-- Okuyanlar: `taarehber`, `tutaa` (alıcı önerisi, onay adları), `taaegitim` (kime hangi eğitim), `terzitakip` (usta ve şube), `taayonetici` (Çatı / yönetici paneli). Başka program okumaz.
+- Okuyanlar: `taarehber` (Eğitim bölümü dahil: kime hangi eğitim), `tutaa` (alıcı önerisi, onay adları), `terzitakip` (usta ve şube), `taayonetici` (Çatı / yönetici paneli). Başka program okumaz.
 - Rehber yalnız adres verir; e-posta göndermez. Alıcıyı her zaman kullanıcı seçer.
 
 ## 2. Türler (katalog: `docs/havuz-turleri.toml`)

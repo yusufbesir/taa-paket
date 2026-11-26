@@ -7,21 +7,33 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 use serde_json::{json, Value};
-use std::io::Read;
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
+use taa_rehber_panel::egitim::video::Karar;
+use taa_rehber_panel::egitim::{self, kullanici_olustur, Kullanici, VideoYaniti, YetkiBilgisi};
 use taa_rehber_panel::guvenlik::{self, IstekBilgi};
 use taa_rehber_panel::{
     arayuz_html, yonlendir, Durum, Istek, Kimlik, KimlikBilgisi, KimlikRed, SistemOrtami,
     Yapilandirma, SIMGE_SVG,
 };
-use tiny_http::{Header, Method, Request, Response, Server};
+use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
+
+/// Eğitim bölümü oturumunun "açık programlar" listesindeki adı (Eğitim ayrı program değil: TAA Rehber'in bölümü).
+const PROGRAM_ADI: &str = "taarehber";
+/// Oturum okuma önbelleği (video parça istekleri sık gelir).
+const OTURUM_ONBELLEK: Duration = Duration::from_secs(5);
 
 const YARDIM: &str = "\
-taa-rehber-panel — TAA Rehber masaüstü paneli.
-Kullanım: taa-rehber-panel [--sube <kod>] [--demo] [--sunucu <https://adres>] [--kok <veri kökü>] [--sertifika <pem>] [--pencere-acma]
+taa-rehber-panel — TAA Rehber masaüstü paneli (Kişiler ve Görevler, El Kitabı, İhbar Hattı, Eğitim).
+Kullanım: taa-rehber-panel [--sube <kod>] [--demo] [--sunucu <https://adres>] [--kok <veri kökü>] [--sertifika <pem>]
+                          [--katalog <katalog.json>] [--rehber-onbellek <rehber.json>] [--video-klasoru <klasör>] [--pencere-acma]
   --sube <kod>    bu bilgisayarın şubesi (rehber kapsamı); verilmezse yalnız merkez kapsamı görünür.
+  --katalog       Eğitim kataloğu (varsayılan <kök>/egitim/katalog.json); yoksa eğitim listesi boş görünür.
+  --rehber-onbellek  Eğitim bölümünün okuduğu rehber önbelleği (varsayılan <kök>/rehber/rehber.json).
+  --video-klasoru yerel eğitim videolarının klasörü (varsayılan <kök>/egitim/video).
   --demo          \"ÖRNEK\" etiketli uydurma veriyle açar (gerçek veri yok); yalnız deneme içindir.
   --pencere-acma  pencereyi açmaz, açılış adresini yazar (tek seferlik).
 Panel yalnız bu bilgisayardan (127.0.0.1) açılır; pencere kapanınca birkaç dakika içinde kendiliğinden kapanır.
@@ -38,6 +50,26 @@ struct Ayar {
     sertifika: Option<PathBuf>,
     sube: Option<String>,
     demo: bool,
+    katalog: Option<PathBuf>,
+    rehber_onbellek: Option<PathBuf>,
+    video_klasoru: Option<PathBuf>,
+}
+
+#[derive(Default)]
+struct OturumOnbellegi {
+    sonuc: Option<(Instant, Option<Kullanici>)>,
+}
+
+impl OturumOnbellegi {
+    fn unut(&mut self) {
+        self.sonuc = None;
+    }
+}
+
+/// Eğitim bölümünün durumu: kurulamazsa (bozuk katalog gibi) Rehber açılır, Eğitim nedenini bildirir.
+struct EgitimBolumu {
+    panel: Result<egitim::Panel, String>,
+    onbellek: OturumOnbellegi,
 }
 
 fn veri_kok_ortamdan() -> Option<PathBuf> {
@@ -65,6 +97,7 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     let (mut sunucu, mut kok, mut sertifika, mut sube) = (None, None, None, None);
+    let (mut katalog, mut rehber_onbellek, mut video) = (None, None, None);
     let (mut pencere, mut demo) = (true, false);
     let mut i = 0;
     while i < args.len() {
@@ -74,6 +107,9 @@ fn main() -> ExitCode {
             "--kok" => kok = deger(i).map(PathBuf::from),
             "--sertifika" => sertifika = deger(i).map(PathBuf::from),
             "--sube" => sube = deger(i).filter(|s| !s.trim().is_empty()),
+            "--katalog" => katalog = deger(i).map(PathBuf::from),
+            "--rehber-onbellek" => rehber_onbellek = deger(i).map(PathBuf::from),
+            "--video-klasoru" => video = deger(i).map(PathBuf::from),
             "--pencere-acma" => {
                 pencere = false;
                 i += 1;
@@ -101,6 +137,9 @@ fn main() -> ExitCode {
         sertifika,
         sube,
         demo,
+        katalog,
+        rehber_onbellek,
+        video_klasoru: video,
     };
     match calistir(&ayar, pencere) {
         Ok(()) => ExitCode::SUCCESS,
@@ -125,6 +164,10 @@ fn calistir(ayar: &Ayar, pencere: bool) -> Result<(), String> {
         },
         &SistemOrtami,
     )?;
+    let mut egitim = EgitimBolumu {
+        panel: egitim_kur(ayar),
+        onbellek: OturumOnbellegi::default(),
+    };
     let sunucu = Server::http("127.0.0.1:0").map_err(|e| format!("yerel panel açılamadı: {e}"))?;
     let kapi = sunucu
         .server_addr()
@@ -156,7 +199,17 @@ fn calistir(ayar: &Ayar, pencere: bool) -> Result<(), String> {
             Ok(None) => continue,
             Err(e) => return Err(format!("yerel panel hatası: {e}")),
         };
-        if isle(istek, &mut durum, kapi, &acilis, &cerez, &mut acildi) == Some(true) {
+        if isle(
+            istek,
+            &mut durum,
+            &mut egitim,
+            ayar,
+            kapi,
+            &acilis,
+            &cerez,
+            &mut acildi,
+        ) == Some(true)
+        {
             son = Instant::now();
         }
     }
@@ -198,9 +251,12 @@ fn json_yanit(istek: Request, (durum, v): (u16, Value)) {
 }
 
 /// Bir isteği işler. Dönüş: Some(true) geçerli (çerezli) istek; Some(false)/None etkinlik sayılmaz.
+#[allow(clippy::too_many_arguments)]
 fn isle(
     mut istek: Request,
     durum: &mut Durum,
+    egitim: &mut EgitimBolumu,
+    ayar: &Ayar,
     kapi: u16,
     acilis: &str,
     cerez: &str,
@@ -286,7 +342,24 @@ fn isle(
         };
     }
 
+    let simdi = egitim::zaman::simdi_iso();
     match (yontem, yol.as_str()) {
+        ("GET", y) if y.starts_with("/video/") => {
+            let k = egitim_kullanici(ayar, &mut egitim.onbellek, &simdi);
+            let id = &y["/video/".len()..];
+            let Ok(panel) = &egitim.panel else {
+                json_yanit(istek, egitim_kapali(&egitim.panel));
+                return Some(true);
+            };
+            match panel.video_hazirla(k.as_ref(), id, baslik(&istek, "Range")) {
+                VideoYaniti::Hata(r) => json_yanit(istek, r),
+                VideoYaniti::Dosya { yol, tur, karar } => video_yanitla(istek, &yol, tur, karar),
+            }
+        }
+        (_, y) if y.starts_with("/api/egitim/") => {
+            let r = egitim_api(egitim, ayar, yontem, y, &sorgu, &govde, &simdi);
+            json_yanit(istek, r);
+        }
         ("GET", "/") => yanitla(
             istek,
             Response::from_string(arayuz_html(durum.tema)),
@@ -313,6 +386,349 @@ fn isle(
         _ => metin(istek, 404, "bulunamadı"),
     }
     Some(true)
+}
+
+/// Video yanıtı: dosyadan yalnız istenen aralık akıtılır (Range, 206/416).
+fn video_yanitla(istek: Request, yol: &Path, tur: &str, karar: Karar) {
+    let Some(aralik) = karar.icerik_araligi() else {
+        // Tam içerik.
+        return match File::open(yol) {
+            Ok(f) => video_gonder(istek, f, tur, karar, None),
+            Err(_) => json_yanit(istek, (404, json!({"hata": "Video bulunamadı.", "kod": 2}))),
+        };
+    };
+    if let Karar::Karsilanamaz { .. } = karar {
+        let mut y = Response::new(StatusCode(416), vec![], std::io::empty(), Some(0), None);
+        if let Ok(h) = Header::from_bytes(&b"Content-Range"[..], aralik.as_bytes()) {
+            y.add_header(h);
+        }
+        return yanitla(istek, y, tur);
+    }
+    let bas = match karar {
+        Karar::Kismi { bas, .. } => bas,
+        _ => 0,
+    };
+    match File::open(yol).and_then(|mut f| f.seek(SeekFrom::Start(bas)).map(|_| f)) {
+        Ok(f) => video_gonder(istek, f, tur, karar, Some(aralik)),
+        Err(_) => json_yanit(istek, (404, json!({"hata": "Video bulunamadı.", "kod": 2}))),
+    }
+}
+
+fn video_gonder(istek: Request, f: File, tur: &str, karar: Karar, aralik: Option<String>) {
+    let uzunluk = karar.uzunluk();
+    let mut y = Response::new(
+        StatusCode(karar.durum_kodu()),
+        vec![],
+        f.take(uzunluk),
+        usize::try_from(uzunluk).ok(),
+        None,
+    );
+    if let Ok(h) = Header::from_bytes(&b"Accept-Ranges"[..], &b"bytes"[..]) {
+        y.add_header(h);
+    }
+    if let Some(a) = aralik {
+        if let Ok(h) = Header::from_bytes(&b"Content-Range"[..], a.as_bytes()) {
+            y.add_header(h);
+        }
+    }
+    yanitla(istek, y, tur);
+}
+
+// ---------------------------------------------------------------------------------------------- eğitim kimliği (taa-kimlik)
+
+fn kimlik_hata(e: taa_kimlik::KimlikHata) -> Yanit {
+    use taa_kimlik::KimlikHata as K;
+    let (durum, kod) = match &e {
+        K::GecersizGirdi(_) => (400, 2),
+        K::GirisReddi { .. } | K::OturumYok | K::YetkiYok(_) => (401, 5),
+        K::Baglanti(_) | K::BozukYanit(_) => (502, 3),
+        K::Depo(_) => (500, 1),
+    };
+    (durum, json!({"hata": e.to_string(), "kod": kod}))
+}
+
+fn yol_hata(e: taa_yol::YolHata) -> Yanit {
+    let k = taa_yol::hata_kodu(&e);
+    let durum = match k {
+        2 => 400,
+        3 => 502,
+        5 => 401,
+        _ => 500,
+    };
+    (durum, json!({"hata": e.to_string(), "kod": k}))
+}
+
+fn sunucu_acik(ayar: &Ayar) -> bool {
+    ayar.sunucu.is_some() || std::env::var("TAA_SUNUCU").is_ok_and(|v| !v.trim().is_empty())
+}
+
+/// Saklı oturumdan kullanıcı. Oturum yok, süresi geçmiş ya da bu program kapalıysa None (giriş gerekir).
+/// Yönetici bayrağı yalnız imzası doğrulanmış, süresi geçmemiş, aynı kullanıcıya ait yetki belgesinden gelir.
+fn egitim_kullanici_oku(ayar: &Ayar, simdi: &str) -> Option<Kullanici> {
+    let anahtar = taa_yol::anahtar_coz_ortam(&ayar.kok, ayar.sunucu.as_deref()).ok()?;
+    let o = taa_kimlik::varsayilan_depo(&ayar.kok).oku(&anahtar).ok()?;
+    if (!o.gecerlilik.is_empty() && simdi >= o.gecerlilik.as_str()) || !o.program_acik(PROGRAM_ADI)
+    {
+        return None;
+    }
+    let sunucu_anahtari = taa_kimlik::sunucu_anahtari_oku(&ayar.kok).ok().flatten();
+    let yetki = taa_kimlik::yetki_oku(&ayar.kok, &anahtar, sunucu_anahtari.as_ref(), Some(simdi))
+        .ok()
+        .map(|y| YetkiBilgisi {
+            kullanici: y.kullanici,
+            izinler: y.izinler,
+            dogrulandi: y.dogrulandi,
+            gecerlilik: y.gecerlilik,
+        });
+    Some(kullanici_olustur(&o.kullanici, yetki.as_ref(), simdi))
+}
+
+fn egitim_kullanici(ayar: &Ayar, onbellek: &mut OturumOnbellegi, simdi: &str) -> Option<Kullanici> {
+    if let Some((an, k)) = &onbellek.sonuc {
+        if an.elapsed() < OTURUM_ONBELLEK {
+            return k.clone();
+        }
+    }
+    let k = egitim_kullanici_oku(ayar, simdi);
+    onbellek.sonuc = Some((Instant::now(), k.clone()));
+    k
+}
+
+fn egitim_cikis(ayar: &Ayar) -> Yanit {
+    let anahtar = match taa_yol::anahtar_coz_ortam(&ayar.kok, ayar.sunucu.as_deref()) {
+        Ok(a) => a,
+        Err(e) => return yol_hata(e),
+    };
+    match taa_kimlik::varsayilan_depo(&ayar.kok).cikis(&anahtar) {
+        Ok(()) => {
+            // Yetki belgesi boşaltılır (en iyi çaba; silme yok, taa-kimlik çıkışıyla aynı kural): yönetici izni
+            // oturumla birlikte biter, boş belge doğrulanamaz sayılır.
+            let yol = taa_kimlik::yetki::yetki_dosyasi(&ayar.kok, &anahtar);
+            if yol.exists() {
+                let _ = std::fs::write(&yol, b"");
+            }
+            (200, json!({"tamam": true}))
+        }
+        Err(e) => kimlik_hata(e),
+    }
+}
+
+/// `taa-kimlik giris` ile aynı akış: cihaz imzalı giriş, sunucu yanıt imzası (anahtar varsa) doğrulanır, oturum
+/// depoya yazılır, çevrimdışı yetki belgesi alınır (başarısızlığı girişi bozmaz ama yönetici işlemleri açılmaz).
+/// Parola yalnız bu istek süresince bellekte durur; yanıtta dönmez, hiçbir yere yazılmaz.
+fn egitim_giris(ayar: &Ayar, govde: &Value, simdi: &str) -> Yanit {
+    let (Some(k), Some(p)) = (
+        govde.get("kullanici").and_then(Value::as_str),
+        govde.get("parola").and_then(Value::as_str),
+    ) else {
+        return (
+            400,
+            json!({"hata": "kullanıcı adı ve parola gerekli", "kod": 2}),
+        );
+    };
+    let kod = govde
+        .get("kod")
+        .and_then(Value::as_str)
+        .filter(|s| !s.trim().is_empty());
+    let anahtar_ad = match taa_yol::anahtar_coz_ortam(&ayar.kok, ayar.sunucu.as_deref()) {
+        Ok(a) => a,
+        Err(e) => return yol_hata(e),
+    };
+    let h = match taa_yol::hedef_coz_curl(
+        &ayar.kok,
+        sunucu_acik(ayar).then_some(anahtar_ad.as_str()),
+        ayar.sertifika.as_deref(),
+    ) {
+        Ok(h) => h,
+        Err(e) => return yol_hata(e),
+    };
+    let imzalayici = match taa_kimlik::cihaz_imzalayici(&ayar.kok) {
+        Ok(Some(i)) => i,
+        Ok(None) => {
+            return (
+                401,
+                json!({"hata": format!("Bu bilgisayarın cihaz anahtarı yok ({}). Öneri: taa-cihaz uret, sonra sunucuda merkez cihazı onayı.", ayar.kok.join("cihaz").display()), "kod": 5}),
+            )
+        }
+        Err(e) => return kimlik_hata(e),
+    };
+    let mut g = match taa_kimlik::CurlGonderici::yeni(&h.taban) {
+        Ok(g) => g,
+        Err(e) => return (400, json!({"hata": e.to_string(), "kod": 2})),
+    };
+    if let Some(c) = &h.sertifika {
+        g = g.sertifika(c);
+    }
+    g = g.imzalayici(imzalayici);
+    let yedekli = if sunucu_acik(ayar) {
+        None
+    } else {
+        match taa_kimlik::yedekli_gonderici(&ayar.kok, None, ayar.sertifika.as_deref()) {
+            Ok(y) => y,
+            Err(e) => return kimlik_hata(e),
+        }
+    };
+    let sunucu_anahtari = match taa_kimlik::sunucu_anahtari_oku(&ayar.kok) {
+        Ok(a) => a,
+        Err(e) => return kimlik_hata(e),
+    };
+    let gonderici: &dyn taa_kimlik::Gonderici = match &yedekli {
+        Some(y) => y,
+        None => &g,
+    };
+    let o = match taa_kimlik::giris_dogrulayarak(
+        gonderici,
+        &anahtar_ad,
+        k,
+        p,
+        kod,
+        sunucu_anahtari.as_ref(),
+    ) {
+        Ok(o) => o,
+        Err(e) => return kimlik_hata(e),
+    };
+    if let Err(e) = taa_kimlik::varsayilan_depo(&ayar.kok).kaydet(&o) {
+        return kimlik_hata(e);
+    }
+    let yetki = oturumla(ayar, &o, &h, |g| {
+        taa_kimlik::yetki_al(g, &ayar.kok, &anahtar_ad, sunucu_anahtari.as_ref()).is_ok()
+    });
+    (
+        200,
+        json!({"girisli": true, "kullanici": o.kullanici, "yetki_belgesi": yetki, "zaman": simdi}),
+    )
+}
+
+fn oturumla(
+    ayar: &Ayar,
+    o: &taa_kimlik::Oturum,
+    h: &taa_yol::Hedef,
+    f: impl FnOnce(&dyn taa_kimlik::Gonderici) -> bool,
+) -> bool {
+    if !sunucu_acik(ayar) {
+        if let Ok(Some(y)) =
+            taa_kimlik::yedekli_gonderici(&ayar.kok, Some(o), ayar.sertifika.as_deref())
+        {
+            return f(&y);
+        }
+    }
+    match o.gonderici_taban(
+        &h.taban,
+        h.sertifika.as_deref(),
+        taa_kimlik::cihaz_imzalayici(&ayar.kok).ok().flatten(),
+    ) {
+        Ok(g) => f(&g),
+        Err(_) => false,
+    }
+}
+
+type Yanit = (u16, Value);
+
+fn egitim_kapali(p: &Result<egitim::Panel, String>) -> Yanit {
+    let m = p.as_ref().err().cloned().unwrap_or_default();
+    (
+        503,
+        json!({"hata": format!("Eğitim bölümü açılamadı: {m}"), "kod": 1}),
+    )
+}
+
+/// Katalog, rehber önbelleği ve izleme günlüğünü yükler. Dosya yoksa boş başlanır ve ekranda uyarı çıkar;
+/// bozuk katalog yalnız Eğitim bölümünü kapatır (Rehber açılır).
+fn egitim_kur(ayar: &Ayar) -> Result<egitim::Panel, String> {
+    let egitim_klasoru = ayar.kok.join("egitim");
+    let video_kok = ayar
+        .video_klasoru
+        .clone()
+        .unwrap_or_else(|| egitim_klasoru.join("video"));
+    if ayar.demo {
+        let uyari = vec![
+            "ÖRNEK VERİ (--demo): katalog ve rehber örnektir; hiçbir şey kaydedilmez, video yoktur.".to_string(),
+            "Yönetici işlemleri demo kipinde de yalnız gerçek yetkiyle açılır.".to_string(),
+        ];
+        return egitim::Panel::kur(
+            egitim::veri::demo_katalog(),
+            egitim::veri::demo_rehber(),
+            video_kok,
+            None,
+            true,
+            None,
+            uyari,
+        );
+    }
+    let mut uyarilar = Vec::new();
+    let katalog_yolu = ayar
+        .katalog
+        .clone()
+        .unwrap_or_else(|| egitim_klasoru.join("katalog.json"));
+    let katalog = match std::fs::read_to_string(&katalog_yolu) {
+        Ok(m) => egitim::veri::katalog_yukle(&m)
+            .map_err(|e| format!("{}: {e}", katalog_yolu.display()))?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            uyarilar.push(format!(
+                "Katalog dosyası yok ({}); eğitim listesi boş.",
+                katalog_yolu.display()
+            ));
+            egitim::veri::YuklenenKatalog::default()
+        }
+        Err(e) => return Err(format!("{} okunamadı: {e}", katalog_yolu.display())),
+    };
+    let rehber_yolu = ayar
+        .rehber_onbellek
+        .clone()
+        .unwrap_or_else(|| ayar.kok.join("rehber").join("rehber.json"));
+    let rehber = match std::fs::read_to_string(&rehber_yolu) {
+        Ok(m) => egitim::veri::rehber_yukle(&m).unwrap_or_else(|e| {
+            uyarilar.push(format!("Rehber kullanılamıyor, kimse etkin sayılmaz: {e}"));
+            Default::default()
+        }),
+        Err(_) => {
+            uyarilar.push(format!(
+                "Rehber önbelleği yok ({}); kimse etkin sayılmaz, izleme kaydı ve atama yapılamaz.",
+                rehber_yolu.display()
+            ));
+            Default::default()
+        }
+    };
+    egitim::Panel::kur(
+        katalog,
+        rehber,
+        video_kok,
+        Some(&egitim_klasoru.join("izleme.jsonl")),
+        false,
+        None, // tema Rehber'in ortak görünüm ayarındadır
+        uyarilar,
+    )
+}
+
+/// `/api/egitim/<uç>` isteklerini Eğitim çekirdeğine (`/api/<uç>`) yönlendirir; giriş ve çıkış taa-kimlik oturumudur.
+fn egitim_api(
+    e: &mut EgitimBolumu,
+    ayar: &Ayar,
+    yontem: &str,
+    yol: &str,
+    sorgu: &str,
+    govde: &Value,
+    simdi: &str,
+) -> Yanit {
+    let ic = format!("/api/{}", &yol["/api/egitim/".len()..]);
+    match (yontem, ic.as_str()) {
+        ("POST", "/api/giris") => {
+            let y = egitim_giris(ayar, govde, simdi);
+            e.onbellek.unut();
+            return y;
+        }
+        ("POST", "/api/cikis") => {
+            let y = egitim_cikis(ayar);
+            e.onbellek.unut();
+            return y;
+        }
+        _ => {}
+    }
+    let k = egitim_kullanici(ayar, &mut e.onbellek, simdi);
+    match &mut e.panel {
+        Ok(p) => p.api(k.as_ref(), yontem, &ic, sorgu, govde, simdi),
+        Err(_) => egitim_kapali(&e.panel),
+    }
 }
 
 /// `taa-kimlik` ile merkezi yönetici girişi (taa-cati paneliyle aynı akış: cihaz imzalı gönderici, sunucu yanıt imzası

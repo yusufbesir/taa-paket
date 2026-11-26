@@ -17,7 +17,7 @@ pub const GUVENLIK_BASLIKLARI: &[(&str, &str)] = &[
     (
         "Content-Security-Policy",
         "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; \
-         connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+         media-src 'self' https:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
     ),
     ("X-Frame-Options", "DENY"),
     ("X-Content-Type-Options", "nosniff"),
@@ -57,6 +57,31 @@ pub fn sorgu_degeri<'a>(sorgu: &'a str, ad: &str) -> Option<&'a str> {
         let (k, v) = p.split_once('=')?;
         (k == ad).then_some(v)
     })
+}
+
+/// Yüzde kodlamasını çözer (`%C3%BC` gibi; `+` boşluk). Geçersiz dizi ya da UTF-8 dışı bayt: None.
+pub fn yuzde_coz(s: &str) -> Option<String> {
+    let b = s.as_bytes();
+    let mut cikti = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        match b[i] {
+            b'%' => {
+                let h = s.get(i + 1..i + 3)?;
+                cikti.push(u8::from_str_radix(h, 16).ok()?);
+                i += 3;
+            }
+            b'+' => {
+                cikti.push(b' ');
+                i += 1;
+            }
+            c => {
+                cikti.push(c);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8(cikti).ok()
 }
 
 #[derive(Debug, Default, Clone)]
@@ -183,5 +208,15 @@ mod testler {
         assert!(cerez_ayarla("x").contains("HttpOnly"));
         assert_eq!(cerez_degeri("a=1; rehber_panel=zz", CEREZ), Some("zz"));
         assert_eq!(sorgu_degeri("b=1&c=2", "c"), Some("2"));
+    }
+
+    #[test]
+    fn sorgu_ve_yuzde() {
+        assert_eq!(sorgu_degeri("konu=a&gorev=b", "gorev"), Some("b"));
+        assert_eq!(sorgu_degeri("konu=a", "gorev"), None);
+        assert_eq!(yuzde_coz("kasa-egitimi").as_deref(), Some("kasa-egitimi"));
+        assert_eq!(yuzde_coz("%C3%BC+x").as_deref(), Some("ü x"));
+        assert_eq!(yuzde_coz("%zz"), None);
+        assert_eq!(yuzde_coz("%C3"), None);
     }
 }

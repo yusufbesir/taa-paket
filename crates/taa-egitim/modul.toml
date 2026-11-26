@@ -4,9 +4,9 @@ surum = "0.1.0"
 arayuz = "1"
 gerektirir = { "taa-rehber-model" = "1" }
 ozellikler = ["egitim"]
-program = "taaegitim"
+program = "taarehber"
 sunar = []
 ister = ["rehber.oku@1"]
 veri_sahibi = ["egitim"]
 veri_okur = ["rehber"]
-ayar_alani = "programlar.taaegitim"
+ayar_alani = "programlar.taarehber"
