@@ -459,6 +459,9 @@ pub struct ImzaKaydi {
     /// Telefonla imzada eşleşmiş cihazın kimliği.
     #[serde(default)]
     pub cihaz: Option<String>,
+    /// Telefonla imzada onaylanan gün sonu özetinin SHA-256'sı (`telefon_imza::ozet_sha256`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ozet: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1415,6 +1418,7 @@ impl KasaDefteri {
                     zaman: *zaman,
                     kanal: ImzaKanali::Ekran,
                     cihaz: None,
+                    ozet: None,
                 }),
                 _ => {}
             }
@@ -1427,6 +1431,35 @@ impl KasaDefteri {
         v
     }
 
+    /// İmza kuralları (kapanış listesi, gönderim, en çok iki imza, aynı kişi, giren ikinci imzayı atamaz).
+    /// Geçerse atılacak imzanın sırasını (1 ya da 2) döner. Telefon isteği açılmadan da çağrılır.
+    pub fn imza_on_denetim(&self, gs: &GunSonuKaydi, kisi_ad: &str) -> Result<u8, String> {
+        ozellik_acik()?;
+        if gs.kontrol.iter().filter(|x| **x).count() < KAPANIS_LISTESI.len() {
+            return Err("imza isteği kapanış kontrol listesi tamamlanınca açılır".into());
+        }
+        let k = self.gun_kayitlari()?;
+        if k.iter()
+            .any(|x| matches!(x, GunKaydi::Gonderim { id: i, .. } if *i == gs.id))
+        {
+            return Err("gün sonu gönderildi; imza eklenemez".into());
+        }
+        let mevcut = Self::imzalar(&k, &gs.id);
+        if mevcut.len() >= 2 {
+            return Err("iki imza da atılmış".into());
+        }
+        if kisi_ad.trim().is_empty() {
+            return Err("imzalayan kişiyi seçin".into());
+        }
+        if mevcut.iter().any(|i| ayni_kisi(&i.kisi, kisi_ad)) {
+            return Err("aynı kişi iki kez imzalayamaz".into());
+        }
+        if mevcut.len() == 1 && ayni_kisi(&gs.kisi, kisi_ad) {
+            return Err("giren onaylayamaz: ikinci imzayı başka bir kişi atar".into());
+        }
+        Ok(mevcut.len() as u8 + 1)
+    }
+
     /// Gün sonu imzası. Kurallar: imza isteği yalnız kapanış listesi tamamlanınca açılır; en çok iki imza;
     /// aynı kişi iki kez imzalayamaz; ikinci imzayı kaydı giren atamaz (giren onaylayamaz). Telefonla imzada
     /// cihaz kimliği zorunludur. Gönderilmiş güne imza eklenmez.
@@ -1437,34 +1470,24 @@ impl KasaDefteri {
         cihaz: Option<&str>,
         kisi: &Kisi,
     ) -> Result<ImzaKaydi, String> {
-        ozellik_acik()?;
+        self.imzala_ic(id, kanal, cihaz, None, kisi)
+    }
+
+    /// `imzala` ile aynı kurallar; telefonla imzada onaylanan özet de deftere yazılır.
+    pub(crate) fn imzala_ic(
+        &self,
+        id: &str,
+        kanal: ImzaKanali,
+        cihaz: Option<&str>,
+        ozet: Option<&str>,
+        kisi: &Kisi,
+    ) -> Result<ImzaKaydi, String> {
         let gs = self
             .gun_sonlari()?
             .into_iter()
             .find(|s| s.id == id)
             .ok_or_else(|| format!("geçerli gün sonu yok: {id}"))?;
-        if gs.kontrol.iter().filter(|x| **x).count() < KAPANIS_LISTESI.len() {
-            return Err("imza isteği kapanış kontrol listesi tamamlanınca açılır".into());
-        }
-        let k = self.gun_kayitlari()?;
-        if k.iter()
-            .any(|x| matches!(x, GunKaydi::Gonderim { id: i, .. } if i == id))
-        {
-            return Err("gün sonu gönderildi; imza eklenemez".into());
-        }
-        let mevcut = Self::imzalar(&k, id);
-        if mevcut.len() >= 2 {
-            return Err("iki imza da atılmış".into());
-        }
-        if kisi.ad.trim().is_empty() {
-            return Err("imzalayan kişiyi seçin".into());
-        }
-        if mevcut.iter().any(|i| ayni_kisi(&i.kisi, &kisi.ad)) {
-            return Err("aynı kişi iki kez imzalayamaz".into());
-        }
-        if mevcut.len() == 1 && ayni_kisi(&gs.kisi, &kisi.ad) {
-            return Err("giren onaylayamaz: ikinci imzayı başka bir kişi atar".into());
-        }
+        let sira = self.imza_on_denetim(&gs, &kisi.ad)?;
         let cihaz = match kanal {
             ImzaKanali::Telefon => {
                 let c = cihaz.map(str::trim).unwrap_or("");
@@ -1475,7 +1498,7 @@ impl KasaDefteri {
             }
             ImzaKanali::Ekran => None,
         };
-        let n = mevcut.len();
+        let n = sira as usize - 1;
         let i = ImzaKaydi {
             id: id.into(),
             sira: n as u8 + 1,
@@ -1484,6 +1507,7 @@ impl KasaDefteri {
             zaman: zaman::simdi_sn(),
             kanal,
             cihaz,
+            ozet: ozet.map(str::to_string),
         };
         self.gun_ekle(&GunKaydi::Imza(i.clone()))?;
         Ok(i)

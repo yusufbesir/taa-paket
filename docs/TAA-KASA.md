@@ -16,8 +16,8 @@ docs/sozlesmeler/kasa.gunsonu.md, docs/sozlesmeler/kasa.masraf.md.
    Excel'inin satırları, aynı sırayla) → kontrol listesi. Sağda canlı fark paneli.
 4. **İmza** (kapanış listesi tamamlanınca istek çıkar): 1. imza Kasa Sorumlusu, 2. imza Mağaza Sorumlusu / Vekili. En az bir
    imza zorunlu; ikinci imzayı giren atamaz; ikinci kişi yoksa "ikinci imza atmadı" yazılır (kayıt, Excel, tutanak, ekran, matris).
-   Telefonla imza çekirdekte hazır (`kanal: telefon`, cihaz kimliği); kasa ekranı yalnız 127.0.0.1'de açıldığı için telefon
-   köprüsü henüz bağlı değil, imza ekrandan atılır (yer tutucu, ekranda yazar).
+   Telefonla imza istemcisi hazır (`telefon_imza`, aşağıda "Telefonla imza"); Telefon Köprüsü onay akışı birleşip boru izni
+   verilene kadar API 501 döner ve imza ekrandan atılır (yer tutucu, ekranda yazar).
 5. **Tutanak ve raporlar:** Kasa Çift Doğrulama Tutanağı (A4, yazdırılabilir; `GET /api/tutanak?id=`; Nebim kasa Excel'i ERP
    sütununa içe aktarılabilir), WhatsApp özeti (`POST /api/whatsapp`, alanlar doldukça), akşam ciro Excel'i ve kayıt Excel'i aynı kayıtlardan.
 6. **Gönder:** paket (imzalı, cihaz anahtarı varsa) kuyruğa yazılır, merkeze teslim edilir; ağ yoksa kuyrukta bekler.
@@ -65,11 +65,45 @@ kuruşu kuruşuna tuttu. Tutarlar depoya yazılmadı.
 
 ## Açık sorular (kalan)
 
-- E-FATURA POS:2 satırı ne zaman dolu? (25.11'de e-fatura satışı olduğu halde 0.)
-- Excel KREDİ ÇEKİ satırı ne zaman dolu? (Nebim kredi çeki DEĞİŞİM'e gidiyor; satır 0.)
-- KASA AÇIĞI ve İADE'nin Z formülündeki yeri örneksiz çıkarım (açıklı ya da iadeli gün örneği gerekli).
+Dolu şablon (V2 ve 25.11), aylık şablon (30 gün) ve ödeme listesi yeniden tarandı (yalnız yapı/dolu-boş bilgisi):
+
+- **KASA AÇIĞI — çözüldü (şablondan):** MASRAFLAR bölümünün ilk satırıdır (`TOPLAM MASRAF = SUM(E17:E26)`), genel toplama
+  masraf olarak girer; KASA FAZLASI genel toplam dışında bilgi satırıdır. Program böyle hesaplıyor. Gerçek açıklı gün örneği yok.
+- **İADE — kısmen:** şablonda hiçbir toplama girmeyen bilgi satırı (DEĞİŞİM gibi). Z formülündeki yeri (`z_beklenen`'e eklenir)
+  çıkarımdır: 25.11'de iade satırı boş olduğu için iadeli gün örneğiyle doğrulanmadı.
+- **E-FATURA POS:2 — açık:** şablonda ödeme satırı ve ilk genel toplama girer (program `efatura_pos` ile aynı). Ne zaman dolu
+  olduğu dosyalardan çıkmıyor (25.11'de ve aylık şablonda hiç dolu değil). Yusuf/muhasebe yanıtlamalı.
+- **KREDİ ÇEKİ — açık:** şablonda ilk genel toplam dışında, son genel toplama ve mağaza toplamlarına girer (program aynı).
+  Nebim kredi çeki DEĞİŞİM'e gidiyor; bu satıra hangi belgenin yazıldığı dosyalardan çıkmıyor.
+- **İkinci imza gerekçesi — karar bekliyor:** bugün ikinci imza yoksa yalnız "ikinci imza atmadı" yazılır; gerekçe zorunlu mu?
+  Öneri: zorunlu kısa gerekçe (tek kişi kapanışında denetim izi). Ayrıca ilk imzadan sonra tutanak eklerinin kilitlenmesi önerilir.
 - Veri bilgisi: 25.11 Outlet yazarkasasında bir havale ödemesi nakit tipiyle girilmiş (Nebim ve Excel'de havale).
-- Masraf türü listesi, kasa limiti, fark toleransı, gönderim son saati; mağaza imza anahtarı; sunucu kasa ucu; telefon köprüsü.
+- Masraf türü listesi, kasa limiti, fark toleransı, gönderim son saati; mağaza imza anahtarı; sunucu kasa ucu.
+
+## Telefonla imza (tasarım ve istemci)
+
+Durum: istemci `crates/taa-kasa/src/telefon_imza.rs` hazır ve testli (sahte kanal); gerçek kanal bağlı değil, API 501.
+
+- **Uç:** yeni HTTP ucu yok. Kasa ekranı `POST /api/imza {"id", "kanal":"telefon"}` aldığında `TelefonImzaOturumu::baslat`
+  çağrılır; istek Telefon Köprüsü yerel hizmet borusuna (`\\.\pipe\TelefonKoprusuHizmet`) JSON satırı olarak gider. Köprü
+  isteği TK2 TLS kanalıyla eşleşmiş telefona taşır (Uzak Köprü onay akışı; PC isteği P-256 imzalı, nonce 60 sn).
+- **Sözleşme (önerilen, köprü taslağı gelince eşitlenecek):** `onay_iste@1` → `onay@1` | `onay_red@1`, `kapsam: taa_kasa_gun_sonu`.
+  İstek: `istek_kimligi` (128 bit rastgele), `gun_sonu_id`, `sira`, `rol`, `istenen_kisi`, `ozet_metni`, `ozet_sha256`,
+  `olusturma`, `son_gecerlilik` (+60 sn). Onay: `istek_kimligi`, `kapsam`, `ozet_sha256`, `cihaz{eslesme_kimligi, pc_pin}`,
+  `kisi`, `kisi_dogrulandi`, `zaman`. Red: `istek_kimligi`, `neden`. Çözüm esnektir (bilinmeyen alan yok sayılır).
+- **Özet:** gün sonu tutarlarının kanonik `anahtar=değer` satırları (sözlük sırası, kuruş tam sayı; kişi adı ve not yok) ve
+  SHA-256'sı. Telefon metni gösterir, hash'i kendisi hesaplar. Onay gelince kasa özeti kayıttan **yeniden** hesaplar; istekten
+  sonra düzeltme/iptal olduysa imza atılmaz.
+- **Cihaz kimliği:** `eslesme_kimligi:pc_pin` (pc_pin = telefon sertifikasının SHA-256'sı); imza kaydında `cihaz`, onaylanan
+  özet `ozet` alanına yazılır. Telefon imzasının (P-256) doğrulanması köprünün işidir.
+- **Kişi doğrulama:** bugün yok; kişi ekranda seçilir, telefondaki kişi farklı bildirilirse onay geçersizdir. Planlı: telefonda
+  Keystore + BiometricPrompt (`kisi_dogrulandi: true`), cihaz↔kişi bağı TAA Merkez'de.
+- **Durumlar:** `bekliyor`, `onaylandi`, `reddedildi`, `zaman_asimi` (60 sn), `kanal_yok` (→ 501), `gecersiz` (özet/istek/kişi
+  tutmuyor ya da imza kuralı). İmza kuralları (kapanış listesi, giren ikinci imzayı atamaz, en çok iki, gönderimden sonra yok)
+  istek açılmadan denetlenir; ihlalde telefona istek gitmez (422).
+- **501 yerine gerçek akış için gerekenler:** (1) köprüde u2b-tls-kip2 onay akışının birleşmesi ve `onay_iste@1` kapsamı;
+  (2) borunun erişim listesine taa-kasa.exe izni; (3) `BoruKanali` içine boru okuma/yazma (Windows); (4) ekranda bekleme
+  görünümü ve `GET /api/imza/durum?istek=` yoklaması (API bugün `bekliyor` durumunda istek kimliğini döndürecek şekilde hazır).
 
 ## Tutaa'dan taşınanlar (çift doğrulama)
 

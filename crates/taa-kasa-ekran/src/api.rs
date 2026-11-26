@@ -180,13 +180,11 @@ impl Uygulama {
                 d.onayla(id, tur, k).map(|_| json!({"tamam": true}))
             }),
             ("POST", "/api/imza") => {
-                // Telefon köprüsü (eşleşmiş telefondan imza) henüz bağlı değil: bu ekran yalnız 127.0.0.1'de
-                // açılır, telefon erişemez. Yer tutucu olarak kişi ekranda kendi adıyla imzalar.
+                // Telefonla imza: istek Telefon Köprüsü kanalına (`telefon_imza`) verilir. Gerçek boru kanalı
+                // bağlanana kadar `BoruKanali` "kanal yok" döner ve yanıt 501 + yer tutucu mesajıdır; kişi
+                // ekranda kendi adıyla imzalar. Kural ihlali (giren ikinci imza vb.) köprüden önce 422 döner.
                 if s("kanal") == "telefon" {
-                    return hata(
-                        501,
-                        "Telefonla imza köprüsü henüz bağlı değil; imza bu ekrandan (yer tutucu) atılır.",
-                    );
+                    return self.telefon_imza(govde);
                 }
                 self.yaz(govde, |d, k, g| {
                     let id = g.get("id").and_then(Value::as_str).unwrap_or("");
@@ -323,6 +321,37 @@ impl Uygulama {
         match f(&self.defter(), &k, govde) {
             Ok(v) => tamam(v),
             Err(e) => hata(422, e),
+        }
+    }
+
+    fn telefon_imza(&mut self, govde: &Value) -> Cevap {
+        use taa_kasa::telefon_imza::{BoruKanali, ImzaDurumu, TelefonImzaOturumu};
+        let Some(k) = self.islem_kisisi() else {
+            return hata(401, "Önce giriş yapın.");
+        };
+        let id = govde.get("id").and_then(Value::as_str).unwrap_or("");
+        let nonce = match rastgele_hex(16) {
+            Ok(n) => n,
+            Err(e) => return hata(500, e),
+        };
+        let mut kanal = BoruKanali::default();
+        match TelefonImzaOturumu::baslat(
+            &self.defter(),
+            &mut kanal,
+            id,
+            &k,
+            &nonce,
+            zaman::simdi_sn(),
+        ) {
+            Err(e) => hata(422, e),
+            Ok(o) => match o.durum {
+                ImzaDurumu::KanalYok { neden } => hata(501, neden),
+                // Gerçek kanal bağlandığında: istek telefonda, ekran istek kimliğiyle durumu yoklar.
+                d => tamam(
+                    json!({"durum": d.kod(), "istek_kimligi": o.istek.istek_kimligi,
+                    "son_gecerlilik": o.istek.son_gecerlilik}),
+                ),
+            },
         }
     }
 
@@ -779,15 +808,22 @@ mod testler {
         assert_eq!(d, 200, "{gs}");
         let id = gs["id"].as_str().unwrap().to_string();
         // Telefon köprüsü yok: açıkça reddedilir.
-        let (d, _) = json_of(u.istek("POST", "/api/imza", "", &json!({"id":id,"kanal":"telefon"})));
+        let (d, v) = json_of(u.istek("POST", "/api/imza", "", &json!({"id":id,"kanal":"telefon"})));
         assert_eq!(d, 501);
+        assert!(
+            v.to_string()
+                .contains(taa_kasa::telefon_imza::KOPRU_YOK_MESAJI),
+            "{v}"
+        );
         let (d, v) = json_of(u.istek("POST", "/api/imza", "", &json!({"id":id,"kanal":"ekran"})));
         assert_eq!((d, v["sira"].as_i64()), (200, Some(1)));
         let (_, v) = json_of(u.istek("GET", "/api/durum", "tarih=2026-11-25", &Value::Null));
         assert_eq!(v["gun"]["asama"], "gonder");
         assert_eq!(v["gun"]["ikinci_imza_durumu"], "ikinci imza atmadı");
-        // Giren ikinci imzayı atamaz.
+        // Giren ikinci imzayı atamaz; telefonla da istek köprüye gitmeden reddedilir.
         let (d, _) = json_of(u.istek("POST", "/api/imza", "", &json!({"id":id,"kanal":"ekran"})));
+        assert_eq!(d, 422);
+        let (d, _) = json_of(u.istek("POST", "/api/imza", "", &json!({"id":id,"kanal":"telefon"})));
         assert_eq!(d, 422);
     }
 
