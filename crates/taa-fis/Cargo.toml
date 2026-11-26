@@ -17,3 +17,5 @@ sha2 = "0.10"
 taa-ayar = { path = "../taa-ayar" }
 taa-terzi = { path = "../taa-terzi" }
 taa-dosya = { path = "../taa-dosya" }
+# Ad denetiminde Unicode birleşik işaret (M) sınıfı (Hintçe virama, Arapça hareke); Cargo.lock'ta zaten var (stringprep).
+unicode-properties = "0.1"

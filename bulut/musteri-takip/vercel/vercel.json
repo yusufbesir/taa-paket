@@ -3,7 +3,11 @@
   "rewrites": [
     { "source": "/t/:kod", "destination": "/api/t?kod=:kod" },
     { "source": "/api/durum/:kod", "destination": "/api/t?kod=:kod&bicim=json" },
-    { "source": "/", "destination": "/api/t" }
+    { "source": "/", "destination": "/api/t" },
+    { "source": "/api/onay/ac", "destination": "/api/onay?islem=ac" },
+    { "source": "/api/onay/kapat", "destination": "/api/onay?islem=kapat" },
+    { "source": "/api/onay/:t", "destination": "/api/onay?islem=oku&t=:t" },
+    { "source": "/o/:t", "destination": "/api/onay?islem=sayfa&t=:t" }
   ],
   "crons": [{ "path": "/api/temizle", "schedule": "17 3 * * *" }]
 }

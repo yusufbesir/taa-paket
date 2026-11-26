@@ -6,6 +6,8 @@
 //! yol listesi kullanılır; `--sunucu`/`--sertifika` TAA Çatı'daki anlamıyla aynıdır.
 //! Müşteri takip: `taa-fis-sunucu --veri KLASÖR --takip-genel-anahtar` bulut sayfasına verilecek GENEL anahtarı
 //! yazar ve çıkar (özel anahtar ve takip anahtarı klasörde kalır). Ayar `musteri-takip.json` (bkz. musteri_takip.rs).
+//! Teslim bilgisi şifre anahtarı: varsayılan `KLASÖR/teslim-sifre.anahtar`; `--teslim-anahtar YOL` ile veri klasörü
+//! dışında (ayrı yedeklenen) bir dosyada tutulabilir. Anahtar yedekte veriden AYRI saklanmalıdır (bkz. teslim_sifre.rs).
 use std::io::Read;
 use std::path::PathBuf;
 use taa_fis_sunucu::{cati_pin, kurulum, Istek, Uygulama, FOTO_SINIRI};
@@ -57,7 +59,23 @@ fn main() {
             std::thread::sleep(std::time::Duration::from_secs(60));
         });
     }
+    // Teslim bilgisi şifre anahtarı veri klasörü dışında tutulabilir (ayrı yedeklenir; bkz. teslim_sifre).
+    if let Some(y) = arg("--teslim-anahtar") {
+        if let Err(e) = taa_fis_sunucu::teslim_sifre::anahtar_yeri_ayarla(PathBuf::from(y)) {
+            eprintln!("Teslim anahtarı yeri ayarlanamadı: {e}");
+            std::process::exit(1);
+        }
+    }
     let mut uyg = Uygulama::yeni(veri, arg("--yazici").map(PathBuf::from), taban.clone());
+    // Karekod onayı: süresi geçen karekodların bulut kaydı dakikada bir kapattırılır (Vercel Blob'da kendi silme
+    // zamanı yok; şifreli kayıt 15 dk + en çok 1 dk içinde silinir, sunucu açık ve internete ulaşıyorsa).
+    {
+        let temizleyici = uyg.onay_temizleyici();
+        std::thread::spawn(move || loop {
+            std::thread::sleep(std::time::Duration::from_secs(60));
+            temizleyici.calistir();
+        });
+    }
     uyg.aydinlatma_url = arg("--aydinlatma-url");
     let kok = arg("--kok")
         .map(PathBuf::from)

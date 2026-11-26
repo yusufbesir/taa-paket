@@ -535,10 +535,18 @@
 
   /* Teslim iletişim kutusu. s: {fis, oturum, api(metot, yol, govde)}.
      Sonuç: sunucunun 200 yanıtı ({tamam, birlikte_teslim, teslim_kaydi}) ya da vazgeçilirse null.
+     Varsayılan yöntem "Karekodla onay" (Yusuf 2026-11-26): POST /api/fis/<no>/teslim-qr büyük karekodu verir; müşteri
+     kendi telefonuyla okutup ad soyad ve telefonunu yazar. Kutu 2 sn'de bir GET /api/fis/<no>/teslim-qr/<t> ile durumu
+     sorar; onay gelince ad, maskeli telefon, cihaz ve saat gösterilir, "Teslimi tamamla" etkinleşir. Karekod 15 dk geçerli
+     (geri sayım), "Yeni karekod" ile yenilenir. "Telefonu yok: ekranda imza" eski yoldur (ad elle, imza tuvalde).
+     Fişsiz teslimde son 4 hane her iki yolda da sorulur; karekod ya da imzadan biri zorunludur.
      409 bagli_teslim gelirse bağlı fiş kutusu (bagliSor) bu kutunun üstünde açılır; seçimden sonra aynı istek
-     (son 4 ve imza dahil) "bagli" listesiyle yeniden gönderilir. Asıl yetki denetimi sunucudadır (403). */
+     (son 4, imza ya da karekod belirteci dahil) "bagli" listesiyle yeniden gönderilir. Asıl yetki denetimi sunucudadır. */
+  var QR_ARALIK_MS = 2000;
+  function sureMetni(sn) { sn = Math.max(0, Math.floor(sn)); return Math.floor(sn / 60) + ':' + ('0' + (sn % 60)).slice(-2); }
   function teslimSor(s) {
     var f = s.fis || {}, no = f.no, fissizYetki = yetkiVar(s.oturum, 'fissiz-teslim');
+    var yolNo = '/api/fis/' + encodeURIComponent(no);
     return new Promise(function (bitti) {
       var bas = kimlik('tsk'), onceki = document.activeElement, sonuc = null, bitmis = false, mesgul = false;
       var gFisli = el('input', { type: 'radio', name: bas + '-tur', value: 'fisli' });
@@ -547,8 +555,13 @@
       var fissizNeden = fissizYetki ? null : el('span', { sinif: 'dz-neden kucuk', id: bas + '-yn',
         metin: 'Bu cihazda fişsiz teslim yetkisi yok. Mağaza bilgisayarından ya da yöneticinin Telefonlar ekranında yetki verdiği bir cihazdan yapılır.' });
       if (fissizNeden) gFissiz.setAttribute('aria-describedby', bas + '-yn');
+      /* Yöntem: karekod (varsayılan) ya da ekranda imza (telefonu olmayan müşteri). */
+      var yQr = el('input', { type: 'radio', name: bas + '-yon', value: 'qr' });
+      var yEkran = el('input', { type: 'radio', name: bas + '-yon', value: 'ekran' });
+      yQr.checked = true;
       var ad = el('input', { id: bas + '-ad', maxlength: '80', autocomplete: 'off', spellcheck: 'false' });
       ad.value = f.musteri || '';
+      var alanAd = el('div', { sinif: 'alan' }, el('label', { for: bas + '-ad', metin: 'Teslim alan (ad soyad)' }), ad);
       var iliski = el('select', { id: bas + '-il' }, ILISKI.map(function (x) { return el('option', { value: x[0], metin: x[1] }); }));
       iliski.value = 'kendisi';
       var son4 = el('input', { id: bas + '-s4', inputmode: 'numeric', autocomplete: 'off', maxlength: '4', pattern: '[0-9]{4}', sinif: 'mono',
@@ -563,7 +576,21 @@
       var imza = imzaAlani({ degisti: function () { mesaj.hidden = true; } });
       var imzaBas = el('div', { sinif: 'tk-imza-bas', metin: 'Teslim alanın imzası' });
       var imzaKutu = el('div', { sinif: 'tk-imza-kap' }, imzaBas, imza.kok);
-      var gonderD = el('button', { type: 'submit', sinif: 'dugme sonraki', metin: 'Teslim et' });
+      /* Karekod paneli */
+      var qrResim = el('div', { sinif: 'tk-qr-resim', role: 'img', 'aria-label': 'Teslim onayı karekodu' });
+      var qrDurum = el('div', { sinif: 'tk-qr-durum', role: 'status', 'aria-live': 'polite', metin: 'Karekod hazırlanıyor…' });
+      var qrSure = el('span', { sinif: 'tk-qr-sure mono', 'aria-label': 'Kalan süre' });
+      var qrBilgi = el('dl', { sinif: 'tk-teslim-kaydi tk-qr-bilgi', hidden: true });
+      var qrYeni = el('button', { type: 'button', sinif: 'dugme kucuk', metin: 'Yeni karekod' });
+      var qrEkran = el('button', { type: 'button', sinif: 'dugme kucuk', metin: 'Telefonu yok: ekranda imza' });
+      var qrPanel = el('div', { sinif: 'tk-qr' },
+        qrResim,
+        el('div', { sinif: 'tk-qr-yan' },
+          el('p', { sinif: 'tk-qr-baslik', metin: 'Müşteri kendi telefonuyla okutsun' }),
+          el('p', { sinif: 'mut kucuk', metin: 'Açılan sayfada adını, telefonunu yazıp "Ürünlerimi eksiksiz teslim aldım" kutusunu işaretler. Bilgiler mağazaya şifreli gelir. Onayın buraya gelmesi 1 dakikaya kadar sürebilir. Yazılan ad ve telefon müşterinin beyanıdır, doğrulanmaz.' }),
+          qrDurum, qrBilgi,
+          el('div', { sinif: 'dz-sira tk-qr-alt' }, qrSure, qrYeni, qrEkran)));
+      var gonderD = el('button', { type: 'submit', sinif: 'dugme sonraki', metin: 'Teslimi tamamla' });
       var vazgec = el('button', { type: 'button', sinif: 'dugme', metin: 'Vazgeç' });
       var form = el('form', { method: 'dialog', novalidate: true },
         el('h2', { id: bas, metin: 'Teslim et · ' + (no || '') }),
@@ -572,35 +599,143 @@
           el('label', { sinif: 'onay' }, gFisli, el('span', { metin: 'Fişiyle geldi' })),
           el('label', { sinif: 'onay' + (fissizYetki ? '' : ' dz-pasif') }, gFissiz, el('span', { metin: 'Fişi yok' })),
           fissizNeden),
-        el('div', { sinif: 'dz-izgara' },
-          el('div', { sinif: 'alan' }, el('label', { for: bas + '-ad', metin: 'Teslim alan (ad soyad)' }), ad),
+        el('fieldset', { sinif: 'tk-teslim-tur' }, el('legend', { metin: 'Teslim onayı' }),
+          el('label', { sinif: 'onay' }, yQr, el('span', { metin: 'Karekodla onay' })),
+          el('label', { sinif: 'onay' }, yEkran, el('span', { metin: 'Telefonu yok: ekranda imza' }))),
+        qrPanel,
+        el('div', { sinif: 'dz-izgara' }, alanAd,
           el('div', { sinif: 'alan' }, el('label', { for: bas + '-il', metin: 'Müşteriye yakınlığı' }), iliski)),
         alanSon4, imzaAlSatir, imzaKutu, mesaj,
         el('div', { sinif: 'dz-sira' }, vazgec, gonderD));
       var kutu = el('dialog', { sinif: 'dz-kutu tk-teslim', 'aria-labelledby': bas }, form);
+      /* Karekod durumu: t (belirteç), bitis (ms), onay (sunucunun görünümü), zamanlayıcılar. */
+      var qr = { t: null, bitis: 0, onay: null, sorgu: null, sayac: null, istekte: false, ac: false };
+      function karekod() { return yQr.checked; }
       function fissiz() { return gFissiz.checked && fissizYetki; }
+      function qrDurdur() { if (qr.sorgu) clearInterval(qr.sorgu); if (qr.sayac) clearInterval(qr.sayac); qr.sorgu = qr.sayac = null; }
+      /* fis_telefonu: karekoddaki telefon fiştekiyle "ayni" | "farkli" | "yok" (numara açılmadan, sunucu karşılaştırır). */
+      function telefonFarkli() { return !!(qr.onay && qr.onay.fis_telefonu === 'farkli'); }
+      function qrBilgiCiz(o) {
+        qrBilgi.textContent = '';
+        var fisTel = o.fis_telefonu === 'ayni' ? 'Aynı' : o.fis_telefonu === 'farkli' ? 'Farklı: teslim alanın yakınlığını seçin' : '';
+        [['Teslim alan', o.ad], ['Telefon', o.tel_maskeli], ['Fişteki numarayla', fisTel], ['Okutan cihaz', o.cihaz], ['Onay saati', o.zaman_metni]].forEach(function (x) {
+          if (x[1]) qrBilgi.appendChild(el('div', { sinif: x[0] === 'Fişteki numarayla' && o.fis_telefonu === 'farkli' ? 'tk-uyari' : '' }, el('dt', { metin: x[0] }), el('dd', { sinif: x[0] === 'Telefon' || x[0] === 'Onay saati' ? 'mono' : '', metin: x[1] })));
+        });
+        qrBilgi.hidden = false;
+        // Telefon farklıysa "kendisi" varsayılanı bırakılmaz: kasiyer yakını/diğer seçer (sunucu da 422 iliski_gerekli).
+        if (o.fis_telefonu === 'farkli' && iliski.value === 'kendisi') iliski.value = 'yakini';
+      }
+      function sayacCiz() {
+        var kalan = (qr.bitis - Date.now()) / 1000;
+        qrSure.textContent = qr.t ? sureMetni(kalan) : '';
+        if (qr.t && kalan <= 0) { qrSuresiDoldu(); }
+      }
+      function qrSuresiDoldu() {
+        qrDurdur(); qr.t = null; qr.onay = null; qrBilgi.hidden = true;
+        qrResim.classList.add('tk-qr-soluk');
+        qrDurum.textContent = 'Karekodun süresi doldu. "Yeni karekod" ile yenileyin.';
+        qrSure.textContent = '0:00'; goster();
+      }
+      function qrSor() {
+        if (!qr.t || qr.istekte || qr.onay) return;
+        var t = qr.t; qr.istekte = true;
+        s.api('GET', yolNo + '/teslim-qr/' + encodeURIComponent(t)).then(function (r) {
+          qr.istekte = false;
+          if (bitmis || t !== qr.t) return;
+          if (typeof r.kalan_sn === 'number') qr.bitis = Date.now() + r.kalan_sn * 1000;
+          if (r.durum === 'onaylandi') {
+            qr.onay = r; if (qr.sorgu) clearInterval(qr.sorgu); qr.sorgu = null;
+            qrDurum.textContent = 'Müşteri onayladı. Bilgileri kontrol edip teslimi tamamlayın.';
+            qrDurum.className = 'tk-qr-durum tk-qr-tamam';
+            qrBilgiCiz(r); goster();
+            try { gonderD.focus(); } catch (e) {}
+          } else {
+            qrDurum.textContent = r.saat_sorunu ? 'Onay okunamıyor: bu bilgisayarın saati yanlış görünüyor. Windows saatini denetleyin (Ayarlar > Saat ve dil > Saati otomatik ayarla).'
+              : r.baglanti_sorunu ? 'Onay bekleniyor… (internet bağlantısı yavaş ya da yok; denemeye devam ediliyor)' : 'Onay bekleniyor…';
+          }
+        }, function (e) {
+          qr.istekte = false;
+          if (bitmis || t !== qr.t) return;
+          var v = (e && e.veri) || {};
+          if (e && e.kod === 410) { qrSuresiDoldu(); return; }
+          if (e && (e.kod === 404 || e.kod === 422)) {
+            qrDurdur(); qr.t = null;
+            qrDurum.textContent = (v.ileti || 'Karekod geçersiz') + ' "Yeni karekod" ile yeniden deneyin.';
+            goster(); return;
+          }
+          qrDurum.textContent = 'Onay bekleniyor… (' + hataIleti(e) + ')';
+        });
+      }
+      function qrAc() {
+        qrDurdur(); qr.t = null; qr.onay = null; qr.ac = true;
+        qrBilgi.hidden = true; qrResim.textContent = ''; qrResim.classList.remove('tk-qr-soluk');
+        qrDurum.className = 'tk-qr-durum'; qrDurum.textContent = 'Karekod hazırlanıyor…'; qrSure.textContent = '';
+        qrYeni.disabled = true; goster();
+        s.api('POST', yolNo + '/teslim-qr', {}).then(function (r) {
+          qrYeni.disabled = false;
+          if (bitmis) return;
+          qr.t = r.t; qr.bitis = Date.now() + (r.kalan_sn || 900) * 1000;
+          // SVG sunucunun kendi ürettiği karekoddur (yalnız <svg><path>); dış içerik değildir.
+          qrResim.innerHTML = r.qr_svg || '';
+          qrDurum.textContent = 'Onay bekleniyor…';
+          qr.sorgu = setInterval(qrSor, QR_ARALIK_MS);
+          qr.sayac = setInterval(sayacCiz, 1000);
+          sayacCiz(); goster();
+        }, function (e) {
+          qrYeni.disabled = false; qr.ac = false;
+          if (bitmis) return;
+          var v = (e && e.veri) || {};
+          // Karekod kullanılamıyorsa (bulut ayarı yok, internet yok) ekran imzasına geçilir.
+          if (v.hata === 'qr_kapali' || v.hata === 'bulut_yok' || v.hata === 'saat_farki') {
+            yEkran.checked = true; goster();
+            hata((v.ileti || hataIleti(e)));
+            return;
+          }
+          qrDurum.textContent = 'Karekod hazırlanamadı: ' + hataIleti(e);
+          goster();
+        });
+      }
       function goster() {
-        var fz = fissiz();
+        var fz = fissiz(), k = karekod();
+        qrPanel.hidden = !k;
+        alanAd.hidden = k;
         alanSon4.hidden = !fz;
-        imzaAlSatir.hidden = fz;
-        imzaKutu.hidden = !(fz || imzaAl.checked);
+        imzaAlSatir.hidden = fz || k;
+        imzaKutu.hidden = k || !(fz || imzaAl.checked);
         imzaBas.textContent = fz ? 'Teslim alanın imzası (zorunlu)' : 'Teslim alanın imzası';
+        gonderD.disabled = mesgul || !!tamamlanan || (k && !qr.onay);
         if (!imzaKutu.hidden) imza.boyutla();
       }
       [gFisli, gFissiz, imzaAl].forEach(function (x) { x.addEventListener('change', function () { mesaj.hidden = true; goster(); }); });
+      [yQr, yEkran].forEach(function (x) { x.addEventListener('change', function () {
+        mesaj.hidden = true;
+        if (karekod() && !qr.t && !qr.ac) qrAc(); else goster();
+      }); });
+      qrYeni.addEventListener('click', function () { mesaj.hidden = true; qrAc(); });
+      qrEkran.addEventListener('click', function () { yEkran.checked = true; mesaj.hidden = true; goster(); try { ad.focus(); } catch (e) {} });
       function hata(t, odak) { mesaj.textContent = t; mesaj.hidden = false; if (odak) try { odak.focus(); } catch (e) {} }
       function kapat(r) { sonuc = r; if (kutu.open && kutu.close) kutu.close(); else son(); }
       function son() {
         if (bitmis) return; bitmis = true;
+        qrDurdur();
         if (kutu.parentNode) kutu.parentNode.removeChild(kutu);
         if (onceki && onceki.focus) try { onceki.focus(); } catch (e) {}
         bitti(sonuc);
       }
-      function mesgulYap(m) { mesgul = m; gonderD.disabled = m; vazgec.disabled = m; gonderD.textContent = m ? 'Gönderiliyor…' : 'Teslim et'; }
+      function mesgulYap(m) { mesgul = m; vazgec.disabled = m; gonderD.textContent = m ? 'Gönderiliyor…' : 'Teslimi tamamla'; goster(); }
+      var tamamlanan = null;
       function gonder(govde) {
         mesgulYap(true);
-        return s.api('POST', '/api/fis/' + encodeURIComponent(no) + '/teslim-al', govde).then(function (r) {
-          mesgulYap(false); kapat(r || { tamam: true });
+        return s.api('POST', yolNo + '/teslim-al', govde).then(function (r) {
+          mesgulYap(false);
+          var atlanan = (r && r.birlikte_atlanan) || [];
+          if (atlanan.length) {
+            // Ana fiş teslim edildi; seçilen bazı bağlı fişlerin kaydı yazılamadı: kutu açık kalır, kasiyer görür.
+            tamamlanan = r; gonderD.disabled = true; gonderD.hidden = true; vazgec.textContent = 'Kapat';
+            hata('Teslim edildi, ancak şu bağlı fişlerin teslim kaydı yazılamadı: ' + atlanan.join(', ') + '. Onları ayrıca teslim edin.');
+            return;
+          }
+          kapat(r || { tamam: true });
         }, function (e) {
           mesgulYap(false);
           var v = (e && e.veri) || {};
@@ -622,6 +757,8 @@
             hata('Çok fazla yanlış deneme. Fişsiz teslim bu fiş için yaklaşık ' + dk + ' dakika kilitli.');
             return;
           }
+          if (v.hata === 'iliski_gerekli') { if (iliski.value === 'kendisi') iliski.value = 'yakini'; hata(v.ileti || 'Teslim alanın müşteriye yakınlığını seçin.', iliski); return; }
+          if (v.hata === 'onay_yok') { qrSuresiDoldu(); hata(v.ileti || 'Karekod onayı bulunamadı; yeni karekod oluşturun.'); return; }
           if (e && e.kod === 413) { hata('İmza çok büyük. Temizleyip daha sade imzalatın.'); return; }
           hata(hataIleti(e));
         });
@@ -630,29 +767,36 @@
         ev.preventDefault();
         if (mesgul) return;
         mesaj.hidden = true;
-        var fz = fissiz(), a = ad.value.trim().replace(/\s+/g, ' ');
-        if (a.split(' ').length < 2) { hata('Teslim alanın adını ve soyadını yazın.', ad); return; }
-        if (a.length > 80) { hata('Ad soyad en çok 80 harf olabilir.', ad); return; }
-        if (!AD_DESENI.test(a)) { hata('Ad soyadda yalnız harf, boşluk, tire, kesme işareti ve nokta olabilir.', ad); return; }
-        var govde = { fisli: !fz, teslim_alan: a, iliski: iliski.value };
+        var fz = fissiz(), govde;
+        if (karekod()) {
+          if (!qr.t || !qr.onay) { hata('Müşterinin karekodla onayı bekleniyor. Telefonu yoksa "ekranda imza" seçin.'); return; }
+          if (telefonFarkli() && iliski.value === 'kendisi') { hata('Karekodda yazılan telefon fişteki numaradan farklı. Teslim alanın müşteriye yakınlığını seçin (yakını ya da diğer).', iliski); return; }
+          govde = { fisli: !fz, iliski: iliski.value, onay_belirteci: qr.t };
+        } else {
+          var a = ad.value.trim().replace(/\s+/g, ' ');
+          if (a.split(' ').length < 2) { hata('Teslim alanın adını ve soyadını yazın.', ad); return; }
+          if (a.length > 80) { hata('Ad soyad en çok 80 harf olabilir.', ad); return; }
+          if (!AD_DESENI.test(a)) { hata('Ad soyadda yalnız harf, boşluk, tire, kesme işareti ve nokta olabilir.', ad); return; }
+          govde = { fisli: !fz, teslim_alan: a, iliski: iliski.value };
+          if (fz || imzaAl.checked) {
+            if (imza.bos()) { hata(fz ? 'Fişsiz teslimde imza zorunlu. Teslim alana dokunmatik ekranda ya da fareyle imzalatın.' : 'İmza alanı boş. İmzalatın ya da "İmza al" işaretini kaldırın.', imza.temizleDugmesi); return; }
+            var p = imza.png();
+            if (p.length * 3 / 4 > IMZA_SINIR) { hata('İmza çok büyük. Temizleyip daha sade imzalatın.'); return; }
+            govde.imza_png_base64 = p;
+          }
+        }
         if (fz) {
           if (!/^\d{4}$/.test(son4.value)) { hata('Müşteri telefonunun son 4 hanesini yazın.', son4); return; }
           govde.telefon_son4 = son4.value;
         }
-        if (fz || imzaAl.checked) {
-          if (imza.bos()) { hata(fz ? 'Fişsiz teslimde imza zorunlu. Teslim alana dokunmatik ekranda ya da fareyle imzalatın.' : 'İmza alanı boş. İmzalatın ya da "İmza al" işaretini kaldırın.', imza.temizleDugmesi); return; }
-          var p = imza.png();
-          if (p.length * 3 / 4 > IMZA_SINIR) { hata('İmza çok büyük. Temizleyip daha sade imzalatın.'); return; }
-          govde.imza_png_base64 = p;
-        }
         gonder(govde);
       });
-      vazgec.addEventListener('click', function () { kapat(null); });
+      vazgec.addEventListener('click', function () { kapat(tamamlanan); });
       kutu.addEventListener('close', son);
-      kutu.addEventListener('cancel', function (e) { if (mesgul) { e.preventDefault(); return; } sonuc = null; });
+      kutu.addEventListener('cancel', function (e) { if (mesgul) { e.preventDefault(); return; } sonuc = tamamlanan; });
       document.body.appendChild(kutu);
       if (kutu.showModal) kutu.showModal(); else kutu.setAttribute('open', '');
-      goster();
+      qrAc();
       gFisli.focus();
     });
   }
@@ -666,19 +810,47 @@
     kap.textContent = '';
     var t = f && f.teslim_kaydi;
     if (!t) return;
+    /* Yeni kayıtlarda ad/telefon/cihaz şifrelidir: yalnız yetkili cihaza sunucu çözüp ad, tel_maskeli, cihaz, yontem verir. */
+    var qrOnay = t.dogrulama === 'qr' || t.dogrulama === 'qr+telefon-son4';
+    var adMetni = t.ad || t.teslim_alan || (t.sifreli ? 'Şifreli (yalnız yetkili cihazda görünür)' : '');
     var dl = el('dl', { sinif: 'tk-teslim-kaydi' },
-      el('div', {}, el('dt', { metin: 'Teslim alan' }), el('dd', { metin: t.teslim_alan || '' })),
+      el('div', {}, el('dt', { metin: 'Teslim alan' }), el('dd', { metin: adMetni })),
+      (t.tel_maskeli ? el('div', {}, el('dt', { metin: 'Telefon' }), el('dd', { sinif: 'mono', metin: t.tel_maskeli })) : null),
       el('div', {}, el('dt', { metin: 'İlişki' }), el('dd', { metin: iliskiAd(t.iliski) })),
       el('div', {}, el('dt', { metin: 'Fiş' }), el('dd', { metin: t.fisli ? 'Fişli' : 'Fişsiz (telefon son 4 ile doğrulandı)' })),
-      el('div', {}, el('dt', { metin: 'İmza' }), el('dd', { metin: t.imza_sha256 ? 'İmzalı' : 'İmzasız' })),
+      el('div', {}, el('dt', { metin: 'Onay' }), el('dd', { metin: qrOnay ? 'Karekodla, müşterinin telefonundan' : (t.imza_sha256 ? 'Ekranda imza' : 'İmzasız') })),
+      (t.cihaz ? el('div', {}, el('dt', { metin: 'Okutan cihaz' }), el('dd', { metin: t.cihaz })) : null),
       (t.ana_fis ? el('div', {}, el('dt', { metin: 'Birlikte teslim' }), el('dd', { sinif: 'mono', metin: t.ana_fis })) : null),
       (t.tarih ? el('div', {}, el('dt', { metin: 'Zaman' }), el('dd', { sinif: 'mono', metin: String(t.tarih).split('-').reverse().join('.') + ' ' + String(t.saat || '').slice(0, 5) })) : null));
     var gorsel = el('div', { sinif: 'tk-imza-gorsel' });
     var gorebilir = !s || s.imzaGorebilir !== false;
-    kap.appendChild(el('section', { sinif: 'dz tk-teslim-bolum', 'aria-label': 'Teslim kaydı' }, el('h3', { metin: 'Teslim kaydı' }), dl, t.imza_sha256 && gorebilir ? gorsel : null));
+    /* Yönetici ayrıntısı (yalnız mağaza bilgisayarı, s.ayrintiGetir verilirse): tam telefon, IP, ham cihaz bilgisi.
+       Sunucu yalnız bu bilgisayardan ve yönetici oturumuyla verir; her görüntülemeyi kişisel veri olmadan günlüğe yazar. */
+    var ayrinti = null;
+    if (t.sifreli && s && s.ayrintiGetir) {
+      var ayKap = el('dl', { sinif: 'tk-teslim-kaydi', hidden: true });
+      var ayDugme = el('button', { type: 'button', sinif: 'dugme kucuk', metin: 'Tam kaydı göster (yönetici)' });
+      var ayIleti = el('span', { sinif: 'mut kucuk', role: 'status' });
+      ayDugme.addEventListener('click', function () {
+        ayDugme.disabled = true; ayIleti.textContent = 'Yükleniyor…';
+        s.ayrintiGetir(f.no).then(function (v) {
+          ayIleti.textContent = 'Bu görüntüleme günlüğe yazıldı.'; ayKap.textContent = '';
+          var fisTel = v.fis_telefonu === 'ayni' ? 'Fişteki numarayla aynı' : v.fis_telefonu === 'farkli' ? 'Fişteki numaradan farklı' : '';
+          [['Tam telefon', v.tel], ['Fiş telefonu', fisTel], ['IP adresi', v.ip], ['Cihaz bilgisi (user-agent)', v.cihaz], ['Teslim eden', v.kim]].forEach(function (x) {
+            if (x[1]) ayKap.appendChild(el('div', {}, el('dt', { metin: x[0] }), el('dd', { sinif: x[0] === 'Cihaz bilgisi (user-agent)' ? 'kucuk' : 'mono', metin: x[1] })));
+          });
+          ayKap.hidden = false; ayDugme.hidden = true;
+        }, function (e) {
+          ayDugme.disabled = false;
+          ayIleti.textContent = e && e.kod === 401 ? 'Önce yönetici girişi yapın.' : hataIleti(e);
+        });
+      });
+      ayrinti = el('div', { sinif: 'tk-teslim-ayrinti' }, el('div', { sinif: 'dz-sira' }, ayDugme, ayIleti), ayKap);
+    }
+    kap.appendChild(el('section', { sinif: 'dz tk-teslim-bolum', 'aria-label': 'Teslim kaydı' }, el('h3', { metin: 'Teslim kaydı' }), dl, ayrinti, t.imza_sha256 && gorebilir ? gorsel : null));
     if (!t.imza_sha256 || !gorebilir || !s || !s.imzaGetir) return;
     var anahtar = f.no + ':' + t.imza_sha256;
-    function koy(u) { gorsel.textContent = ''; gorsel.appendChild(el('img', { src: u, alt: 'Teslim alanın imzası: ' + (t.teslim_alan || ''), sinif: 'tk-imza-resim' })); }
+    function koy(u) { gorsel.textContent = ''; gorsel.appendChild(el('img', { src: u, alt: 'Teslim alanın imzası: ' + (t.ad || t.teslim_alan || ''), sinif: 'tk-imza-resim' })); }
     if (IMZA_URL[anahtar]) { koy(IMZA_URL[anahtar]); return; }
     gorsel.appendChild(el('span', { sinif: 'mut kucuk', metin: 'İmza yükleniyor…' }));
     s.imzaGetir(f.no).then(function (b) {

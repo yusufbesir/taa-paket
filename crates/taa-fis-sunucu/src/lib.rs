@@ -15,6 +15,8 @@ pub mod ortak_giris;
 pub mod pencere;
 pub mod sayfalar;
 mod teslim_al;
+pub mod teslim_onay;
+pub mod teslim_sifre;
 mod yonetici;
 
 pub use ek_uclar::karekod_svg;
@@ -122,6 +124,12 @@ pub struct Uygulama {
     /// Birinci kodu girmiş, ikinci kodu bekleyen telefonlar (çifte kod eşleştirme).
     bekleyen: Mutex<Vec<Bekleyen>>,
     yanlis2: Mutex<u32>,
+    /// Teslim onayı (karekod) için bulutla konuşan taraf (curl; testte sahte bulut).
+    pub onay_agi: std::sync::Arc<dyn teslim_onay::OnayAgi>,
+    /// Durum sorgusu bulutu arka planda okusun mu (testlerde eşzamanlı: false).
+    pub onay_arka_plan: bool,
+    /// Karekod belirteçleri ve çözülen onay bilgisi (yalnız bellekte, en çok 15 dk).
+    onaylar: teslim_onay::OnayHaritasi,
 }
 
 /// Çifte kod eşleştirmede ikinci kodu bekleyen telefon. Kodlar yalnız bellekte durur, günlüğe yazılmaz.
@@ -199,6 +207,9 @@ impl Uygulama {
             son_gorulme: Mutex::new(Default::default()),
             bekleyen: Mutex::new(Vec::new()),
             yanlis2: Mutex::new(0),
+            onay_agi: std::sync::Arc::new(teslim_onay::CurlOnayAgi),
+            onay_arka_plan: true,
+            onaylar: Default::default(),
         }
     }
 
@@ -377,6 +388,8 @@ impl Uygulama {
                 Yanit::yonlendir("/masaustu#personel")
             }
             ("GET", ["api", "yonetim", "hesaplar"]) => self.hesap_listesi(i),
+            ("GET", ["api", "yonetim", "teslim", no]) => self.teslim_ayrintisi(i, no),
+            ("POST", ["api", "yonetim", "teslim-ara"]) => self.teslim_ara(i),
             ("POST", ["api", "yonetim", "hesap", tg, islem]) => self.hesap_islemi(i, tg, islem),
             ("GET" | "POST", ["api", ..]) => self.yetkili(i, &parca),
             _ => Yanit::hata(404, "bulunamadı"),
@@ -1101,6 +1114,10 @@ impl Uygulama {
                     tur: "text/plain; charset=utf-8",
                     govde: {
                         self.adlari_doldur(&mut f);
+                        // Teslim alanın adı ("Ad S.") yalnız imzayı görebilen cihazda çözülür.
+                        if teslim_al::imza_gorebilir(self, &cihaz) {
+                            self.teslim_gorunen_doldur(&mut f);
+                        }
                         taa_fis::duz_metin(&f, 42).into_bytes()
                     },
                 },
@@ -1120,8 +1137,20 @@ impl Uygulama {
             ("GET", ["api", "fis", no]) => match d.bul(no) {
                 Ok(Some(f)) => {
                     let h = kisi::ad_haritasi(&self.dizin, &self.sube_kodu().unwrap_or_default());
+                    let teslim = f.teslim_kaydi.clone();
                     let mut v = fis_json(f, &h);
                     v["foto_adet"] = json!(self.foto_sayisi(no));
+                    // Şifreli teslim bilgisi yalnız yetkili cihaza (mağaza PC, fişsiz teslim / düzeltme yetkisi)
+                    // çözülerek verilir; tam telefon ekrana gelmez (maskeli).
+                    if let Some(t) = teslim.filter(|t| t.sifreli.is_some()) {
+                        if teslim_al::imza_gorebilir(self, &cihaz) {
+                            if let Some(g) = self.teslim_goruntusu(no, &t) {
+                                for (k, d) in g.as_object().into_iter().flatten() {
+                                    v["teslim_kaydi"][k] = d.clone();
+                                }
+                            }
+                        }
+                    }
                     Yanit::json(200, v)
                 }
                 Ok(None) => Yanit::hata(404, "fiş yok"),
@@ -1221,6 +1250,8 @@ impl Uygulama {
                 }
             }
             ("POST", ["api", "fis", no, "teslim-al"]) => self.teslim_al(&d, no, &cihaz, i),
+            ("POST", ["api", "fis", no, "teslim-qr"]) => self.teslim_qr_ac(&d, no, &cihaz),
+            ("GET", ["api", "fis", no, "teslim-qr", t]) => self.teslim_qr_durum(&d, no, t, &cihaz),
             ("GET", ["api", "fis", no, "imza"]) => self.teslim_imzasi(&d, no, &cihaz),
             ("POST", ["api", "fis", no, "okut"]) => {
                 if cihaz.id == PC_ID {
@@ -1242,6 +1273,8 @@ impl Uygulama {
                     );
                 };
                 self.adlari_doldur(&mut f);
+                // Mağaza nüshasına "Teslim alan: Ad S. - QR onaylı, ..." (telefon basılmaz).
+                self.teslim_gorunen_doldur(&mut f);
                 let nusha: serde_json::Value = serde_json::from_slice(&i.govde).unwrap_or_default();
                 let baytlar = if nusha["nusha"].as_u64() == Some(1) {
                     taa_fis::escpos(&f, 42)

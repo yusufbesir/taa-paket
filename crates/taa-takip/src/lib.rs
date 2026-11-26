@@ -368,6 +368,8 @@ mod testler {
                 tarih: "2026-11-06".into(),
                 saat: "10:00:00".into(),
                 ana_fis: String::new(),
+                sifreli: None,
+                gorunen: None,
             },
         )
         .unwrap();

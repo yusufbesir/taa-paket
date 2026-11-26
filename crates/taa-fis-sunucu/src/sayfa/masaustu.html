@@ -1342,8 +1342,9 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
   function tumunuCiz(degisti){listeCiz();ayrintiCiz(degisti);anaCiz()}
 
   // B2: fişsiz teslim ve imza buraya bağlanır
-  /* Teslim akışının tamamı (ortak.js TKD.teslimSor): kutuda "Fişiyle geldi" / "Fişi yok", teslim alan ad soyad, ilişki;
-     fişsizde müşteri telefonunun son 4 hanesi ve zorunlu imza, fişlide isteğe bağlı imza. İstek /teslim-al ucuna gider.
+  /* Teslim akışının tamamı (ortak.js TKD.teslimSor): kutuda "Fişiyle geldi" / "Fişi yok"; varsayılan "Karekodla onay"
+     (müşteri kendi telefonuyla okutur, ad + telefon şifreli gelir; /teslim-qr), yedek "Telefonu yok: ekranda imza"
+     (ad soyad elle, imza tuvalde). Fişsizde son 4 hane ve karekod ya da imza zorunlu. İstek /teslim-al ucuna gider.
      Bağlı açık fiş varsa sunucu 409 {soru:"bagli_teslim"} ile sorar; TKD.bagliSor kutusu teslim kutusunun üstünde açılır,
      seçimden sonra aynı istek (son 4 ve imza dahil) "bagli" listesiyle yeniden gönderilir.
      Teslim kaydı defterde kalıcıdır; bu yüzden 10 sn'lik geri alma beklemesi teslimde yoktur, kutunun kendisi onaydır.
@@ -1356,10 +1357,12 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
     return (OTURUM?Promise.resolve():oturumYukle()).then(function(){return TKD.teslimSor({fis:f,oturum:OTURUM,api:api})}).then(function(r){
       if(!r){bildir(no+': teslim edilmedi');return}
       var bt=r.birlikte_teslim||[],tk=r.teslim_kaydi||{};
-      bildir(no+(bt.length?' ve '+bt.join(', '):'')+': Teslim · '+(tk.teslim_alan?kisaAd(tk.teslim_alan)+' ('+TKD.iliskiAd(tk.iliski)+')':'')+(tk.fisli===false?' · fişsiz':''),null,6000);
+      bildir(no+(bt.length?' ve '+bt.join(', '):'')+': Teslim · '+((tk.ad||tk.teslim_alan)?kisaAd(tk.ad||tk.teslim_alan)+' ('+TKD.iliskiAd(tk.iliski)+')':'')+(tk.fisli===false?' · fişsiz':'')+(tk.dogrulama&&tk.dogrulama.indexOf('qr')===0?' · karekod onaylı':''),null,6000);
       return fislerYukle(true)})}
   /* Fiş ayrıntısında teslim kaydı ve imza görüntüsü (GET /api/fis/<no>/imza). */
-  function teslimKaydiCiz(f){TKD.teslimKaydiCiz($('#ay-teslim-kaydi'),f,{imzaGorebilir:true,imzaGetir:function(no){return TKD.imzaCek(no,{'X-TAA-Masaustu':'1'})}})}
+  function teslimKaydiCiz(f){TKD.teslimKaydiCiz($('#ay-teslim-kaydi'),f,{imzaGorebilir:true,imzaGetir:function(no){return TKD.imzaCek(no,{'X-TAA-Masaustu':'1'})},
+    /* Tam teslim kaydı (tam telefon, IP, cihaz): yalnız bu bilgisayarda, yönetici oturumuyla (sunucu denetler, günlüğe yazar). */
+    ayrintiGetir:function(no){return api('GET','/api/yonetim/teslim/'+encodeURIComponent(no))}})}
 
   /* ---------- karekod tabancası ---------- */
   var testAcik=false;

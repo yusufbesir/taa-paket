@@ -262,19 +262,38 @@ pub(crate) fn satirlar(f: &Fis, nusha: &str) -> Vec<(Stil, String)> {
     }
     // Teslim alan (mağaza/terzihane nüshası ve düz metin): "Teslim alan: Ayşe Ç. (yakını) - fişsiz, imzalı".
     // Tire yazıcıda da çıksın diye ASCII; CP857'de uzun tire yok.
+    // Şifreli kayıtta ad yalnız sunucunun çözüp doldurduğu görünümden gelir; çözülmediyse "(şifreli)".
+    // Telefon, cihaz ve IP hiçbir nüshaya basılmaz.
     if let Some(t) = f.teslim_kaydi.as_ref().filter(|_| !musteri_nushasi(nusha)) {
-        let mut ek = String::from(if t.fisli { "fişli" } else { "fişsiz" });
-        if !t.imza_sha256.is_empty() {
-            ek.push_str(", imzalı");
+        let ad = match (&t.gorunen, t.sifreli.is_some()) {
+            (Some(g), _) => kisa_ad(&g.ad),
+            (None, true) => "(şifreli)".to_string(),
+            (None, false) => kisa_ad(&t.teslim_alan),
+        };
+        if t.qr_onayli() {
+            // "Teslim alan: Ayşe Ç. - QR onaylı, 26.11.2026 14:32"
+            let zaman = if t.tarih.len() == 10 {
+                format!("{} {}", gun_metni(&t.tarih), t.saat.get(..5).unwrap_or(""))
+            } else {
+                String::new()
+            };
+            v.push((
+                Normal,
+                format!("Teslim alan: {ad} - QR onaylı, {}", zaman.trim_end()),
+            ));
+        } else {
+            let mut ek = String::from(if t.fisli { "fişli" } else { "fişsiz" });
+            if !t.imza_sha256.is_empty() {
+                ek.push_str(", imzalı");
+            }
+            v.push((
+                Normal,
+                format!(
+                    "Teslim alan: {ad} ({}) - {ek}",
+                    iliski_adi(&t.iliski).unwrap_or("?")
+                ),
+            ));
         }
-        v.push((
-            Normal,
-            format!(
-                "Teslim alan: {} ({}) - {ek}",
-                kisa_ad(&t.teslim_alan),
-                iliski_adi(&t.iliski).unwrap_or("?")
-            ),
-        ));
         if !t.ana_fis.is_empty() {
             // Bağlı fiş: teslim, ana fişle birlikte yapıldı (imza ve doğrulama ana fişte).
             v.push((Normal, format!("Birlikte teslim: {}", t.ana_fis)));

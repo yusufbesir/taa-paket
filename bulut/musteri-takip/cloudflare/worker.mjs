@@ -1,7 +1,16 @@
 // TAA müşteri takip, Cloudflare Workers + KV. Ortak kod: ./takip.mjs ve ./diller.mjs (bulut/musteri-takip/ortak'tan kopya).
 // Ayarlar (wrangler.toml): KV bağı TAKIP; değişkenler GENEL_ANAHTAR (mağaza sunucusunun genel anahtarı, gizli değil),
-// YEDEK_SAYFA (Vercel adresi). ?sekme=ozet|islemler|subeler|sss sayfa()'ya geçer (bilinmeyen → ozet). Kayıt süresi KV'nin kendi silme zamanıyla (expiration = sil) yönetilir.
+// YEDEK_SAYFA (Vercel adresi). Teslim onayı uçları: ./onay.mjs. ?sekme=ozet|islemler|subeler|sss sayfa()'ya geçer (bilinmeyen → ozet). Kayıt süresi KV'nin kendi silme zamanıyla (expiration = sil) yönetilir.
 import { dogrula, dogrulaSubeler, yeniMi, sayfa, KOD_RE, dilSec } from "./takip.mjs";
+import { onayIsle } from "./onay.mjs";
+
+// Fişsiz teslim onayı (./onay.mjs): kayıt "onay:"+t, KV silme zamanı = sil (KV en az 60 sn ileri ister; asıl süre sil ile denetlenir).
+const onayDepo = (env) => ({
+  oku: (t) => env.TAKIP.get("onay:" + t, "json"),
+  yaz: (k) => env.TAKIP.put("onay:" + k.t, JSON.stringify(k), { expiration: Math.max(k.sil, Math.floor(Date.now() / 1000) + 60) }),
+  sil: (t) => env.TAKIP.delete("onay:" + t),
+  tablo: () => env.TAKIP.get("_subeler", "json"),
+});
 
 // Çekmeceden dil seçilince (?dil=xx) seçim bir yıl hatırlanır; çerezde yalnız dil kodu vardır.
 const dilCerezi = (url, dil) =>
@@ -24,6 +33,12 @@ export default {
   async fetch(istek, env) {
     const url = new URL(istek.url);
     const yol = url.pathname;
+    // Teslim onayı: POST /api/onay/ac|kapat, GET /api/onay/<t>, GET|POST /o/<t>.
+    if (yol === "/api/onay/ac" || yol === "/api/onay/kapat") {
+      return onayIsle({ islem: yol.slice(10), istek, depo: onayDepo(env), genel: env.GENEL_ANAHTAR });
+    }
+    const om = yol.match(/^\/(o|api\/onay)\/([^/]+)$/);
+    if (om) return onayIsle({ islem: om[1] === "o" ? "sayfa" : "oku", t: om[2], istek, depo: onayDepo(env), genel: env.GENEL_ANAHTAR });
     if (istek.method === "POST" && yol === "/api/yaz") {
       const govde = await istek.text();
       const s = await dogrula(govde, istek.headers.get("x-taa-imza") || "", env.GENEL_ANAHTAR);

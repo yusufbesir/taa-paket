@@ -23,12 +23,18 @@ export async function yaz(kayit) {
   });
 }
 
-/** Silinme zamanı geçenleri siler. */
-export async function temizle(simdi = Math.floor(Date.now() / 1000)) {
+/** Silinme zamanı geçenleri siler (takip/ ve teslim onayı onay/ önekleri; önek verilirse yalnız o). */
+export async function temizle(simdi = Math.floor(Date.now() / 1000), onekler = ["takip/", "onay/"]) {
+  let silinen = 0;
+  for (const onek of onekler) silinen += await onekTemizle(onek, simdi);
+  return silinen;
+}
+
+async function onekTemizle(onek, simdi) {
   let imlec;
   let silinen = 0;
   do {
-    const s = await list({ prefix: "takip/", cursor: imlec, limit: 1000 });
+    const s = await list({ prefix: onek, cursor: imlec, limit: 1000 });
     for (const b of s.blobs) {
       try {
         const r = await fetch(b.url, { cache: "no-store" });
@@ -62,3 +68,6 @@ export async function subeYaz(tablo) {
     access: "public", addRandomSuffix: false, allowOverwrite: true, contentType: "application/json", cacheControlMaxAge: 60,
   });
 }
+
+// Fişsiz teslim onayı deposu ayrı dosyadadır (./onay-depo.mjs; @vercel/blob dışarıdan verilir, testte sahte Blob).
+// temizle() günlük görevde onay/ önekini de tarar.

@@ -29,6 +29,10 @@ sha2 = "0.10"
 getrandom = "0.3"
 # Müşteri takip kayıtlarını imzalamak için (taa-imza ile aynı sürüm/özellikler; çalışma alanında zaten var).
 ed25519-dalek = { version = "2", default-features = false, features = ["std"] }
+# Teslim onayı (karekod): X25519 + HKDF-SHA256 + AES-256-GCM (bulut sözleşmesi; bkz. teslim_onay.rs), yerel şifreli saklama.
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+hkdf = "0.12"
+aes-gcm = "0.10"
 tiny_http = "0.12"
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 taa-ayar = { path = "../taa-ayar" }

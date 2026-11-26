@@ -141,6 +141,12 @@ pub(crate) fn fis_json(f: taa_fis::Fis, h: &BTreeMap<String, String>) -> serde_j
     let olc = ad(&f.olcu_alan_id);
     let duz = ad(&f.duzenleyen_id).unwrap_or_default();
     let mut v = json!(f);
+    // Şifreli teslim bloğu istemciye gitmez (yalnız "şifreli" işareti); yetkili cihaza ayrıca çözülmüş görünüm eklenir.
+    if let Some(t) = v.get_mut("teslim_kaydi").and_then(|t| t.as_object_mut()) {
+        if t.remove("sifreli").is_some() {
+            t.insert("sifreli".into(), json!(true));
+        }
+    }
     if let Some(a) = dan {
         v["satis_danismani"] = json!(a);
     }

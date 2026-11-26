@@ -11,3 +11,8 @@ id = "KV_KIMLIGI_KURULUMDA_YAZILIR"
 # Mağaza sunucusunun genel anahtarı: taa-fis-sunucu --veri KLASÖR --takip-genel-anahtar
 GENEL_ANAHTAR = ""
 YEDEK_SAYFA = "https://terzitakip-terziademaltun.vercel.app"
+
+# Kişisel veri koruması: Workers günlükleri/izleme kapalı (onay sayfası IP ve user-agent görür; kod loglamaz).
+# Logpush de açılmamalıdır. Bkz. README "Bilinen sınırlar".
+[observability]
+enabled = false
