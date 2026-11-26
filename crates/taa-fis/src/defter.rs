@@ -623,8 +623,9 @@ impl Defter<'_> {
     }
 
     /// Fişi teslim eder: ürünü teslim alanı yazar ve durumu Hazır -> Teslim yapar (tek satır, atomik).
-    /// Fiş Hazır olmalı, bir kez yazılır. Fişsiz teslimde doğrulama "telefon-son4" ve imza zorunludur;
-    /// fişlide doğrulama "fis", imza isteğe bağlı. Bağlı fiş birlikte teslim edildiyse `ana_fis` dolu olur.
+    /// Fiş Hazır olmalı, bir kez yazılır. Fişsiz teslimde doğrulama "telefon-son4" (imza zorunlu) ya da
+    /// "qr+telefon-son4" (karekod onayı; imza gerekmez); fişlide "fis" ya da "qr", imza isteğe bağlı.
+    /// Şifreli kayıtta (`sifreli`) düz metin ad boş olmalıdır. Bağlı fiş birlikte teslim edildiyse `ana_fis` dolu olur.
     /// Telefonun son 4 hanesi bu kayda girmez (çağıran sunucu doğrular).
     pub fn teslim_et(&self, no: &str, kayit: TeslimKaydi) -> Result<(), String> {
         kapali()?;
@@ -635,11 +636,33 @@ impl Defter<'_> {
         if f.teslim_kaydi.is_some() {
             return Err("bu fişin teslim kaydı zaten var".into());
         }
-        teslim_alan_denetle(&kayit.teslim_alan, &kayit.iliski)?;
+        match &kayit.sifreli {
+            // Şifreli kayıt: ad yalnız şifreli alanda olur, düz metin ad yazılmaz.
+            Some(s) => {
+                if !kayit.teslim_alan.trim().is_empty() {
+                    return Err("şifreli teslim kaydında düz metin ad olamaz".into());
+                }
+                if !s.gecerli() {
+                    return Err("şifreli teslim bilgisi bozuk".into());
+                }
+                if iliski_adi(&kayit.iliski).is_none() {
+                    return Err("ilişki: kendisi, yakini ya da diger olmalı".into());
+                }
+            }
+            None => teslim_alan_denetle(&kayit.teslim_alan, &kayit.iliski)?,
+        }
         match (kayit.fisli, kayit.dogrulama.as_str()) {
-            (true, "fis") | (false, "telefon-son4") => {}
-            (true, _) => return Err("fişli teslimde doğrulama \"fis\" olmalı".into()),
-            (false, _) => return Err("fişsiz teslimde doğrulama \"telefon-son4\" olmalı".into()),
+            (true, "fis" | "qr") | (false, "telefon-son4" | "qr+telefon-son4") => {}
+            (true, _) => return Err("fişli teslimde doğrulama \"fis\" ya da \"qr\" olmalı".into()),
+            (false, _) => {
+                return Err(
+                    "fişsiz teslimde doğrulama \"telefon-son4\" ya da \"qr+telefon-son4\" olmalı"
+                        .into(),
+                )
+            }
+        }
+        if kayit.qr_onayli() && kayit.sifreli.is_none() {
+            return Err("karekod onaylı teslimde şifreli teslim bilgisi zorunlu".into());
         }
         let ozet_gecerli = |o: &str| {
             o.len() == 64
@@ -647,8 +670,11 @@ impl Defter<'_> {
                     .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
         };
         if kayit.imza_sha256.is_empty() {
-            if !kayit.fisli {
-                return Err("fişsiz teslimde teslim alanın imzası zorunlu".into());
+            // Fişsiz teslimde karekod onayı ya da ekran imzasından biri zorunlu.
+            if !kayit.fisli && !kayit.qr_onayli() {
+                return Err(
+                    "fişsiz teslimde teslim alanın imzası ya da karekod onayı zorunlu".into(),
+                );
             }
             if !kayit.imza_dosyasi.is_empty() {
                 return Err("imza dosyası var ama özeti yok".into());

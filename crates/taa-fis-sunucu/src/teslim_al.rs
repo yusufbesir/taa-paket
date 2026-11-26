@@ -6,6 +6,11 @@
 //! - Fiş başına 5 yanlışta 15 dk kilit (bellekte; yeniden başlatınca sıfırlanır).
 //! - İmza PNG'si `imzalar/<no>-<n>.png` olarak atomik yazılır, SHA-256 özeti defterdeki kayda girer.
 //! - Teslim alan bilgisi müşteri takip (bulut) kaydına GİTMEZ; bulut kaydı yalnız sabit anahtarlar taşır.
+//! - Karekodla onay (2026-11-26, bkz. teslim_onay.rs): `onay_belirteci` verilirse ve müşteri kendi telefonundan
+//!   onayladıysa teslim "qr" (fişsizde "qr+telefon-son4") doğrulamasıyla yapılır, imza PNG'si gerekmez. Karekod
+//!   yoksa ekran imzası "telefonu olmayan müşteri" yedeği olarak kalır. Fişsiz teslimde ikisinden biri zorunlu.
+//! - Teslim alanın adı, telefonu, cihazı (user-agent) ve IP'si deftere yalnız ŞİFRELİ yazılır (teslim_sifre.rs);
+//!   `teslim_alan` düz metin alanı yeni kayıtlarda boştur.
 
 use super::*;
 use std::collections::BTreeMap;
@@ -39,7 +44,7 @@ fn sabit_esit(a: &[u8], b: &[u8]) -> bool {
 }
 
 /// Standart base64 (RFC 4648) çözücü; isteğe bağlı `data:image/png;base64,` öneki ve boşluklar kabul edilir.
-fn base64_coz(s: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn base64_coz(s: &str) -> Result<Vec<u8>, String> {
     let s = s
         .trim()
         .strip_prefix("data:image/png;base64,")
@@ -204,28 +209,44 @@ impl Uygulama {
     }
 
     /// Seçilen bağlı fişleri de teslim eder: her birine ana fişin teslim kaydı (aynı teslim alan, imza
-    /// dosyası ve özeti) `ana_fis` atfıyla yazılır, müşteri takibine yazılır. Teslim edilenleri döndürür.
+    /// dosyası ve özeti) `ana_fis` atfıyla yazılır, müşteri takibine yazılır. (teslim edilenler, atlananlar)
+    /// döndürür; atlanan (şifrelenemeyen ya da yazılamayan) bağlı fiş yanıtta ayrıca bildirilir.
+    /// Şifreli blok fiş no'ya bağlı olduğundan (aad) her bağlı fiş için yeniden şifrelenir.
     pub(crate) fn birlikte_teslim_et(
         &self,
         d: &Defter,
         ana: &str,
         kayit: &taa_fis::TeslimKaydi,
+        duz: &teslim_sifre::TeslimDuz,
         birlikte: &[String],
-    ) -> Vec<String> {
+    ) -> (Vec<String>, Vec<String>) {
         let mut edilen = Vec::new();
+        let mut atlanan = Vec::new();
         for n in birlikte {
+            let Ok(sifreli) = teslim_sifre::sifrele(&self.dizin, n, duz) else {
+                eprintln!("Bağlı fiş teslim edilemedi ({n}): teslim bilgisi şifrelenemedi");
+                atlanan.push(n.clone());
+                continue;
+            };
             let k = taa_fis::TeslimKaydi {
                 ana_fis: ana.to_string(),
+                sifreli: Some(sifreli),
                 ..kayit.clone()
             };
-            if d.teslim_et(n, k).is_ok() {
-                edilen.push(n.clone());
-                if let Ok(Some(f)) = d.bul(n) {
-                    self.takibe_yaz(&f);
+            match d.teslim_et(n, k) {
+                Ok(()) => {
+                    edilen.push(n.clone());
+                    if let Ok(Some(f)) = d.bul(n) {
+                        self.takibe_yaz(&f);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Bağlı fiş teslim edilemedi ({n}): {e}");
+                    atlanan.push(n.clone());
                 }
             }
         }
-        edilen
+        (edilen, atlanan)
     }
 
     /// POST /api/fis/<no>/teslim-al
@@ -260,13 +281,60 @@ impl Uygulama {
         if f.teslim_kaydi.is_some() {
             return Yanit::hata(409, "bu fişin teslim kaydı zaten var");
         }
-        let teslim_alan = v["teslim_alan"].as_str().unwrap_or("");
-        let iliski = v["iliski"].as_str().unwrap_or("");
-        if let Err(e) = taa_fis::teslim_alan_denetle(teslim_alan, iliski) {
-            return Yanit::hata(422, &e);
+        // Karekod onayı: belirteç verildiyse bu fişe/cihaza ait ve onaylanmış olmalı (ad, telefon, cihaz ondan gelir).
+        let belirtec = v["onay_belirteci"]
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        let onay = match &belirtec {
+            Some(t) => match self.qr_onayi(no, t, c) {
+                Ok(b) => Some(b),
+                Err(y) => return y,
+            },
+            None => None,
+        };
+        // Karekoddaki telefon (müşterinin kendi beyanı, doğrulanmaz) fişteki numaradan farklıysa teslim alan
+        // başkası olabilir: ilişki (yakını/diğer) açıkça seçilmeli.
+        if onay.is_some()
+            && crate::teslim_onay::fis_telefonu_karsilastir(
+                d,
+                no,
+                &onay.as_ref().map(|b| b.tel.clone()).unwrap_or_default(),
+            ) == "farkli"
+            && !matches!(v["iliski"].as_str(), Some("yakini") | Some("diger"))
+        {
+            return Yanit::json(
+                422,
+                json!({
+                    "hata": "iliski_gerekli",
+                    "ileti": "Karekodda yazılan telefon fişteki numaradan farklı. Teslim alanın müşteriye yakınlığını seçin (yakını ya da diğer).",
+                }),
+            );
         }
-        // İmza önce çözülür (yanlış biçim 400/413), son 4 hane hakkı boşa harcanmasın.
-        let imza: Option<Vec<u8>> = match v["imza_png_base64"].as_str().filter(|s| !s.is_empty()) {
+        let iliski = v["iliski"]
+            .as_str()
+            .unwrap_or(if onay.is_some() { "kendisi" } else { "" });
+        let teslim_alan: String = match &onay {
+            Some(b) => {
+                if taa_fis::iliski_adi(iliski).is_none() {
+                    return Yanit::hata(422, "ilişki: kendisi, yakini ya da diger olmalı");
+                }
+                b.ad.clone()
+            }
+            None => {
+                let a = v["teslim_alan"].as_str().unwrap_or("");
+                if let Err(e) = taa_fis::teslim_alan_denetle(a, iliski) {
+                    return Yanit::hata(422, &e);
+                }
+                a.split_whitespace().collect::<Vec<_>>().join(" ")
+            }
+        };
+        // İmza önce çözülür (yanlış biçim 400/413), son 4 hane hakkı boşa harcanmasın. Karekod onayında imza
+        // kullanılmaz (gönderilse de yok sayılır).
+        let imza: Option<Vec<u8>> = match v["imza_png_base64"]
+            .as_str()
+            .filter(|s| !s.is_empty() && onay.is_none())
+        {
             None => None,
             Some(s) => {
                 let b = match base64_coz(s) {
@@ -283,8 +351,11 @@ impl Uygulama {
             }
         };
         if !fisli {
-            if imza.is_none() {
-                return Yanit::hata(422, "fişsiz teslimde teslim alanın imzası zorunlu");
+            if imza.is_none() && onay.is_none() {
+                return Yanit::hata(
+                    422,
+                    "fişsiz teslimde karekod onayı ya da teslim alanın imzası zorunlu",
+                );
             }
             if let Some(kalan) = self.son4_kilitli(no) {
                 return Yanit::json(
@@ -350,11 +421,43 @@ impl Uygulama {
             yazilan = Some(yol);
         }
         let s = self.simdi();
+        // Kişisel bilgi yalnız şifreli alana gider: ad, telefon, okutan cihaz (user-agent), IP, zaman, yöntem.
+        let duz = match &onay {
+            Some(b) => teslim_sifre::TeslimDuz {
+                ad: teslim_alan.clone(),
+                tel: b.tel.clone(),
+                cihaz: b.ua.clone(),
+                ip: b.ip.clone(),
+                zaman: b.zaman,
+                yontem: "qr".into(),
+            },
+            None => teslim_sifre::TeslimDuz {
+                ad: teslim_alan.clone(),
+                zaman: s,
+                yontem: if imza.is_some() { "ekran-imza" } else { "elle" }.into(),
+                ..Default::default()
+            },
+        };
+        let sifreli = match teslim_sifre::sifrele(&self.dizin, no, &duz) {
+            Ok(x) => x,
+            Err(e) => {
+                if let Some(y) = &yazilan {
+                    let _ = std::fs::remove_file(y);
+                }
+                return Yanit::hata(500, &format!("teslim bilgisi şifrelenemedi: {e}"));
+            }
+        };
+        let dogrulama = match (fisli, onay.is_some()) {
+            (true, false) => "fis",
+            (true, true) => "qr",
+            (false, false) => "telefon-son4",
+            (false, true) => "qr+telefon-son4",
+        };
         let kayit = taa_fis::TeslimKaydi {
-            teslim_alan: teslim_alan.into(),
+            teslim_alan: String::new(),
             iliski: iliski.into(),
             fisli,
-            dogrulama: if fisli { "fis" } else { "telefon-son4" }.into(),
+            dogrulama: dogrulama.into(),
             imza_sha256,
             imza_dosyasi,
             kim: if c.kisi_id.is_empty() {
@@ -365,6 +468,8 @@ impl Uygulama {
             tarih: tarih_iso(s),
             saat: saat_iso(s),
             ana_fis: String::new(),
+            sifreli: Some(sifreli),
+            gorunen: None,
         };
         // Teslim kaydı ve Teslim durumu tek defter satırıdır: yarım kalmaz.
         if let Err(e) = d.teslim_et(no, kayit.clone()) {
@@ -373,7 +478,10 @@ impl Uygulama {
             }
             return Yanit::hata(422, &e);
         }
-        let birlikte = self.birlikte_teslim_et(d, no, &kayit, &birlikte);
+        if let Some(t) = &belirtec {
+            self.qr_onayi_tuket(t);
+        }
+        let (birlikte, atlanan) = self.birlikte_teslim_et(d, no, &kayit, &duz, &birlikte);
         if let Ok(Some(f)) = d.bul(no) {
             // Bulut kaydı yalnız sabit anahtarlar taşır; teslim alan bilgisi gitmez.
             self.takibe_yaz(&f);
@@ -384,17 +492,172 @@ impl Uygulama {
             json!({
                 "tamam": true,
                 "birlikte_teslim": birlikte,
+                // Seçildiği hâlde teslim kaydı yazılamayan bağlı fişler (boşsa sorun yok).
+                "birlikte_atlanan": atlanan,
+                // Teslimi yapan cihaz adı zaten gördü; tam telefon yine gönderilmez (maskeli).
                 "teslim_kaydi": t.map(|t| json!({
-                    "teslim_alan": t.teslim_alan,
+                    "ad": duz.ad,
+                    "tel_maskeli": teslim_sifre::tel_maskele(&duz.tel),
+                    "cihaz": teslim_sifre::cihaz_ozeti(&duz.cihaz),
+                    "yontem": duz.yontem,
                     "iliski": t.iliski,
                     "fisli": t.fisli,
                     "dogrulama": t.dogrulama,
                     "imzali": !t.imza_sha256.is_empty(),
+                    "sifreli": t.sifreli.is_some(),
                     "tarih": t.tarih,
                     "saat": t.saat,
                 })),
             }),
         )
+    }
+
+    /// Şifreli teslim bilgisini çözer (fiş no'ya bağlı). Eski kayıtta (şifresiz) `None`.
+    fn teslim_coz(&self, no: &str, t: &taa_fis::TeslimKaydi) -> Option<teslim_sifre::TeslimDuz> {
+        let s = t.sifreli.as_ref()?;
+        match teslim_sifre::coz(&self.dizin, no, s) {
+            Ok(d) => Some(d),
+            Err(e) => {
+                eprintln!("Teslim kaydı çözülemedi ({no}): {e}");
+                None
+            }
+        }
+    }
+
+    /// Basım/düz metin için: şifreli kayıttan adı çözüp yalnız bellekteki görünüme koyar.
+    pub(crate) fn teslim_gorunen_doldur(&self, f: &mut taa_fis::Fis) {
+        let no = f.no.clone();
+        if let Some(t) = f.teslim_kaydi.as_mut() {
+            if let Some(d) = self.teslim_coz(&no, t) {
+                t.gorunen = Some(taa_fis::TeslimGorunen {
+                    ad: d.ad,
+                    yontem: d.yontem,
+                });
+            }
+        }
+    }
+
+    /// Fiş ayrıntısı için çözülmüş görünüm: ad, maskeli telefon, cihaz özeti, zaman, yöntem (tam telefon yok).
+    pub(crate) fn teslim_goruntusu(
+        &self,
+        no: &str,
+        t: &taa_fis::TeslimKaydi,
+    ) -> Option<serde_json::Value> {
+        let d = self.teslim_coz(no, t)?;
+        Some(json!({
+            "ad": d.ad,
+            "teslim_alan": d.ad,
+            "tel_maskeli": teslim_sifre::tel_maskele(&d.tel),
+            "cihaz": teslim_sifre::cihaz_ozeti(&d.cihaz),
+            "zaman": d.zaman,
+            "yontem": d.yontem,
+        }))
+    }
+
+    /// Yönetici görüntülemesi günlüğü: kişisel veri İÇERMEZ (yalnız olay, fiş no / sonuç sayısı, zaman).
+    fn teslim_gunlugu(&self, satir: serde_json::Value) {
+        let s = self.simdi();
+        let mut v = satir;
+        v["tarih"] = json!(tarih_iso(s));
+        v["saat"] = json!(saat_iso(s));
+        let _ = taa_dosya::satir_ekle(&self.dizin.join("teslim-ayrinti.jsonl"), &v.to_string());
+        eprintln!("Teslim kaydı yönetici görüntülemesi: {v}");
+    }
+
+    /// GET /api/yonetim/teslim/<no>: şifreli teslim kaydının TAM görünümü (tam telefon, IP, ham user-agent).
+    /// Yalnız bu bilgisayardan ve (kilit açıksa) yönetici oturumuyla; her görüntüleme `teslim-ayrinti.jsonl`
+    /// günlüğüne kişisel veri içermeyen bir satırla yazılır. Anlaşmazlıkta kanıt için.
+    pub(crate) fn teslim_ayrintisi(&self, i: &Istek, no: &str) -> Yanit {
+        if let Some(y) = self.yonetim_izni(i) {
+            return y;
+        }
+        if !no_guvenli(no) {
+            return Yanit::hata(404, "fiş yok");
+        }
+        let yol = self.fis_yolu();
+        let d = Defter { yol: &yol };
+        let f = match d.bul(no) {
+            Ok(Some(f)) => f,
+            Ok(None) => return Yanit::hata(404, "fiş yok"),
+            Err(e) => return Yanit::hata(500, &e),
+        };
+        let Some(t) = f.teslim_kaydi.as_ref() else {
+            return Yanit::hata(404, "bu fişin teslim kaydı yok");
+        };
+        let Some(s) = t.sifreli.as_ref() else {
+            return Yanit::json(
+                200,
+                json!({ "sifreli": false, "teslim_alan": t.teslim_alan, "iliski": t.iliski, "tarih": t.tarih, "saat": t.saat }),
+            );
+        };
+        let duz = match teslim_sifre::coz(&self.dizin, no, s) {
+            Ok(x) => x,
+            Err(e) => return Yanit::hata(500, &e),
+        };
+        self.teslim_gunlugu(json!({ "olay": "teslim_ayrintisi", "fis": no }));
+        let fis_tel = teslim_sifre::tel_normal(&f.telefon).unwrap_or_default();
+        Yanit::json(
+            200,
+            json!({
+                "sifreli": true,
+                "ad": duz.ad,
+                "tel": duz.tel,
+                "fis_telefonu": if duz.tel.is_empty() || fis_tel.is_empty() { "yok" } else if duz.tel == fis_tel { "ayni" } else { "farkli" },
+                "ip": duz.ip,
+                "cihaz": duz.cihaz,
+                "cihaz_ozeti": teslim_sifre::cihaz_ozeti(&duz.cihaz),
+                "zaman": duz.zaman,
+                "yontem": duz.yontem,
+                "iliski": t.iliski,
+                "fisli": t.fisli,
+                "dogrulama": t.dogrulama,
+                "kim": t.kim,
+                "tarih": t.tarih,
+                "saat": t.saat,
+                "ana_fis": t.ana_fis,
+            }),
+        )
+    }
+
+    /// POST /api/yonetim/teslim-ara {ad?, tel?}: kör indeksle teslim kaydı arar (değerler URL'de gitmez).
+    /// Yanıtta yalnız fiş no, tarih, saat, yöntem; ad/telefon dönmez. Yetki ve günlük `teslim_ayrintisi` gibi.
+    pub(crate) fn teslim_ara(&self, i: &Istek) -> Yanit {
+        if let Some(y) = self.yonetim_izni(i) {
+            return y;
+        }
+        let v: serde_json::Value = serde_json::from_slice(&i.govde).unwrap_or_default();
+        let ad = v["ad"].as_str().unwrap_or("").trim();
+        let tel = v["tel"].as_str().unwrap_or("").trim();
+        if ad.is_empty() && tel.is_empty() {
+            return Yanit::hata(400, "ad ya da telefon yazın");
+        }
+        if !tel.is_empty() && teslim_sifre::tel_normal(tel).is_none_or(|t| t.is_empty()) {
+            return Yanit::hata(422, "telefon geçersiz");
+        }
+        let (ai, ti) = match teslim_sifre::indeksler(&self.dizin, ad, tel) {
+            Ok(x) => x,
+            Err(e) => return Yanit::hata(500, &e),
+        };
+        let yol = self.fis_yolu();
+        let d = Defter { yol: &yol };
+        let fisler = match d.fisler() {
+            Ok(f) => f,
+            Err(e) => return Yanit::hata(500, &e),
+        };
+        let bulunan: Vec<serde_json::Value> = fisler
+            .iter()
+            .filter_map(|f| {
+                let t = f.teslim_kaydi.as_ref()?;
+                let s = t.sifreli.as_ref()?;
+                let ad_tutar = ad.is_empty() || s.ad_indeks == ai;
+                let tel_tutar = tel.is_empty() || (!s.tel_indeks.is_empty() && s.tel_indeks == ti);
+                (ad_tutar && tel_tutar).then(|| {
+                    json!({ "no": f.no, "tarih": t.tarih, "saat": t.saat, "dogrulama": t.dogrulama, "ana_fis": t.ana_fis })
+                })
+            })
+            .collect();
+        self.teslim_gunlugu(json!({ "olay": "teslim_ara", "ad_ile": !ad.is_empty(), "tel_ile": !tel.is_empty(), "sonuc": bulunan.len() }));
+        Yanit::json(200, json!({ "sonuc": bulunan }))
     }
 
     /// GET /api/fis/<no>/imza: teslim imzasının PNG'si (özeti kayıtla eşleşmeli).
@@ -955,5 +1218,742 @@ mod testler {
         let y = u.isle(&pc("POST", &format!("/api/fis/{no}/teslim-al"), &govde));
         assert_eq!(y.kod, 413);
         assert_eq!(json_of(&y)["hata"], "imza en çok 300 KB olmalı");
+    }
+
+    // ---------- Karekodla teslim onayı (sahte bulut, sahte kişi) ----------
+
+    /// Bulut sözleşmesini taklit eden sahte bulut: imzaları doğrular, kayıtları bellekte tutar.
+    struct SahteBulut {
+        genel: ed25519_dalek::VerifyingKey,
+        kayit: Mutex<BTreeMap<String, serde_json::Value>>,
+        dusuk: Mutex<Vec<String>>,
+        istekler: Mutex<Vec<String>>,
+        /// Bulut, mağaza saatini yanlış bulur (aç: 400, oku: 401 "zaman geçersiz").
+        saat_yanlis: std::sync::atomic::AtomicBool,
+    }
+
+    impl SahteBulut {
+        fn yeni(dizin: &Path) -> std::sync::Arc<Self> {
+            let g: [u8; 32] = musteri_takip::hex_coz(&musteri_takip::genel_anahtar(dizin).unwrap())
+                .unwrap()
+                .try_into()
+                .unwrap();
+            std::sync::Arc::new(SahteBulut {
+                genel: ed25519_dalek::VerifyingKey::from_bytes(&g).unwrap(),
+                kayit: Default::default(),
+                dusuk: Default::default(),
+                istekler: Default::default(),
+                saat_yanlis: Default::default(),
+            })
+        }
+        fn imza_dogru(&self, metin: &str, imza: &str) -> bool {
+            use ed25519_dalek::Verifier;
+            let Some(i) = musteri_takip::hex_coz(imza).and_then(|v| <[u8; 64]>::try_from(v).ok())
+            else {
+                return false;
+            };
+            self.genel
+                .verify(metin.as_bytes(), &ed25519_dalek::Signature::from_bytes(&i))
+                .is_ok()
+        }
+        /// Müşterinin bulut sayfasında onaylaması (tarayıcı şifrelemesi, sözleşmeye göre).
+        fn musteri_onaylar(&self, taban: &str, t: &str, ad: &str, tel: &str) {
+            let mut k = self.kayit.lock().unwrap();
+            let r = k.get_mut(&format!("{taban}|{t}")).expect("bulut kaydı");
+            // Onay anı: karekod açıldıktan 1 sn sonra (sunucu, zamanın ts..sil aralığında olduğunu denetler).
+            let zaman = r["sil"].as_u64().unwrap() - crate::teslim_onay::ONAY_OMRU_SN + 1;
+            let duz = json!({
+                "ad": ad, "tel": tel,
+                "ua": "Mozilla/5.0 (Linux; Android 14; SM-SAHTE) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36",
+                "ip": "198.51.100.23", "zaman": zaman, "dil": "tr",
+            })
+            .to_string();
+            let (e, iv, c) = crate::teslim_onay::testler::sozlesme_sifrele(
+                r["pk"].as_str().unwrap(),
+                t,
+                duz.as_bytes(),
+                [5u8; 32],
+                [6u8; 12],
+            );
+            r["durum"] = json!("onaylandi");
+            r["e"] = json!(e);
+            r["iv"] = json!(iv);
+            r["c"] = json!(c);
+        }
+    }
+
+    impl crate::teslim_onay::OnayAgi for SahteBulut {
+        fn istek(
+            &self,
+            metot: &str,
+            url: &str,
+            basliklar: &[(&str, &str)],
+            govde: Option<&str>,
+        ) -> Result<(u16, String), String> {
+            self.istekler
+                .lock()
+                .unwrap()
+                .push(format!("{metot} {url} {}", govde.unwrap_or("")));
+            let (taban, yol) = url.split_once("/api/onay/").ok_or("adres")?;
+            if self.dusuk.lock().unwrap().iter().any(|d| d == taban) {
+                return Err("ağ yok".into());
+            }
+            if self.saat_yanlis.load(std::sync::atomic::Ordering::SeqCst) && yol != "kapat" {
+                let kod = if metot == "GET" { 401 } else { 400 };
+                return Ok((kod, r#"{"hata":"zaman geçersiz"}"#.into()));
+            }
+            let baslik = |a: &str| {
+                basliklar
+                    .iter()
+                    .find(|(k, _)| k.eq_ignore_ascii_case(a))
+                    .map(|(_, d)| d.to_string())
+                    .unwrap_or_default()
+            };
+            let mut k = self.kayit.lock().unwrap();
+            match (metot, yol) {
+                ("POST", "ac") | ("POST", "kapat") => {
+                    let g = govde.unwrap_or("");
+                    if !self.imza_dogru(g, &baslik("x-taa-imza")) {
+                        return Ok((401, String::new()));
+                    }
+                    let v: serde_json::Value = serde_json::from_str(g).unwrap();
+                    let t = v["t"].as_str().unwrap().to_string();
+                    assert!(crate::teslim_onay::belirtec_gecerli(&t));
+                    if yol == "kapat" {
+                        assert_eq!(v["tur"], "onay_kapat");
+                        k.remove(&format!("{taban}|{t}"));
+                        return Ok((200, "{}".into()));
+                    }
+                    assert_eq!(v["tur"], "onay_ac");
+                    assert_eq!(v["v"], 1);
+                    let (ts, sil) = (v["ts"].as_u64().unwrap(), v["sil"].as_u64().unwrap());
+                    assert!(ts < sil && sil <= ts + 900);
+                    assert_eq!(v["pk"].as_str().unwrap().len(), 64);
+                    assert!((1..=50).contains(&v["n"].as_u64().unwrap()));
+                    assert_eq!(v["s"], "MRK01");
+                    let a = format!("{taban}|{t}");
+                    if k.contains_key(&a) {
+                        return Ok((409, String::new()));
+                    }
+                    k.insert(a, json!({ "pk": v["pk"], "durum": "bekliyor", "sil": sil }));
+                    Ok((200, "{}".into()))
+                }
+                ("GET", t) => {
+                    let ts = baslik("x-taa-zaman");
+                    if !self.imza_dogru(&format!("onay_oku:{t}:{ts}"), &baslik("x-taa-imza")) {
+                        return Ok((401, String::new()));
+                    }
+                    match k.get(&format!("{taban}|{t}")) {
+                        Some(r) if r["durum"] == "onaylandi" => Ok((
+                            200,
+                            json!({ "durum": "onaylandi", "e": r["e"], "iv": r["iv"], "c": r["c"] })
+                                .to_string(),
+                        )),
+                        Some(_) => Ok((200, r#"{"durum":"bekliyor"}"#.into())),
+                        None => Ok((404, String::new())),
+                    }
+                }
+                _ => Ok((404, String::new())),
+            }
+        }
+    }
+
+    const A: &str = "https://a.example";
+    const B: &str = "https://b.example";
+    /// Sahte teslim alan (gerçek kişi değildir).
+    const QR_AD: &str = "Zeynep Örnekoğlu";
+    const QR_TEL: &str = "+905559998877";
+
+    fn qr_uyg() -> (Uygulama, std::sync::Arc<SahteBulut>) {
+        let mut u = uyg();
+        std::fs::write(
+            u.dizin.join("musteri-takip.json"),
+            r#"{"acik":true,"sayfa":"https://a.example","yedek_sayfa":"https://b.example","hedefler":[]}"#,
+        )
+        .unwrap();
+        let b = SahteBulut::yeni(&u.dizin);
+        u.onay_agi = b.clone();
+        u.onay_arka_plan = false;
+        (u, b)
+    }
+
+    /// Karekod açar: (t, url).
+    fn qr_ac(u: &Uygulama, no: &str) -> (String, String) {
+        let y = u.isle(&pc("POST", &format!("/api/fis/{no}/teslim-qr"), "{}"));
+        assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
+        let j = json_of(&y);
+        assert!(j["qr_svg"].as_str().unwrap().starts_with("<svg"));
+        assert_eq!(j["kalan_sn"], 900);
+        (
+            j["t"].as_str().unwrap().to_string(),
+            j["url"].as_str().unwrap().to_string(),
+        )
+    }
+
+    fn tum_dosyalarda(k: &Path, aranan: &[&str], bulunan: &mut Vec<String>) {
+        for e in std::fs::read_dir(k).unwrap().flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                tum_dosyalarda(&p, aranan, bulunan);
+            } else {
+                let b = std::fs::read(&p).unwrap();
+                for a in aranan {
+                    if b.windows(a.len()).any(|w| w == a.as_bytes()) {
+                        bulunan.push(format!("{} içinde {a}", p.display()));
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn qr_ile_fisli_teslim_ve_sifreli_kayit() {
+        let (u, bulut) = qr_uyg();
+        let no = hazir_fis(&u);
+        let (t, url) = qr_ac(&u, &no);
+        assert_eq!(url, format!("{A}/o/{t}"));
+        // iki buluta da açıldı
+        assert!(bulut
+            .kayit
+            .lock()
+            .unwrap()
+            .contains_key(&format!("{A}|{t}")));
+        assert!(bulut
+            .kayit
+            .lock()
+            .unwrap()
+            .contains_key(&format!("{B}|{t}")));
+        let durum = format!("/api/fis/{no}/teslim-qr/{t}");
+        let y = u.isle(&pc("GET", &durum, ""));
+        assert_eq!(y.kod, 200);
+        assert_eq!(json_of(&y)["durum"], "bekliyor");
+        // onay gelmeden teslim tamamlanamaz
+        let govde = json!({ "fisli": true, "onay_belirteci": t }).to_string();
+        let y = u.isle(&pc("POST", &format!("/api/fis/{no}/teslim-al"), &govde));
+        assert_eq!(y.kod, 409);
+        assert_eq!(json_of(&y)["hata"], "onay_bekliyor");
+        // müşteri kendi telefonundan onaylar
+        bulut.musteri_onaylar(A, &t, QR_AD, QR_TEL);
+        u.ileri_sn.fetch_add(2, std::sync::atomic::Ordering::SeqCst);
+        let y = u.isle(&pc("GET", &durum, ""));
+        assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
+        let j = json_of(&y);
+        assert_eq!(j["durum"], "onaylandi");
+        assert_eq!(j["ad"], QR_AD);
+        assert_eq!(j["tel_maskeli"], "+••••••••8877");
+        assert_eq!(j["cihaz"], "Android 14 · SM-SAHTE · Chrome");
+        let onay_zamani = j["zaman"].as_u64().unwrap();
+        assert!(onay_zamani > 1_795_000_000);
+        // karekoddaki telefon fişteki numaradan farklı (numara açılmadan bildirilir)
+        assert_eq!(j["fis_telefonu"], "farkli");
+        assert!(
+            !String::from_utf8_lossy(&y.govde).contains("9998877"),
+            "tam telefon ekrana gelmez"
+        );
+        // bulut kaydı kapatıldı (iki buluttan da silindi)
+        assert!(bulut.kayit.lock().unwrap().is_empty());
+        // telefon farklıyken ilişki seçilmeden (ya da "kendisi" ile) teslim edilemez
+        let y = u.isle(&pc("POST", &format!("/api/fis/{no}/teslim-al"), &govde));
+        assert_eq!(y.kod, 422);
+        assert_eq!(json_of(&y)["hata"], "iliski_gerekli");
+        let g_kendisi =
+            json!({ "fisli": true, "onay_belirteci": t, "iliski": "kendisi" }).to_string();
+        assert_eq!(
+            u.isle(&pc("POST", &format!("/api/fis/{no}/teslim-al"), &g_kendisi))
+                .kod,
+            422
+        );
+        let govde = json!({ "fisli": true, "onay_belirteci": t, "iliski": "yakini" }).to_string();
+        // teslim: imza gerekmez, doğrulama "qr"
+        let y = u.isle(&pc("POST", &format!("/api/fis/{no}/teslim-al"), &govde));
+        assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
+        let j = json_of(&y);
+        assert_eq!(j["teslim_kaydi"]["dogrulama"], "qr");
+        assert_eq!(j["teslim_kaydi"]["imzali"], false);
+        assert_eq!(j["teslim_kaydi"]["ad"], QR_AD);
+        let d = Defter { yol: &u.fis_yolu() };
+        let f = d.bul(&no).unwrap().unwrap();
+        assert_eq!(f.durum, Durum::Teslim);
+        let tk = f.teslim_kaydi.clone().unwrap();
+        assert!(tk.teslim_alan.is_empty() && tk.imza_dosyasi.is_empty());
+        let s = tk.sifreli.clone().unwrap();
+        assert_eq!(s.surum, 1);
+        // kör indeks: aynı ad/telefon aynı indeks
+        assert_eq!(
+            teslim_sifre::indeksler(&u.dizin, "zeynep  örnekoğlu", "0555 999 88 77").unwrap(),
+            (s.ad_indeks.clone(), s.tel_indeks.clone())
+        );
+        // çözülen kayıt: ad, telefon, okutan cihaz, IP, onay zamanı, yöntem
+        let duz = teslim_sifre::coz(&u.dizin, &no, &s).unwrap();
+        assert_eq!(
+            (
+                duz.ad.as_str(),
+                duz.tel.as_str(),
+                duz.ip.as_str(),
+                duz.zaman,
+                duz.yontem.as_str()
+            ),
+            (QR_AD, QR_TEL, "198.51.100.23", onay_zamani, "qr")
+        );
+        assert!(duz.cihaz.contains("SM-SAHTE"));
+        // defterde ve veri klasörünün HİÇBİR dosyasında ad/telefon/IP/cihaz düz metin yok
+        let mut bulunan = Vec::new();
+        tum_dosyalarda(
+            &u.dizin,
+            &[
+                "Zeynep",
+                "Örnekoğlu",
+                "rnekog",
+                "9998877",
+                "198.51.100",
+                "SM-SAHTE",
+            ],
+            &mut bulunan,
+        );
+        assert!(bulunan.is_empty(), "düz metin kişisel veri: {bulunan:?}");
+        // fiş ayrıntısı: mağaza PC'si çözülmüş görünümü alır (tam telefon yok)
+        let y = u.isle(&pc("GET", &format!("/api/fis/{no}"), ""));
+        let j = json_of(&y);
+        assert_eq!(j["teslim_kaydi"]["ad"], QR_AD);
+        assert_eq!(j["teslim_kaydi"]["tel_maskeli"], "+••••••••8877");
+        assert_eq!(j["teslim_kaydi"]["yontem"], "qr");
+        assert_eq!(j["teslim_kaydi"]["sifreli"], true);
+        assert!(!y.govde.windows(7).any(|w| w == b"9998877"));
+        assert!(
+            j["teslim_kaydi"]["ad_indeks"].is_null(),
+            "şifreli blok istemciye gitmez"
+        );
+        // yetkisiz telefon: yalnız "şifreli" işareti, ad yok
+        let token = "deneme-belirtec-0q01";
+        u.cihazlar()
+            .ekle("Deneme telefon", token, "2026-11-26", "")
+            .unwrap();
+        let y = u.isle(&tel(token, "GET", &format!("/api/fis/{no}"), ""));
+        let j = json_of(&y);
+        assert_eq!(j["teslim_kaydi"]["sifreli"], true);
+        assert!(j["teslim_kaydi"]["ad"].is_null());
+        assert!(!String::from_utf8_lossy(&y.govde).contains("Zeynep"));
+        let y = u.isle(&tel(token, "GET", "/api/fisler", ""));
+        assert!(!String::from_utf8_lossy(&y.govde).contains("Zeynep"));
+        // mağaza nüshası metni: "Ad S. - QR onaylı, tarih saat"; telefon basılmaz
+        let m = String::from_utf8(
+            u.isle(&pc("GET", &format!("/api/fis/{no}/metin"), ""))
+                .govde,
+        )
+        .unwrap()
+        .replace('\n', " ");
+        let gun = tk.tarih.split('-').rev().collect::<Vec<_>>().join(".");
+        assert!(
+            m.contains(&format!(
+                "Teslim alan: Zeynep Ö. - QR onaylı, {gun} {}",
+                &tk.saat[..5]
+            )),
+            "{m}"
+        );
+        assert!(!m.contains("8877") && !m.contains("Örnekoğlu"));
+        // yetkisiz telefonda ad çözülmez
+        let m = String::from_utf8(
+            u.isle(&tel(token, "GET", &format!("/api/fis/{no}/metin"), ""))
+                .govde,
+        )
+        .unwrap();
+        assert!(!m.contains("Zeynep"), "{m}");
+        // belirteç tek kullanımlık
+        let no2 = hazir_fis(&u);
+        let y = u.isle(&pc("POST", &format!("/api/fis/{no2}/teslim-al"), &govde));
+        assert_eq!(y.kod, 422);
+        assert_eq!(json_of(&y)["hata"], "onay_yok");
+        // giden isteklerde kişisel veri yok (aç/oku/kapat yalnız belirteç, şube, sayı, genel anahtar taşır)
+        for i in bulut.istekler.lock().unwrap().iter() {
+            assert!(
+                !i.contains("Zeynep") && !i.contains("9998877") && !i.contains(&no),
+                "{i}"
+            );
+        }
+    }
+
+    #[test]
+    fn qr_ile_fissiz_teslim_son4_ve_yetki() {
+        let (u, bulut) = qr_uyg();
+        let no = hazir_fis(&u);
+        let (t, _) = qr_ac(&u, &no);
+        bulut.musteri_onaylar(A, &t, QR_AD, QR_TEL);
+        assert_eq!(
+            json_of(&u.isle(&pc("GET", &format!("/api/fis/{no}/teslim-qr/{t}"), "")))["durum"],
+            "onaylandi"
+        );
+        let yol = format!("/api/fis/{no}/teslim-al");
+        let g = |son4: &str| {
+            json!({ "fisli": false, "onay_belirteci": t, "telefon_son4": son4, "iliski": "yakini" })
+                .to_string()
+        };
+        // son 4 doğrulaması sürer (yanlış: 422, hak sayılır)
+        let y = u.isle(&pc("POST", &yol, &g("1111")));
+        assert_eq!(y.kod, 422);
+        assert_eq!(json_of(&y)["hata"], "son4_yanlis");
+        // doğru son 4: imzasız fişsiz teslim, doğrulama "qr+telefon-son4"
+        let y = u.isle(&pc("POST", &yol, &g("4567")));
+        assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
+        assert_eq!(json_of(&y)["teslim_kaydi"]["dogrulama"], "qr+telefon-son4");
+        assert!(
+            !u.dizin.join("imzalar").exists(),
+            "QR teslimde imza dosyası yazılmaz"
+        );
+        let f = Defter { yol: &u.fis_yolu() }.bul(&no).unwrap().unwrap();
+        let tk = f.teslim_kaydi.unwrap();
+        assert!(!tk.fisli && tk.iliski == "yakini" && tk.imza_sha256.is_empty());
+        // fişsiz teslim yetkisi olmayan telefon karekod onayıyla da fişsiz teslim edemez
+        let no2 = hazir_fis(&u);
+        let token = "deneme-belirtec-0q02";
+        u.cihazlar()
+            .ekle("Deneme telefon", token, "2026-11-26", "")
+            .unwrap();
+        let y = u.isle(&tel(
+            token,
+            "POST",
+            &format!("/api/fis/{no2}/teslim-qr"),
+            "{}",
+        ));
+        assert_eq!(y.kod, 200);
+        let t2 = json_of(&y)["t"].as_str().unwrap().to_string();
+        bulut.musteri_onaylar(A, &t2, QR_AD, QR_TEL);
+        let y = u.isle(&tel(
+            token,
+            "GET",
+            &format!("/api/fis/{no2}/teslim-qr/{t2}"),
+            "",
+        ));
+        assert_eq!(json_of(&y)["durum"], "onaylandi");
+        let g2 =
+            json!({ "fisli": false, "onay_belirteci": t2, "telefon_son4": "4567" }).to_string();
+        let y = u.isle(&tel(
+            token,
+            "POST",
+            &format!("/api/fis/{no2}/teslim-al"),
+            &g2,
+        ));
+        assert_eq!(y.kod, 403);
+        // fişsiz teslimde ne karekod ne imza: 422
+        let y = u.isle(&pc(
+            "POST",
+            &format!("/api/fis/{no2}/teslim-al"),
+            &fissiz("4567", None),
+        ));
+        assert_eq!(y.kod, 422);
+    }
+
+    #[test]
+    fn qr_yanlis_belirtec_ve_sure() {
+        let (u, bulut) = qr_uyg();
+        let a = hazir_fis(&u);
+        let b = hazir_fis(&u);
+        let (t, _) = qr_ac(&u, &a);
+        // bilinmeyen / biçimsiz belirteç ve başka fişin belirteci reddedilir
+        let bilinmeyen = "abcdefghijkmnpqrst23";
+        for yol in [
+            format!("/api/fis/{a}/teslim-qr/{bilinmeyen}"),
+            format!("/api/fis/{a}/teslim-qr/KISA"),
+            format!("/api/fis/{b}/teslim-qr/{t}"),
+        ] {
+            assert_eq!(u.isle(&pc("GET", &yol, "")).kod, 404, "{yol}");
+        }
+        bulut.musteri_onaylar(A, &t, QR_AD, QR_TEL);
+        // başka cihaz bu belirteci sorgulayamaz ve teslimde kullanamaz
+        let token = "deneme-belirtec-0q03";
+        u.cihazlar()
+            .ekle("Deneme telefon", token, "2026-11-26", "")
+            .unwrap();
+        assert_eq!(
+            u.isle(&tel(
+                token,
+                "GET",
+                &format!("/api/fis/{a}/teslim-qr/{t}"),
+                ""
+            ))
+            .kod,
+            404
+        );
+        assert_eq!(
+            json_of(&u.isle(&pc("GET", &format!("/api/fis/{a}/teslim-qr/{t}"), "")))["durum"],
+            "onaylandi"
+        );
+        let g = json!({ "fisli": true, "onay_belirteci": t }).to_string();
+        let y = u.isle(&tel(token, "POST", &format!("/api/fis/{a}/teslim-al"), &g));
+        assert_eq!(y.kod, 422);
+        // başka fişin teslim-al'ında kullanılamaz
+        assert_eq!(
+            u.isle(&pc("POST", &format!("/api/fis/{b}/teslim-al"), &g))
+                .kod,
+            422
+        );
+        let g = json!({ "fisli": true, "onay_belirteci": bilinmeyen }).to_string();
+        assert_eq!(
+            u.isle(&pc("POST", &format!("/api/fis/{a}/teslim-al"), &g))
+                .kod,
+            422
+        );
+        // kurcalanmış şifreli onay: "hatali", teslimde kullanılamaz
+        let (t3, _) = qr_ac(&u, &b);
+        bulut.musteri_onaylar(A, &t3, QR_AD, QR_TEL);
+        {
+            let mut k = bulut.kayit.lock().unwrap();
+            let r = k.get_mut(&format!("{A}|{t3}")).unwrap();
+            let c = r["c"].as_str().unwrap().to_string();
+            let ilk = if c.starts_with('A') { "B" } else { "A" };
+            r["c"] = json!(format!("{ilk}{}", &c[1..]));
+        }
+        let y = u.isle(&pc("GET", &format!("/api/fis/{b}/teslim-qr/{t3}"), ""));
+        assert_eq!(y.kod, 422);
+        assert_eq!(json_of(&y)["durum"], "hatali");
+        let g3 = json!({ "fisli": true, "onay_belirteci": t3 }).to_string();
+        assert_eq!(
+            u.isle(&pc("POST", &format!("/api/fis/{b}/teslim-al"), &g3))
+                .kod,
+            409
+        );
+        // 15 dk sonra süresi dolar (410) ve teslimde kullanılamaz
+        u.ileri_sn
+            .fetch_add(ONAY_SN + 1, std::sync::atomic::Ordering::SeqCst);
+        let y = u.isle(&pc("GET", &format!("/api/fis/{a}/teslim-qr/{t}"), ""));
+        assert_eq!(y.kod, 410);
+        assert_eq!(json_of(&y)["durum"], "suresi_doldu");
+        let g = json!({ "fisli": true, "onay_belirteci": t }).to_string();
+        assert_eq!(
+            u.isle(&pc("POST", &format!("/api/fis/{a}/teslim-al"), &g))
+                .kod,
+            422
+        );
+    }
+    const ONAY_SN: u64 = crate::teslim_onay::ONAY_OMRU_SN;
+
+    #[test]
+    fn qr_birincil_dusukse_yedek_ve_ayar_yoksa_kapali() {
+        let u0 = uyg();
+        let no0 = hazir_fis(&u0);
+        let y = u0.isle(&pc("POST", &format!("/api/fis/{no0}/teslim-qr"), "{}"));
+        assert_eq!(y.kod, 409);
+        assert_eq!(json_of(&y)["hata"], "qr_kapali");
+        let (u, bulut) = qr_uyg();
+        let no = hazir_fis(&u);
+        bulut.dusuk.lock().unwrap().push(A.into());
+        let (t, url) = qr_ac(&u, &no);
+        assert_eq!(
+            url,
+            format!("{B}/o/{t}"),
+            "birincile ulaşılamayınca yedek adres"
+        );
+        bulut.musteri_onaylar(B, &t, QR_AD, QR_TEL);
+        let y = u.isle(&pc("GET", &format!("/api/fis/{no}/teslim-qr/{t}"), ""));
+        assert_eq!(json_of(&y)["durum"], "onaylandi");
+        // iki bulut da düşükse karekod açılmaz (502), ekran imzası yedeği kalır
+        bulut.dusuk.lock().unwrap().push(B.into());
+        let no2 = hazir_fis(&u);
+        let y = u.isle(&pc("POST", &format!("/api/fis/{no2}/teslim-qr"), "{}"));
+        assert_eq!(y.kod, 502);
+        assert_eq!(json_of(&y)["hata"], "bulut_yok");
+        // teslim edilmiş fiş için karekod açılmaz
+        bulut.dusuk.lock().unwrap().clear();
+        let g = json!({ "fisli": true, "onay_belirteci": t, "iliski": "diger" }).to_string();
+        assert_eq!(
+            u.isle(&pc("POST", &format!("/api/fis/{no}/teslim-al"), &g))
+                .kod,
+            200
+        );
+        let y = u.isle(&pc("POST", &format!("/api/fis/{no}/teslim-qr"), "{}"));
+        assert_eq!(y.kod, 409);
+    }
+
+    #[test]
+    fn ekran_imzasi_yolunda_ad_sifreli() {
+        let u = uyg();
+        let no = hazir_fis(&u);
+        let y = u.isle(&pc(
+            "POST",
+            &format!("/api/fis/{no}/teslim-al"),
+            &fissiz("4567", Some(&imza_b64())),
+        ));
+        assert_eq!(y.kod, 200);
+        let defter = std::fs::read_to_string(u.fis_yolu()).unwrap();
+        let satir = defter.lines().find(|l| l.contains("teslimkaydi")).unwrap();
+        assert!(
+            !satir.contains("Yakın") && !satir.contains("Deneme"),
+            "{satir}"
+        );
+        let tk = Defter { yol: &u.fis_yolu() }
+            .bul(&no)
+            .unwrap()
+            .unwrap()
+            .teslim_kaydi
+            .unwrap();
+        let d = teslim_sifre::coz(&u.dizin, &no, tk.sifreli.as_ref().unwrap()).unwrap();
+        assert_eq!(
+            (d.ad.as_str(), d.yontem.as_str(), d.tel.as_str()),
+            ("Deneme Yakın Kişi", "ekran-imza", "")
+        );
+    }
+
+    /// Karekoddaki telefon fiştekiyle aynıysa ilişki seçmeden ("kendisi") teslim edilir.
+    #[test]
+    fn qr_ayni_telefon_ve_birlikte_atlanan_alani() {
+        let (u, bulut) = qr_uyg();
+        let no = hazir_fis(&u);
+        let (t, _) = qr_ac(&u, &no);
+        bulut.musteri_onaylar(A, &t, QR_AD, "+905320004567");
+        let j = json_of(&u.isle(&pc("GET", &format!("/api/fis/{no}/teslim-qr/{t}"), "")));
+        assert_eq!(j["durum"], "onaylandi");
+        assert_eq!(j["fis_telefonu"], "ayni");
+        let g = json!({ "fisli": true, "onay_belirteci": t }).to_string();
+        let y = u.isle(&pc("POST", &format!("/api/fis/{no}/teslim-al"), &g));
+        assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
+        let j = json_of(&y);
+        assert_eq!(j["teslim_kaydi"]["iliski"], "kendisi");
+        assert_eq!(j["birlikte_atlanan"], json!([]));
+    }
+
+    /// Yönetici: tam telefon, IP ve ham user-agent yalnız bu bilgisayardan + yönetici oturumuyla görülür; kör
+    /// indeksle arama; her görüntüleme kişisel veri içermeyen satırla günlüğe yazılır.
+    #[test]
+    fn yonetici_teslim_ayrintisi_ve_kor_indeks_aramasi() {
+        let (u, bulut) = qr_uyg();
+        let no = hazir_fis(&u);
+        let (t, _) = qr_ac(&u, &no);
+        bulut.musteri_onaylar(A, &t, QR_AD, QR_TEL);
+        u.isle(&pc("GET", &format!("/api/fis/{no}/teslim-qr/{t}"), ""));
+        let g = json!({ "fisli": true, "onay_belirteci": t, "iliski": "yakini" }).to_string();
+        assert_eq!(
+            u.isle(&pc("POST", &format!("/api/fis/{no}/teslim-al"), &g))
+                .kod,
+            200
+        );
+        let yol = format!("/api/yonetim/teslim/{no}");
+        // uzaktan (telefon / ağ) görülemez
+        let mut uzak = pc("GET", &yol, "");
+        uzak.yerel = false;
+        assert_eq!(u.isle(&uzak).kod, 403);
+        let token = "deneme-belirtec-0q09";
+        u.cihazlar()
+            .ekle("Deneme telefon", token, "2026-11-26", "")
+            .unwrap();
+        assert_eq!(u.isle(&tel(token, "GET", &yol, "")).kod, 403);
+        let y = u.isle(&pc("GET", &yol, ""));
+        assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
+        let j = json_of(&y);
+        assert_eq!(j["tel"], QR_TEL);
+        assert_eq!(j["ip"], "198.51.100.23");
+        assert!(j["cihaz"].as_str().unwrap().contains("SM-SAHTE"));
+        assert_eq!(j["fis_telefonu"], "farkli");
+        assert_eq!(j["iliski"], "yakini");
+        // kör indeksle arama: telefon biçimi farklı da olsa bulur; yanıtta ad/telefon yok
+        let y = u.isle(&pc(
+            "POST",
+            "/api/yonetim/teslim-ara",
+            r#"{"tel":"0555 999 88 77"}"#,
+        ));
+        assert_eq!(y.kod, 200);
+        let j = json_of(&y);
+        assert_eq!(j["sonuc"].as_array().unwrap().len(), 1);
+        assert_eq!(j["sonuc"][0]["no"], no.as_str());
+        assert!(!String::from_utf8_lossy(&y.govde).contains("9998877"));
+        let y = u.isle(&pc(
+            "POST",
+            "/api/yonetim/teslim-ara",
+            r#"{"ad":"zeynep ÖRNEKOĞLU","tel":"+905559998877"}"#,
+        ));
+        assert_eq!(json_of(&y)["sonuc"].as_array().unwrap().len(), 1);
+        let y = u.isle(&pc(
+            "POST",
+            "/api/yonetim/teslim-ara",
+            r#"{"tel":"0555 000 00 00"}"#,
+        ));
+        assert!(json_of(&y)["sonuc"].as_array().unwrap().is_empty());
+        assert_eq!(
+            u.isle(&pc("POST", "/api/yonetim/teslim-ara", "{}")).kod,
+            400
+        );
+        // yönetici kilidi açıkken oturumsuz 401
+        let mut u2 = u;
+        u2.yonetici_kilidi = true;
+        assert_eq!(u2.isle(&pc("GET", &yol, "")).kod, 401);
+        // günlükte kişisel veri yok, olaylar var
+        let gunluk = std::fs::read_to_string(u2.dizin.join("teslim-ayrinti.jsonl")).unwrap();
+        assert!(gunluk.contains("teslim_ayrintisi") && gunluk.contains("teslim_ara"));
+        for yasak in ["Zeynep", "9998877", "198.51.100", "SM-SAHTE"] {
+            assert!(!gunluk.contains(yasak), "{yasak}: {gunluk}");
+        }
+    }
+
+    /// Bilgisayar saati yanlışsa bulut reddeder: "bağlantı yok" yerine saat iletisi.
+    #[test]
+    fn qr_saat_farki_iletisi() {
+        let (u, bulut) = qr_uyg();
+        let no = hazir_fis(&u);
+        let (t, _) = qr_ac(&u, &no);
+        bulut
+            .saat_yanlis
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        let j = json_of(&u.isle(&pc("GET", &format!("/api/fis/{no}/teslim-qr/{t}"), "")));
+        assert_eq!(j["durum"], "bekliyor");
+        assert_eq!(j["saat_sorunu"], true);
+        let no2 = hazir_fis(&u);
+        let y = u.isle(&pc("POST", &format!("/api/fis/{no2}/teslim-qr"), "{}"));
+        assert_eq!(y.kod, 502);
+        let j = json_of(&y);
+        assert_eq!(j["hata"], "saat_farki");
+        assert!(j["ileti"].as_str().unwrap().contains("saat"));
+    }
+
+    /// Süresi geçen (onaylanmamış) karekodun bulut kaydı kapattırılır (Vercel'de kendi silme zamanı yok).
+    #[test]
+    fn suresi_gecen_karekod_buluttan_silinir() {
+        let (u, bulut) = qr_uyg();
+        let a = hazir_fis(&u);
+        let (t, _) = qr_ac(&u, &a);
+        assert_eq!(bulut.kayit.lock().unwrap().len(), 2);
+        u.ileri_sn
+            .fetch_add(ONAY_SN + 1, std::sync::atomic::Ordering::SeqCst);
+        let y = u.isle(&pc("GET", &format!("/api/fis/{a}/teslim-qr/{t}"), ""));
+        assert_eq!(y.kod, 410);
+        assert!(
+            bulut.kayit.lock().unwrap().is_empty(),
+            "iki buluttaki kayıt da kapatılmalı"
+        );
+        // başka bir fişin karekodu açılırken de süresi geçenler taranır
+        let b = hazir_fis(&u);
+        let (t2, _) = qr_ac(&u, &b);
+        u.ileri_sn
+            .fetch_add(ONAY_SN + 1, std::sync::atomic::Ordering::SeqCst);
+        let c = hazir_fis(&u);
+        let (t3, _) = qr_ac(&u, &c);
+        let k = bulut.kayit.lock().unwrap();
+        assert!(!k.keys().any(|x| x.ends_with(&t2)), "{k:?}");
+        assert!(k.keys().any(|x| x.ends_with(&t3)));
+    }
+
+    /// Onaydaki zaman karekodun açılış..silinme aralığı dışındaysa onay kabul edilmez.
+    #[test]
+    fn qr_onay_zamani_aralik_disi_reddedilir() {
+        let (u, bulut) = qr_uyg();
+        let no = hazir_fis(&u);
+        let (t, _) = qr_ac(&u, &no);
+        bulut.musteri_onaylar(A, &t, QR_AD, QR_TEL);
+        // kaydı eski bir zamanla yeniden şifrele
+        {
+            let mut k = bulut.kayit.lock().unwrap();
+            let r = k.get_mut(&format!("{A}|{t}")).unwrap();
+            let duz = json!({ "ad": QR_AD, "tel": QR_TEL, "ua": "", "ip": "", "zaman": 1_000_000_000u64, "dil": "tr" }).to_string();
+            let (e, iv, c) = crate::teslim_onay::testler::sozlesme_sifrele(
+                r["pk"].as_str().unwrap(),
+                &t,
+                duz.as_bytes(),
+                [5u8; 32],
+                [6u8; 12],
+            );
+            r["e"] = json!(e);
+            r["iv"] = json!(iv);
+            r["c"] = json!(c);
+        }
+        let y = u.isle(&pc("GET", &format!("/api/fis/{no}/teslim-qr/{t}"), ""));
+        assert_eq!(y.kod, 422);
+        assert!(json_of(&y)["ileti"].as_str().unwrap().contains("zaman"));
     }
 }

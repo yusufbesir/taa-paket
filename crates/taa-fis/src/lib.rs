@@ -187,12 +187,61 @@ pub const TESLIM_ILISKILERI: &[(&str, &str)] = &[
     ("diger", "diğer"),
 ];
 
-/// Ürünü teslim alan kişinin kaydı (fişli/fişsiz teslim ve teslim imzası). Defterde kalır, silinmez.
+/// Teslim alan kişinin şifreli bilgisi (Yusuf 2026-11-26: "bu bilgiler veri tabanında şifreli olarak tutulsun").
+/// `c` = AES-256-GCM(yerel anahtar, aad = fiş no) ile şifrelenmiş JSON {ad, tel, cihaz, ip, zaman, yontem}.
+/// Şifreleme/çözme sunucudadır (taa-fis-sunucu `teslim_sifre`); bu crate yalnız biçimi taşır ve denetler.
+/// `ad_indeks`/`tel_indeks`: kör indeks (HMAC-SHA256, ilk 16 onaltılık hane); arama içindir, geri çevrilemez.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TeslimSifreli {
+    pub surum: u8,
+    /// 12 baytlık IV, onaltılık (24 hane).
+    pub iv: String,
+    /// Şifreli metin + 16 baytlık etiket, base64.
+    pub c: String,
+    pub ad_indeks: String,
+    /// Telefon yoksa (ekran imzası yolu) boş.
+    #[serde(default)]
+    pub tel_indeks: String,
+}
+
+impl TeslimSifreli {
+    /// Biçim denetimi (anahtarsız; içerik doğrulaması çözmede GCM etiketiyle yapılır).
+    pub fn gecerli(&self) -> bool {
+        let hex = |s: &str, n: usize| {
+            s.len() == n
+                && s.bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        };
+        self.surum == 1
+            && hex(&self.iv, 24)
+            && self.c.len() >= 24
+            && self.c.len() <= 8192
+            && self
+                .c
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'+' || b == b'/' || b == b'=')
+            && hex(&self.ad_indeks, 16)
+            && (self.tel_indeks.is_empty() || hex(&self.tel_indeks, 16))
+    }
+}
+
+/// Şifresi çözülmüş, yalnız bellekte duran görünüm (basım ve ekran için). Defterde YAZILMAZ (`serde(skip)`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TeslimGorunen {
+    /// Teslim alanın adı soyadı (basımda yalnız "Ad S." kısaltması kullanılır).
+    pub ad: String,
+    /// "qr" ya da "ekran-imza".
+    pub yontem: String,
+}
+
+/// Ürünü teslim alan kişinin kaydı (fişli/fişsiz teslim, karekod onayı ya da ekran imzası). Defterde kalır, silinmez.
 /// Fişsiz teslimde doğrulama telefonun son 4 hanesiyle yapılır; son 4 hane SAKLANMAZ, yalnız yöntemi yazılır.
-/// Bu kayıt müşteri takip (bulut) kaydına gitmez.
+/// Yeni kayıtlarda kişisel veri (ad, telefon, cihaz, IP) yalnız `sifreli` alanındadır; `teslim_alan` boş kalır
+/// (eski kayıtlar için alan durur). Bu kayıt müşteri takip (bulut) kaydına gitmez.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TeslimKaydi {
-    /// Teslim alanın adı soyadı.
+    /// Teslim alanın adı soyadı (yalnız eski kayıtlar; yenilerde boş, ad `sifreli` içindedir).
+    #[serde(default)]
     pub teslim_alan: String,
     /// `TESLIM_ILISKILERI` anahtarı: kendisi, yakini, diger.
     pub iliski: String,
@@ -216,6 +265,19 @@ pub struct TeslimKaydi {
     /// fişin kendi teslimiyse boş.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub ana_fis: String,
+    /// Şifreli teslim alan bilgisi (yeni kayıtlar).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sifreli: Option<TeslimSifreli>,
+    /// Sunucunun çözüp doldurduğu görünüm; diske ve JSON'a hiç yazılmaz.
+    #[serde(skip)]
+    pub gorunen: Option<TeslimGorunen>,
+}
+
+impl TeslimKaydi {
+    /// Karekodla (müşterinin kendi telefonundan) onaylanmış teslim mi?
+    pub fn qr_onayli(&self) -> bool {
+        self.dogrulama == "qr" || self.dogrulama == "qr+telefon-son4"
+    }
 }
 
 /// İlişki anahtarının fişe basılan adı.
@@ -226,11 +288,19 @@ pub fn iliski_adi(anahtar: &str) -> Option<&'static str> {
         .map(|(_, a)| *a)
 }
 
-/// Kişi adı karakterleri: harf, boşluk, tire, kesme işareti, nokta. Çift yönlü yazı işaretleri (U+202E vb.),
-/// sıfır genişlikli karakterler, rakamlar ve HTML işaretleri reddedilir (ad ekranda/fişte yanıltıcı görünmesin).
+/// Kişi adı karakterleri: harf, birleşik işaret (Arapça hareke, Hintçe virama/ünlü işaretleri: Unicode M sınıfı),
+/// Farsça/Hint yazılarındaki sıfır genişlikli birleştirmez/birleştirir (U+200C ZWNJ, U+200D ZWJ), boşluk, tire,
+/// kesme işareti, nokta. Çift yönlü yazı işaretleri (U+200E/F, U+202A..E, U+2066..9), diğer sıfır genişlikli
+/// karakterler (U+200B, U+2060, U+FEFF), rakamlar ve HTML işaretleri reddedilir (ad ekranda/fişte yanıltıcı görünmesin).
+/// Bulut onay sayfasının kuralı (`bulut/musteri-takip/ortak/onay.mjs` adDogrula: `[\p{L}\p{M} .'\-ZWNJ ZWJ]`) bunun
+/// alt kümesidir: bulutun kabul ettiği her ad burada da geçer (karekod onayı kasada "ad geçersiz"e düşmez).
 pub fn ad_karakterleri_gecerli(ad: &str) -> bool {
-    ad.chars()
-        .all(|c| c.is_alphabetic() || c == ' ' || c == '-' || c == '\'' || c == '.' || c == '’')
+    use unicode_properties::{GeneralCategoryGroup, UnicodeGeneralCategory};
+    ad.chars().all(|c| {
+        c.is_alphabetic()
+            || c.general_category_group() == GeneralCategoryGroup::Mark
+            || matches!(c, ' ' | '-' | '\'' | '.' | '’' | '\u{200C}' | '\u{200D}')
+    })
 }
 
 /// Görünmez biçim karakteri var mı (çift yönlü yazı işaretleri, sıfır genişlikli karakterler, BOM)?
@@ -1183,7 +1253,95 @@ mod testler {
             tarih: "2026-11-09".into(),
             saat: "10:00:00".into(),
             ana_fis: String::new(),
+            sifreli: None,
+            gorunen: None,
         }
+    }
+
+    /// Sahte şifreli blok (biçimce geçerli; içerik anlamsız).
+    fn sahte_sifreli() -> TeslimSifreli {
+        TeslimSifreli {
+            surum: 1,
+            iv: "00".repeat(12),
+            c: "QUJDREVGR0hJSktMTU5PUFFSU1RVVldY".into(),
+            ad_indeks: "0123456789abcdef".into(),
+            tel_indeks: "fedcba9876543210".into(),
+        }
+    }
+
+    #[test]
+    fn sifreli_ve_qr_teslim_kaydi() {
+        let y = yol();
+        let d = Defter { yol: &y };
+        let f = d.ekle(girdi()).unwrap();
+        d.durum_ata(&f.no, Durum::Hazir, "2026-11-26").unwrap();
+        let qr = |fisli: bool| TeslimKaydi {
+            teslim_alan: String::new(),
+            iliski: "kendisi".into(),
+            fisli,
+            dogrulama: if fisli { "qr" } else { "qr+telefon-son4" }.into(),
+            imza_sha256: String::new(),
+            imza_dosyasi: String::new(),
+            kim: "PC".into(),
+            tarih: "2026-11-26".into(),
+            saat: "14:32:09".into(),
+            ana_fis: String::new(),
+            sifreli: Some(sahte_sifreli()),
+            gorunen: None,
+        };
+        // qr şifresiz olamaz; şifreli kayıtta düz metin ad olamaz; bozuk şifreli blok reddedilir
+        let mut k = qr(false);
+        k.sifreli = None;
+        assert!(d.teslim_et(&f.no, k).is_err());
+        let mut k = qr(false);
+        k.teslim_alan = "Zeynep Kaya".into();
+        assert!(d.teslim_et(&f.no, k).is_err());
+        let mut k = qr(false);
+        k.sifreli.as_mut().unwrap().iv = "zz".into();
+        assert!(d.teslim_et(&f.no, k).is_err());
+        let mut k = qr(true);
+        k.dogrulama = "qr+telefon-son4".into();
+        assert!(d.teslim_et(&f.no, k).is_err());
+        // şifreli ekran imzası yolu: fişsizde imza yine zorunlu
+        let mut k = teslim_kaydi_ornek(false);
+        k.teslim_alan = String::new();
+        k.sifreli = Some(sahte_sifreli());
+        k.imza_sha256 = String::new();
+        k.imza_dosyasi = String::new();
+        assert!(d.teslim_et(&f.no, k).is_err());
+        // fişsiz QR: imza gerekmez
+        d.teslim_et(&f.no, qr(false)).unwrap();
+        let mut g = d.bul(&f.no).unwrap().unwrap();
+        assert_eq!(g.durum, Durum::Teslim);
+        let t = g.teslim_kaydi.clone().unwrap();
+        assert!(t.qr_onayli() && t.teslim_alan.is_empty() && t.gorunen.is_none());
+        // çözülmemiş: "(şifreli)"; çözülmüş görünüm: "Ad S. - QR onaylı, tarih saat"
+        let m = duz_metin(&g, 42).replace('\n', " ");
+        assert!(
+            m.contains("Teslim alan: (şifreli) - QR onaylı, 26.11.2026 14:32"),
+            "{m}"
+        );
+        g.teslim_kaydi.as_mut().unwrap().gorunen = Some(TeslimGorunen {
+            ad: "Zeynep Ayşe Kaya".into(),
+            yontem: "qr".into(),
+        });
+        let m = duz_metin(&g, 42).replace('\n', " ");
+        assert!(
+            m.contains("Teslim alan: Zeynep K. - QR onaylı, 26.11.2026 14:32"),
+            "{m}"
+        );
+        assert!(!m.contains("Kaya"));
+        // görünüm diske/JSON'a yazılmaz
+        let j = serde_json::to_string(&g).unwrap();
+        assert!(!j.contains("Zeynep") && !j.contains("gorunen"), "{j}");
+        let defter = std::fs::read_to_string(&y).unwrap();
+        assert!(!defter.contains("Zeynep"));
+        // eski kayıt (sifreli alanı yok) okunur
+        let eski: TeslimKaydi = serde_json::from_str(
+            r#"{"teslim_alan":"Eski Kişi","iliski":"kendisi","fisli":true,"dogrulama":"fis","kim":"PC","tarih":"2026-11-01"}"#,
+        )
+        .unwrap();
+        assert!(eski.sifreli.is_none() && !eski.qr_onayli());
     }
 
     /// Deneme teslimi: fişli, imzasız, sahte ad.
@@ -1232,6 +1390,26 @@ mod testler {
             assert!(d.teslim_et(&f.no, k).is_err(), "{ad}");
         }
         assert!(teslim_alan_denetle("Ayşe O'Neil-Çelik Jr.", "kendisi").is_ok());
+        // Hintçe (virama U+094D), Farsça (ZWNJ U+200C) ve harekeli Arapça sahte adlar geçer (bulut kuralıyla aynı);
+        // yön işaretleri ve U+200B yine reddedilir.
+        for ad in [
+            "राहुल शर्मा",
+            "علی\u{200C}رضا محمدی",
+            "مُحَمَّد عَلِي",
+            "Ayşe Deneme",
+            "Zoë Ünlü-Çelik",
+        ] {
+            assert!(ad_karakterleri_gecerli(ad), "{ad}");
+        }
+        for ad in [
+            "Zey\u{200E}nep",
+            "Zey\u{2066}nep",
+            "Zey\u{FEFF}nep",
+            "Zey\u{200B}nep",
+            "Zey\u{00AD}nep",
+        ] {
+            assert!(!ad_karakterleri_gecerli(ad), "{ad:?}");
+        }
         // bağlı fiş kaydında ana fiş, fişin kendisi olamaz
         let mut k = teslim_kaydi_ornek(false);
         k.ana_fis = f.no.clone();

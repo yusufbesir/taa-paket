@@ -30,7 +30,7 @@ const KLASOR: &str = "musteri-takip";
 const GUN: u64 = 86_400;
 /// Kod uzunluğu (base32, 5 bit/karakter): 16 karakter = 80 bit.
 const KOD_UZUNLUGU: usize = 16;
-const ALFABE: &[u8; 32] = b"abcdefghijkmnpqrstuvwxyz23456789"; // l, o, 0, 1 yok: okurken karışmasın
+pub(crate) const ALFABE: &[u8; 32] = b"abcdefghijkmnpqrstuvwxyz23456789"; // l, o, 0, 1 yok: okurken karışmasın
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Ayar {
@@ -91,21 +91,21 @@ impl Ayar {
     }
 }
 
-fn klasor(dizin: &Path) -> PathBuf {
+pub(crate) fn klasor(dizin: &Path) -> PathBuf {
     dizin.join(KLASOR)
 }
 
-fn rastgele(n: usize) -> Result<Vec<u8>, String> {
+pub(crate) fn rastgele(n: usize) -> Result<Vec<u8>, String> {
     let mut b = vec![0u8; n];
     getrandom::fill(&mut b).map_err(|e| format!("rastgele sayı alınamadı: {e}"))?;
     Ok(b)
 }
 
-fn hex(b: &[u8]) -> String {
+pub(crate) fn hex(b: &[u8]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
 }
 
-fn hex_coz(s: &str) -> Option<Vec<u8>> {
+pub(crate) fn hex_coz(s: &str) -> Option<Vec<u8>> {
     let s = s.trim();
     if !s.len().is_multiple_of(2) {
         return None;
@@ -117,7 +117,7 @@ fn hex_coz(s: &str) -> Option<Vec<u8>> {
 }
 
 /// Dosya yoksa yeni oluşturur (üzerine yazmaz); `uret` içeriği verir.
-fn dosya_ya_da_olustur(
+pub(crate) fn dosya_ya_da_olustur(
     yol: &Path,
     uret: impl FnOnce() -> Result<String, String>,
 ) -> Result<String, String> {
@@ -151,7 +151,7 @@ fn anahtar(dizin: &Path) -> Result<Vec<u8>, String> {
         .ok_or_else(|| "takip anahtarı bozuk".into())
 }
 
-fn hmac_sha256(anahtar: &[u8], veri: &[u8]) -> [u8; 32] {
+pub(crate) fn hmac_sha256(anahtar: &[u8], veri: &[u8]) -> [u8; 32] {
     let mut k = [0u8; 64];
     if anahtar.len() > 64 {
         k[..32].copy_from_slice(&Sha256::digest(anahtar));
@@ -187,7 +187,7 @@ pub fn kod_gecerli(k: &str) -> bool {
     k.len() == KOD_UZUNLUGU && k.bytes().all(|b| ALFABE.contains(&b))
 }
 
-fn imza_anahtari(dizin: &Path) -> Result<ed25519_dalek::SigningKey, String> {
+pub(crate) fn imza_anahtari(dizin: &Path) -> Result<ed25519_dalek::SigningKey, String> {
     let m = dosya_ya_da_olustur(&klasor(dizin).join("imza.ozel"), || {
         Ok(format!("ed25519-ozel:{}", hex(&rastgele(32)?)))
     })?;
@@ -441,53 +441,67 @@ pub trait Gonderici {
     fn gonder(&self, url: &str, govde: &str, imza: &str) -> Result<(), (bool, String)>;
 }
 
-/// `curl` ile gönderir (Windows 10+ ve Linux'ta hazır). Gövde stdin'den verilir.
+/// `curl` ile tek HTTP isteği (Windows 10+ ve Linux'ta hazır). Gövde varsa stdin'den verilir (komut satırında
+/// görünmez). (HTTP kodu, yanıt gövdesi) döner; ağ hatasında kod 0 ve gövde curl'ün hata iletisidir.
+/// Başlık değerleri yalnız imza/zaman gibi sabit karakterli değerlerdir (kişisel veri başlıkta gitmez).
+pub(crate) fn curl_istek(
+    metot: &str,
+    url: &str,
+    basliklar: &[(&str, &str)],
+    govde: Option<&str>,
+    sure_sn: u32,
+) -> Result<(u16, String), String> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    let mut c = Command::new("curl");
+    c.args(["-sS", "-o", "-", "-w", "\n%{http_code}", "--max-time"])
+        .arg(sure_sn.to_string())
+        .args(["-X", metot]);
+    if govde.is_some() {
+        c.args(["-H", "Content-Type: application/json"]);
+    }
+    for (a, d) in basliklar {
+        c.args(["-H", &format!("{a}: {d}")]);
+    }
+    if govde.is_some() {
+        c.args(["--data-binary", "@-"]);
+    }
+    c.arg(url)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        c.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    let mut p = c.spawn().map_err(|e| format!("curl çalışmadı: {e}"))?;
+    if let Some(mut g) = p.stdin.take() {
+        if let Some(b) = govde {
+            let _ = g.write_all(b.as_bytes());
+        }
+    }
+    let o = p.wait_with_output().map_err(|e| e.to_string())?;
+    let cikti = String::from_utf8_lossy(&o.stdout);
+    let (yanit, kod) = cikti.rsplit_once('\n').unwrap_or(("", &cikti));
+    let kod: u16 = kod.trim().parse().unwrap_or(0);
+    if kod == 0 {
+        return Ok((0, String::from_utf8_lossy(&o.stderr).trim().to_string()));
+    }
+    Ok((kod, yanit.to_string()))
+}
+
+/// `curl` ile gönderir. Gövde stdin'den verilir.
 pub struct CurlGonderici;
 
 impl Gonderici for CurlGonderici {
     fn gonder(&self, url: &str, govde: &str, imza: &str) -> Result<(), (bool, String)> {
-        use std::io::Write;
-        use std::process::{Command, Stdio};
-        let mut c = Command::new("curl");
-        c.args([
-            "-sS",
-            "-o",
-            "-",
-            "-w",
-            "\n%{http_code}",
-            "--max-time",
-            "15",
-            "-X",
-            "POST",
-        ])
-        .args(["-H", "Content-Type: application/json"])
-        .args(["-H", &format!("X-TAA-Imza: {imza}")])
-        .args(["--data-binary", "@-", url])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            c.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-        }
-        let mut p = c
-            .spawn()
-            .map_err(|e| (false, format!("curl çalışmadı: {e}")))?;
-        if let Some(mut g) = p.stdin.take() {
-            let _ = g.write_all(govde.as_bytes());
-        }
-        let o = p.wait_with_output().map_err(|e| (false, e.to_string()))?;
-        let cikti = String::from_utf8_lossy(&o.stdout);
-        let kod: u16 = cikti
-            .lines()
-            .last()
-            .and_then(|s| s.trim().parse().ok())
-            .unwrap_or(0);
+        let (kod, yanit) = curl_istek("POST", url, &[("X-TAA-Imza", imza)], Some(govde), 15)
+            .map_err(|e| (false, e))?;
         match kod {
             200..=299 => Ok(()),
             400..=499 => Err((true, format!("HTTP {kod}"))),
-            0 => Err((false, String::from_utf8_lossy(&o.stderr).trim().to_string())),
+            0 => Err((false, yanit)),
             _ => Err((false, format!("HTTP {kod}"))),
         }
     }
