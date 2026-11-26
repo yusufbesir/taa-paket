@@ -1,0 +1,16 @@
+# Sahip: Yusuf. yazan: [Claude#rehber-panel 2026-11-26]
+# taa-rehber-panel modül tanımı. Program: TaaRehber'in masaüstü paneli (program = "taarehber", taa-rehber çekirdeğiyle aynı program).
+# Yalnız ortak crate'lere bağlıdır (taa-rehber-model, taa-ihbar, taa-kimlik, taa-yol, taa-hata): başka programın crate'ine zorunlu bağımlılık yok.
+# Veri sahibi değildir: rehber verisinin tek yazarı sunucu hizmetidir (rehber.yaz@1); bu sürümde yazma bellektedir (kalıcı değil).
+# sunar boş: rehber.oku@1 ve rehber.dogrula@1 taa-rehber'in; bu panel yetenek sunmaz, ekran sağlar.
+ad = "taa-rehber-panel"
+surum = "0.1.0"
+arayuz = "1"
+gerektirir = { "taa-hata" = "1", "taa-ihbar" = "1", "taa-kimlik" = "1", "taa-rehber-model" = "1", "taa-yol" = "1" }
+ozellikler = ["rehber-panel"]
+program = "taarehber"
+sunar = []
+ister = []
+veri_sahibi = []
+veri_okur = []
+ayar_alani = "programlar.taarehber"

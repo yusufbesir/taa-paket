@@ -828,6 +828,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "taa-egitim-panel"
+version = "0.1.0"
+dependencies = [
+ "getrandom 0.3.4",
+ "serde",
+ "serde_json",
+ "taa-egitim",
+ "taa-hata",
+ "taa-kimlik",
+ "taa-rehber-model",
+ "taa-yol",
+ "tiny_http",
+]
+
+[[package]]
 name = "taa-fis"
 version = "0.1.0"
 dependencies = [
@@ -1086,6 +1101,22 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "taa-rehber-panel"
+version = "0.1.0"
+dependencies = [
+ "getrandom 0.3.4",
+ "serde",
+ "serde_json",
+ "taa-dosya",
+ "taa-hata",
+ "taa-ihbar",
+ "taa-kimlik",
+ "taa-rehber-model",
+ "taa-yol",
+ "tiny_http",
 ]
 
 [[package]]
