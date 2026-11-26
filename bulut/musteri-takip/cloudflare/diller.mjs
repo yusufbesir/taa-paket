@@ -32,6 +32,7 @@ export const YEREL = {
 
 export const METIN = {
   tr: {
+    guncel: "Güncel", ozet: "Fiş özeti",
     baslik: "Tadilat takibi", sube: "Şube", dil: "Dil",
     yok_b: "Kayıt bulunamadı",
     yok_m: "Fişiniz yeni kesildiyse birkaç dakika sonra yeniden deneyin. Ürününüzü teslim aldıysanız kayıt bir süre sonra kendiliğinden silinir.",
@@ -45,6 +46,7 @@ export const METIN = {
     fis: "Fiş", fis_tarihi: "Fiş tarihi", teslim_gunu: "Teslim", islemler: "Yapılacak işlemler", diger_islem: "Diğer tadilat",
   },
   en: {
+    guncel: "Current", ozet: "Receipt summary",
     baslik: "Alteration tracking", sube: "Branch", dil: "Language",
     yok_b: "Record not found",
     yok_m: "If your receipt was issued just now, please try again in a few minutes. Once you have collected your item, the record is deleted automatically after a while.",
@@ -58,6 +60,7 @@ export const METIN = {
     fis: "Receipt", fis_tarihi: "Receipt date", teslim_gunu: "Ready on", islemler: "Alterations", diger_islem: "Other alteration",
   },
   ar: {
+    guncel: "الحالية", ozet: "ملخص الإيصال",
     baslik: "تتبع التعديل", sube: "الفرع", dil: "اللغة",
     yok_b: "لم يتم العثور على السجل",
     yok_m: "إذا صدر إيصالك للتو، يرجى المحاولة مرة أخرى بعد بضع دقائق. بعد استلام قطعتك يُحذف السجل تلقائيًا بعد فترة.",
@@ -71,6 +74,7 @@ export const METIN = {
     fis: "الإيصال", fis_tarihi: "تاريخ الإيصال", teslim_gunu: "موعد الاستلام", islemler: "التعديلات", diger_islem: "تعديل آخر",
   },
   ru: {
+    guncel: "Сейчас", ozet: "Сводка по чеку",
     baslik: "Отслеживание ремонта одежды", sube: "Филиал", dil: "Язык",
     yok_b: "Запись не найдена",
     yok_m: "Если чек выдан только что, попробуйте снова через несколько минут. После получения изделия запись через некоторое время удаляется автоматически.",
@@ -84,6 +88,7 @@ export const METIN = {
     fis: "Чек", fis_tarihi: "Дата чека", teslim_gunu: "Готово", islemler: "Работы", diger_islem: "Другая работа",
   },
   de: {
+    guncel: "Aktuell", ozet: "Belegübersicht",
     baslik: "Änderungsverfolgung", sube: "Filiale", dil: "Sprache",
     yok_b: "Eintrag nicht gefunden",
     yok_m: "Wenn Ihr Beleg gerade erst ausgestellt wurde, versuchen Sie es bitte in ein paar Minuten erneut. Nach der Abholung wird der Eintrag nach einiger Zeit automatisch gelöscht.",
@@ -97,6 +102,7 @@ export const METIN = {
     fis: "Beleg", fis_tarihi: "Belegdatum", teslim_gunu: "Fertig am", islemler: "Änderungen", diger_islem: "Sonstige Änderung",
   },
   fr: {
+    guncel: "En cours", ozet: "Résumé du ticket",
     baslik: "Suivi de retouche", sube: "Boutique", dil: "Langue",
     yok_b: "Dossier introuvable",
     yok_m: "Si votre ticket vient d'être émis, réessayez dans quelques minutes. Une fois l'article récupéré, le dossier est supprimé automatiquement après un certain temps.",
@@ -110,6 +116,7 @@ export const METIN = {
     fis: "Ticket", fis_tarihi: "Date du ticket", teslim_gunu: "Prêt le", islemler: "Retouches", diger_islem: "Autre retouche",
   },
   es: {
+    guncel: "Actual", ozet: "Resumen del recibo",
     baslik: "Seguimiento de arreglos", sube: "Tienda", dil: "Idioma",
     yok_b: "Registro no encontrado",
     yok_m: "Si su recibo se acaba de emitir, vuelva a intentarlo en unos minutos. Después de recoger su prenda, el registro se borra automáticamente al cabo de un tiempo.",
@@ -123,6 +130,7 @@ export const METIN = {
     fis: "Recibo", fis_tarihi: "Fecha del recibo", teslim_gunu: "Listo el", islemler: "Arreglos", diger_islem: "Otro arreglo",
   },
   zh: {
+    guncel: "当前", ozet: "单据摘要",
     baslik: "改衣进度查询", sube: "门店", dil: "语言",
     yok_b: "未找到记录",
     yok_m: "如果您的单据刚刚开出，请几分钟后再试。取走衣物后，记录会在一段时间后自动删除。",
@@ -136,6 +144,7 @@ export const METIN = {
     fis: "单据", fis_tarihi: "开单日期", teslim_gunu: "取衣日期", islemler: "修改项目", diger_islem: "其他修改",
   },
   hi: {
+    guncel: "वर्तमान", ozet: "रसीद का सारांश",
     baslik: "सिलाई बदलाव की स्थिति", sube: "शाखा", dil: "भाषा",
     yok_b: "रिकॉर्ड नहीं मिला",
     yok_m: "अगर आपकी रसीद अभी-अभी बनी है, तो कुछ मिनट बाद फिर कोशिश करें। कपड़ा ले जाने के कुछ समय बाद रिकॉर्ड अपने-आप हट जाता है।",
@@ -149,6 +158,7 @@ export const METIN = {
     fis: "रसीद", fis_tarihi: "रसीद की तारीख", teslim_gunu: "तैयार होने की तारीख", islemler: "काम", diger_islem: "अन्य बदलाव",
   },
   fa: {
+    guncel: "فعلی", ozet: "خلاصهٔ رسید",
     baslik: "پیگیری اصلاح لباس", sube: "شعبه", dil: "زبان",
     yok_b: "سابقه‌ای پیدا نشد",
     yok_m: "اگر رسید شما همین حالا صادر شده، چند دقیقه دیگر دوباره امتحان کنید. پس از تحویل گرفتن لباس، سابقه پس از مدتی خودکار حذف می‌شود.",
@@ -162,6 +172,7 @@ export const METIN = {
     fis: "رسید", fis_tarihi: "تاریخ رسید", teslim_gunu: "تاریخ تحویل", islemler: "کارهای اصلاح", diger_islem: "اصلاح دیگر",
   },
   ro: {
+    guncel: "Acum", ozet: "Rezumatul bonului",
     baslik: "Urmărirea ajustării", sube: "Magazin", dil: "Limbă",
     yok_b: "Înregistrare negăsită",
     yok_m: "Dacă bonul tocmai a fost emis, încercați din nou peste câteva minute. După ce ridicați articolul, înregistrarea se șterge automat după un timp.",
@@ -175,6 +186,7 @@ export const METIN = {
     fis: "Bon", fis_tarihi: "Data bonului", teslim_gunu: "Gata la", islemler: "Ajustări", diger_islem: "Altă ajustare",
   },
   el: {
+    guncel: "Τώρα", ozet: "Σύνοψη απόδειξης",
     baslik: "Παρακολούθηση μεταποίησης", sube: "Κατάστημα", dil: "Γλώσσα",
     yok_b: "Η εγγραφή δεν βρέθηκε",
     yok_m: "Αν η απόδειξή σας εκδόθηκε μόλις τώρα, δοκιμάστε ξανά σε λίγα λεπτά. Αφού παραλάβετε το ρούχο, η εγγραφή διαγράφεται αυτόματα μετά από λίγο καιρό.",
@@ -188,6 +200,7 @@ export const METIN = {
     fis: "Απόδειξη", fis_tarihi: "Ημερομηνία απόδειξης", teslim_gunu: "Έτοιμο στις", islemler: "Μεταποιήσεις", diger_islem: "Άλλη μεταποίηση",
   },
   bg: {
+    guncel: "Сега", ozet: "Обобщение на бележката",
     baslik: "Проследяване на поправка", sube: "Магазин", dil: "Език",
     yok_b: "Записът не е намерен",
     yok_m: "Ако бележката ви току-що е издадена, опитайте отново след няколко минути. След като вземете дрехата, записът се изтрива автоматично след известно време.",
