@@ -171,6 +171,7 @@ impl Uygulama {
                 let son = gorulme.get(&c.id).copied();
                 json!({
                     "id": c.id, "ad": c.ad, "tarih": c.tarih,
+                    "yetkiler": self.cihazlar().yetkileri(&c.id),
                     "kisi_id": c.kisi_id,
                     "kisi": h.get(&c.kisi_id).cloned().unwrap_or_default(),
                     "son_gorulme_sn": son.map(|t| simdi.saturating_sub(t)),
@@ -221,6 +222,10 @@ impl Uygulama {
             );
         }
         let v: serde_json::Value = serde_json::from_slice(&i.govde).unwrap_or_default();
+        // Personel adı ve soyadı birlikte yazılır (fişe "Ad S." basılır).
+        if v["ad"].as_str().unwrap_or("").split_whitespace().count() < 2 {
+            return Yanit::hata(422, "personelin adı ve soyadı birlikte yazılmalı");
+        }
         match kisi::Kisiler::dizinden(&self.dizin).ekle(
             v["ad"].as_str().unwrap_or(""),
             v["rol"].as_str().unwrap_or("personel"),
@@ -239,6 +244,74 @@ impl Uygulama {
         match kisi::Kisiler::dizinden(&self.dizin).kapat(id, &tarih_iso(self.simdi())) {
             Ok(()) => Yanit::json(200, json!({ "tamam": true })),
             Err(e) => Yanit::hata(404, &e),
+        }
+    }
+
+    /// POST /api/yonetim/cihaz/<id>/ad {ad}: cihaz adı yalnız bu bilgisayardaki programdan, yönetici oturumuyla.
+    pub(crate) fn cihaz_ad(&self, i: &Istek, id: &str) -> Yanit {
+        if !i.masaustu {
+            return Yanit::hata(
+                403,
+                "cihaz adı yalnız mağaza bilgisayarındaki programdan değişir",
+            );
+        }
+        if let Some(y) = self.yonetim_izni(i) {
+            return y;
+        }
+        let v: serde_json::Value = serde_json::from_slice(&i.govde).unwrap_or_default();
+        match self.cihazlar().ad_degistir(
+            id,
+            v["ad"].as_str().unwrap_or(""),
+            &tarih_iso(self.simdi()),
+        ) {
+            Ok(()) => Yanit::json(200, json!({ "tamam": true })),
+            Err(e) => Yanit::hata(422, &e),
+        }
+    }
+
+    /// GET /api/yonetim/yetkiler: yetki listesi + mağaza PC'si ve her cihazın açık yetkileri.
+    pub(crate) fn yetki_listesi(&self, i: &Istek) -> Yanit {
+        if let Some(y) = self.yonetim_izni(i) {
+            return y;
+        }
+        let c = self.cihazlar();
+        let tanim: Vec<_> = cihaz::YETKILER
+            .iter()
+            .map(|(k, a, pc, tel)| json!({ "anahtar": k, "aciklama": a, "pc_varsayilan": pc, "telefon_varsayilan": tel }))
+            .collect();
+        let mut cihazlar = vec![
+            json!({ "id": crate::PC_ID, "ad": "Mağaza bilgisayarı", "yetkiler": c.yetkileri(crate::PC_ID) }),
+        ];
+        for x in c.aktifler().unwrap_or_default() {
+            cihazlar.push(json!({ "id": x.id, "ad": x.ad, "yetkiler": c.yetkileri(&x.id) }));
+        }
+        Yanit::json(200, json!({ "yetkiler": tanim, "cihazlar": cihazlar }))
+    }
+
+    /// POST /api/yonetim/cihaz/<id>/yetki {yetki, ver}: yönetici yetki verir/geri alır.
+    pub(crate) fn cihaz_yetki(&self, i: &Istek, id: &str) -> Yanit {
+        if let Some(y) = self.yonetim_izni(i) {
+            return y;
+        }
+        let v: serde_json::Value = serde_json::from_slice(&i.govde).unwrap_or_default();
+        let Some(ver) = v["ver"].as_bool() else {
+            return Yanit::hata(400, "ver: true ya da false");
+        };
+        match self.cihazlar().yetki_ata(
+            id,
+            v["yetki"].as_str().unwrap_or(""),
+            ver,
+            &tarih_iso(self.simdi()),
+        ) {
+            Ok(()) => {
+                let satir = json!({"olay": "yetki", "cihaz": id, "yetki": v["yetki"], "ver": ver, "tarih": tarih_iso(self.simdi()), "saat": saat_iso(self.simdi())}).to_string();
+                let _ = taa_dosya::satir_ekle(&self.dizin.join("eslestirme.jsonl"), &satir);
+                Yanit::json(
+                    200,
+                    json!({ "tamam": true, "yetkiler": self.cihazlar().yetkileri(id) }),
+                )
+            }
+            Err(e) => Yanit::hata(422, &e),
         }
     }
 }

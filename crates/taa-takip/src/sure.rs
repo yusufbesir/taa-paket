@@ -321,6 +321,8 @@ mod testler {
             pay_mm: None,
             usta_onayli: false,
             igneli: false,
+            renk: None,
+            adet: None,
         }
     }
 
@@ -420,6 +422,8 @@ mod testler {
             durum,
             raf: String::new(),
             imzalar: Vec::new(),
+            duzeltmeler: Vec::new(),
+            bagli: Vec::new(),
         }
     }
 

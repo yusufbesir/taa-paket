@@ -238,6 +238,13 @@ pub fn kayit(dizin: &Path, f: &Fis, simdi: u64) -> Result<Value, String> {
             if let Some(var) = k.varyant.as_deref().and_then(varyant_anahtari) {
                 v["v"] = json!(var);
             }
+            // Renk yalnız sabit listedeki anahtar olarak, adet 2-20 ise gider (2026-11-26 04:31).
+            if let Some(r) = k.renk.as_deref().filter(|r| taa_fis::renk_adi(r).is_some()) {
+                v["r"] = json!(r);
+            }
+            if let Some(a) = k.adet.filter(|a| (2..=20).contains(a)) {
+                v["a"] = json!(a);
+            }
             v
         })
         .collect();
@@ -260,9 +267,17 @@ pub fn kayit(dizin: &Path, f: &Fis, simdi: u64) -> Result<Value, String> {
     });
     // v3: kargo bilgisi varsa isteğe bağlı `kg` nesnesi. Yalnız durum, firma anahtarı, takip no, kargolanma günü ve
     // "İlçe/İl" gider; alıcı adı, telefon, açık adres ve ürün içeriği YEREL kalır (testle denetlenir).
+    // Bağlı (birlikte teslim) fiş sayısı; fiş numaraları gitmez.
+    if !f.bagli.is_empty() {
+        o["b"] = json!(f.bagli.len().min(20));
+    }
     if let Some(kg) = kargo_nesnesi(dizin, &f.no) {
         o["v"] = json!(3);
         o["kg"] = kg;
+    } else if f.kargo && !matches!(f.durum, Durum::Teslim | Durum::Iptal) {
+        // Telegram kargo kaydı yokken: yalnız "kargoya hazırlanıyor". Ad, telefon, açık adres GİTMEZ.
+        o["v"] = json!(3);
+        o["kg"] = json!({ "d": "hazirlaniyor", "f": "diger", "n": "", "t": "", "y": "" });
     }
     Ok(o)
 }
@@ -273,18 +288,10 @@ fn kargo_nesnesi(dizin: &Path, fis_no: &str) -> Option<Value> {
     if !taa_telegram::kargo::DURUMLAR.contains(&k.durum.as_str()) {
         return None;
     }
-    let mut kg = json!({ "d": k.durum, "t": if is_gun(&k.kargo_tarihi) { k.kargo_tarihi.clone() } else { String::new() } });
-    if taa_telegram::kargo::FIRMALAR.iter().any(|(a, _)| *a == k.firma) {
-        kg["f"] = json!(k.firma);
-    }
-    if taa_telegram::kargo::takip_no_gecerli(&k.takip_no) {
-        kg["n"] = json!(k.takip_no);
-    }
-    let y = taa_telegram::kargo::ilce_il_metni(&k);
-    if !y.is_empty() {
-        kg["y"] = json!(y);
-    }
-    Some(kg)
+    let f = if taa_telegram::kargo::FIRMALAR.iter().any(|(a, _)| *a == k.firma) { k.firma.as_str() } else { "diger" };
+    let n = if taa_telegram::kargo::takip_no_gecerli(&k.takip_no) { k.takip_no.as_str() } else { "" };
+    let t = if is_gun(&k.kargo_tarihi) { k.kargo_tarihi.as_str() } else { "" };
+    Some(json!({ "d": k.durum, "f": f, "n": n, "t": t, "y": taa_telegram::kargo::ilce_il_metni(&k) }))
 }
 
 fn is_gun(t: &str) -> bool {
@@ -372,7 +379,8 @@ fn urun_anahtari(urun: &str) -> &'static str {
 fn islem_kodu_gecerli(k: &str) -> bool {
     !k.is_empty()
         && k.len() <= 40
-        && k.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        && k.bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
 fn varyant_anahtari(v: &str) -> Option<&'static str> {
@@ -621,7 +629,11 @@ mod testler {
         assert_eq!(k["d"], "hazir");
         assert_eq!(k["s"], "MRK01");
         assert_eq!(k["t"], "2026-11-29");
-        assert_eq!(k["u"], json!([{"u": "ceket"}]), "serbest metin işlem dışarı gitmemeli");
+        assert_eq!(
+            k["u"],
+            json!([{"u": "ceket"}]),
+            "serbest metin işlem dışarı gitmemeli"
+        );
         let mut f2 = fis("F-2", Durum::Bekliyor);
         f2.kalemler[0].urun = "Pantolon".into();
         f2.kalemler[0].islem_kodu = Some("pant-paca-kisalt".into());
@@ -629,7 +641,10 @@ mod testler {
         f2.kalemler[0].olcu_mm = Some(25);
         f2.kalemler[0].not = "Ayşe Hanım acele".into();
         let k2 = kayit(&d, &f2, 1_000).unwrap();
-        assert_eq!(k2["u"], json!([{"u": "pantolon", "i": "pant-paca-kisalt", "v": "duble"}]));
+        assert_eq!(
+            k2["u"],
+            json!([{"u": "pantolon", "i": "pant-paca-kisalt", "v": "duble"}])
+        );
         let g2 = serde_json::to_string(&k2).unwrap();
         assert!(!g2.contains("Ayşe") && !g2.contains("acele"), "{g2}");
         assert_eq!(urun_anahtari("GÖMLEK"), "gomlek");

@@ -45,6 +45,111 @@ pub struct Kalem {
     /// Ölçü iğneyle işaretlendi (cm bilinmiyor).
     #[serde(default)]
     pub igneli: bool,
+    /// Ürün rengi: `RENKLER` anahtarı (siyah, bej...). Müşteri takip sayfasında çevrilerek görünür.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub renk: Option<String>,
+    /// Aynı üründen kaç adet (ör. 2 pantolon). Boş = 1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adet: Option<u32>,
+}
+
+/// Fişte sonradan yapılan düzeltme (kalem ekleme/çıkarma, teslim şekli, fiş bağlama). Defterde kalır, silinmez.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Duzeltme {
+    /// kalem-ekle, kalem-cikar, teslim-sekli, bagla, bag-coz
+    pub ne: String,
+    pub ayrinti: String,
+    /// Yapan cihaz/kişi (cihaz adı ya da kişi kimliği).
+    pub kim: String,
+    pub tarih: String,
+}
+
+/// Renk anahtarı ve fişe basılan Türkçe adı. Anahtar değişmez (bulut sayfası çevirisi buna bağlı).
+pub const RENKLER: &[(&str, &str)] = &[
+    ("siyah", "Siyah"),
+    ("lacivert", "Lacivert"),
+    ("antrasit", "Antrasit"),
+    ("gri", "Gri"),
+    ("acik-gri", "Açık gri"),
+    ("fume", "Füme"),
+    ("bej", "Bej"),
+    ("krem", "Krem"),
+    ("haki", "Haki"),
+    ("kahverengi", "Kahverengi"),
+    ("taba", "Taba"),
+    ("mavi", "Mavi"),
+    ("acik-mavi", "Açık mavi"),
+    ("beyaz", "Beyaz"),
+    ("bordo", "Bordo"),
+    ("yesil", "Yeşil"),
+    ("mor", "Mor"),
+    ("pembe", "Pembe"),
+    ("kirmizi", "Kırmızı"),
+    ("sari", "Sarı"),
+    ("turuncu", "Turuncu"),
+    ("desenli", "Desenli"),
+];
+
+/// Renk anahtarından Türkçe ad.
+pub fn renk_adi(anahtar: &str) -> Option<&'static str> {
+    RENKLER.iter().find(|(k, _)| *k == anahtar).map(|(_, a)| *a)
+}
+
+/// Personel adını fişe kısa basar: ilk ad + soyadın baş harfi ("Ahmet Selim Yılmaz" -> "Ahmet Y.").
+/// Tek kelimelik adlar olduğu gibi kalır.
+pub fn kisa_ad(ad: &str) -> String {
+    let k: Vec<&str> = ad.split_whitespace().collect();
+    match k.as_slice() {
+        [] => String::new(),
+        [tek] => (*tek).to_string(),
+        [ilk, .., son] => {
+            let bas: String = son
+                .chars()
+                .next()
+                .map(|c| c.to_uppercase().collect())
+                .unwrap_or_default();
+            format!("{ilk} {bas}.")
+        }
+    }
+}
+
+/// Tek kalemi denetler (fiş yazılırken ve sonradan kalem eklenirken aynı kural).
+pub fn kalem_denetle(
+    k: &Kalem,
+    katalog: &taa_terzi::Katalog,
+    serbest_islem: bool,
+    olcu_zorunlu: bool,
+) -> Result<Vec<String>, String> {
+    let mut uyarilar = Vec::new();
+    match &k.islem_kodu {
+        Some(kod) => uyarilar.extend(katalog.kontrol(
+            kod,
+            k.olcu_mm,
+            k.varyant.as_deref(),
+            k.usta_onayli,
+            olcu_zorunlu,
+            k.igneli,
+        )?),
+        None if !serbest_islem => {
+            return Err("işlem listeden seçilmeli (serbest işlem kapalı)".into())
+        }
+        None => {}
+    }
+    if matches!(k.pay_mm, Some(p) if p < 0) {
+        return Err("pay negatif olamaz".into());
+    }
+    if k.urun.trim().is_empty() || k.islem.trim().is_empty() {
+        return Err("her kalemde ürün ve işlem yazılmalı".into());
+    }
+    if let Some(r) = &k.renk {
+        if renk_adi(r).is_none() {
+            return Err(format!("renk listede yok: {r}"));
+        }
+    }
+    if matches!(k.adet, Some(a) if a == 0 || a > 20) {
+        return Err("adet 1-20 olmalı".into());
+    }
+    Ok(uyarilar)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -133,6 +238,12 @@ pub struct Fis {
     /// Fişin yazıldığı şube (kısa ad ya da kod). Eski satırlarda boş; boş = şube bilinmiyor.
     #[serde(default)]
     pub sube: String,
+    /// Sonradan yapılan düzeltmeler (defterden türetilir).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub duzeltmeler: Vec<Duzeltme>,
+    /// Birlikte teslim edilecek bağlı fişler (aynı anda alışveriş yapanlar; defterden türetilir).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bagli: Vec<String>,
 }
 
 fn varsayilan_saat() -> String {
@@ -255,32 +366,12 @@ pub fn dogrula(
     if !saat_gecerli(&g.teslim_saati) {
         return Err("teslim saati SS:DD olmalı".into());
     }
+    if g.kalemler.is_empty() {
+        return Err("her kalemde ürün ve işlem yazılmalı (en az bir kalem)".into());
+    }
     let mut uyarilar = Vec::new();
     for k in &g.kalemler {
-        match &k.islem_kodu {
-            Some(kod) => uyarilar.extend(katalog.kontrol(
-                kod,
-                k.olcu_mm,
-                k.varyant.as_deref(),
-                k.usta_onayli,
-                olcu_zorunlu,
-                k.igneli,
-            )?),
-            None if !serbest_islem => {
-                return Err("işlem listeden seçilmeli (serbest işlem kapalı)".into())
-            }
-            None => {}
-        }
-        if matches!(k.pay_mm, Some(p) if p < 0) {
-            return Err("pay negatif olamaz".into());
-        }
-    }
-    if g.kalemler.is_empty()
-        || g.kalemler
-            .iter()
-            .any(|k| k.urun.trim().is_empty() || k.islem.trim().is_empty())
-    {
-        return Err("her kalemde ürün ve işlem yazılmalı (en az bir kalem)".into());
+        uyarilar.extend(kalem_denetle(k, katalog, serbest_islem, olcu_zorunlu)?);
     }
     if !tarih_gecerli(&g.tarih)
         || !tarih_gecerli(&g.teslim)
@@ -329,6 +420,8 @@ mod testler {
             pay_mm: None,
             usta_onayli: false,
             igneli: false,
+            renk: None,
+            adet: None,
         }
     }
 
@@ -453,7 +546,7 @@ mod testler {
         assert_eq!(g.raf, "B-3");
         assert_eq!(g.imzalar.len(), 1);
         let m = duz_metin(&g, 42);
-        assert!(m.contains("Raf/Stant: B-3") && m.contains("İmza (usta): Usta Ahmet"));
+        assert!(m.contains("Raf/Stant: B-3") && m.contains("İmza (usta): Usta A.")); // personel fişte "Ad S."
         let q = escpos_nushalar_qr(&g, 42, "http://x/telefon#fis=F");
         assert!(q.windows(22).any(|w| w == b"http://x/telefon#fis=F"));
         for st in [Durum::Terzihanede, Durum::Hazir, Durum::Teslim] {
@@ -483,10 +576,18 @@ mod testler {
             "MÜŞTERİ NÜSHASI",
         ] {
             let m = duz_metin_nusha(&f, 42, e);
-            assert!(
-                m.contains("KARGO YAPILACAK") && m.contains("Çankaya"),
-                "{e}"
-            );
+            if e.starts_with("MÜŞTERİ") {
+                // kısa müşteri nüshası: adres yok, kargo uyarısı var
+                assert!(
+                    m.contains("KARGO İLE GÖNDERİLECEK") && !m.contains("Çankaya"),
+                    "{e}"
+                );
+            } else {
+                assert!(
+                    m.contains("KARGO YAPILACAK") && m.contains("Çankaya"),
+                    "{e}"
+                );
+            }
         }
         let f2 = d.ekle(girdi()).unwrap();
         assert!(!duz_metin(&f2, 42).contains("KARGO"));
@@ -702,6 +803,8 @@ mod testler {
             kargo_telefon: String::new(),
             bildirim_izni: false,
             teslim_degisiklikleri: Vec::new(),
+            duzeltmeler: Vec::new(),
+            bagli: Vec::new(),
         };
         let m = duz_metin(&f, 42);
         assert!(m.contains("TADİLAT FİŞİ") && m.contains("F-20261104-001"));
@@ -868,13 +971,111 @@ mod testler {
         }
         .ekle(girdi())
         .unwrap();
-        let b = escpos_nusha_tam(&f, 42, "MÜŞTERİ NÜSHASI", "q", None);
+        let b = escpos_nusha_tam(&f, 42, "TERZİHANE NÜSHASI", "q", None);
         assert!(b.windows(l.len()).any(|w| w == l.as_slice()));
+        // kısa müşteri nüshasında logo bitmap'i yok (cüzdan boyu)
+        let mb = escpos_nusha_tam(&f, 42, "MÜŞTERİ NÜSHASI", "q", None);
+        assert!(!mb.windows(l.len()).any(|w| w == l.as_slice()));
         let m = duz_metin_nusha(&f, 42, "");
         assert!(
             m.contains("TERZİ ADEM ALTUN")
                 && m.contains("Salı")
                 && m.contains("= ÜRÜN TESLİM TARİHİ =")
         );
+    }
+
+    #[test]
+    fn sonradan_duzeltme_baglama_ve_kisa_musteri_nushasi() {
+        let dir = taa_dosya::gecici_klasor().unwrap();
+        let y = dir.join("d.jsonl");
+        let d = Defter { yol: &y };
+        let mut g = girdi();
+        g.kalemler[0].renk = Some("siyah".into());
+        g.kalemler[0].adet = Some(2);
+        g.satis_danismani = "Mert Can Yılmaz".into();
+        let a = d.ekle(g.clone()).unwrap();
+        let b = d.ekle(girdi()).unwrap();
+        let c = d.ekle(girdi()).unwrap();
+        // renk listede olmalı
+        let mut kotu = kalem("Ceket", "ütü", "");
+        kotu.renk = Some("gokkusagi".into());
+        assert!(d
+            .kalem_ekle(&a.no, kotu, "Mağaza PC", "2026-11-05")
+            .is_err());
+        // sonradan ütü eklenir, bir kalem çıkarılır
+        d.kalem_ekle(&a.no, kalem("Ceket", "ütü", ""), "Mağaza PC", "2026-11-05")
+            .unwrap();
+        d.kalem_cikar(&a.no, 1, "müşteri vazgeçti", "Mağaza PC", "2026-11-05")
+            .unwrap();
+        assert!(d
+            .kalem_cikar(&a.no, 9, "", "Mağaza PC", "2026-11-05")
+            .is_err());
+        // mağazadan teslim -> kargo (eksik bilgi reddedilir) -> kargo iptal
+        assert!(d
+            .teslim_sekli(&a.no, true, "Ayşe", "", "", "", "", "PC", "2026-11-05")
+            .is_err());
+        d.teslim_sekli(
+            &a.no,
+            true,
+            "Ayşe Çelik",
+            "Atatürk Mah. 5. Sk. No:3 Büyükçekmece/İstanbul",
+            "0532 111 22 33",
+            "",
+            "müşteri istedi",
+            "PC",
+            "2026-11-05",
+        )
+        .unwrap();
+        assert!(d.bul(&a.no).unwrap().unwrap().kargo);
+        d.teslim_sekli(
+            &a.no,
+            false,
+            "",
+            "",
+            "",
+            "",
+            "kargo iptal",
+            "PC",
+            "2026-11-06",
+        )
+        .unwrap();
+        let f = d.bul(&a.no).unwrap().unwrap();
+        assert!(!f.kargo && f.kargo_adres.is_empty());
+        assert_eq!(f.kalemler.len(), 2);
+        assert_eq!(f.kalemler[1].islem, "ütü");
+        assert_eq!(f.duzeltmeler.len(), 4);
+        // bağlama: a-b, sonra b-c => üçü bir grup
+        assert!(d.bagla(&a.no, &a.no, "PC", "2026-11-06").is_err());
+        d.bagla(&a.no, &b.no, "PC", "2026-11-06").unwrap();
+        assert!(d.bagla(&b.no, &a.no, "PC", "2026-11-06").is_err());
+        d.bagla(&b.no, &c.no, "PC", "2026-11-06").unwrap();
+        let fa = d.bul(&a.no).unwrap().unwrap();
+        assert_eq!(fa.bagli.len(), 2);
+        assert!(d.bul(&c.no).unwrap().unwrap().bagli.contains(&a.no));
+        d.bag_coz(&c.no, "PC", "2026-11-06").unwrap();
+        assert_eq!(d.bul(&a.no).unwrap().unwrap().bagli, vec![b.no.clone()]);
+        assert!(d.bul(&c.no).unwrap().unwrap().bagli.is_empty());
+        // baskı: mağaza nüshası ayrıntılı, müşteri nüshası kısa
+        let f = d.bul(&a.no).unwrap().unwrap();
+        let t = duz_metin_nusha(&f, 42, "TERZİHANE NÜSHASI");
+        assert!(t.contains("2 x Pantolon (Siyah) - paça kısalt") && t.contains("Sonradan yapılan"));
+        assert!(t.contains("Mert Y.") && !t.contains("Yılmaz"));
+        assert!(t.contains("BİRLİKTE TESLİM") && t.contains(&b.no));
+        let m = duz_metin_nusha(&f, 42, "MÜŞTERİ NÜSHASI");
+        assert!(m.contains("2 x Pantolon (Siyah)") && m.contains("Birlikte teslim"));
+        assert!(!m.contains("Sat. Dan.") && !m.contains("Ölçü:") && !m.contains("Turgut Özal"));
+        assert!(
+            m.lines().count() < t.lines().count() / 2 + 4,
+            "müşteri nüshası kısa:\n{m}"
+        );
+        // teslim edilen fiş düzeltilemez
+        for st in [Durum::Hazir, Durum::Teslim] {
+            d.durum_ata(&a.no, st, "2026-11-07").unwrap();
+        }
+        assert!(d
+            .kalem_ekle(&a.no, kalem("Ceket", "ütü", ""), "PC", "2026-11-07")
+            .is_err());
+        assert_eq!(kisa_ad("ali"), "ali");
+        assert_eq!(kisa_ad("Muhammed Yusuf Beşir"), "Muhammed B.");
     }
 }
