@@ -304,7 +304,8 @@ fn urun_anahtari(urun: &str) -> &'static str {
 fn islem_kodu_gecerli(k: &str) -> bool {
     !k.is_empty()
         && k.len() <= 40
-        && k.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        && k.bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
 fn varyant_anahtari(v: &str) -> Option<&'static str> {
@@ -553,7 +554,11 @@ mod testler {
         assert_eq!(k["d"], "hazir");
         assert_eq!(k["s"], "MRK01");
         assert_eq!(k["t"], "2026-11-29");
-        assert_eq!(k["u"], json!([{"u": "ceket"}]), "serbest metin işlem dışarı gitmemeli");
+        assert_eq!(
+            k["u"],
+            json!([{"u": "ceket"}]),
+            "serbest metin işlem dışarı gitmemeli"
+        );
         let mut f2 = fis("F-2", Durum::Bekliyor);
         f2.kalemler[0].urun = "Pantolon".into();
         f2.kalemler[0].islem_kodu = Some("pant-paca-kisalt".into());
@@ -561,7 +566,10 @@ mod testler {
         f2.kalemler[0].olcu_mm = Some(25);
         f2.kalemler[0].not = "Ayşe Hanım acele".into();
         let k2 = kayit(&d, &f2, 1_000).unwrap();
-        assert_eq!(k2["u"], json!([{"u": "pantolon", "i": "pant-paca-kisalt", "v": "duble"}]));
+        assert_eq!(
+            k2["u"],
+            json!([{"u": "pantolon", "i": "pant-paca-kisalt", "v": "duble"}])
+        );
         let g2 = serde_json::to_string(&k2).unwrap();
         assert!(!g2.contains("Ayşe") && !g2.contains("acele"), "{g2}");
         assert_eq!(urun_anahtari("GÖMLEK"), "gomlek");

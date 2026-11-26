@@ -29,6 +29,51 @@ pub(crate) enum Kayit {
         no: String,
         imza: Imza,
     },
+    /// Sonradan kalem/işlem ekleme (ör. ütü istendi).
+    KalemEkle {
+        no: String,
+        kalem: Kalem,
+        kim: String,
+        tarih: String,
+    },
+    /// Kalem çıkarma (sıra 0'dan); neden yazılır.
+    KalemCikar {
+        no: String,
+        sira: usize,
+        neden: String,
+        kim: String,
+        tarih: String,
+    },
+    /// Teslim şekli: kargo ↔ mağazadan teslim, ya da kargo bilgisi düzeltmesi.
+    TeslimSekli {
+        no: String,
+        kargo: bool,
+        #[serde(default)]
+        kargo_ad: String,
+        #[serde(default)]
+        kargo_adres: String,
+        #[serde(default)]
+        kargo_telefon: String,
+        #[serde(default)]
+        kargo_notu: String,
+        #[serde(default)]
+        neden: String,
+        kim: String,
+        tarih: String,
+    },
+    /// İki fişi birlikte teslim için bağlar (gruplar birleşir).
+    Bag {
+        no: String,
+        diger: String,
+        kim: String,
+        tarih: String,
+    },
+    /// Fişi bağlı olduğu gruptan çıkarır.
+    BagCoz {
+        no: String,
+        kim: String,
+        tarih: String,
+    },
     /// Zincir başlangıcı (TT1): bu satırdan sonraki satırlar zincire girer. Eski satırlar yeniden yazılmaz.
     ZincirBasi {
         tarih: String,
@@ -51,6 +96,20 @@ fn ozet_ileri(onceki: &str, satir: &str) -> String {
     h.update(b"\n");
     h.update(satir.as_bytes());
     h.finalize().iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Düzeltme geçmişinde ve fişte bir kalemin kısa yazımı: "2 x Pantolon (Siyah) - Paça kısalt".
+pub fn kalem_ozeti(k: &Kalem) -> String {
+    let mut s = String::new();
+    if let Some(a) = k.adet.filter(|a| *a > 1) {
+        s.push_str(&format!("{a} x "));
+    }
+    s.push_str(k.urun.trim());
+    if let Some(r) = k.renk.as_deref().and_then(renk_adi) {
+        s.push_str(&format!(" ({r})"));
+    }
+    s.push_str(&format!(" - {}", k.islem.trim()));
+    s
 }
 
 pub struct Defter<'a> {
@@ -104,6 +163,131 @@ impl Defter<'_> {
                 Kayit::Imza { no, imza } => {
                     if let Some(x) = f.iter_mut().find(|x| x.no == no) {
                         x.imzalar.push(imza);
+                    }
+                }
+                Kayit::KalemEkle {
+                    no,
+                    kalem,
+                    kim,
+                    tarih,
+                } => {
+                    if let Some(x) = f.iter_mut().find(|x| x.no == no) {
+                        x.duzeltmeler.push(Duzeltme {
+                            ne: "kalem-ekle".into(),
+                            ayrinti: kalem_ozeti(&kalem),
+                            kim,
+                            tarih,
+                        });
+                        x.kalemler.push(kalem);
+                    }
+                }
+                Kayit::KalemCikar {
+                    no,
+                    sira,
+                    neden,
+                    kim,
+                    tarih,
+                } => {
+                    if let Some(x) = f.iter_mut().find(|x| x.no == no) {
+                        if sira < x.kalemler.len() {
+                            let k = x.kalemler.remove(sira);
+                            let mut ayrinti = kalem_ozeti(&k);
+                            if !neden.is_empty() {
+                                ayrinti.push_str(&format!(" (neden: {neden})"));
+                            }
+                            x.duzeltmeler.push(Duzeltme {
+                                ne: "kalem-cikar".into(),
+                                ayrinti,
+                                kim,
+                                tarih,
+                            });
+                        }
+                    }
+                }
+                Kayit::TeslimSekli {
+                    no,
+                    kargo,
+                    kargo_ad,
+                    kargo_adres,
+                    kargo_telefon,
+                    kargo_notu,
+                    neden,
+                    kim,
+                    tarih,
+                } => {
+                    if let Some(x) = f.iter_mut().find(|x| x.no == no) {
+                        let mut ayrinti = match (x.kargo, kargo) {
+                            (false, true) => "mağazadan teslim → kargo".to_string(),
+                            (true, false) => "kargo iptal → mağazadan teslim".to_string(),
+                            _ if kargo => "kargo bilgisi düzeltildi".to_string(),
+                            _ => "mağazadan teslim".to_string(),
+                        };
+                        if !neden.is_empty() {
+                            ayrinti.push_str(&format!(" (neden: {neden})"));
+                        }
+                        x.kargo = kargo;
+                        x.kargo_ad = kargo_ad;
+                        x.kargo_adres = kargo_adres;
+                        x.kargo_telefon = kargo_telefon;
+                        x.kargo_notu = kargo_notu;
+                        x.duzeltmeler.push(Duzeltme {
+                            ne: "teslim-sekli".into(),
+                            ayrinti,
+                            kim,
+                            tarih,
+                        });
+                    }
+                }
+                Kayit::Bag {
+                    no,
+                    diger,
+                    kim,
+                    tarih,
+                } => {
+                    let grup = |f: &Vec<Fis>, n: &str| -> Vec<String> {
+                        let mut g: Vec<String> = f
+                            .iter()
+                            .find(|x| x.no == n)
+                            .map(|x| x.bagli.clone())
+                            .unwrap_or_default();
+                        g.push(n.to_string());
+                        g
+                    };
+                    let mut hepsi = grup(&f, &no);
+                    for n in grup(&f, &diger) {
+                        if !hepsi.contains(&n) {
+                            hepsi.push(n);
+                        }
+                    }
+                    for x in f.iter_mut().filter(|x| hepsi.contains(&x.no)) {
+                        x.bagli = hepsi.iter().filter(|n| **n != x.no).cloned().collect();
+                        let karsi = if x.no == no { &diger } else { &no };
+                        x.duzeltmeler.push(Duzeltme {
+                            ne: "bagla".into(),
+                            ayrinti: format!("{karsi} ile birlikte teslim"),
+                            kim: kim.clone(),
+                            tarih: tarih.clone(),
+                        });
+                    }
+                }
+                Kayit::BagCoz { no, kim, tarih } => {
+                    let eski = f
+                        .iter()
+                        .find(|x| x.no == no)
+                        .map(|x| x.bagli.clone())
+                        .unwrap_or_default();
+                    for x in f.iter_mut() {
+                        if x.no == no {
+                            x.bagli.clear();
+                            x.duzeltmeler.push(Duzeltme {
+                                ne: "bag-coz".into(),
+                                ayrinti: "bağlı fişlerden ayrıldı".into(),
+                                kim: kim.clone(),
+                                tarih: tarih.clone(),
+                            });
+                        } else if eski.contains(&x.no) {
+                            x.bagli.retain(|n| *n != no);
+                        }
                     }
                 }
                 Kayit::ZincirBasi { .. } => {}
@@ -334,6 +518,8 @@ impl Defter<'_> {
             raf: String::new(),
             imzalar: Vec::new(),
             sube: g.sube.trim().into(),
+            duzeltmeler: Vec::new(),
+            bagli: Vec::new(),
         };
         let s = serde_json::to_string(&Kayit::Fis(fis.clone())).map_err(|e| e.to_string())?;
         taa_dosya::satir_ekle(self.yol, &s).map_err(|e| e.to_string())?;
@@ -407,6 +593,153 @@ impl Defter<'_> {
         })
         .map_err(|e| e.to_string())?;
         taa_dosya::satir_ekle(self.yol, &s).map_err(|e| e.to_string())
+    }
+
+    fn duzeltilebilir(&self, no: &str) -> Result<Fis, String> {
+        kapali()?;
+        let f = self.bul(no)?.ok_or_else(|| format!("fiş yok: {no}"))?;
+        if matches!(f.durum, Durum::Teslim | Durum::Iptal) {
+            return Err("teslim edilmiş ya da iptal fiş düzeltilemez".into());
+        }
+        Ok(f)
+    }
+
+    fn yaz(&self, k: &Kayit) -> Result<(), String> {
+        let s = serde_json::to_string(k).map_err(|e| e.to_string())?;
+        taa_dosya::satir_ekle(self.yol, &s).map_err(|e| e.to_string())
+    }
+
+    /// Fişe sonradan kalem ekler (ör. ütü istendi). Fiş yazılırkenki kalem kuralı geçerli; uyarıları döndürür.
+    pub fn kalem_ekle(
+        &self,
+        no: &str,
+        kalem: Kalem,
+        kim: &str,
+        tarih: &str,
+    ) -> Result<Vec<String>, String> {
+        self.duzeltilebilir(no)?;
+        let katalog = taa_terzi::Katalog::dizinden(self.yol.parent().unwrap_or(Path::new(".")))?;
+        let uyarilar = kalem_denetle(
+            &kalem,
+            &katalog,
+            taa_ayar::ozellik_acik("serbest-islem", true),
+            taa_ayar::ozellik_acik("olcu-zorunlu", false),
+        )?;
+        if !tarih_gecerli(tarih) {
+            return Err("tarih YYYY-AA-GG olmalı".into());
+        }
+        self.yaz(&Kayit::KalemEkle {
+            no: no.into(),
+            kalem,
+            kim: kim.trim().into(),
+            tarih: tarih.into(),
+        })?;
+        Ok(uyarilar)
+    }
+
+    /// Kalemi fişten çıkarır (sıra 0'dan). Son kalem çıkarılamaz (fişi iptal edin).
+    pub fn kalem_cikar(
+        &self,
+        no: &str,
+        sira: usize,
+        neden: &str,
+        kim: &str,
+        tarih: &str,
+    ) -> Result<(), String> {
+        let f = self.duzeltilebilir(no)?;
+        if sira >= f.kalemler.len() {
+            return Err("böyle bir kalem yok".into());
+        }
+        if f.kalemler.len() == 1 {
+            return Err("fişte tek kalem var; çıkarmak yerine fişi iptal edin".into());
+        }
+        self.yaz(&Kayit::KalemCikar {
+            no: no.into(),
+            sira,
+            neden: neden.trim().chars().take(200).collect(),
+            kim: kim.trim().into(),
+            tarih: tarih.into(),
+        })
+    }
+
+    /// Teslim şeklini değiştirir: kargo ↔ mağazadan teslim, ya da kargo bilgisini düzeltir.
+    /// Kargoda alıcı ad-soyad, açık adres ve geçerli telefon zorunlu (fiş yazılırkenki kural).
+    #[allow(clippy::too_many_arguments)]
+    pub fn teslim_sekli(
+        &self,
+        no: &str,
+        kargo: bool,
+        kargo_ad: &str,
+        kargo_adres: &str,
+        kargo_telefon: &str,
+        kargo_notu: &str,
+        neden: &str,
+        kim: &str,
+        tarih: &str,
+    ) -> Result<(), String> {
+        self.duzeltilebilir(no)?;
+        let mut tel = String::new();
+        if kargo {
+            if kargo_ad.split_whitespace().count() < 2 {
+                return Err("kargo: alıcının ad ve soyadı yazılmalı".into());
+            }
+            if kargo_adres.trim().chars().count() < 15 {
+                return Err("kargo: açık adres (mahalle, sokak, no, ilçe/il) yazılmalı".into());
+            }
+            tel = telefon_duzelt(kargo_telefon)
+                .map_err(|_| "kargo: alıcı telefon numarası geçerli değil".to_string())?;
+        }
+        let (ad, adres, notu) = if kargo {
+            (
+                kargo_ad.trim().into(),
+                kargo_adres.trim().into(),
+                kargo_notu.trim().into(),
+            )
+        } else {
+            (String::new(), String::new(), String::new())
+        };
+        self.yaz(&Kayit::TeslimSekli {
+            no: no.into(),
+            kargo,
+            kargo_ad: ad,
+            kargo_adres: adres,
+            kargo_telefon: tel,
+            kargo_notu: notu,
+            neden: neden.trim().chars().take(200).collect(),
+            kim: kim.trim().into(),
+            tarih: tarih.into(),
+        })
+    }
+
+    /// İki fişi birlikte teslim için bağlar (ör. birlikte alışveriş yapan arkadaşlar). Teslimde bağlı fişler sorulur.
+    pub fn bagla(&self, no: &str, diger: &str, kim: &str, tarih: &str) -> Result<(), String> {
+        let f = self.duzeltilebilir(no)?;
+        if no == diger {
+            return Err("fiş kendisine bağlanamaz".into());
+        }
+        self.duzeltilebilir(diger)?;
+        if f.bagli.iter().any(|n| n == diger) {
+            return Err("bu fişler zaten bağlı".into());
+        }
+        self.yaz(&Kayit::Bag {
+            no: no.into(),
+            diger: diger.into(),
+            kim: kim.trim().into(),
+            tarih: tarih.into(),
+        })
+    }
+
+    /// Fişi bağlı grubundan çıkarır.
+    pub fn bag_coz(&self, no: &str, kim: &str, tarih: &str) -> Result<(), String> {
+        let f = self.bul(no)?.ok_or_else(|| format!("fiş yok: {no}"))?;
+        if f.bagli.is_empty() {
+            return Err("fiş başka fişe bağlı değil".into());
+        }
+        self.yaz(&Kayit::BagCoz {
+            no: no.into(),
+            kim: kim.trim().into(),
+            tarih: tarih.into(),
+        })
     }
 
     /// Durum değişikliklerinin tarihli geçmişi: (fiş no, yeni durum, tarih), defter sırasıyla.
