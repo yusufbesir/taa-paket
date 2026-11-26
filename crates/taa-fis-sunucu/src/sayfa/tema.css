@@ -147,7 +147,10 @@ html[data-tema="keten"][data-ton="koyu"]{
 .tk-teslim-kaydi dd{margin:0;overflow-wrap:anywhere}
 .tk-imza-gorsel{margin-top:var(--tk-g2)}
 .tk-imza-resim{display:block;max-width:min(100%,420px);height:auto;background:#FFFFFF;border:var(--tk-kenar) solid var(--tk-line);border-radius:min(var(--tk-r),12px)}
-@media (max-width:480px){.tk-imza-tuval{height:160px}.dz-kutu.tk-teslim{padding:var(--tk-g4)}}
+/* Telefonda (dokunmatik) imza alanı tam genişlik ve parmakla imza için yüksek; teslim kutusu ekranı kaplar. */
+@media (max-width:480px){.tk-imza-tuval{height:220px}.dz-kutu.tk-teslim{padding:var(--tk-g3);max-width:100vw;width:100vw;margin:0;border-radius:0}
+  .tk-teslim .tk-imza-cerceve{margin-inline:calc(-1 * var(--tk-g1))}}
+.tk-qr-imza-notu{margin:0;font-weight:600}
 /* Karekodla teslim onayı: karekod her temada beyaz zemin + koyu modül (okunabilirlik); yanında durum ve geri sayım. */
 .tk-qr{display:grid;grid-template-columns:minmax(200px,280px) 1fr;gap:var(--tk-g3);align-items:start;border:var(--tk-kenar) solid var(--tk-line);border-radius:min(var(--tk-r),12px);padding:var(--tk-g3)}
 .tk-qr-resim{background:#FFFFFF;color:#111111;border-radius:min(var(--tk-r),12px);padding:var(--tk-g2);aspect-ratio:1/1;display:grid;place-items:center;min-height:200px}
@@ -163,3 +166,52 @@ html[data-tema="keten"][data-ton="koyu"]{
 .tk-qr-alt{align-items:center;flex-wrap:wrap}
 .tk-qr-alt .dugme{width:auto}
 @media (max-width:560px){.tk-qr{grid-template-columns:1fr}.tk-qr-resim{max-width:280px;margin-inline:auto;width:100%}}
+/* Teslim sepeti (ortak.js TKD.teslimSor, 2026-11-26): birden çok fiş tek teslimatta. Yalnız --tk-* jetonları;
+   fişli/fişsiz ve uyarı renkleri her temada okunur (--tk-ok / --tk-uyari metin rengi, zemin değil). */
+.dz-kutu.tk-sepet{max-width:min(860px,calc(100vw - 2*var(--tk-g4)))}
+.tk-sepet .tk-sepet-ekle{display:grid;gap:var(--tk-g1)}
+.tk-sepet .tk-sepet-ekle label{font-weight:600}
+.tk-sepet-ekle-sira{display:flex;gap:var(--tk-g2);flex-wrap:wrap}
+.tk-sepet-ekle-sira input{flex:1 1 14em;min-width:0;min-height:var(--tk-hedef);padding:var(--tk-g1) var(--tk-g3);
+  border:var(--tk-kenar) solid var(--tk-line);border-radius:min(var(--tk-r),12px);background:var(--tk-panel);color:var(--tk-tx);font:inherit}
+.tk-sepet-ekle-sira input:focus-visible{outline:3px solid var(--tk-ac);outline-offset:1px}
+.tk-sepet-ekle-sira .dugme{width:auto}
+.tk-sepet-kaydir{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tk-sepet-tablo{width:100%;border-collapse:collapse}
+.tk-sepet-tablo th,.tk-sepet-tablo td{text-align:start;padding:var(--tk-g1) var(--tk-g2);border-bottom:var(--tk-kenar) solid var(--tk-panel2);vertical-align:top}
+.tk-sepet-tablo th{color:var(--tk-mut);font-weight:600;font-size:max(12px,.85em)}
+.tk-sepet-tablo input[type=checkbox]{width:24px;height:24px;margin:0;accent-color:var(--tk-ac)}
+/* Seçim kutusu dokunma hedefi: en az --tk-hedef boyutunda etiket (kutunun kendisi 24 px). */
+.tk-sepet-sec{display:inline-flex;align-items:center;justify-content:center;min-width:var(--tk-hedef);min-height:var(--tk-hedef);cursor:pointer}
+.tk-sepet-sec:has(input:disabled){cursor:not-allowed}
+.tk-sepet-sec:focus-within{outline:3px solid var(--tk-ac);outline-offset:-3px;border-radius:6px}
+.tk-sepet-tablo .dugme{width:auto}
+.tk-sepet-secilmedi td{color:var(--tk-mut)}
+.tk-sepet-fisli{color:var(--tk-ok);font-weight:600}
+.tk-sepet-fissiz-et{color:var(--tk-uyari);font-weight:600}
+.tk-blok{display:block;font-weight:400}
+.tk-sepet-toplam{font-weight:700}
+.tk-sepet-uyari{margin:0;padding-inline-start:1.2em;color:var(--tk-uyari)}
+.tk-sepet-fissiz{margin:0;font-weight:600;color:var(--tk-uyari);border-inline-start:4px solid var(--tk-uyari);padding-inline-start:var(--tk-g2)}
+.tk-sepet-tamam{color:var(--tk-ok);font-weight:600}
+.tk-sepet-tid{font-size:1.2em;letter-spacing:.04em}
+.tk-sepet-teslim{display:grid;gap:var(--tk-g3)}
+.tk-sepet-son4{display:grid;gap:var(--tk-g2)}
+.tk-sepet-kamera{position:relative;border-radius:min(var(--tk-r),12px);overflow:hidden;background:#000000;max-height:45vh}
+.tk-sepet-kamera video{display:block;width:100%;max-height:40vh;object-fit:cover}
+.tk-sepet-kamera p{margin:0;padding:var(--tk-g1) var(--tk-g2);background:var(--tk-panel)}
+.tk-sepet-sonuc li{align-items:flex-start}
+.tk-sepet [hidden]{display:none!important}
+@media (max-width:560px){
+  .dz-kutu.tk-sepet{padding:var(--tk-g3);max-width:100vw;width:100vw;margin:0;border-radius:0}
+  .tk-sepet-tablo thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  .tk-sepet-tablo tr{display:grid;grid-template-columns:auto 1fr auto;gap:2px var(--tk-g2);padding:var(--tk-g2) 0;border-bottom:var(--tk-kenar) solid var(--tk-panel2)}
+  .tk-sepet-tablo td{border:0;padding:0}
+  .tk-sepet-tablo td:nth-child(1){grid-column:1;grid-row:1 / span 5}
+  .tk-sepet-tablo td:nth-child(2){grid-column:2;grid-row:1}
+  .tk-sepet-tablo td:nth-child(3),.tk-sepet-tablo td:nth-child(4),.tk-sepet-tablo td:nth-child(5),.tk-sepet-tablo td:nth-child(6){grid-column:2}
+  /* Başlık satırı gizlenince sütun adı hücrenin önüne yazılır (görenler için); ekran okuyucu için tr/td'de
+     role=row/cell ve td'de aria etiketi olmadan da th başlıkları korunur (tablo rolleri JS'te açıkça verilir). */
+  .tk-sepet-tablo td[data-etiket]::before{content:attr(data-etiket) ": ";color:var(--tk-mut);font-family:var(--tk-fb);font-size:max(12px,.85em);font-weight:600}
+  .tk-sepet-tablo td:nth-child(7){grid-column:3;grid-row:1}
+}

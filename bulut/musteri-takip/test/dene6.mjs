@@ -60,7 +60,8 @@ await t_("imzasız/bozuk aç reddedilir", async () => {
   assert.equal((await ac(acGovde(T), "00".repeat(64))).status, 401);
   for (const [ad, ek] of [["n 0", { n: 0 }], ["n 51", { n: 51 }], ["n kesirli", { n: 1.5 }], ["sil > ts+900", { sil: simdi() + 901 }],
     ["sil <= ts", { sil: simdi() }], ["pk kısa", { pk: "ab" }], ["t 'l' içerir", { t: "l".repeat(20) }], ["t 16", { t: T.slice(0, 16) }],
-    ["s uzun", { s: "A".repeat(17) }], ["s <", { s: "<b>" }], ["tur", { tur: "onay_kapat" }], ["v 2", { v: 2 }], ["ts eski", { ts: simdi() - 4000, sil: simdi() - 3500 }]]) {
+    ["s uzun", { s: "A".repeat(17) }], ["s <", { s: "<b>" }], ["tur", { tur: "onay_kapat" }], ["v 2", { v: 2 }], ["ts eski", { ts: simdi() - 4000, sil: simdi() - 3500 }],
+    ["i 2", { i: 2 }], ["i true", { i: true }], ["i '1'", { i: "1" }], ["i null", { i: null }]]) {
     assert.equal((await ac(acGovde(T, ek))).status, 400, ad);
   }
   assert.equal(kv.size, 0);
@@ -70,7 +71,7 @@ await t_("aç: kayıt bekliyor olarak saklanır, KV silme zamanı = sil, aynı t
   const r = await ac(g);
   assert.equal(r.status, 200, await r.clone().text());
   const v = kv.get("onay:" + T);
-  assert.deepEqual(JSON.parse(v.deger), { t: T, s: "MRK01", n: 3, pk: pkHex, sil: g.sil, durum: "bekliyor", p: 0 });
+  assert.deepEqual(JSON.parse(v.deger), { t: T, s: "MRK01", n: 3, pk: pkHex, sil: g.sil, durum: "bekliyor", p: 0, i: 0 }, "i yoksa 0 (eski istemci)");
   assert.equal(v.exp, g.sil);
   assert.equal((await ac(acGovde(T))).status, 409);
 });
@@ -118,7 +119,7 @@ await t_("geçerli onay: teşekkür sayfası, kayıtta düz metin yok", async ()
   const k = JSON.parse(ham);
   assert.deepEqual(Object.keys(k).sort(), ["c", "durum", "e", "iv", "n", "s", "sil", "t"]);
   assert.equal(k.durum, "onaylandi"); assert.match(k.e, /^[0-9a-f]{64}$/); assert.match(k.iv, /^[0-9a-f]{24}$/);
-  for (const duz of ["Ayşe", "Deneme", "555", "Mozilla", "Android", "203.0.113", "198.51"]) assert(!ham.includes(duz), "düz metin: " + duz);
+  for (const duz of ["Ayşe", "Deneme", "5550000001", "Mozilla", "Android", "203.0.113", "198.51"]) assert(!ham.includes(duz), "düz metin: " + duz);
 });
 let ilkC;
 await t_("oku + node:crypto ile çözme: düz metin birebir", async () => {
@@ -221,7 +222,7 @@ await t_("şube adı kaçışlanır, bilinmeyen şube yalnız marka", () => {
   assert(b.includes('<bdi lang="tr">Terzi Adem Altun</bdi>'));
 });
 await t_("düz metin loglanmaz: onay kodunda console yok; Vercel yeniden yazımları", () => {
-  for (const f of ["../ortak/onay.mjs", "../cloudflare/worker.mjs", "../vercel/api/onay.mjs", "../vercel/lib/depo.mjs", "../vercel/lib/onay-depo.mjs"]) {
+  for (const f of ["../ortak/onay.mjs", "../ortak/imza.mjs", "../cloudflare/worker.mjs", "../vercel/api/onay.mjs", "../vercel/lib/depo.mjs", "../vercel/lib/onay-depo.mjs"]) {
     assert(!fs.readFileSync(new URL(f, import.meta.url), "utf8").includes("console."), f);
   }
   const v = JSON.parse(fs.readFileSync(new URL("../vercel/vercel.json", import.meta.url), "utf8"));
@@ -230,7 +231,7 @@ await t_("düz metin loglanmaz: onay kodunda console yok; Vercel yeniden yazıml
   assert.equal(yeniden["/api/onay/:t"], "/api/onay?islem=oku&t=:t");
   const sira = v.rewrites.map((r) => r.source);
   assert(sira.indexOf("/api/onay/ac") < sira.indexOf("/api/onay/:t") && sira.indexOf("/api/onay/kapat") < sira.indexOf("/api/onay/:t"));
-  for (const f of ["onay.mjs", "takip.mjs"]) {
+  for (const f of ["onay.mjs", "takip.mjs", "imza.mjs"]) {
     const o = fs.readFileSync(new URL("../ortak/" + f, import.meta.url), "utf8");
     assert.equal(fs.readFileSync(new URL("../cloudflare/" + f, import.meta.url), "utf8"), o, "kopyala.sh: cloudflare/" + f);
     assert.equal(fs.readFileSync(new URL("../vercel/lib/" + f, import.meta.url), "utf8"), o, "kopyala.sh: vercel/lib/" + f);

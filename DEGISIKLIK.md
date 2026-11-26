@@ -6,6 +6,38 @@
 
 ## Yayınlanmamış
 
+### Terzi Takip: teslim sepeti (tek karekodla zincir, çok fiş tek teslimat; Yusuf 2026-11-26 06:25)
+
+- **Yeni:** teslim penceresi (masaüstü ve telefon) teslim sepetidir. Bağlı fişlerden birinin karekodu okutulunca bütün bağlı
+  fişler gelir (varsayılan seçili, çıkarılabilir); başka fişler "Karekod okut / no yaz" alanına tabanca/klavye ya da telefon
+  kamerasıyla eklenir. Çift okutma yok sayılır, teslim edilmiş/iptal fiş eklenmez, hazır olmayan uyarılı ve teslim edilmez.
+  Masaüstünde liste toplu teslimi ve "Fiş aç" ekranındaki "Teslim sepeti" düğmesi de sepeti açar; sepet açıkken tabanca
+  okutması sepete gider.
+- **Tek teslimat:** tek teslim alan bilgisi, tek karekod onayı (n = toplam ürün; fişsiz varsa i = 1; belirteç sepet
+  kimliğine bağlı) ya da tek cihaz imzası. Her fişe ayrı `TeslimKaydi`, ortak `teslim_id` (yeni alan, `T-YYYYAAGG-XXXXXX`),
+  `ana_fis` ilk okutulan; imza bir kez şifreli yazılır, kayıtlar ona başvurur. `Defter::teslim_et_toplu` önce hepsini
+  denetler, sonra tek yazımla ekler (`taa_dosya::satirlar_ekle`); hata olursa hiçbiri yazılmaz, imza `imzalar/artik/`e
+  alınır, `teslim-sepet.jsonl` günlüğüne kişisel veri olmadan yazılır. Eski tek fiş teslimi de artık `teslim_id` yazar.
+- **Fişli/fişsiz kararı (denetçinin önerisi):** fişli = fiş karekodu okutuldu (sunucu doğrular: müşteri nüshasının takip
+  karekodu; takip ayarsızsa fiş karekodu). Elle yazılan ya da zincirden gelen fiş fişsiz; sepette fişsiz varsa yetki + her
+  müşteri için son 4 (aynı telefonda bir kez) + imza. Kasiyerin elle "fişli" işaretleme yolu kaldırıldı; eski
+  `teslim-al` ucunda `fisli: true` için `fis_karekodu` kanıtı gerekir, yoksa fişsiz kuralları (`fis_karekodu_yok`).
+- **Uçlar:** `POST /api/teslim/karekod-coz`, `/api/teslim/sepet/denetle`, `/api/teslim/sepet/onay-ac`,
+  `/api/teslim/sepet/onay-durum`, `/api/teslim/sepet` (ayrıntı: `bulut/musteri-takip/README.md`). Bulut değişmedi.
+- Testler: `taa-fis` +1 (`toplu_teslim_hepsi_ya_da_hicbiri`), `taa-fis-sunucu` +10 (bağlı zincir tek karekod + tek imza +
+  ortak teslim_id + şifreli blokta düz metin yok, bağlı olmayan çok fiş, çift okutma, hazır olmayan/iptal red, karışık
+  sepette son 4 + imza, yetkisiz cihazda fişsiz red, kısmi yazım hatası, sepet karekod onayı, kanıt çözümü, eski uçta
+  karekodsuz "fişli"). **Sınır:** arayüz gerçek tarayıcıda/telefonda elle denenmedi (sözdizimi ve sayfa testleri geçti).
+- **Denetçi düzeltmeleri:** (yüksek) eski `teslim-al` + `"bagli"` artık sepet akışına çevrilir: bağlı fişler fişsiz
+  (yetki + son 4 + imza), yazım ya hepsi ya hiçbiri (yetkisiz telefon 403). (yüksek) fiş karekoduna yerel gizli anahtarlı
+  kanıt parçası (`&k=`, HMAC 60 bit) eklendi; takip ayarsız kurulumda "#fis=<no>" elle yazılarak fişli olunamaz, k'siz
+  eski fişler fişsiz (`karekod-kanitsiz`). (orta) arayüzde sepet istekleri sıraya konur (art arda okutmada fiş kaybolmaz).
+  (orta) 30'u aşan sepet kırpılmaz; teslimde/karekodda 413 `sepet_cok_buyuk`, denetlede `fazla`. (düşük) karekod onayı
+  50 ürünü aşarsa 409 `qr_cok_urun` (sıkıştırma yok); `qr_kapali` sonrası karekod seçeneği sayfada kapanır; dar ekranda
+  hücre başlıkları (`data-etiket`) ve tablo rolleri, seçim kutusu 48 px hedef; `satir(lar)_ekle` yarım satıra yapışmaz.
+  Yeni testler: eski uçta bağlı fişsiz + yetkisiz red, elle yazılan fiş karekodu fişsiz, sepet sınırı, 50 ürün sınırı,
+  yarım satır; Playwright sayfa testi (`crates/taa-fis-sunucu/sayfa-test/sepet.mjs`: hızlı art arda iki okutma, dar ekran).
+
 ### Dinamik sunucu adresi (taa-yol otomatik güncelleme, taa-dns)
 
 - **Sorun:** sunucu dizüstü dolaşır; yol listesindeki `yerel` IP'si (192.168.1.19) eskiyince "hiçbir sunucu yoluna ulaşılamadı" oluşuyordu.

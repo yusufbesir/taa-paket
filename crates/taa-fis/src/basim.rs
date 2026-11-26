@@ -260,15 +260,16 @@ pub(crate) fn satirlar(f: &Fis, nusha: &str) -> Vec<(Stil, String)> {
             ),
         ));
     }
-    // Teslim alan (mağaza/terzihane nüshası ve düz metin): "Teslim alan: Ayşe Ç. (yakını) - fişsiz, imzalı".
-    // Tire yazıcıda da çıksın diye ASCII; CP857'de uzun tire yok.
+    // Teslim alan (mağaza/terzihane nüshası ve düz metin): "Teslim alan: A*** Ç*** (yakını) - fişsiz, imzalı".
+    // Ad her zaman MASKELİ basılır (Yusuf 2026-11-26: "daha sonra maskeli olarak görünsün"); açık ad yalnız
+    // yetkili ekranda (teslim-acik) görülür. Tire yazıcıda da çıksın diye ASCII; CP857'de uzun tire yok.
     // Şifreli kayıtta ad yalnız sunucunun çözüp doldurduğu görünümden gelir; çözülmediyse "(şifreli)".
     // Telefon, cihaz ve IP hiçbir nüshaya basılmaz.
     if let Some(t) = f.teslim_kaydi.as_ref().filter(|_| !musteri_nushasi(nusha)) {
         let ad = match (&t.gorunen, t.sifreli.is_some()) {
-            (Some(g), _) => kisa_ad(&g.ad),
+            (Some(g), _) => ad_maskele(&g.ad),
             (None, true) => "(şifreli)".to_string(),
-            (None, false) => kisa_ad(&t.teslim_alan),
+            (None, false) => ad_maskele(&t.teslim_alan),
         };
         if t.qr_onayli() {
             // "Teslim alan: Ayşe Ç. - QR onaylı, 26.11.2026 14:32"
@@ -277,9 +278,17 @@ pub(crate) fn satirlar(f: &Fis, nusha: &str) -> Vec<(Stil, String)> {
             } else {
                 String::new()
             };
+            let imzali = if t.imza_sha256.is_empty() {
+                ""
+            } else {
+                ", imzalı"
+            };
             v.push((
                 Normal,
-                format!("Teslim alan: {ad} - QR onaylı, {}", zaman.trim_end()),
+                format!(
+                    "Teslim alan: {ad} - QR onaylı{imzali}, {}",
+                    zaman.trim_end()
+                ),
             ));
         } else {
             let mut ek = String::from(if t.fisli { "fişli" } else { "fişsiz" });

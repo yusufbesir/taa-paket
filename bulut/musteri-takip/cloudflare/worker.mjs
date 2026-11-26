@@ -3,6 +3,7 @@
 // YEDEK_SAYFA (Vercel adresi). Teslim onayı uçları: ./onay.mjs. ?sekme=ozet|islemler|subeler|sss sayfa()'ya geçer (bilinmeyen → ozet). Kayıt süresi KV'nin kendi silme zamanıyla (expiration = sil) yönetilir.
 import { dogrula, dogrulaSubeler, yeniMi, sayfa, KOD_RE, dilSec } from "./takip.mjs";
 import { onayIsle } from "./onay.mjs";
+import { IMZA_BETIK_YOLU } from "./imza.mjs";
 
 // Fişsiz teslim onayı (./onay.mjs): kayıt "onay:"+t, KV silme zamanı = sil (KV en az 60 sn ileri ister; asıl süre sil ile denetlenir).
 const onayDepo = (env) => ({
@@ -33,7 +34,8 @@ export default {
   async fetch(istek, env) {
     const url = new URL(istek.url);
     const yol = url.pathname;
-    // Teslim onayı: POST /api/onay/ac|kapat, GET /api/onay/<t>, GET|POST /o/<t>.
+    // Teslim onayı: POST /api/onay/ac|kapat, GET /api/onay/<t>, GET|POST /o/<t>, GET /o/imza.js (parmakla imza betiği).
+    if (yol === IMZA_BETIK_YOLU) return onayIsle({ islem: "betik", istek, depo: onayDepo(env), genel: env.GENEL_ANAHTAR });
     if (yol === "/api/onay/ac" || yol === "/api/onay/kapat") {
       return onayIsle({ islem: yol.slice(10), istek, depo: onayDepo(env), genel: env.GENEL_ANAHTAR });
     }

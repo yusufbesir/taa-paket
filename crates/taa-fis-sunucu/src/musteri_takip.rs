@@ -169,18 +169,67 @@ pub(crate) fn hmac_sha256(anahtar: &[u8], veri: &[u8]) -> [u8; 32] {
 
 /// Fişin takip kodu: HMAC(anahtar, "takip:" + no), 16 karakter.
 pub fn takip_kodu(dizin: &Path, fis_no: &str) -> Result<String, String> {
-    let h = hmac_sha256(&anahtar(dizin)?, format!("takip:{fis_no}").as_bytes());
-    let mut s = String::with_capacity(KOD_UZUNLUGU);
+    Ok(kod_uret(&anahtar(dizin)?, fis_no))
+}
+
+/// Okutulan takip kodunun (müşteri nüshasındaki karekod) hangi fişe ait olduğunu bulur: anahtar bir kez okunur,
+/// adayların kodu hesaplanıp karşılaştırılır. Kod geçersizse ya da hiçbir aday tutmazsa `None`.
+/// Takip kodu gizli anahtarla üretildiği için tahmin edilemez: müşteri nüshasının elde olduğunun kanıtıdır.
+pub(crate) fn takip_kodundan_fis<'a>(
+    dizin: &Path,
+    kod: &str,
+    adaylar: impl IntoIterator<Item = &'a str>,
+) -> Option<&'a str> {
+    if !kod_gecerli(kod) {
+        return None;
+    }
+    let a = anahtar(dizin).ok()?;
+    adaylar
+        .into_iter()
+        .find(|no| crate::teslim_al::sabit_esit(kod_uret(&a, no).as_bytes(), kod.as_bytes()))
+}
+
+fn kod_uret(anahtar: &[u8], fis_no: &str) -> String {
+    b32_ozet(anahtar, &format!("takip:{fis_no}"), KOD_UZUNLUGU)
+}
+
+/// HMAC(anahtar, veri) özetinin ilk `uzunluk` karakteri (32'lik alfabe, 5 bit/karakter).
+fn b32_ozet(anahtar: &[u8], veri: &str, uzunluk: usize) -> String {
+    let h = hmac_sha256(anahtar, veri.as_bytes());
+    let mut s = String::with_capacity(uzunluk);
     let (mut tampon, mut bit) = (0u32, 0u32);
     for b in h {
         tampon = (tampon << 8) | b as u32;
         bit += 8;
-        while bit >= 5 && s.len() < KOD_UZUNLUGU {
+        while bit >= 5 && s.len() < uzunluk {
             bit -= 5;
             s.push(ALFABE[((tampon >> bit) & 31) as usize] as char);
         }
     }
-    Ok(s)
+    s
+}
+
+/// Fiş karekodu (personel karekodu, `…/telefon#fis=<no>&k=<kanıt>`) kanıt uzunluğu: 12 karakter = 60 bit.
+pub(crate) const FIS_KANIT_UZUNLUGU: usize = 12;
+
+/// Fiş karekodunun gizli anahtarlı kanıt parçası: HMAC(anahtar, "fis:" + no), 12 karakter. Anahtar YERELDİR
+/// (`musteri-takip/anahtar`, takip/bulut ayarı olmasa da üretilir); fiş no'sundan tahmin edilemez. Teslim sepetinde
+/// "fişli" sayılmanın kanıtı budur: elle yazılan "#fis=<no>" (k'siz ya da yanlış k) fişsizdir.
+pub(crate) fn fis_kaniti(dizin: &Path, fis_no: &str) -> Result<String, String> {
+    Ok(b32_ozet(
+        &anahtar(dizin)?,
+        &format!("fis:{fis_no}"),
+        FIS_KANIT_UZUNLUGU,
+    ))
+}
+
+/// Okunan `k` bu fişin kanıtı mı (sabit zamanlı karşılaştırma)?
+pub(crate) fn fis_kaniti_dogru(dizin: &Path, fis_no: &str, k: &str) -> bool {
+    if k.len() != FIS_KANIT_UZUNLUGU || !k.bytes().all(|b| ALFABE.contains(&b)) {
+        return false;
+    }
+    fis_kaniti(dizin, fis_no)
+        .is_ok_and(|b| crate::teslim_al::sabit_esit(b.as_bytes(), k.as_bytes()))
 }
 
 pub fn kod_gecerli(k: &str) -> bool {

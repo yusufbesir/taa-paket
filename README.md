@@ -42,6 +42,22 @@ TAA Paketi çekirdek deposu: TaaDön ve diğer TAA programlarının paylaştığ
 | taa-imza | var | ed25519 imza (T3): anahtar üret/imzala/doğrula, `ed25519:<hex>` genel anahtar dosyası; özel anahtar yalnız verilen dosyadan okunur, depoya yazılmaz |
 | taa-log | planlı | Günlükleme |
 
+## Terzi Takip: teslim sepeti (2026-11-26)
+
+Teslimde birden çok fiş tek teslimatta verilir: bağlı fişlerden birinin karekodu okutulunca bütün bağlı fişler sepete
+gelir, başka fişler sırayla okutulur ya da no'su yazılır; sepetin tamamı tek teslim alan bilgisi, tek karekod onayı ya da
+tek imzayla, ortak bir teslim no'suyla (`T-YYYYAAGG-XXXXXX`) kaydedilir (ya hepsi ya hiçbiri).
+
+**Fişli / fişsiz:** fiş yalnız **karekodu okutulursa fişli** sayılır (müşteri nüshasındaki takip karekodu; müşteri takip
+ayarlı değilse gizli anahtarlı kanıt parçası `&k=` taşıyan fiş karekodu). Numarası elle yazılan, bağlı zincirden
+kendiliğinden gelen ya da karekodunda kanıt parçası olmayan (2026-11-26 öncesi basılmış) fiş **fişsizdir**. Sepette
+fişsiz fiş varsa fişsiz teslim yetkisi, her müşteri için telefonun son 4 hanesi ve imza zorunludur. Kasiyerin "fişli"
+işaretini elle koyma yolu kaldırıldı (eski `teslim-al` ucunda `fisli: true` karekod kanıtı olmadan fişsiz sayılır;
+`"bagli": [..]` ile gelen bağlı fişler sepet akışına çevrilir ve fişsizdir). Bir teslimatta en çok 30 fiş. Sınır:
+tabanca klavyeden ayırt edilemez ve mağaza cihazı müşteri nüshasını yeniden yazdırabilir; kanıt mağaza içi güven
+sınırındadır.
+Ayrıntı, uçlar ve atomiklik: [bulut/musteri-takip/README.md](bulut/musteri-takip/README.md#teslim-sepeti-tek-karekodla-zincir-çok-fiş-tek-teslimat-yusuf-2026-11-26-0625).
+
 ## Mobil
 
 | Proje | Durum | Görev |
