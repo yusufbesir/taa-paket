@@ -171,7 +171,10 @@ impl Donem {
             crate::tarih_gunu(&self.bas).unwrap_or(0),
             crate::tarih_gunu(&self.bit).unwrap_or(-1),
         );
-        (a..=b).map(|d| tarih::tarih_metni(d * 86_400)).collect()
+        (a..=b)
+            .take(366)
+            .map(|d| tarih::tarih_metni(d * 86_400))
+            .collect()
     }
 
     fn icinde(&self, t: &str) -> bool {
@@ -232,7 +235,11 @@ fn boyut_metni(b: u64) -> String {
 }
 
 fn sahip_oku(klasor: &Path) -> Option<String> {
-    let m = std::fs::read_to_string(klasor.join("SAHIP.toml")).ok()?;
+    let yol = klasor.join("SAHIP.toml");
+    if !normal_dosya(&yol) {
+        return None;
+    }
+    let m = std::fs::read_to_string(yol).ok()?;
     m.lines().find_map(|s| {
         let s = s.trim();
         let r = s.strip_prefix("sahip")?.trim_start().strip_prefix('=')?;
@@ -261,6 +268,9 @@ pub fn alan_ozeti(kok: &Path, alan: &str, kisisel: bool) -> Bolum {
         return yok("geçersiz alan adı");
     }
     let klasor = kok.join(alan);
+    if !normal_klasor(&klasor) {
+        return yok("");
+    }
     let Ok(girdiler) = std::fs::read_dir(&klasor) else {
         return yok("");
     };
@@ -268,8 +278,11 @@ pub fn alan_ozeti(kok: &Path, alan: &str, kisisel: bool) -> Bolum {
     let mut uyarilar = vec![];
     for g in girdiler.flatten() {
         let ad_g = g.file_name().to_string_lossy().to_string();
-        let Ok(meta) = g.metadata() else { continue };
-        if !meta.is_file() || ad_g == "SAHIP.toml" {
+        // symlink_metadata: bağlantı izlenmez (veri kökü dışına çıkış olmaz).
+        let Ok(meta) = std::fs::symlink_metadata(g.path()) else {
+            continue;
+        };
+        if !meta.is_file() || meta.file_type().is_symlink() || ad_g == "SAHIP.toml" {
             continue;
         }
         dosya += 1;
@@ -344,7 +357,12 @@ pub fn usta_puani_bolumu(
     let _ = bugun;
     // Puan hesabı TerziTakip'in (taa-takip) işidir; ince çizgi kuralı gereği burada o crate'e bağlanılmaz.
     // Rapor, `usta-puan.jsonl` defterinden yalnız ham sayıları okur (okutma, işaret, tutanak).
-    let metin = match std::fs::read_to_string(dizin.join("usta-puan.jsonl")) {
+    let usta_yol = dizin.join("usta-puan.jsonl");
+    let metin = match if usta_yol.exists() && !normal_dosya(&usta_yol) {
+        Err(std::io::Error::other("defter sıradan bir dosya değil"))
+    } else {
+        std::fs::read_to_string(&usta_yol)
+    } {
         Ok(m) => m,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
         Err(e) => {
@@ -400,15 +418,49 @@ pub fn usta_puani_bolumu(
     b
 }
 
-fn jsonl_satirlar(yol: &Path) -> Vec<Value> {
-    std::fs::read_to_string(yol)
-        .map(|m| {
-            m.lines()
-                .filter(|l| !l.trim().is_empty())
-                .filter_map(|l| serde_json::from_str::<Value>(l).ok())
-                .collect()
-        })
-        .unwrap_or_default()
+/// Sembolik bağlantı / junction izlenmez: yalnız gerçek, sıradan dosya.
+fn normal_dosya(yol: &Path) -> bool {
+    std::fs::symlink_metadata(yol)
+        .map(|m| m.is_file() && !m.file_type().is_symlink())
+        .unwrap_or(false)
+}
+
+/// Sembolik bağlantı / junction olmayan gerçek klasör.
+fn normal_klasor(yol: &Path) -> bool {
+    std::fs::symlink_metadata(yol)
+        .map(|m| m.is_dir() && !m.file_type().is_symlink())
+        .unwrap_or(false)
+}
+
+const JSONL_ENCOK: u64 = 64 * 1024 * 1024;
+
+/// JSONL defterini okur: (geçerli kayıtlar, bozuk satır sayısı). Okunamayan, bağlantı olan
+/// ya da çok büyük dosya hata sayılır; boş dosya ile okunamayan dosya karışmaz.
+fn jsonl_oku(yol: &Path) -> Result<(Vec<Value>, usize), String> {
+    use std::io::BufRead;
+    if !normal_dosya(yol) {
+        return Err("defter sıradan bir dosya değil".into());
+    }
+    let boy = std::fs::metadata(yol).map_err(|e| e.to_string())?.len();
+    if boy > JSONL_ENCOK {
+        return Err(format!(
+            "defter çok büyük ({} MB üstü)",
+            JSONL_ENCOK / 1024 / 1024
+        ));
+    }
+    let f = std::fs::File::open(yol).map_err(|e| e.to_string())?;
+    let (mut kayit, mut bozuk) = (vec![], 0usize);
+    for satir in std::io::BufReader::new(f).lines() {
+        let satir = satir.map_err(|e| e.to_string())?;
+        if satir.trim().is_empty() {
+            continue;
+        }
+        match serde_json::from_str::<Value>(&satir) {
+            Ok(v) => kayit.push(v),
+            Err(_) => bozuk += 1,
+        }
+    }
+    Ok((kayit, bozuk))
 }
 
 fn kurus_tl(k: i64) -> String {
@@ -428,7 +480,26 @@ fn kasa_donemi(
     if !yol.exists() {
         return;
     }
-    let kayitlar = jsonl_satirlar(&yol);
+    let (kayitlar, bozuk) = match jsonl_oku(&yol) {
+        Ok(x) => x,
+        Err(e) => {
+            let metin = format!("Kasa defteri okunamadı: {e}");
+            bolumler.push(Bolum {
+                ad: "kasa-donem".into(),
+                baslik: format!("Kasa kapanışları ({})", donem.metin()),
+                durum: Durum::Hata,
+                kaynak: String::new(),
+                satirlar: vec![],
+                uyarilar: vec![metin.clone()],
+            });
+            yorumlar.push(Yorum {
+                seviye: Seviye::Uyari,
+                bolum: "kasa".into(),
+                metin,
+            });
+            return;
+        }
+    };
     let str_ = |v: &Value, a: &str| v.get(a).and_then(Value::as_str).unwrap_or("").to_string();
     let iptal: Vec<String> = kayitlar
         .iter()
@@ -477,6 +548,16 @@ fn kasa_donemi(
         ],
         uyarilar: vec![],
     };
+    if bozuk > 0 {
+        let metin =
+            format!("Kasa defterinde {bozuk} bozuk satır atlandı; toplamlar eksik olabilir.");
+        b.uyarilar.push(metin.clone());
+        yorumlar.push(Yorum {
+            seviye: Seviye::Dikkat,
+            bolum: "kasa".into(),
+            metin,
+        });
+    }
     if tasti {
         b.durum = Durum::Hata;
         let metin =
@@ -532,7 +613,21 @@ fn fis_donemi(
         return;
     }
     let mut fisler: Vec<(String, String, String)> = vec![]; // no, teslim, durum
-    for k in jsonl_satirlar(&yol) {
+    let (kayitlar, bozuk) = match jsonl_oku(&yol) {
+        Ok(x) => x,
+        Err(e) => {
+            bolumler.push(Bolum {
+                ad: "fis-donem".into(),
+                baslik: format!("Teslimi gelen açık fişler ({})", donem.metin()),
+                durum: Durum::Hata,
+                kaynak: String::new(),
+                satirlar: vec![],
+                uyarilar: vec![format!("Fiş defteri okunamadı: {e}")],
+            });
+            return;
+        }
+    };
+    for k in kayitlar {
         let v = k.get("v").unwrap_or(&Value::Null);
         let al = |a: &str| v.get(a).and_then(Value::as_str).unwrap_or("").to_string();
         let no = al("no");
@@ -567,7 +662,11 @@ fn fis_donemi(
         durum: Durum::Var,
         kaynak: String::new(),
         satirlar: vec![("açık fiş".into(), toplam.to_string())],
-        uyarilar: vec![],
+        uyarilar: if bozuk > 0 {
+            vec![format!("Fiş defterinde {bozuk} bozuk satır atlandı.")]
+        } else {
+            vec![]
+        },
     });
     if !gunluk.is_empty() {
         grafikler.push(Grafik {
@@ -863,6 +962,29 @@ mod testler {
         assert!(hucre(" =1+1").starts_with("'"));
         assert!(hucre("\t@x").starts_with("'"));
         assert_eq!(hucre("normal"), "normal");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn sembolik_baglanti_izlenmez() {
+        let d = gecici("symlink");
+        let disari = gecici("symlink-disari");
+        std::fs::write(disari.join("x.jsonl"), "{}\n").unwrap();
+        std::fs::create_dir_all(d.join("kasa-defteri")).unwrap();
+        std::os::unix::fs::symlink(disari.join("x.jsonl"), d.join("kasa-defteri/kasa.jsonl"))
+            .unwrap();
+        assert!(jsonl_oku(&d.join("kasa-defteri/kasa.jsonl")).is_err());
+        std::os::unix::fs::symlink(&disari, d.join("kimlik")).unwrap();
+        assert!(!normal_klasor(&d.join("kimlik")));
+    }
+
+    #[test]
+    fn jsonl_bozuk_satir_sayilir() {
+        let d = gecici("bozuk");
+        std::fs::write(d.join("a.jsonl"), "{\"a\":1}\nbozuk\n\n{\"b\":2}\n").unwrap();
+        let (k, b) = jsonl_oku(&d.join("a.jsonl")).unwrap();
+        assert_eq!((k.len(), b), (2, 1));
+        assert!(jsonl_oku(&d.join("yok.jsonl")).is_err());
     }
 
     fn gecici(ad: &str) -> std::path::PathBuf {
