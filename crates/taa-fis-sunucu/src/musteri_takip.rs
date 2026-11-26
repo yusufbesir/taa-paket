@@ -246,7 +246,7 @@ pub fn kayit(dizin: &Path, f: &Fis, simdi: u64) -> Result<Value, String> {
     } else {
         String::new()
     };
-    Ok(json!({
+    let mut o = json!({
         "v": 2,
         "k": takip_kodu(dizin, &f.no)?,
         "d": durum_adi(f.durum),
@@ -257,7 +257,75 @@ pub fn kayit(dizin: &Path, f: &Fis, simdi: u64) -> Result<Value, String> {
         "u": kalemler,
         "ts": simdi,
         "sil": sil,
-    }))
+    });
+    // v3: kargo bilgisi varsa isteğe bağlı `kg` nesnesi. Yalnız durum, firma anahtarı, takip no, kargolanma günü ve
+    // "İlçe/İl" gider; alıcı adı, telefon, açık adres ve ürün içeriği YEREL kalır (testle denetlenir).
+    if let Some(kg) = kargo_nesnesi(dizin, &f.no) {
+        o["v"] = json!(3);
+        o["kg"] = kg;
+    }
+    Ok(o)
+}
+
+/// Fişin yerel kargo kaydından bulut `kg` nesnesi (kayıt yoksa ya da durum geçersizse None).
+fn kargo_nesnesi(dizin: &Path, fis_no: &str) -> Option<Value> {
+    let k = taa_telegram::kargo::son(dizin, fis_no)?;
+    if !taa_telegram::kargo::DURUMLAR.contains(&k.durum.as_str()) {
+        return None;
+    }
+    let mut kg = json!({ "d": k.durum, "t": if is_gun(&k.kargo_tarihi) { k.kargo_tarihi.clone() } else { String::new() } });
+    if taa_telegram::kargo::FIRMALAR.iter().any(|(a, _)| *a == k.firma) {
+        kg["f"] = json!(k.firma);
+    }
+    if taa_telegram::kargo::takip_no_gecerli(&k.takip_no) {
+        kg["n"] = json!(k.takip_no);
+    }
+    let y = taa_telegram::kargo::ilce_il_metni(&k);
+    if !y.is_empty() {
+        kg["y"] = json!(y);
+    }
+    Some(kg)
+}
+
+fn is_gun(t: &str) -> bool {
+    let b = t.as_bytes();
+    b.len() == 10 && b[4] == b'-' && b[7] == b'-' && t.char_indices().all(|(i, c)| i == 4 || i == 7 || c.is_ascii_digit())
+}
+
+/// Telegram'dan girilen kargo değişikliklerini (kargo.jsonl) gönderim kuyruğuna alır: her fiş için son kargo kaydının
+/// imzası `musteri-takip/kargo-gonderilen.json`da tutulur; değişen fiş yeniden kuyruğa yazılır. Kaç fiş alındığını döner.
+pub fn kargo_degisenleri_kuyruga_al(dizin: &Path, simdi: u64) -> Result<usize, String> {
+    if Ayar::dizinden(dizin).is_none() {
+        return Ok(0);
+    }
+    let kayitlar = taa_telegram::kargo::hepsi(dizin);
+    if kayitlar.is_empty() {
+        return Ok(0);
+    }
+    let yol = dizin.join(KLASOR).join("kargo-gonderilen.json");
+    let mut onceki: BTreeMap<String, String> = std::fs::read_to_string(&yol)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
+    let defter_yolu = dizin.join("fisler.jsonl");
+    let defter = taa_fis::Defter { yol: &defter_yolu };
+    let mut alinan = 0;
+    for (no, k) in &kayitlar {
+        let imza = format!("{}|{}|{}|{}|{}|{}|{}", k.durum, k.firma, k.takip_no, k.kargo_tarihi, k.ilce, k.il, k.guncelleme);
+        if onceki.get(no) == Some(&imza) {
+            continue;
+        }
+        if let Ok(Some(f)) = defter.bul(no) {
+            kuyruga_yaz(dizin, &f, simdi)?;
+            onceki.insert(no.clone(), imza);
+            alinan += 1;
+        }
+    }
+    if alinan > 0 {
+        std::fs::create_dir_all(dizin.join(KLASOR)).map_err(|e| e.to_string())?;
+        std::fs::write(&yol, serde_json::to_string(&onceki).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    }
+    Ok(alinan)
 }
 
 /// Ürün adını sabit bir anahtara çevirir; bilinmeyen ürün "diger" olur (serbest metin dışarı çıkmaz).
@@ -618,5 +686,56 @@ mod testler {
         let b = bekleyen_oku(&d);
         assert_eq!(b.len(), 1);
         assert_eq!(b.values().next().unwrap()["kayit"]["d"], "hazir");
+    }
+
+    #[test]
+    fn v3_kargo_nesnesi_kisisel_veri_tasimaz_ve_kuyruga_alinir() {
+        let d = gecici();
+        ayarla(&d);
+        let f = fis("F-20261126-007", Durum::Terzihanede);
+        // Kargo yokken v2.
+        assert_eq!(kayit(&d, &f, 1000).unwrap()["v"], 2);
+        let k = taa_telegram::kargo::Kargo {
+            fis_no: f.no.clone(),
+            alici_ad: "Mehmet Kaya".into(),
+            alici_tel: "05559998877".into(),
+            adres: "Atatürk Mah. 5. Sk. No 3 Kadıköy İstanbul".into(),
+            ilce: "Kadıköy".into(),
+            il: "İstanbul".into(),
+            urunler: vec!["2 takım elbise (yelekli bej)".into()],
+            firma: "yurtici".into(),
+            takip_no: "1234567890".into(),
+            kargo_tarihi: "2026-11-26".into(),
+            durum: "yolda".into(),
+            ..Default::default()
+        };
+        taa_telegram::kargo::kaydet(&d, &k).unwrap();
+        let r = kayit(&d, &f, 2000).unwrap();
+        assert_eq!(r["v"], 3);
+        assert_eq!(r["kg"], json!({"d": "yolda", "t": "2026-11-26", "f": "yurtici", "n": "1234567890", "y": "Kadıköy/İstanbul"}));
+        let metin = r.to_string();
+        for yasak in ["Mehmet", "Kaya", "05559998877", "Atatürk", "elbise", "yelekli", "Ayşe", "05321234567"] {
+            assert!(!metin.contains(yasak), "dışarı giden kayıtta kişisel veri: {yasak}");
+        }
+        // Geçersiz durum ya da takip no dışarı çıkmaz.
+        let mut kotu = k.clone();
+        kotu.durum = "bilinmiyor".into();
+        taa_telegram::kargo::kaydet(&d, &kotu).unwrap();
+        assert_eq!(kayit(&d, &f, 3000).unwrap()["v"], 2);
+        // Kuyruğa alma: yalnız değişen fiş, iki kez çalışınca tekrar almaz.
+        let defter_yolu = d.join("fisler.jsonl");
+        let g: taa_fis::Girdi = serde_json::from_str(r#"{"sube":"MRK01","satis_danismani":"A","olcu_alan":"B","musteri":"Ayşe Yılmaz","telefon":"05321234567","kalemler":[{"urun":"Ceket","islem":"kol"}],"tarih":"2026-11-26","teslim":"2099-01-01","ucret_kurus":100}"#).unwrap();
+        let eklenen = taa_fis::Defter { yol: &defter_yolu }.ekle(g).unwrap();
+        let mut gec = k.clone();
+        gec.fis_no = eklenen.no.clone();
+        taa_telegram::kargo::kaydet(&d, &gec).unwrap();
+        assert_eq!(kargo_degisenleri_kuyruga_al(&d, 5000).unwrap(), 1);
+        assert_eq!(kargo_degisenleri_kuyruga_al(&d, 5001).unwrap(), 0);
+        gec.takip_no = "9876543210".into();
+        gec.guncelleme = "2026-11-27".into();
+        taa_telegram::kargo::kaydet(&d, &gec).unwrap();
+        assert_eq!(kargo_degisenleri_kuyruga_al(&d, 5002).unwrap(), 1);
+        let b = bekleyen_oku(&d);
+        assert!(b.values().any(|e| e["kayit"]["kg"]["n"] == "9876543210"));
     }
 }

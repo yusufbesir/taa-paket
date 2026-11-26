@@ -192,6 +192,7 @@ mod testler {
             bot_adi: String::new(),
             yonlendirme: String::new(),
             hiz_siniri: 20,
+            kargo_tam_ozet: false,
         };
         let bot = Bot {
             dizin: &d,

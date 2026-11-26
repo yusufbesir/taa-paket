@@ -10,6 +10,8 @@
 //! Özellik anahtarı `telegram-bot`: varsayılan KAPALI. Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-05], TT12c: [Claude Sonnet 5.5, TT başlığı 2026-11-15].
 
 pub mod hesap;
+pub mod kargo;
+mod kargo_bot;
 pub mod yoklama;
 
 use hesap::{HesapDurum, Hesaplar, Rol};
@@ -38,6 +40,9 @@ pub struct Ayar {
     /// Hesap başına dakikada en çok komut (Fable tasarım kararı, ölçüm değil; pilotta gözden geçirilir).
     #[serde(default = "varsayilan_hiz")]
     pub hiz_siniri: u32,
+    /// Kargo özetinde alıcı adı ve telefon açık yazılsın mı? Varsayılan HAYIR (maskeli). Yusuf WhatsApp'a yapıştırmak için açabilir.
+    #[serde(default)]
+    pub kargo_tam_ozet: bool,
 }
 
 fn varsayilan_hiz() -> u32 {
@@ -245,7 +250,10 @@ pub fn wa_yonlendir(dizin: &Path, belirtec: &str, bugun: &str) -> Result<String,
     ))
 }
 
-const YARDIM: &str = "Komutlar:\n/durum FİŞNO\n/terzihanede FİŞNO\n/hazir FİŞNO\n/raf FİŞNO A-12\n/imza FİŞNO\n/bugun (bugün teslim)\n/geciken\n/kargo (kargo bekleyenler)\n/kuru (kuru temizleme)\n/ozet\n/yardim\nFişin kare kodunu okutursanız fiş açılır.";
+const YARDIM: &str = "Komutlar:\n/durum FİŞNO\n/terzihanede FİŞNO\n/hazir FİŞNO\n/raf FİŞNO A-12\n/imza FİŞNO\n/bugun (bugün teslim)\n/geciken\n/kargo (kargo bekleyenler)
+/kargo FİŞNO (kargo bilgisi gir)
+/takip FİŞNO NO FİRMA
+/kargoozet FİŞNO\n/kuru (kuru temizleme)\n/ozet\n/yardim\nFişin kare kodunu okutursanız fiş açılır.";
 
 fn gonder(sohbet: i64, metin: &str, dugmeler: Option<Value>) -> Value {
     let metin: String = metin.chars().take(3500).collect();
@@ -492,6 +500,24 @@ impl Bot<'_> {
                 Err(e) => gonder(sohbet, &format!("Hata: {e}"), None),
             };
         }
+        // Kargo girişi (yalnız mağaza telefonu): /kargo FİŞNO [metin], /takip, /kargoozet; komut olmayan metin açık taslağa eklenir.
+        if kom == "/kargo" && !a1.is_empty() {
+            return self.kargo_baslat(sohbet, &d, a1, metin, k);
+        }
+        if kom == "/takip" {
+            return self.kargo_takip(sohbet, &d, a1, a2, p.next().unwrap_or(""), k);
+        }
+        if kom == "/kargoozet" || kom == "/kargoözet" {
+            return self.kargo_ozet(sohbet, &d, a1, k);
+        }
+        if kom == "/kargoyardim" || kom == "/kargoyardım" {
+            return gonder(sohbet, Self::kargo_yardimi(), None);
+        }
+        if !kom.starts_with('/') {
+            if let Some(y) = self.kargo_serbest(sohbet, metin, k) {
+                return y;
+            }
+        }
         let r = match kom.as_str() {
             "/start" | "/yardim" | "/yardım" => Ok(YARDIM.to_string()),
             "/durum" => kapsamli_bul(&d, a1, k)
@@ -660,6 +686,7 @@ impl Bot<'_> {
             // y: onaylandı -> imza
             "y" => self.imza_onaylandi(&d, a1, a2.parse().ok(), &k, sohbet, guncelleme, cevap),
             "v" => vec![cevap("Vazgeçildi.")],
+            "kg" => self.kargo_dugmesi(a1, &k, sohbet, &cevap),
             "w" => self.wa_dugmesi(&d, a1, &k, sohbet, cevap),
             "g" => {
                 if !k.magaza_mi() {
@@ -827,6 +854,7 @@ mod testler {
             bot_adi: "taa_terzi_bot".into(),
             yonlendirme: "https://sunucu.example/".into(),
             hiz_siniri: 100_000,
+            kargo_tam_ozet: false,
         }
     }
 
@@ -1115,5 +1143,57 @@ mod testler {
                 && !a.gizli_dogru("0123456789abcdee")
                 && !a.gizli_dogru("x")
         );
+    }
+
+    #[test]
+    fn kargo_girisi_telegramdan() {
+        std::env::set_var("TAA_OZELLIK_TELEGRAM_BOT", "1");
+        let (d, no) = kur();
+        let a = ayar();
+        let b = Bot { dizin: &d, ayar: &a, bugun: "2026-11-26", simdi: 1_795_700_000 };
+        baglan(&b, &d, 11, Rol::Magaza);
+        baglan(&b, &d, 22, Rol::Usta);
+        // Usta kargo giremez.
+        let y = b.eylemler(&msg(22, &format!("/kargo {no}")));
+        assert!(metinler(&y).contains("yalnız mağaza telefonu"), "{y:?}");
+        // Eksik bilgiyle Onayla çalışmaz: yalnız İptal düğmesi gelir.
+        let y = b.eylemler(&msg(11, &format!("/kargo {no}
+2 pantolon")));
+        let m = metinler(&y);
+        assert!(m.contains("Eksik") && !m.contains("kg:ok") && m.contains("kg:iptal"), "{m}");
+        let y = b.eylemler(&tus(11, "kg:iptal"));
+        assert!(metinler(&y).contains("Vazgeçildi"));
+        // Mağaza: komut + serbest metin tek mesajda, Yusuf'un WhatsApp biçimi.
+        let metin = format!("/kargo {no}
+Ayşe Yılmaz
+0532 111 22 33
+2 takım elbise (yelekli bej ve haki kruvaze), 2 pantolon (mavi ve siyah)
+Büyükçekmece İstanbul");
+        let y = b.eylemler(&msg(11, &metin));
+        let m = metinler(&y);
+        assert!(m.contains("Şunu anladım") && m.contains("Ayşe Yılmaz") && m.contains("2 pantolon (mavi ve siyah)") && m.contains("kg:ok"), "{m}");
+        // Onay öncesi kayıt yok.
+        assert!(kargo::son(&d, &no).is_none());
+        let y = b.eylemler(&tus(11, "kg:ok"));
+        let m = metinler(&y);
+        assert!(m.contains("Kaydedildi"), "{m}");
+        // Varsayılan özet maskeli: tam ad/telefon bot mesajında yok.
+        assert!(!m.contains("Ayşe Yılmaz") || m.contains("Satın alan"), "{m}");
+        let k = kargo::son(&d, &no).unwrap();
+        assert_eq!((k.ilce.as_str(), k.il.as_str(), k.durum.as_str()), ("Büyükçekmece", "İstanbul", "hazirlaniyor"));
+        assert_eq!(k.urunler.len(), 2);
+        // Takip numarası.
+        let y = b.eylemler(&msg(11, &format!("/takip {no} 1234567890 Yurtiçi")));
+        assert!(metinler(&y).contains("kargolandı"), "{y:?}");
+        let k = kargo::son(&d, &no).unwrap();
+        assert_eq!((k.firma.as_str(), k.takip_no.as_str(), k.durum.as_str(), k.kargo_tarihi.as_str()), ("yurtici", "1234567890", "yolda", "2026-11-26"));
+        // Geçersiz takip no ve bilinmeyen firma reddedilir.
+        assert!(metinler(&b.eylemler(&msg(11, &format!("/takip {no} a b")))).contains("takip numarası"));
+        assert!(metinler(&b.eylemler(&msg(11, &format!("/takip {no} 12345678 bilinmeyenfirma")))).contains("firma anlaşılmadı"));
+        // Teslim.
+        b.eylemler(&msg(11, &format!("/takip {no} teslim")));
+        assert_eq!(kargo::son(&d, &no).unwrap().durum, "teslim");
+        // Başka şubenin fişi ve olmayan fiş.
+        assert!(metinler(&b.eylemler(&msg(11, "/kargo YOK-1 Ali"))).contains("fiş yok"));
     }
 }

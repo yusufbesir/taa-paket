@@ -50,6 +50,13 @@ fn main() {
     {
         let dizin = veri.clone();
         std::thread::spawn(move || loop {
+            let simdi = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            if let Err(e) = taa_fis_sunucu::musteri_takip::kargo_degisenleri_kuyruga_al(&dizin, simdi) {
+                eprintln!("Müşteri takip kargo bilgisi kuyruğa alınamadı: {e}");
+            }
             let g = taa_fis_sunucu::musteri_takip::CurlGonderici;
             if let Err(e) = taa_fis_sunucu::musteri_takip::gonder_bekleyenler(&dizin, &g) {
                 eprintln!("Müşteri takip gönderimi yapılamadı: {e}");
