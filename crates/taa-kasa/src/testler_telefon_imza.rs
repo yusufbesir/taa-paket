@@ -327,3 +327,101 @@ fn cevap_cozumu_esnek() {
     assert!(KopruCevabi::jsondan(&json!({"tur":"baska","istek_kimligi":"n1"})).is_err());
     assert!(KopruCevabi::jsondan(&json!({"tur":"onay@1"})).is_err());
 }
+
+/// Sahte TAA Merkez cihaz kaydı.
+struct SahteKayit(CihazDurumu);
+impl CihazKaydi for SahteKayit {
+    fn denetle(&self, _cihaz: &str, _kisi: &str) -> CihazDurumu {
+        self.0
+    }
+}
+
+#[test]
+fn merkez_cihaz_kaydi_iptal_ve_baska_kisi_onayi_gecersiz_kilar() {
+    for (durum, beklenen) in [
+        (CihazDurumu::Iptal, "gecersiz"),
+        (CihazDurumu::BaskaKisi, "gecersiz"),
+        (CihazDurumu::Gecerli, "onaylandi"),
+    ] {
+        let (d, _, id) = hazir(&format!("kayit-{}", durum.kod()));
+        let mut k = SahteKanal::default();
+        let mut o =
+            TelefonImzaOturumu::baslat(&d, &mut k, &id, &kisi("Kasiyer A"), NONCE, SIMDI).unwrap();
+        k.cevaplar.push_back(Some(onay(&o.istek)));
+        let s = o
+            .ilerle_denetle(&d, &mut k, &SahteKayit(durum), SIMDI + 1)
+            .clone();
+        assert_eq!(s.kod(), beklenen, "{durum:?}");
+        if let ImzaDurumu::Onaylandi(i) = s {
+            assert_eq!(i.cihaz_dogrulama.as_deref(), Some("gecerli"));
+        }
+    }
+    // Yer tutucu kayıt: bilinmiyor, imza engellenmez ama sonuç yazılır.
+    let (d, _, id) = hazir("kayit-yok");
+    let mut k = SahteKanal::default();
+    let mut o =
+        TelefonImzaOturumu::baslat(&d, &mut k, &id, &kisi("Kasiyer A"), NONCE, SIMDI).unwrap();
+    k.cevaplar.push_back(Some(onay(&o.istek)));
+    let ImzaDurumu::Onaylandi(i) = o.ilerle(&d, &mut k, SIMDI + 1).clone() else {
+        panic!("{:?}", o.durum)
+    };
+    assert_eq!(i.cihaz_dogrulama.as_deref(), Some("bilinmiyor"));
+}
+
+#[test]
+fn merkez_paketteki_telefon_imzasini_ozet_ve_cihazla_denetler() {
+    use crate::merkez::telefon_imzalarini_denetle;
+    let (d, a, id) = hazir("merkez-denetim");
+    let mut k = SahteKanal::default();
+    let mut o =
+        TelefonImzaOturumu::baslat(&d, &mut k, &id, &kisi("Kasiyer A"), NONCE, SIMDI).unwrap();
+    k.cevaplar.push_back(Some(onay(&o.istek)));
+    assert_eq!(o.ilerle(&d, &mut k, SIMDI + 1).kod(), "onaylandi");
+    d.ikinci_imza_gerekcesi(&id, "ikinci kişi yok", &kisi("Kasiyer A"))
+        .unwrap();
+    let p = d.gonderim_paketi(&a, &id).unwrap();
+    assert_eq!(p["imzalar"][0]["ozet"], o.istek.ozet_sha256);
+    // Yer tutucu kayıt: sorun yok, bir imza doğrulanamadı.
+    assert_eq!(telefon_imzalarini_denetle(&p, &MerkezKaydiYok), (vec![], 1));
+    assert_eq!(
+        telefon_imzalarini_denetle(&p, &SahteKayit(CihazDurumu::Gecerli)),
+        (vec![], 0)
+    );
+    let (s, _) = telefon_imzalarini_denetle(&p, &SahteKayit(CihazDurumu::Iptal));
+    assert!(s[0].contains("iptal"), "{s:?}");
+    // Paketteki gün sonu tutarı sonradan değiştirilirse özet tutmaz.
+    let mut bozuk = p.clone();
+    bozuk["gun_sonu"]["nebim_toplam_kurus"] = json!(1);
+    let (s, _) = telefon_imzalarini_denetle(&bozuk, &SahteKayit(CihazDurumu::Gecerli));
+    assert!(s[0].contains("özet"), "{s:?}");
+}
+
+#[test]
+fn sik_tek_imza_uyarisi_esikte_cikar() {
+    use crate::merkez::{matris, tek_imza_uyarisi_uygula, GelenPaket};
+    let p = |t: &str, tek: bool| GelenPaket {
+        sube: "SB1".into(),
+        tarih: t.into(),
+        alinma_sn: 0,
+        ikinci_imza_atmadi: tek,
+        ..Default::default()
+    };
+    let gelen = vec![
+        p("2026-11-01", true), // pencere dışında
+        p("2026-11-20", true),
+        p("2026-11-22", true),
+        p("2026-11-22", true), // aynı gün iki çekmece: bir gün sayılır
+        p("2026-11-24", false),
+        p("2026-11-25", true),
+    ];
+    let subeler = vec!["SB1".to_string()];
+    let tarihler = vec!["2026-11-26".to_string()];
+    let mut m = matris(&gelen, &subeler, &tarihler, "23:00", 180, 0);
+    tek_imza_uyarisi_uygula(&mut m, &gelen, "2026-11-26", 14, 3);
+    assert_eq!((m[0].tek_imza_gun_sayisi, m[0].tek_imza_uyarisi), (3, true));
+    tek_imza_uyarisi_uygula(&mut m, &gelen, "2026-11-26", 14, 4);
+    assert!(!m[0].tek_imza_uyarisi);
+    tek_imza_uyarisi_uygula(&mut m, &gelen, "2026-11-26", 14, 0);
+    assert!(!m[0].tek_imza_uyarisi, "eşik 0 kapalı");
+    assert_eq!(KasaAyar::default().tek_imza_uyarisi.esik, 3);
+}

@@ -212,6 +212,47 @@ impl KopruCevabi {
     }
 }
 
+/// TAA Merkez'in cihaz-kişi bağı ve iptal kaydının denetim sonucu. Bağ ve iptal TAA Merkez'de tutulur; kasa
+/// programı ve merkez paket okuyucusu yalnız bu sonucu kullanır.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CihazDurumu {
+    /// Cihaz bu kişiye bağlı ve iptal edilmemiş.
+    Gecerli,
+    /// Cihaz başka bir kişiye bağlı.
+    BaskaKisi,
+    /// Cihaz iptal edildi (kayıp, işten ayrılma).
+    Iptal,
+    /// Merkez kaydı yok ya da ulaşılamıyor.
+    Bilinmiyor,
+}
+
+impl CihazDurumu {
+    pub fn kod(&self) -> &'static str {
+        match self {
+            CihazDurumu::Gecerli => "gecerli",
+            CihazDurumu::BaskaKisi => "baska_kisi",
+            CihazDurumu::Iptal => "iptal",
+            CihazDurumu::Bilinmiyor => "bilinmiyor",
+        }
+    }
+}
+
+/// TAA Merkez cihaz kaydı arayüzü (`cihaz`: `eslesme_kimligi:pc_pin`).
+pub trait CihazKaydi {
+    fn denetle(&self, cihaz: &str, kisi: &str) -> CihazDurumu;
+}
+
+/// Yer tutucu: TAA Merkez cihaz kaydı bağlanana kadar her cihaz `Bilinmiyor`. Bilinmiyor imzayı engellemez,
+/// imza kaydına `cihaz_dogrulama: "bilinmiyor"` yazılır ve merkezde "doğrulanamadı" görünür.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MerkezKaydiYok;
+
+impl CihazKaydi for MerkezKaydiYok {
+    fn denetle(&self, _cihaz: &str, _kisi: &str) -> CihazDurumu {
+        CihazDurumu::Bilinmiyor
+    }
+}
+
 /// Kanal hatası: `Yok` köprü kurulu/izinli değil (ekran 501 gösterir), `Hata` geçici iletişim hatası.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum KanalHatasi {
@@ -350,11 +391,22 @@ impl TelefonImzaOturumu {
         })
     }
 
-    /// Cevabı yoklar ve durumu ilerletir. Bitmiş oturumda hiçbir şey yapmaz.
+    /// Cevabı yoklar ve durumu ilerletir (merkez cihaz kaydı yer tutucu). Bitmiş oturumda hiçbir şey yapmaz.
     pub fn ilerle(
         &mut self,
         defter: &KasaDefteri,
         kanal: &mut dyn KopruKanali,
+        simdi: i64,
+    ) -> &ImzaDurumu {
+        self.ilerle_denetle(defter, kanal, &MerkezKaydiYok, simdi)
+    }
+
+    /// `ilerle`, TAA Merkez cihaz kaydıyla: iptal edilmiş ya da başka kişiye bağlı cihazın onayı geçersizdir.
+    pub fn ilerle_denetle(
+        &mut self,
+        defter: &KasaDefteri,
+        kanal: &mut dyn KopruKanali,
+        kayit: &dyn CihazKaydi,
         simdi: i64,
     ) -> &ImzaDurumu {
         if self.durum.bitti() {
@@ -375,12 +427,12 @@ impl TelefonImzaOturumu {
             return &self.durum;
         }
         if let Some(v) = cevap {
-            self.durum = self.cevabi_isle(defter, &v);
+            self.durum = self.cevabi_isle(defter, kayit, &v);
         }
         &self.durum
     }
 
-    fn cevabi_isle(&self, defter: &KasaDefteri, v: &Value) -> ImzaDurumu {
+    fn cevabi_isle(&self, defter: &KasaDefteri, kayit: &dyn CihazKaydi, v: &Value) -> ImzaDurumu {
         let gecersiz = |n: &str| ImzaDurumu::Gecersiz { neden: n.into() };
         let c = match KopruCevabi::jsondan(v) {
             Ok(c) => c,
@@ -435,11 +487,21 @@ impl TelefonImzaOturumu {
                 if ozet_sha256(&guncel) != self.istek.ozet_sha256 {
                     return gecersiz("gün sonu tutarları istek gönderildikten sonra değişti");
                 }
+                let cihaz_metni = cihaz.defter_metni();
+                let dd = kayit.denetle(&cihaz_metni, &self.kisi.ad);
+                match dd {
+                    CihazDurumu::Iptal => return gecersiz("cihaz TAA Merkez'de iptal edilmiş"),
+                    CihazDurumu::BaskaKisi => {
+                        return gecersiz("cihaz TAA Merkez'de başka bir kişiye bağlı")
+                    }
+                    CihazDurumu::Gecerli | CihazDurumu::Bilinmiyor => {}
+                }
                 match defter.imzala_ic(
                     &self.istek.gun_sonu_id,
                     ImzaKanali::Telefon,
-                    Some(&cihaz.defter_metni()),
+                    Some(&cihaz_metni),
                     Some(&self.istek.ozet_sha256),
+                    Some(dd.kod()),
                     &self.kisi,
                 ) {
                     Ok(i) => ImzaDurumu::Onaylandi(i),

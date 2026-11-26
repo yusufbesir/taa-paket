@@ -51,7 +51,7 @@ Satırlar (her biri `beklenen_kurus`, `bulunan_kurus`, `fark_kurus = bulunan −
 ## Gönderim paketi (merkeze)
 `{"tur":"kasa.gunsonu@1","surum":1,"sube","tarih","cekmece","gun_sonu","sayimlar","masraflar","onaylar":{"ikinci_kisi","ertesi_gun"},"imzalar","ikinci_imza_durumu","ikinci_imza_gerekcesi","cift_dogrulama","olusturma","imza"}`.
 
-- `imzalar`: iki rol de yazılır: `{sira, rol, rol_adi, kisi, zaman, kanal, cihaz, durum: "imzaladi"|"imza_atmadi", imzalamadi}`;
+- `imzalar`: iki rol de yazılır: `{sira, rol, rol_adi, kisi, zaman, kanal, cihaz, ozet, cihaz_dogrulama, durum: "imzaladi"|"imza_atmadi", imzalamadi}`;
   atılmamış ikinci imzada `not: "ikinci imza atmadı"` ve varsa `gerekce`. `cift_dogrulama.ikinci_imza_gerekcesi` aynı değer.
 - `cift_dogrulama` (`taa-kasa.cift_dogrulama@1`, Kasa Çift Doğrulama Tutanağı; şablon Tutaa'dan alındı:
   `crates/taa-kasa/sablonlar/kasa-cift-dogrulama.json`): `numara` (KCD-yıl-<gün sonu>), `baslik`, `sube`, `tarih`, `cekmece`,
@@ -81,7 +81,7 @@ Kuyruk `<veri kökü>/kasa/giden/`; teslim edilen `gonderilen/` altına taşın�
 `merkez_klasoru` ayarındaki ortak klasördür.
 
 ## Matris (Çatı RP6)
-`merkez::matris`: mağaza × gün → `geldi` | `gec` | `eksik` | `bekleniyor`, hücrede `kasa_ciro_uyusmuyor`, `ikinci_imza_atmadi` ve `ikinci_imza_gerekceleri`. Son saat mağaza ayarı
+`merkez::matris`: mağaza × gün → `geldi` | `gec` | `eksik` | `bekleniyor`, hücrede `kasa_ciro_uyusmuyor`, `ikinci_imza_atmadi`, `ikinci_imza_gerekceleri`, `telefon_imza_sorunlari`, `telefon_imza_dogrulanamadi`; satırda `tek_imza_gun_sayisi`, `tek_imza_uyarisi` (ayar `tek_imza_uyarisi`: 14 günde 3). Son saat mağaza ayarı
 (`gonderim_son_saat`, varsayılan 23:00, Türkiye saati); paketin `olusturma` anı esas alınır. Çatı paneline bağlanması Çatı'nın bu türü
 `veri_okur` ile okumasını ister (ayrı adım).
 
