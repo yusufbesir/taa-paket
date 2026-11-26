@@ -3,6 +3,7 @@
 //!   taa-ocr kod <dosya> --sozluk <dosya> [--json]
 //!   taa-ocr tablo <dosya> [--sozluk <dosya>] [--json]
 //!   taa-ocr bilgi [--json]
+//!   taa-ocr ipc-sun [--bir-kez]   (IPC yolu: taa-ipc üzerinden dört yeteneği sunar, docs/OCR-MOTORU.md bölüm 3)
 //!   taa-ocr model-liste | model-etkinlestir <paket-klasoru> [--genel-anahtar <dosya>] | model-geri-al <ad>
 //! Kök klasör: --kok <yol> ya da TAA_KOK ya da exe klasörü. Genel anahtar varsayılanı: <kök>/ocr/model-imza.pub.
 
@@ -25,6 +26,19 @@ fn bitir(r: Result<Value, Value>) -> ! {
 
 fn hata(m: &str) -> Value {
     json!({ "hata": m })
+}
+
+/// IPC sunucusu: `--bir-kez` bekleyenleri işleyip çıkar; yoksa süreç sonlandırılana dek yoklar.
+fn ipc_sun(kok: &std::path::Path, bir_kez: bool) -> Result<Value, Value> {
+    let kutu = taa_ipc::GelenKutusu::ortamdan().map_err(|e| hata(&format!("ipc: {e}")))?;
+    if bir_kez {
+        taa_ocr::ipc::kayit_ol(&kutu).map_err(|e| hata(&format!("ipc: {e}")))?;
+        let n = taa_ocr::ipc::bekleyenleri_isle(&kutu, kok);
+        return Ok(json!({"yanitlanan": n}));
+    }
+    let dur = std::sync::atomic::AtomicBool::new(false);
+    taa_ocr::ipc::sun(&kutu, kok, &dur).map_err(|e| hata(&format!("ipc: {e}")))?;
+    Ok(json!({"durum": "durdu"}))
 }
 
 fn main() {
@@ -85,6 +99,7 @@ fn main() {
         "kod" => bitir(oku_dosya(&konum).and_then(|b| okuyucu::kod(&b, &sec, &kok))),
         "tablo" => bitir(oku_dosya(&konum).and_then(|b| okuyucu::tablo(&b, &sec, &kok))),
         "bilgi" => bitir(Ok(okuyucu::bilgi(&kok))),
+        "ipc-sun" => bitir(ipc_sun(&kok, args.iter().any(|a| a == "--bir-kez"))),
         "model-liste" => bitir(Ok(taa_ocr::model::liste(&kok))),
         "model-etkinlestir" => {
             let Some(p) = konum else {

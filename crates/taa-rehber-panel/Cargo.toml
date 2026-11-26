@@ -1,0 +1,33 @@
+# taa-rehber-panel: TAA Rehber masaüstü paneli (yerel 127.0.0.1 sunucu + Edge uygulama penceresi).
+# Sahip: Yusuf. yazan: [Claude#rehber-panel 2026-11-26]
+# Yeni dış bağımlılık yok: serde/serde_json/getrandom/tiny_http çalışma alanında (taa-cati, taa-fis-sunucu) zaten kullanılıyor.
+[package]
+name = "taa-rehber-panel"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "TAA Rehber paneli: kişiler ve görevler, El Kitabı, ihbar hattı, Eğitim (video, atama, izleme) ve yönetici formları (yerel pencere)"
+
+[lib]
+name = "taa_rehber_panel"
+path = "src/lib.rs"
+
+[[bin]]
+name = "taa-rehber-panel"
+path = "src/panel_main.rs"
+
+[dependencies]
+taa-egitim = { path = "../taa-egitim" }
+taa-hata = { path = "../taa-hata" }
+taa-ihbar = { path = "../taa-ihbar" }
+taa-kimlik = { path = "../taa-kimlik" }
+taa-rehber-model = { path = "../taa-rehber-model" }
+taa-yol = { path = "../taa-yol" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+getrandom = "0.3"
+tiny_http = "0.12"
+
+[dev-dependencies]
+taa-dosya = { path = "../taa-dosya" }

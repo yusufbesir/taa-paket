@@ -1,5 +1,9 @@
 //! taa-rehber: e-posta rehberi (CSV) okur, doğrular, hiyerarşi ağacı ve düz liste üretir. Salt okunur.
-//! Özellik anahtarı: "rehber" (varsayılan açık). Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-04].
+//! Özellik anahtarı: "rehber" (varsayılan açık). Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-04]. güncelleme: [Claude#rehber-model 2026-11-26]
+//! Alan modeli (kişi, birim, görevlendirme, rol, Depo, şube süzgeci): `model` modülü, docs/rehber-sozlesmesi.md §2-§6.
+
+pub use taa_rehber_model as model;
+pub use taa_rehber_model::eposta_gecerli;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -34,18 +38,6 @@ impl std::fmt::Display for Sorun {
             Sorun::Dongu(e) => write!(f, "yönetici döngüsü: {e}"),
         }
     }
-}
-
-pub fn eposta_gecerli(s: &str) -> bool {
-    let Some((yerel, alan)) = s.split_once('@') else {
-        return false;
-    };
-    !yerel.is_empty()
-        && !s.chars().any(char::is_whitespace)
-        && !alan.contains('@')
-        && alan.contains('.')
-        && !alan.starts_with('.')
-        && !alan.ends_with('.')
 }
 
 fn katla(s: &str) -> String {

@@ -1,0 +1,1230 @@
+<!doctype html>
+<!--
+Açıklama: TAA Rehber ve Eğitim için bağımsız, örnek verili masaüstü arayüz iskeleti.
+Sahip: Yusuf / TAA. Kapsamı Yusuf belirler, dosyayı yazan Codex düzenler.
+yazan: [Codex#20261126-0536]
+-->
+<html lang="tr" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>TAA Rehber ve Eğitim</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f4f7f6; --surface: #ffffff; --subtle: #edf3f0;
+    --text: #172620; --muted: #485e54; --line: #cbd9d1;
+    --accent: #145c46; --on-accent: #ffffff;
+    --bar: #174633; --on-bar: #ffffff;
+    --focus: #176749; --danger: #a02834;
+    --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px;
+    --type-small: .8125rem; --type-body: 1rem; --type-panel: 1.25rem; --type-page: 2rem;
+    --radius: 12px; --control-radius: 8px; --bar-height: 60px; --sidebar: 232px;
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #101815; --surface: #18231f; --subtle: #23302a;
+    --text: #edf6ef; --muted: #bbcdc2; --line: #3e5248;
+    --accent: #b4ecd1; --on-accent: #102820;
+    --bar: #234839; --on-bar: #f0f8f3;
+    --focus: #b4ecd1; --danger: #ffb4bb;
+  }
+  :root[data-theme="mono"] {
+    color-scheme: light;
+    --bg: #f1f1f1; --surface: #ffffff; --subtle: #e8e8e8;
+    --text: #1c1c1c; --muted: #505050; --line: #c6c6c6;
+    --accent: #292929; --on-accent: #ffffff;
+    --bar: #282828; --on-bar: #ffffff;
+    --focus: #303030; --danger: #303030;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0; color: var(--text); background: var(--bg);
+    font: var(--type-body)/1.5 system-ui, sans-serif;
+  }
+  h1, h2, p { margin: 0; }
+  h1 { font-size: var(--type-page); line-height: 1.15; letter-spacing: -.035em; }
+  h2 { font-size: var(--type-panel); line-height: 1.25; }
+  a { color: inherit; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button, .nav-link { cursor: pointer; }
+  :focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+  button, .nav-link, input, select, textarea {
+    min-height: 44px; border: 1px solid var(--muted); border-radius: var(--control-radius);
+    background: var(--surface); padding: var(--s2) var(--s3);
+  }
+  input[type="checkbox"], input[type="radio"] { min-height: 0; margin: 0; accent-color: var(--accent); }
+  input[type="range"] { width: 100%; padding: 0; accent-color: var(--accent); }
+  input, select, textarea { min-width: 0; width: 100%; }
+  select { padding-right: var(--s5); }
+  textarea { min-height: 144px; resize: vertical; }
+  button:hover, .nav-link:hover { background: var(--subtle); }
+  button:disabled { cursor: default; opacity: .65; }
+  .primary {
+    background: var(--accent); color: var(--on-accent); border-color: var(--accent);
+    font-weight: 650;
+  }
+  .primary:hover { background: var(--accent); text-decoration: underline; }
+  .quiet { border-color: transparent; }
+  .muted, small { color: var(--muted); }
+  small, .small, .badge { font-size: var(--type-small); }
+  .badge {
+    display: inline-block; width: fit-content; border: 1px solid var(--line);
+    border-radius: 999px; background: var(--subtle); padding: 2px var(--s2);
+  }
+  .stack { display: grid; gap: var(--s4); align-content: start; }
+  .row { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+  .panel {
+    min-width: 0; padding: var(--s4); border: 1px solid var(--line);
+    border-radius: var(--radius); background: var(--surface);
+  }
+  .page-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s4); flex-wrap: wrap; }
+  .page-head h1 { margin-bottom: var(--s1); }
+  .skip {
+    position: fixed; z-index: 5; inset: var(--s2) auto auto var(--s2);
+    padding: var(--s2); background: var(--surface); transform: translateY(-150%);
+  }
+  .skip:focus { transform: none; }
+  .welcome {
+    min-height: 100dvh; display: grid; place-items: center; padding: var(--s5);
+    background: linear-gradient(135deg, var(--subtle), var(--bg) 62%);
+  }
+  .welcome-card { width: min(100%, 430px); text-align: center; padding: var(--s6); }
+  .welcome-card button { justify-self: center; }
+  .wordmark { font-weight: 850; letter-spacing: .16em; }
+  .welcome .wordmark { font-size: var(--type-panel); color: var(--accent); }
+  .measure {
+    height: 32px; width: min(100%, 232px); margin: 0 auto;
+    border-bottom: 2px solid currentColor; color: var(--accent); transform-origin: left;
+    background:
+      repeating-linear-gradient(90deg, currentColor 0 2px, transparent 2px 58px) bottom / 100% 100% no-repeat,
+      repeating-linear-gradient(90deg, currentColor 0 1px, transparent 1px 14.5px) bottom / 100% 45% no-repeat;
+  }
+  .splash { animation: stretch .65s ease-out both; }
+  .loading { animation: stretch .55s ease-out infinite alternate; }
+  @keyframes stretch { from { transform: scaleX(.15); opacity: .5; } to { transform: scaleX(1); opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .splash, .loading { animation: none; } }
+  .topbar {
+    position: sticky; top: 0; z-index: 3; min-height: var(--bar-height);
+    display: flex; align-items: center; justify-content: space-between; gap: var(--s4);
+    background: var(--bar); color: var(--on-bar); padding: var(--s2) var(--s5);
+  }
+  .topbar .row { gap: var(--s4); }
+  .topbar small { color: inherit; }
+  .shell { display: grid; grid-template-columns: var(--sidebar) minmax(0, 1fr); }
+  .sidebar {
+    position: sticky; top: var(--bar-height); height: calc(100dvh - var(--bar-height));
+    display: flex; flex-direction: column; gap: var(--s4);
+    justify-content: space-between; padding: var(--s4); border-right: 1px solid var(--line);
+    background: var(--surface);
+  }
+  .sidebar nav { overflow-y: auto; display: grid; gap: var(--s1); align-content: start; }
+  .nav-caption { padding: var(--s2) var(--s3) 0; font-weight: 700; }
+  .nav-link { display: flex; align-items: center; border-color: transparent; text-decoration: none; }
+  .nav-link[aria-current="page"], .selectable[aria-current="true"] {
+    border-color: var(--accent); background: var(--subtle);
+    box-shadow: inset 3px 0 var(--accent); font-weight: 650;
+  }
+  .account { position: relative; }
+  .account-toggle { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: var(--s2); text-align: start; }
+  .account-menu {
+    position: absolute; z-index: 2; width: 100%; bottom: calc(100% + var(--s2));
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: var(--s2); box-shadow: 0 8px 28px #0002;
+  }
+  .account-menu p { padding: var(--s2) var(--s3); overflow-wrap: anywhere; }
+  .account-menu button { display: block; width: 100%; text-align: start; }
+  hr { border: 0; border-top: 1px solid var(--line); margin: var(--s2) 0; }
+  main { min-width: 0; width: 100%; max-width: 1520px; padding: var(--s5); scroll-margin-top: var(--bar-height); }
+  .tools { display: grid; grid-template-columns: minmax(180px, 2fr) repeat(2, minmax(145px, 1fr)); gap: var(--s3); }
+  .training-tools { grid-template-columns: repeat(2, minmax(145px, 1fr)); }
+  .field { display: grid; gap: var(--s1); align-content: start; font-weight: 600; }
+  .field input, .field select, .field textarea { font-weight: 400; }
+  .directory { display: grid; grid-template-columns: 240px minmax(220px, 1.2fr) minmax(210px, 1fr); gap: var(--s4); align-items: start; }
+  .columns { display: grid; grid-template-columns: minmax(230px, .8fr) minmax(0, 1.5fr); gap: var(--s4); align-items: start; }
+  ul.clean { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s2); }
+  .tree ul { list-style: none; padding-left: var(--s3); margin: 0; }
+  .tree > ul { padding: 0; }
+  .tree summary { min-height: 44px; cursor: pointer; padding: var(--s2) var(--s1); overflow-wrap: anywhere; }
+  .tree button { width: 100%; overflow-wrap: anywhere; margin-bottom: var(--s1); }
+  .selectable { display: grid; gap: var(--s1); width: 100%; text-align: start; border-color: var(--line); overflow-wrap: anywhere; }
+  .selection-title { font-weight: 650; }
+  .empty { display: grid; gap: var(--s2); justify-items: start; color: var(--muted); }
+  .form-panel { max-width: 680px; }
+  .choice {
+    min-height: 44px; display: flex; align-items: center; gap: var(--s2); cursor: pointer;
+  }
+  .choice input { width: auto; }
+  .error { color: var(--danger); font-weight: 650; }
+  .player-stage {
+    display: grid; align-content: center; justify-items: start; gap: var(--s2);
+    min-height: 170px; aspect-ratio: 16 / 9; background: var(--bar); color: var(--on-bar);
+    border-radius: var(--control-radius); padding: clamp(var(--s3), 3vw, var(--s6));
+    overflow-wrap: anywhere;
+  }
+  .player-stage strong { font-size: clamp(var(--type-panel), 3vw, var(--type-page)); line-height: 1.2; }
+  .player-stage .measure { color: inherit; margin: var(--s2) 0 0; height: 20px; }
+  .player-controls { display: grid; grid-template-columns: auto minmax(60px, 1fr) auto; align-items: center; gap: var(--s3); }
+  output { font-variant-numeric: tabular-nums; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; text-align: start; }
+  td, th { text-align: left; border-bottom: 1px solid var(--line); padding: var(--s3); }
+  dialog {
+    width: min(calc(100% - 32px), 490px); max-height: calc(100dvh - 32px);
+    background: var(--surface); color: var(--text); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: var(--s5);
+  }
+  dialog::backdrop { background: #0008; }
+  dialog fieldset { padding: 0; border: 0; margin: 0; min-width: 0; }
+  .dialog-actions { justify-content: flex-end; }
+  .toast {
+    position: fixed; z-index: 4; bottom: var(--s4); right: var(--s4); max-width: min(420px, calc(100vw - 32px));
+    border: 1px solid var(--line); border-radius: var(--radius);
+    background: var(--surface); padding: var(--s3) var(--s4); box-shadow: 0 8px 28px #0002;
+  }
+  @media (max-width: 1150px) {
+    .directory { grid-template-columns: minmax(180px, .7fr) minmax(0, 1fr); }
+    .directory > :last-child { grid-column: 2; }
+  }
+  @media (max-width: 900px) {
+    :root { --sidebar: 192px; }
+    .columns, .directory { grid-template-columns: minmax(0, 1fr); }
+    .directory > :last-child { grid-column: auto; }
+    .tools { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .directory-tools .field:first-child { grid-column: 1 / -1; }
+  }
+  @media (max-width: 640px) {
+    .shell { display: block; }
+    .sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); flex-direction: column-reverse; }
+    .sidebar nav { display: flex; flex-wrap: wrap; overflow: visible; }
+    .nav-caption { display: none; }
+    .account-menu { top: calc(100% + var(--s2)); bottom: auto; }
+    main { padding: var(--s4); }
+    .player-controls { grid-template-columns: auto minmax(60px, 1fr); }
+    .player-controls output { grid-column: 2; }
+  }
+</style>
+</head>
+<body>
+<a id="skip" class="skip" href="#main" hidden>İçeriğe geç</a>
+<section id="welcome" class="welcome" aria-label="TAA açılış ve giriş">
+  <div class="panel welcome-card stack">
+    <p class="wordmark">TAA</p>
+    <div id="splash" class="stack">
+      <div class="measure splash" aria-hidden="true"></div>
+      <p>Mezura</p>
+    </div>
+    <div id="sign-in" class="stack" hidden>
+      <h1>TAA Rehber ve Eğitim</h1>
+      <button id="start" class="primary" type="button">Örnek oturumu aç</button>
+    </div>
+    <div id="loading" class="stack" role="status" hidden>
+      <div class="measure loading" aria-hidden="true"></div>
+      <p>TAA çalışma alanı hazırlanıyor…</p>
+    </div>
+  </div>
+</section>
+
+<div id="app" hidden>
+  <header class="topbar">
+    <div class="row"><span class="wordmark">TAA</span><span id="product">Rehber</span></div>
+    <small id="role-label">Örnek oturum</small>
+  </header>
+  <div class="shell">
+    <aside class="sidebar">
+      <nav aria-label="Uygulama gezinmesi">
+        <p class="nav-caption small muted">Rehber</p>
+        <a class="nav-link" href="#kisiler">Kişiler ve Görevler</a>
+        <a class="nav-link" href="#el-kitabi">El Kitabı</a>
+        <a class="nav-link" href="#ihbar">İhbar Hattı</a>
+        <p class="nav-caption small muted">Eğitim</p>
+        <a class="nav-link" href="#egitim">Eğitimler</a>
+        <a id="summary-link" class="nav-link" href="#izleme" hidden>İzleme Özeti</a>
+      </nav>
+      <div id="account" class="account">
+        <button id="account-toggle" class="account-toggle" type="button" aria-expanded="false" aria-controls="account-menu">
+          <span>Hesap</span><span aria-hidden="true">▾</span>
+        </button>
+        <div id="account-menu" class="account-menu" hidden>
+          <p><strong>Örnek Kişi 1</strong></p>
+          <hr>
+          <button id="admin-toggle" class="quiet" type="button">Yönetici girişi</button>
+          <hr>
+          <button id="theme-open" class="quiet" type="button">Ayarlar / tema</button>
+        </div>
+      </div>
+    </aside>
+
+    <main id="main" tabindex="-1">
+      <section id="kisiler" class="stack" aria-labelledby="directory-title" hidden>
+        <header class="page-head">
+          <div><h1 id="directory-title" tabindex="-1">Kişiler ve Görevler</h1><p class="muted">Kişi, görev ve birim bilgilerini bul.</p></div>
+          <div id="directory-admin" class="row" hidden>
+            <button type="button" data-form="person">+ Kişi</button>
+            <button type="button" data-form="unit">+ Birim</button>
+            <button type="button" data-form="duty">+ Görevlendirme</button>
+          </div>
+        </header>
+        <div class="tools directory-tools">
+          <label class="field">Ara <input id="person-search" type="search" placeholder="Kişi, görev veya birim"></label>
+          <label class="field">Şube <select id="branch-filter"></select></label>
+          <label class="field">Görev <select id="duty-filter"></select></label>
+        </div>
+        <div class="directory">
+          <section class="panel stack" aria-labelledby="tree-title">
+            <h2 id="tree-title">Hiyerarşi</h2>
+            <div id="tree" class="tree"></div>
+          </section>
+          <section class="panel stack" aria-labelledby="people-title">
+            <h2 id="people-title">Sonuçlar</h2>
+            <p id="people-count" class="small muted" aria-live="polite"></p>
+            <ul id="people" class="clean"></ul>
+            <div id="people-empty" class="empty" hidden>
+              <p>Eşleşen kişi yok.</p><button id="reset-people" type="button">Süzgeçleri temizle</button>
+            </div>
+          </section>
+          <section class="panel stack" aria-labelledby="person-title">
+            <h2 id="person-title">Kişi ayrıntısı</h2>
+            <div id="person-detail" class="stack"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="el-kitabi" class="stack" aria-labelledby="handbook-title" hidden>
+        <header class="page-head"><h1 id="handbook-title" tabindex="-1">El Kitabı</h1></header>
+        <div class="columns">
+          <section class="panel stack"><h2>İçindekiler</h2><ul id="chapters" class="clean"></ul></section>
+          <article id="chapter" class="panel stack" aria-live="polite"></article>
+        </div>
+      </section>
+
+      <section id="ihbar" class="stack" aria-labelledby="report-title" hidden>
+        <header class="page-head"><h1 id="report-title" tabindex="-1">İhbar Hattı</h1></header>
+        <form id="report-form" class="panel form-panel stack" autocomplete="off">
+          <label class="field">Kategori
+            <select name="category" required>
+              <option value="">Kategori seç</option>
+              <option>İş güvenliği</option><option>Etik</option><option>Diğer</option>
+            </select>
+          </label>
+          <label class="field">Açıklama
+            <textarea name="message" maxlength="2000" placeholder="Örnek bildirim metni" required></textarea>
+          </label>
+          <label class="choice"><input name="anonymous" type="checkbox" checked> Anonim gönder</label>
+          <label id="contact" class="field" hidden>İletişim (isteğe bağlı)
+            <input name="contact" type="text" maxlength="120" placeholder="ornek.adres.test" disabled>
+          </label>
+          <p class="small muted">Örnek form. Gönderim tarayıcı içinde canlandırılır.</p>
+          <div class="row"><button id="send-report" class="primary" type="submit">Gönder</button></div>
+          <p id="report-error" class="error" role="alert" hidden></p>
+          <p id="report-status" role="status"></p>
+        </form>
+      </section>
+
+      <section id="egitim" class="stack" aria-labelledby="training-title" hidden>
+        <header class="page-head">
+          <div><h1 id="training-title" tabindex="-1">TAA Eğitim</h1><p class="muted">Konuya veya görevine göre bir eğitim aç.</p></div>
+          <div class="row">
+            <button id="resume" class="primary" type="button" hidden>Kaldığın yerden devam et</button>
+            <button id="training-assignment" data-form="assignment" type="button" hidden>+ Atama</button>
+          </div>
+        </header>
+        <div class="tools training-tools">
+          <label class="field">Konu <select id="topic-filter"></select></label>
+          <label class="field">Görev <select id="video-duty-filter"></select></label>
+        </div>
+        <div class="columns">
+          <section class="panel stack">
+            <h2>Video listesi</h2><p id="video-count" class="small muted" aria-live="polite"></p>
+            <ul id="videos" class="clean"></ul>
+            <div id="videos-empty" class="empty" hidden>
+              <p>Bu süzgeçlerle eşleşen eğitim yok.</p><button id="reset-videos" type="button">Süzgeçleri temizle</button>
+            </div>
+          </section>
+          <section class="panel stack" aria-labelledby="player-title">
+            <h2 id="player-title">Oynatıcı</h2>
+            <p id="player-empty" class="muted">Oynatmak için bir eğitim seç.</p>
+            <div id="player" class="stack" hidden>
+              <div class="player-stage">
+                <span id="scene-training" class="small"></span>
+                <strong id="scene-heading"></strong><p id="scene-copy"></p>
+                <div class="measure" aria-hidden="true"></div>
+              </div>
+              <div class="player-controls">
+                <button id="play" type="button">Oynat</button>
+                <input id="seek" type="range" min="0" step="1" value="0" aria-label="Oynatma konumu">
+                <output id="time" for="seek" aria-live="off"></output>
+              </div>
+              <p id="video-progress" class="small muted"></p>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section id="izleme" class="stack" aria-labelledby="summary-title" hidden>
+        <header class="page-head">
+          <h1 id="summary-title" tabindex="-1">İzleme Özeti</h1>
+          <button data-form="assignment" class="primary" type="button">+ Atama</button>
+        </header>
+        <div id="summary-content" class="panel table-wrap"></div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<dialog id="theme-dialog" aria-labelledby="theme-title">
+  <form method="dialog" class="stack">
+    <h2 id="theme-title">Ayarlar / tema</h2>
+    <fieldset>
+      <legend>Görünüm</legend>
+      <label class="choice"><input type="radio" name="theme" value="light"> Açık</label>
+      <label class="choice"><input type="radio" name="theme" value="dark"> Koyu</label>
+      <label class="choice"><input type="radio" name="theme" value="mono"> Tek renkli</label>
+    </fieldset>
+    <div class="row dialog-actions"><button type="submit" class="primary">Kapat</button></div>
+  </form>
+</dialog>
+
+<dialog id="admin-dialog" aria-labelledby="admin-title">
+  <div class="stack">
+    <h2 id="admin-title">Yönetici girişi</h2>
+    <p class="muted">Örnek yönetici oturumu, kayıt ekleme ve eğitim yönetimi ekranlarını açar.</p>
+    <div class="row dialog-actions">
+      <form method="dialog"><button type="submit">Vazgeç</button></form>
+      <button id="admin-enter" class="primary" type="button">Yönetici olarak aç</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="edit-dialog" aria-labelledby="edit-title">
+  <form id="edit-form" class="stack" autocomplete="off">
+    <h2 id="edit-title"></h2>
+    <div id="edit-fields" class="stack"></div>
+    <p id="edit-error" class="error" role="alert" hidden></p>
+    <div class="row dialog-actions">
+      <button id="edit-cancel" type="button">Vazgeç</button><button class="primary" type="submit">Kaydet</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" class="toast" role="status" hidden></div>
+<script>
+'use strict';
+
+const byId = (id) => document.getElementById(id);
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+const pages = ['kisiler', 'el-kitabi', 'ihbar', 'egitim', 'izleme'];
+const viewer = 'p1';
+const people = [
+  { id: 'p1', name: 'Örnek Kişi 1', address: 'ornek.adres.test' },
+  { id: 'p2', name: 'Örnek Kişi 2', address: 'ornek2.adres.test' },
+  { id: 'p3', name: 'Örnek Kişi 3', address: 'ornek3.adres.test' },
+];
+const units = [
+  { id: 'hq', name: 'Genel Merkez', parent: '' },
+  { id: 'office', name: 'İdari Birim', parent: 'hq' },
+  { id: 'records', name: 'Kayıt Ekibi', parent: 'office' },
+  { id: 'branch', name: 'Şube 1', parent: '' },
+  { id: 'service', name: 'Hizmet Birimi', parent: 'branch' },
+];
+const duties = [
+  { person: 'p1', unit: 'records', name: 'Kayıt Sorumlusu' },
+  { person: 'p2', unit: 'service', name: 'Şube Sorumlusu' },
+  { person: 'p3', unit: 'office', name: 'Eğitim Sorumlusu' },
+  { person: 'p3', unit: 'service', name: 'Eğitim Sorumlusu' },
+];
+const chapters = [
+  { title: 'Başlangıç', text: 'Rehber, el kitabı ve eğitimlere çalışma alanından ulaşabilirsin.', items: ['Güncel görevini Kişiler ve Görevler bölümünde bul.', 'Sana atanan içerikleri Eğitimler bölümünde aç.'] },
+  { title: 'İş akışları', text: 'Birim içindeki görev dağılımını ve süreçleri düzenli olarak gözden geçir.', items: ['İlgili kişiyi hiyerarşi görünümünden bul.', 'Bir görev değişikliği için yöneticine başvur.'] },
+  { title: 'Bilgi güvenliği', text: 'Kayıtları paylaşırken erişim kurallarını takip et.', items: ['Kasa eğitiminin giriş bölümünü tamamla.', 'Bir sorun için uygun bildirim kategorisini seç.'] },
+];
+const videos = [
+  { id: 'kasa', title: 'Kasa eğitimi', topic: 'Kayıt yönetimi', duty: 'Kayıt Sorumlusu', duration: 40, scenes: [
+    [0, 'Kasayı tanı', 'Örnek kayıt alanı, ortak notların düzenli tutulduğu yerdir.'],
+    [13, 'Kaynağı belirt', 'Bir not hazırlarken kaynağını ve kapsamını yaz.'],
+    [26, 'İncelemeye ilet', 'Örnek notu inceleme için belirlenen kanala ilet.'],
+  ] },
+  { id: 'rehber', title: 'Rehber kullanımı', topic: 'Uygulama kullanımı', duty: 'Şube Sorumlusu', duration: 30, scenes: [
+    [0, 'Şubeni seç', 'İlgili şubeyi süzgeçten veya hiyerarşiden seç.'],
+    [15, 'Kişi ayrıntısını aç', 'Görevi ve örnek iş adresini kişi kartında bul.'],
+  ] },
+  { id: 'kitap', title: 'El kitabında gezinme', topic: 'Uygulama kullanımı', duty: 'Eğitim Sorumlusu', duration: 24, scenes: [
+    [0, 'İçindekileri aç', 'Sol bölümden okumak istediğin başlığı seç.'],
+    [12, 'İlgili maddeyi bul', 'Bölüm maddelerini sağ panelde oku.'],
+  ] },
+];
+const assignments = [
+  { person: 'p1', video: 'kasa' },
+  { person: 'p2', video: 'kasa' },
+];
+
+function readLocal(key, fallback) {
+  try { return JSON.parse(localStorage.getItem('taa-iskelet-' + key)) ?? fallback; }
+  catch { return fallback; }
+}
+
+function saveLocal(key, value) {
+  try { localStorage.setItem('taa-iskelet-' + key, JSON.stringify(value)); }
+  catch { /* Tarayıcı depolamayı kısıtlarsa açık sekmedeki durum kullanılır. */ }
+}
+
+const savedProgress = readLocal('progress', null);
+const progress = {};
+for (const video of videos) {
+  const record = savedProgress?.[video.id];
+  if (record && Number.isInteger(record.position) && Array.isArray(record.watched)) {
+    progress[video.id] = {
+      position: Math.min(video.duration, Math.max(0, record.position)),
+      watched: record.watched.slice(0, video.duration).map((second) => second === true),
+      updated: Number.isFinite(record.updated) ? record.updated : 0,
+    };
+  }
+}
+if (!savedProgress) {
+  progress.kasa = { position: 12, watched: Array(12).fill(true), updated: 1 };
+}
+
+let admin = false;
+let page = '';
+let selectedUnit = '';
+let selectedPerson = 'p1';
+let selectedChapter = 0;
+let selectedVideo = null;
+let timer = null;
+let returnFocus = null;
+let editKind = '';
+let toastTimer = null;
+const openUnits = new Set(['hq', 'office']);
+const collator = new Intl.Collator('tr');
+
+function element(tag, value, className) {
+  const node = document.createElement(tag);
+  if (value !== undefined) node.textContent = value;
+  if (className) node.className = className;
+  return node;
+}
+
+function button(text, handler, className) {
+  const control = element('button', text, className);
+  control.type = 'button';
+  control.addEventListener('click', handler);
+  return control;
+}
+
+function setTheme(value) {
+  const theme = ['light', 'dark', 'mono'].includes(value) ? value : 'light';
+  document.documentElement.dataset.theme = theme;
+  byId('theme-dialog').querySelector('input[value="' + theme + '"]').checked = true;
+  return theme;
+}
+
+function flash(message) {
+  const toast = byId('toast');
+  clearTimeout(toastTimer);
+  toast.hidden = false;
+  toast.textContent = message;
+  toastTimer = setTimeout(() => { toast.hidden = true; }, 4200);
+}
+
+function setAccount(open) {
+  byId('account-menu').hidden = !open;
+  byId('account-toggle').setAttribute('aria-expanded', String(open));
+}
+
+function showDialog(id, trigger) {
+  returnFocus = trigger;
+  byId(id).showModal();
+}
+
+for (const id of ['theme-dialog', 'admin-dialog', 'edit-dialog']) {
+  byId(id).addEventListener('close', () => {
+    const target = returnFocus;
+    returnFocus = null;
+    target?.focus();
+  });
+}
+byId('account-toggle').addEventListener('click', () => setAccount(byId('account-menu').hidden));
+byId('account').addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !byId('account-menu').hidden) {
+    setAccount(false);
+    byId('account-toggle').focus();
+  }
+});
+byId('account').addEventListener('focusout', (event) => {
+  if (!byId('account').contains(event.relatedTarget)) setAccount(false);
+});
+document.addEventListener('click', (event) => {
+  if (!byId('account').contains(event.target)) setAccount(false);
+});
+
+byId('theme-open').addEventListener('click', () => {
+  setAccount(false);
+  showDialog('theme-dialog', byId('account-toggle'));
+});
+byId('theme-dialog').addEventListener('change', (event) => {
+  saveLocal('theme', setTheme(event.target.value));
+});
+byId('admin-toggle').addEventListener('click', () => {
+  setAccount(false);
+  byId('account-toggle').focus();
+  if (admin) {
+    setAdmin(false);
+    flash('Yönetici oturumu kapatıldı.');
+  } else {
+    showDialog('admin-dialog', byId('account-toggle'));
+  }
+});
+byId('admin-enter').addEventListener('click', () => {
+  setAdmin(true);
+  byId('admin-dialog').close();
+  flash('Örnek yönetici oturumu açıldı.');
+});
+
+function setAdmin(value) {
+  admin = value;
+  byId('directory-admin').hidden = !admin;
+  byId('training-assignment').hidden = !admin;
+  byId('summary-link').hidden = !admin;
+  byId('admin-toggle').textContent = admin ? 'Yönetici çıkışı' : 'Yönetici girişi';
+  byId('role-label').textContent = admin ? 'Örnek yönetici oturumu' : 'Örnek oturum';
+  if (!admin) {
+    byId('summary-content').replaceChildren();
+    if (page === 'izleme') location.hash = 'egitim';
+  }
+}
+
+function navigate() {
+  if (byId('app').hidden) return;
+  const hash = location.hash.slice(1);
+  if (hash === 'main') return;
+  let next = pages.includes(hash) ? hash : 'kisiler';
+  if (next === 'izleme' && !admin) next = 'egitim';
+  if (next === page) return;
+
+  if (page === 'egitim') pausePlayback();
+  page = next;
+  for (const id of pages) byId(id).hidden = id !== page;
+  for (const link of document.querySelectorAll('.nav-link')) {
+    if (link.hash === '#' + page) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
+  }
+  byId('product').textContent = ['egitim', 'izleme'].includes(page) ? 'Eğitim' : 'Rehber';
+  if (page === 'egitim') renderTraining();
+  if (page === 'izleme') renderSummary();
+  byId(page).querySelector('h1').focus({ preventScroll: true });
+  window.scrollTo(0, 0);
+}
+
+window.addEventListener('hashchange', navigate);
+byId('skip').addEventListener('click', (event) => {
+  event.preventDefault();
+  byId('main').focus();
+});
+for (const link of document.querySelectorAll('.nav-link')) {
+  link.addEventListener('click', () => {
+    if (link.hash === location.hash && link.hash === '#' + page) {
+      byId(page).querySelector('h1').focus();
+    }
+  });
+}
+
+function fillOptions(select, placeholder, options, value = select.value) {
+  select.replaceChildren(new Option(placeholder, ''));
+  for (const [id, label] of options) select.add(new Option(label, id));
+  select.value = Array.from(select.options).some((option) => option.value === value) ? value : '';
+}
+
+function sortedLabels(items) {
+  return Array.from(new Set(items)).sort(collator.compare).map((name) => [name, name]);
+}
+
+function unitById(id) {
+  return units.find((unit) => unit.id === id);
+}
+
+function unitPath(id) {
+  const path = [];
+  let unit = unitById(id);
+  while (unit) {
+    path.unshift(unit);
+    unit = unitById(unit.parent);
+  }
+  return path;
+}
+
+function renderDirectoryOptions() {
+  const roots = units.filter((unit) => !unit.parent).map((unit) => [unit.id, unit.name]);
+  fillOptions(byId('branch-filter'), 'Tüm şubeler', roots);
+  fillOptions(byId('duty-filter'), 'Tüm görevler', sortedLabels(duties.map((duty) => duty.name)));
+}
+
+function chooseUnit(id) {
+  selectedUnit = id;
+  for (const control of byId('tree').querySelectorAll('button')) {
+    control.setAttribute('aria-current', String(control.dataset.unit === id));
+  }
+  renderPeople();
+}
+
+function renderTree(parent = '') {
+  const list = element('ul');
+  if (!parent) {
+    const item = element('li');
+    const all = button('Tüm birimler', () => chooseUnit(''), 'selectable');
+    all.dataset.unit = '';
+    all.setAttribute('aria-current', String(!selectedUnit));
+    item.append(all);
+    list.append(item);
+  }
+  for (const unit of units.filter((entry) => entry.parent === parent)) {
+    const item = element('li');
+    const hasChildren = units.some((entry) => entry.parent === unit.id);
+    const label = hasChildren ? unit.name + ' birimini göster' : unit.name;
+    const select = button(label, () => chooseUnit(unit.id), 'selectable');
+    select.dataset.unit = unit.id;
+    select.setAttribute('aria-current', String(selectedUnit === unit.id));
+    if (hasChildren) {
+      const details = element('details');
+      details.open = openUnits.has(unit.id);
+      details.addEventListener('toggle', () => {
+        if (details.open) openUnits.add(unit.id);
+        else openUnits.delete(unit.id);
+      });
+      details.append(element('summary', unit.name), select, renderTree(unit.id));
+      item.append(details);
+    } else {
+      item.append(select);
+    }
+    list.append(item);
+  }
+  return list;
+}
+
+function lower(text) {
+  return text.trim().toLocaleLowerCase('tr');
+}
+
+function personDuties(id) {
+  return duties.filter((duty) => duty.person === id);
+}
+
+function directoryMatches(person) {
+  const term = lower(byId('person-search').value);
+  const branch = byId('branch-filter').value;
+  const role = byId('duty-filter').value;
+  const matchesName = lower(person.name).includes(term);
+  const entries = personDuties(person.id);
+  if (!entries.length) return matchesName && !branch && !role && !selectedUnit;
+
+  return entries.some((duty) => {
+    const path = unitPath(duty.unit);
+    return (!branch || path[0]?.id === branch)
+      && (!role || duty.name === role)
+      && (!selectedUnit || path.some((unit) => unit.id === selectedUnit))
+      && (matchesName || lower(duty.name).includes(term) || path.some((unit) => lower(unit.name).includes(term)));
+  });
+}
+
+function renderPeople() {
+  const visiblePeople = people.filter(directoryMatches).sort((a, b) => collator.compare(a.name, b.name));
+  if (!visiblePeople.some((person) => person.id === selectedPerson)) {
+    selectedPerson = visiblePeople[0]?.id ?? '';
+  }
+
+  const list = byId('people');
+  const focused = list.contains(document.activeElement) ? document.activeElement.dataset.person : '';
+  list.replaceChildren();
+  for (const person of visiblePeople) {
+    const item = element('li');
+    const control = button(person.name, () => choosePerson(person.id), 'selectable selection-title');
+    control.dataset.person = person.id;
+    control.setAttribute('aria-current', String(selectedPerson === person.id));
+    const roles = new Set(personDuties(person.id).map((duty) => duty.name));
+    control.append(element('small', Array.from(roles).join(' · ') || 'Görevlendirme bekliyor'));
+    item.append(control);
+    list.append(item);
+    if (focused && focused === person.id) control.focus();
+  }
+  list.hidden = !visiblePeople.length;
+  byId('people-empty').hidden = Boolean(visiblePeople.length);
+  byId('people-count').textContent = visiblePeople.length + ' kişi';
+  renderPerson();
+}
+
+function choosePerson(id) {
+  selectedPerson = id;
+  for (const control of byId('people').querySelectorAll('button')) {
+    control.setAttribute('aria-current', String(control.dataset.person === id));
+  }
+  renderPerson();
+}
+
+async function copyAddress(field) {
+  try {
+    await navigator.clipboard.writeText(field.value);
+    flash('Adres panoya kopyalandı.');
+  } catch {
+    field.focus();
+    field.select();
+    let copied = false;
+    try { copied = document.execCommand('copy'); } catch { /* Alan seçili kalır. */ }
+    flash(copied ? 'Adres panoya kopyalandı.' : 'Adres seçildi. Ctrl+C veya ⌘C ile kopyala.');
+  }
+}
+
+function renderPerson() {
+  const target = byId('person-detail');
+  const person = people.find((entry) => entry.id === selectedPerson);
+  target.replaceChildren();
+  if (!person) {
+    target.append(element('p', 'Burada seçili kişi görünür.', 'muted'));
+    return;
+  }
+
+  const entries = personDuties(person.id);
+  const assignmentsList = element('ul', undefined, 'clean');
+  for (const duty of entries) {
+    const item = element('li');
+    item.append(element('strong', duty.name), element('p', unitPath(duty.unit).map((unit) => unit.name).join(' › '), 'muted small'));
+    assignmentsList.append(item);
+  }
+
+  const label = element('label', 'Örnek adres', 'field');
+  const address = element('input');
+  address.value = person.address;
+  address.readOnly = true;
+  label.append(address);
+  target.append(
+    element('h3', person.name),
+    entries.length ? assignmentsList : element('p', 'Henüz bir görevlendirmesi yok.', 'muted'),
+    label,
+    button('Adresi kopyala', () => copyAddress(address), 'primary'),
+  );
+}
+
+function resetPeople() {
+  byId('person-search').value = '';
+  byId('branch-filter').value = '';
+  byId('duty-filter').value = '';
+  chooseUnit('');
+}
+byId('person-search').addEventListener('input', renderPeople);
+byId('branch-filter').addEventListener('change', renderPeople);
+byId('duty-filter').addEventListener('change', renderPeople);
+byId('reset-people').addEventListener('click', () => {
+  resetPeople();
+  byId('person-search').focus();
+});
+
+function renderHandbook() {
+  const list = byId('chapters');
+  chapters.forEach((chapter, index) => {
+    const item = element('li');
+    const control = button(chapter.title, () => {
+      selectedChapter = index;
+      showChapter();
+    }, 'selectable');
+    item.append(control);
+    list.append(item);
+  });
+  showChapter();
+}
+
+function showChapter() {
+  const chapter = chapters[selectedChapter];
+  byId('chapters').querySelectorAll('button').forEach((control, index) => {
+    control.setAttribute('aria-current', String(index === selectedChapter));
+  });
+  const list = element('ul');
+  for (const item of chapter.items) list.append(element('li', item));
+  byId('chapter').replaceChildren(element('h2', chapter.title), element('p', chapter.text), list);
+}
+
+const report = byId('report-form');
+const reportFields = report.elements;
+const anonymous = reportFields.namedItem('anonymous');
+const contact = reportFields.namedItem('contact');
+const message = reportFields.namedItem('message');
+
+function updateContact() {
+  byId('contact').hidden = anonymous.checked;
+  contact.disabled = anonymous.checked;
+  if (anonymous.checked) contact.value = '';
+}
+
+function clearReportError() {
+  message.setCustomValidity('');
+  byId('report-error').hidden = true;
+  message.removeAttribute('aria-invalid');
+  message.removeAttribute('aria-describedby');
+}
+
+anonymous.addEventListener('change', updateContact);
+report.addEventListener('input', () => {
+  clearReportError();
+  byId('report-status').textContent = '';
+});
+report.addEventListener('submit', (event) => {
+  event.preventDefault();
+  if (!message.value.trim()) {
+    const error = byId('report-error');
+    error.textContent = 'Açıklamaya bir metin yaz.';
+    error.hidden = false;
+    message.setCustomValidity(error.textContent);
+    message.setAttribute('aria-invalid', 'true');
+    message.setAttribute('aria-describedby', 'report-error');
+    message.focus();
+    return;
+  }
+  const submit = byId('send-report');
+  if (submit.disabled) return;
+  submit.disabled = true;
+  submit.textContent = 'Gönderiliyor…';
+  byId('report-status').textContent = 'Örnek bildirim işleniyor.';
+  setTimeout(() => {
+    report.reset();
+    updateContact();
+    clearReportError();
+    submit.disabled = false;
+    submit.textContent = 'Gönder';
+    byId('report-status').textContent = 'Örnek bildirim alındı.';
+  }, reducedMotion.matches ? 0 : 380);
+});
+
+function videoById(id) {
+  return videos.find((video) => video.id === id);
+}
+
+function watchedPercent(video) {
+  const total = progress[video.id]?.watched.filter(Boolean).length ?? 0;
+  return Math.floor(100 * total / video.duration);
+}
+
+function progressLabel(video) {
+  const percent = watchedPercent(video);
+  if (percent === 100) return 'Tamamlandı';
+  return percent > 0 ? '%' + percent + ' izlendi' : 'Başlamadı';
+}
+
+function formatTime(seconds) {
+  return Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0');
+}
+
+function updateTrainingButtons() {
+  for (const control of byId('videos').querySelectorAll('button')) {
+    control.setAttribute('aria-current', String(control.dataset.video === selectedVideo));
+    control.querySelector('[data-progress]').textContent = progressLabel(videoById(control.dataset.video));
+  }
+  const candidate = videos
+    .filter((video) => {
+      const position = progress[video.id]?.position ?? 0;
+      return position > 0 && position < video.duration && watchedPercent(video) < 100;
+    })
+    .sort((a, b) => progress[b.id].updated - progress[a.id].updated)[0];
+  const resume = byId('resume');
+  resume.hidden = !candidate;
+  resume.dataset.video = candidate?.id ?? '';
+  if (candidate) resume.title = candidate.title + ' · ' + formatTime(progress[candidate.id].position);
+}
+
+function renderTraining() {
+  const topic = byId('topic-filter').value;
+  const role = byId('video-duty-filter').value;
+  const visible = videos.filter((video) => (!topic || video.topic === topic) && (!role || video.duty === role));
+  const list = byId('videos');
+  list.replaceChildren();
+
+  for (const video of visible) {
+    const item = element('li');
+    const control = button(video.title, () => chooseVideo(video.id), 'selectable selection-title');
+    control.dataset.video = video.id;
+    const progressText = element('small');
+    progressText.dataset.progress = '';
+    control.append(element('small', video.topic + ' · ' + formatTime(video.duration)), progressText);
+    if (assignments.some((assignment) => assignment.person === viewer && assignment.video === video.id)) {
+      control.append(element('span', 'Atandı', 'badge'));
+    }
+    item.append(control);
+    list.append(item);
+  }
+  list.hidden = !visible.length;
+  byId('videos-empty').hidden = Boolean(visible.length);
+  byId('video-count').textContent = visible.length + ' eğitim';
+  updateTrainingButtons();
+  renderPlayer();
+}
+
+function resetVideoFilters() {
+  byId('topic-filter').value = '';
+  byId('video-duty-filter').value = '';
+}
+
+byId('topic-filter').addEventListener('change', renderTraining);
+byId('video-duty-filter').addEventListener('change', renderTraining);
+byId('reset-videos').addEventListener('click', () => {
+  resetVideoFilters();
+  renderTraining();
+  byId('topic-filter').focus();
+});
+byId('resume').addEventListener('click', () => {
+  const id = byId('resume').dataset.video;
+  resetVideoFilters();
+  renderTraining();
+  chooseVideo(id);
+  startPlayback();
+  byId('play').focus();
+});
+
+function chooseVideo(id) {
+  if (selectedVideo !== id) pausePlayback();
+  selectedVideo = id;
+  updateTrainingButtons();
+  renderPlayer();
+}
+
+function renderPlayer() {
+  const video = videoById(selectedVideo);
+  byId('player').hidden = !video;
+  byId('player-empty').hidden = Boolean(video);
+  if (!video) return;
+  const position = progress[video.id]?.position ?? 0;
+  const scene = video.scenes.findLast(([start]) => start <= position);
+  byId('scene-training').textContent = video.title + ' · Örnek slayt';
+  byId('scene-heading').textContent = scene[1];
+  byId('scene-copy').textContent = scene[2];
+  byId('play').textContent = timer === null ? 'Oynat' : 'Duraklat';
+  byId('seek').max = video.duration;
+  byId('seek').value = position;
+  const time = formatTime(position) + ' / ' + formatTime(video.duration);
+  byId('time').textContent = time;
+  byId('seek').setAttribute('aria-valuetext', position + ' / ' + video.duration + ' saniye');
+  byId('video-progress').textContent = progressLabel(video);
+}
+
+function recordFor(id) {
+  progress[id] ??= { position: 0, watched: [], updated: 0 };
+  return progress[id];
+}
+
+function updatePlayback(record, position) {
+  record.position = position;
+  record.updated = Date.now();
+  saveLocal('progress', progress);
+  updateTrainingButtons();
+  renderPlayer();
+}
+
+function pausePlayback() {
+  if (timer === null) return;
+  clearInterval(timer);
+  timer = null;
+  renderPlayer();
+}
+
+function startPlayback() {
+  const video = videoById(selectedVideo);
+  if (!video || timer !== null) return;
+  const record = recordFor(video.id);
+  if (record.position === video.duration) updatePlayback(record, 0);
+  timer = setInterval(() => {
+    const previous = record.position;
+    if (previous < video.duration) {
+      record.watched[previous] = true;
+      updatePlayback(record, previous + 1);
+    }
+    if (record.position === video.duration) pausePlayback();
+  }, 1000);
+  renderPlayer();
+}
+
+byId('play').addEventListener('click', () => {
+  if (timer === null) startPlayback();
+  else pausePlayback();
+});
+byId('seek').addEventListener('input', (event) => {
+  const video = videoById(selectedVideo);
+  if (!video) return;
+  const position = Number(event.target.value);
+  updatePlayback(recordFor(video.id), position);
+  if (position === video.duration) pausePlayback();
+});
+
+function renderSummary() {
+  const panel = byId('summary-content');
+  panel.replaceChildren();
+  if (!admin) return;
+  const records = assignments.slice();
+  for (const video of videos) {
+    const assigned = records.some((row) => row.person === viewer && row.video === video.id);
+    if (watchedPercent(video) > 0 && !assigned) records.push({ person: viewer, video: video.id });
+  }
+  if (!records.length) {
+    panel.append(element('p', 'Henüz izleme veya atama kaydı yok.', 'muted'));
+    return;
+  }
+
+  const table = element('table');
+  const head = table.createTHead().insertRow();
+  for (const label of ['Kişi', 'Eğitim', 'İlerleme']) {
+    const column = element('th', label);
+    column.scope = 'col';
+    head.append(column);
+  }
+  const body = table.createTBody();
+  for (const record of records) {
+    const person = people.find((entry) => entry.id === record.person);
+    const video = videoById(record.video);
+    const row = body.insertRow();
+    row.insertCell().textContent = person.name;
+    row.insertCell().textContent = video.title;
+    row.insertCell().textContent = record.person === viewer ? progressLabel(video) : 'Başlamadı';
+  }
+  panel.append(table);
+}
+
+const editForms = {
+  person: { title: 'Kişi ekle', fields: [
+    { name: 'name', label: 'Örnek kişi adı', placeholder: 'Örnek Kişi 4' },
+    { name: 'address', label: 'Örnek adres (.test)', placeholder: 'ornek4.adres.test', pattern: '[a-zA-Z0-9.]+[.]test' },
+  ] },
+  unit: { title: 'Birim ekle', fields: [
+    { name: 'name', label: 'Örnek birim adı', placeholder: 'Örnek Birim' },
+    { name: 'parent', label: 'Bağlı birim', list: () => units.map((unit) => [unit.id, unitPath(unit.id).map((entry) => entry.name).join(' › ')]) },
+  ] },
+  duty: { title: 'Görevlendirme ekle', fields: [
+    { name: 'person', label: 'Kişi', list: () => people.map((person) => [person.id, person.name]) },
+    { name: 'unit', label: 'Birim', list: () => units.map((unit) => [unit.id, unitPath(unit.id).map((entry) => entry.name).join(' › ')]) },
+    { name: 'name', label: 'Örnek görev adı', placeholder: 'Örnek Görev' },
+  ] },
+  assignment: { title: 'Eğitim ata', fields: [
+    { name: 'video', label: 'Eğitim', list: () => videos.map((video) => [video.id, video.title]) },
+    { name: 'person', label: 'Kişi', list: () => people.map((person) => [person.id, person.name]) },
+  ] },
+};
+
+function openEdit(kind, trigger) {
+  if (!admin) return;
+  const config = editForms[kind];
+  const target = byId('edit-fields');
+  editKind = kind;
+  target.replaceChildren();
+  byId('edit-error').hidden = true;
+  byId('edit-title').textContent = config.title;
+  for (const field of config.fields) {
+    const label = element('label', field.label, 'field');
+    const control = element(field.list ? 'select' : 'input');
+    if (field.list) {
+      fillOptions(control, 'Seç', field.list());
+    } else {
+      control.maxLength = 100;
+      control.placeholder = field.placeholder;
+      if (field.pattern) control.pattern = field.pattern;
+    }
+    control.name = field.name;
+    control.required = true;
+    label.append(control);
+    target.append(label);
+  }
+  showDialog('edit-dialog', trigger);
+}
+
+function savePerson(fields) {
+  if (people.some((person) => lower(person.address) === lower(fields.address))) {
+    return 'Bu örnek adrese ait bir kişi var.';
+  }
+  const id = 'p' + (people.length + 1);
+  people.push({ id, name: fields.name, address: fields.address });
+  selectedPerson = id;
+  resetPeople();
+  return '';
+}
+
+function saveUnit(fields) {
+  if (units.some((unit) => unit.parent === fields.parent && lower(unit.name) === lower(fields.name))) {
+    return 'Bu üst birimde aynı adlı bir birim var.';
+  }
+  const id = 'u' + (units.length + 1);
+  units.push({ id, name: fields.name, parent: fields.parent });
+  for (const unit of unitPath(id)) openUnits.add(unit.id);
+  byId('tree').replaceChildren(renderTree());
+  return '';
+}
+
+function saveDuty(fields) {
+  if (duties.some((duty) => duty.person === fields.person && duty.unit === fields.unit && lower(duty.name) === lower(fields.name))) {
+    return 'Bu görevlendirme zaten var.';
+  }
+  duties.push({ person: fields.person, unit: fields.unit, name: fields.name });
+  renderDirectoryOptions();
+  selectedPerson = fields.person;
+  resetPeople();
+  return '';
+}
+
+function saveAssignment(fields) {
+  if (assignments.some((assignment) => assignment.person === fields.person && assignment.video === fields.video)) {
+    return 'Bu eğitim bu kişiye zaten atanmış.';
+  }
+  assignments.push({ person: fields.person, video: fields.video });
+  if (page === 'izleme') renderSummary();
+  return '';
+}
+
+const saveActions = { person: savePerson, unit: saveUnit, duty: saveDuty, assignment: saveAssignment };
+
+for (const trigger of document.querySelectorAll('[data-form]')) {
+  trigger.addEventListener('click', () => openEdit(trigger.dataset.form, trigger));
+}
+byId('edit-cancel').addEventListener('click', () => byId('edit-dialog').close());
+byId('edit-form').addEventListener('input', () => { byId('edit-error').hidden = true; });
+byId('edit-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  if (!admin) return;
+  const fields = Object.fromEntries(Array.from(new FormData(event.currentTarget), ([key, value]) => [key, value.trim()]));
+  const error = Object.values(fields).every(Boolean) ? saveActions[editKind](fields) : 'Zorunlu alanları doldur.';
+  if (error) {
+    byId('edit-error').hidden = false;
+    byId('edit-error').textContent = error;
+    return;
+  }
+  const returnTo = returnFocus;
+  byId('edit-dialog').close();
+  if (editKind === 'assignment' && page === 'egitim') renderTraining();
+  returnTo?.focus();
+  flash(editKind === 'assignment' ? 'Örnek eğitim atandı.' : 'Örnek kayıt eklendi.');
+});
+
+function showSignIn() {
+  byId('splash').hidden = true;
+  byId('sign-in').hidden = false;
+  byId('start').focus();
+}
+
+function showApp() {
+  renderDirectoryOptions();
+  byId('tree').replaceChildren(renderTree());
+  renderPeople();
+  renderHandbook();
+  fillOptions(byId('topic-filter'), 'Tüm konular', sortedLabels(videos.map((video) => video.topic)));
+  fillOptions(byId('video-duty-filter'), 'Tüm görevler', sortedLabels(videos.map((video) => video.duty)));
+  byId('welcome').hidden = true;
+  byId('app').hidden = false;
+  byId('skip').hidden = false;
+  navigate();
+}
+
+setTheme(readLocal('theme', 'light'));
+if (reducedMotion.matches) showSignIn();
+else setTimeout(showSignIn, 750);
+
+byId('start').addEventListener('click', () => {
+  byId('sign-in').hidden = true;
+  byId('loading').hidden = false;
+  if (reducedMotion.matches) showApp();
+  else setTimeout(showApp, 470);
+});
+</script>
+</body>
+</html>

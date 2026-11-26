@@ -1,0 +1,12 @@
+# taa-ihbar modül tanımı. Sahip: Yusuf. yazan: [Claude#ihbar 2026-11-26]
+ad = "taa-ihbar"
+surum = "0.1.0"
+arayuz = "1"
+gerektirir = { "taa-ayar" = "1", "taa-dosya" = "1" }
+ozellikler = ["ihbar"]
+program = "ortak"
+sunar = []
+ister = []
+veri_sahibi = ["ihbar-defteri", "ihbar-ayar"]
+veri_okur = []
+ayar_alani = "programlar.ortak"

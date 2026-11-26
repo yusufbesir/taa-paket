@@ -20,6 +20,7 @@ path = "src/main.rs"
 taa-hata = { path = "../taa-hata" }
 taa-dosya = { path = "../taa-dosya" }
 taa-imza = { path = "../taa-imza" }
+taa-ipc = { path = "../taa-ipc" }
 serde_json = "1"
 sha2 = "0.10"
 zip = { version = "9.3.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }

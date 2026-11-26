@@ -4,7 +4,7 @@
 | Grup | Programlar | Nasıl kurulur |
 |---|---|---|
 | **Çatı** (programları kuran ve bağlayan ekipman) | TAA Kur, TAA Sunucu, TAA VPN, taa-yayin | Her biri ayrı ve bir kez kurulur (aşağıda) |
-| **İş yapan programlar** (bağımsız çalışır) | TAA Etiket, Tutaa, TaaRkod, TAA Eğitim, TaaDön, TAA Video Yapıcı ve diğerleri | TAA Kur'un program listesinden, tek tıkla/numara ile |
+| **İş yapan programlar** (bağımsız çalışır) | TAA Etiket, Tutaa, TaaRkod, TAA Rehber (Eğitim dahil), TaaDön, TAA Video Yapıcı ve diğerleri | TAA Kur'un program listesinden, tek tıkla/numara ile |
 | **Harici bağımlılık** | Tailscale (ve ileride gerekenler) | Program paketiyle birlikte sormadan kurulur, bkz. `HARICI-BAGIMLILIK.md` |
 
 ## Şube PC'sinde kurulum (hedef akış)

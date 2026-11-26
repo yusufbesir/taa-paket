@@ -1,0 +1,19 @@
+# Sahip: Yusuf. yazan: [Claude#dg2a-islem-gucu 2026-11-26]
+# taa-zincir: DG2a ortak crate. Özet zinciri, Merkle kökü, mühür. Yeni bağımlılık yok (sha2, serde_json, taa-imza zaten kullanılıyor).
+[package]
+name = "taa-zincir"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "TAA yalnız-ekleme özet zinciri, Merkle kökü ve ed25519 mühür (İşlem Gücü defteri, DG2a)"
+
+[lib]
+name = "taa_zincir"
+path = "src/lib.rs"
+
+[dependencies]
+taa-imza = { path = "../taa-imza" }
+sha2 = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

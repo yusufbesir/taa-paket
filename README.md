@@ -40,6 +40,12 @@ TAA Paketi çekirdek deposu: TaaDön ve diğer TAA programlarının paylaştığ
 | taa-veri | var | Veri alanları (T2): tek yazar sahipliği, SAHIP.toml, salt okunur okuyucu, öneri kutusu; silmez (`eski\`); bkz. `docs/veri-alani.md` |
 | taa-guncelle | var | Güncelleme (T3): `yayin.json` kontrolü, geri alma koruması, SHA256 + ed25519 doğrulama, `kur --sec`, hatada önceki sürüme dönme; yerel klasör kaynağı (HTTP T4) |
 | taa-imza | var | ed25519 imza (T3): anahtar üret/imzala/doğrula, `ed25519:<hex>` genel anahtar dosyası; özel anahtar yalnız verilen dosyadan okunur, depoya yazılmaz |
+| taa-zincir | var | Yalnız-ekleme özet zinciri, RFC 6962 Merkle kökü, ed25519 mühür (İşlem Gücü defteri, DG2a); kalıcılık çağıranın işidir |
+| taa-olcum | var | İşlem Gücü ölçüm aracı (DG1a): envanter, pay basamaklarında ölçüm, kilitli eşik yöntemi; Windows'ta denenmedi |
+| taa-rehber-model | var | Rehber alan modeli (kişi, birim, görevlendirme, rol), bellek deposu, şube süzgeci |
+| taa-ihbar | var | İhbar hattı çekirdeği (varsayılan anonim, JSONL defter, Telegram/e-posta biçimleyici; ağ yok) |
+| taa-egitim (TAA Rehber'in Eğitim çekirdeği) | var | TAA Eğitim çekirdeği (EG0): ders kataloğu, atama, izleme günlüğü, Range hesaplayıcı |
+| taa-rehber-panel | var | TAA Rehber yerel paneli (Kişiler ve Görevler, El Kitabı, İhbar Hattı, Eğitim bölümü, yönetici formları); yönetici uçları varsayılan reddet; yazma hizmeti bağlı değil, kayıtlar bellekte |
 | taa-log | planlı | Günlükleme |
 
 ## Mobil

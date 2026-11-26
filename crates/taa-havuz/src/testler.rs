@@ -301,7 +301,7 @@ fn cevrimdisi_okuma_ve_ag_hatasinda_onbellek_bozulmaz() {
     let s = tablo_sahte(5);
     let icerik = rastgele(3000);
     let sha = s.dosya_oge(2, 11, "egitim-1", &icerik);
-    let mut h = Havuz::ac(&kok, "taaegitim").unwrap();
+    let mut h = Havuz::ac(&kok, "taarehber").unwrap();
     h.esitle(&s).unwrap();
     h.indir(&s, 2).unwrap();
     s.kopuk.set(true);
@@ -314,7 +314,7 @@ fn cevrimdisi_okuma_ve_ag_hatasinda_onbellek_bozulmaz() {
     assert!(yol.ends_with(&sha));
     assert_eq!(h.imlecler(), (11, 2));
     // yeniden açılınca da aynı
-    let h2 = Havuz::ac(&kok, "taaegitim").unwrap();
+    let h2 = Havuz::ac(&kok, "taarehber").unwrap();
     assert_eq!(h2.ogeler(None).len(), 2);
     assert!(h2.dosya_yolu(2).is_some());
     // indirilmiş dosya için ağsız `indir` yolu döndürür
@@ -327,7 +327,7 @@ fn dosya_parca_parca_iner_ve_kesintide_surer() {
     let s = Sahte::default();
     let icerik = rastgele(2 * PARCA as usize + 300);
     s.dosya_oge(5, 7, "video", &icerik);
-    let mut h = Havuz::ac(&kok, "taaegitim").unwrap();
+    let mut h = Havuz::ac(&kok, "taarehber").unwrap();
     h.esitle(&s).unwrap();
     assert!(h.dosya_yolu(5).is_none(), "dosyalar isteğe bağlı iner");
     // ilk parçadan sonra ağ kopar
@@ -360,7 +360,7 @@ fn bozuk_icerik_reddedilir_ve_sifirlanir() {
     let s = Sahte::default();
     let icerik = rastgele(1500);
     let sha = s.dosya_oge(5, 7, "video", &icerik);
-    let mut h = Havuz::ac(&kok, "taaegitim").unwrap();
+    let mut h = Havuz::ac(&kok, "taarehber").unwrap();
     h.esitle(&s).unwrap();
     s.bozuk_icerik.set(true);
     match h.indir(&s, 5) {
@@ -388,7 +388,7 @@ fn arsivlenen_dosya_dizinden_duser_ama_dosya_kalir_yetim_sayilir() {
     let s = Sahte::default();
     let icerik = rastgele(400);
     s.dosya_oge(5, 7, "video", &icerik);
-    let mut h = Havuz::ac(&kok, "taaegitim").unwrap();
+    let mut h = Havuz::ac(&kok, "taarehber").unwrap();
     h.esitle(&s).unwrap();
     let yol = h.indir(&s, 5).unwrap();
     assert!(h.yetimler().unwrap().is_empty());
@@ -454,7 +454,7 @@ fn gecersiz_program_bozuk_onbellek_ve_bozuk_yanit() {
     // ham GET desteklemeyen gönderici: yapılandırma hatası
     let s = Sahte::default();
     s.dosya_oge(5, 7, "v", &rastgele(10));
-    let mut h = Havuz::ac(&gecici(), "taaegitim").unwrap();
+    let mut h = Havuz::ac(&gecici(), "taarehber").unwrap();
     h.esitle(&s).unwrap();
     struct Yalniz(Sahte);
     impl Gonderici for Yalniz {
