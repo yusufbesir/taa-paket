@@ -8,6 +8,8 @@
 pub mod gunsonu;
 pub mod merkez;
 pub mod sablon;
+pub mod tutanak;
+pub mod whatsapp;
 pub mod xlsx;
 pub mod zaman;
 

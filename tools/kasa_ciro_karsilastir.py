@@ -162,8 +162,14 @@ def masraf_satirlari(k: dict[tuple[str, str], float]) -> dict[tuple[str, str], f
     return k
 
 
-def karsilastir(dolu: str, program: str, gun: str | None = None) -> dict:
+def karsilastir(dolu: str, program: str, gun: str | None = None, dolu_sayfa: str | None = None) -> dict:
+    """`dolu_sayfa`: şubenin dosyasında sayfa adı tarih değilse (ör. tek günlük "Sayfa1"), o sayfa programın
+    `gun` sayfasıyla karşılaştırılır."""
     a, b = oku(dolu), oku(program)
+    if dolu_sayfa:
+        if not gun:
+            raise KeyError("--dolu-sayfa için --gun gerekli")
+        a = {gun: a[dolu_sayfa], **{k: v for k, v in a.items() if k not in (dolu_sayfa, gun)}}
     sayfalar = [s for s in a if s in b and (gun is None or s == gun)]
     farklar = []
     for s in sayfalar:
@@ -189,10 +195,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("dolu", help="şubenin doldurduğu ciro Excel'i (.xlsx)")
     p.add_argument("program", help="TAA Kasa'nın ürettiği ciro Excel'i (.xlsx)")
     p.add_argument("--gun", help="yalnız bu sayfa (ör. 26.11.2026)")
+    p.add_argument("--dolu-sayfa", help="şube dosyasındaki sayfa adı tarih değilse (ör. Sayfa1); --gun ile")
     p.add_argument("--json", action="store_true", help="sonucu JSON yaz")
     ns = p.parse_args(argv)
     try:
-        r = karsilastir(ns.dolu, ns.program, ns.gun)
+        r = karsilastir(ns.dolu, ns.program, ns.gun, ns.dolu_sayfa)
     except (OSError, KeyError, zipfile.BadZipFile, ET.ParseError) as e:
         print(f"okunamadı: {e}", file=sys.stderr)
         return 2

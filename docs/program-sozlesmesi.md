@@ -168,7 +168,7 @@ gorunen_ad = "TAA Kasa"
 surum = "0.1.0"                 # crates/taa-kasa-ekran/Cargo.toml
 arayuz = "1"
 gerektirir = { taa-kasa = "1", taa-dosya = "1", taa-hata = "1", taa-imza = "1" }
-sunar  = ["kasa.gunsonu@1", "kasa.masraf@1"]   # tek yazar; Tutaa (T6b) ve Çatı yalnız okur
+sunar  = ["kasa.gunsonu@1", "kasa.masraf@1"]   # tek yazar; Çatı yalnız okur (T6b iptal: çift doğrulama tutanağı TAA Kasa'da)
 ister  = []                     # kimlik.yonetici@1 / KM2 bağlanınca eklenecek
 veri_sahibi = ["kasa-defteri", "kasa-gunsonu", "kasa-masraf"]
 veri_okur   = []

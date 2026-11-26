@@ -43,7 +43,8 @@ pub const ODEME_TURLERI: [(&str, &str); 8] = [
     ("internet_degisimi", "İNTERNET DEĞİŞİMİ"),
 ];
 
-/// Kasa açığı: şablonda MASRAFLAR bölümünün ilk satırı; masraf gibi genel toplama girer.
+/// Kasa açığı: şablonda MASRAFLAR bölümünün ilk satırı. Elle girilmez: gün sonu sayımından hesaplanır
+/// (beklenen nakitten eksik sayılan). Fazlası `kasa_fazlasi` bilgi satırına yazılır.
 pub const KASA_ACIGI: (&str, &str) = ("kasa_acigi", "KASA AÇIĞI");
 
 /// Bilgi satırları: şablonda yer alır ama genel toplama girmez; eksi olabilir.
@@ -66,14 +67,26 @@ pub fn ciro_anahtari(k: &str) -> Option<bool> {
     }
 }
 
-/// Şablondaki genel toplam (son "GENEL TOPLAM" satırı) için çekmecenin payı: ödeme satırları + kasa açığı +
-/// döviz TL karşılığı + masraflar. Bilgi satırları (+/-, kasa fazlası, değişim, iade) girmez.
+/// Şablondaki genel toplam (son "GENEL TOPLAM" satırı) için çekmecenin payı: ödeme satırları + döviz TL
+/// karşılığı + masraflar. Bilgi satırları (+/-, kasa fazlası, değişim, iade) girmez.
+///
+/// `nakit` sistemdeki (Nebim) nakittir, masraflar düşülmüş olarak. Kasa açığı ayrıca eklenmez: Excel'de
+/// NAKİT TL = nakit − açık yazılır, açık MASRAFLAR'a girer; toplam yine sistem toplamıdır. (25.11 dolu
+/// şablonu: son GENEL TOPLAM = Nebim "Peşin Satış Toplam" net tutarı, kuruşu kuruşuna.)
 pub fn ciro_toplami(ciro: &BTreeMap<String, i64>, doviz: &[DovizSatiri], masraf_kurus: i64) -> i64 {
     let c = |k: &str| ciro.get(k).copied().unwrap_or(0);
     ODEME_TURLERI.iter().map(|(k, _)| c(k)).sum::<i64>()
-        + c(KASA_ACIGI.0)
         + doviz.iter().map(DovizSatiri::tl_kurus).sum::<i64>()
         + masraf_kurus
+}
+
+/// Yazarkasa Z raporlarının toplamında beklenen tutar: genel toplam + değişim (internet değişimi hariç) + iade.
+/// Z, Nebim'in "Normal" satışıdır; Nebim iadesi (değişimde geri alınan ürün) Z'de düşülmez. İnternet
+/// değişiminde geri alınan ürün mağazada satılmadığı için Z'ye girmez. (25.11.2026 dolu dosyalarında üç yazarkasanın
+/// Z toplamı bu formülle kuruşu kuruşuna tuttu.)
+pub fn z_beklenen(ciro_toplam: i64, ciro: &BTreeMap<String, i64>) -> i64 {
+    let c = |k: &str| ciro.get(k).copied().unwrap_or(0);
+    ciro_toplam + c("degisim") - c("internet_degisimi") + c("iade")
 }
 
 /// Dövizler (kod, ad).
@@ -88,12 +101,22 @@ pub const DOVIZLER: [(&str, &str); 4] = [
 pub const KAPANIS_LISTESI: [&str; 7] = [
     "Z raporu alındı",
     "Z raporu, POS ve satış sistemi karşılaştırıldı",
-    "Çift doğrulama yapıldı (ikinci kişi)",
+    "Fiili sayım tutanağı hazırlandı (imzalar liste bitince alınır)",
     "Kasa kilitlendi",
     "Kamera kaydı açık",
     "Masraf fişleri ayrıldı",
     "Ertesi gün bozukluğu hazırlandı",
 ];
+
+/// Gün sonu imza rolleri (Tutaa kasa çift doğrulama tutanağı ile aynı adlar). Birinci imza kasa sorumlusu,
+/// ikinci imza mağaza sorumlusu ya da vekilidir.
+pub const IMZA_ROLLERI: [(&str, &str); 2] = [
+    ("kasa_sorumlusu", "Kasa Sorumlusu"),
+    ("magaza_sorumlusu", "Mağaza Sorumlusu / Vekili"),
+];
+
+/// İkinci imza olmadan kapanan günde kayda, Excel'e, tutanağa ve ekrana yazılan ifade.
+pub const IKINCI_IMZA_ATMADI: &str = "ikinci imza atmadı";
 
 // ---------------------------------------------------------------- kişi ve rol
 
@@ -185,6 +208,8 @@ pub struct KasaAyar {
     pub havale_hesap_adi: String,
     /// Ciro şablonunun A1 başlığı (işletme adı; boşsa şube kodu).
     pub excel_baslik: String,
+    /// WhatsApp özetinde mağaza başlığı ve toplam satırları kalın (*…*) yazılsın.
+    pub whatsapp_kalin: bool,
 }
 
 impl Default for KasaAyar {
@@ -229,6 +254,7 @@ impl Default for KasaAyar {
             merkez_klasoru: None,
             havale_hesap_adi: String::new(),
             excel_baslik: String::new(),
+            whatsapp_kalin: false,
         }
     }
 }
@@ -395,6 +421,8 @@ pub struct GunSonuKaydi {
     pub devreden_kurus: i64,
     pub kontrol: Vec<bool>,
     pub not: String,
+    #[serde(default)]
+    pub aciklamalar: BTreeMap<String, String>,
     pub karsilastirma: Karsilastirma,
     pub zaman: i64,
     pub duzeltir: Option<String>,
@@ -407,6 +435,30 @@ pub enum OnayTuru {
     IkinciKisi,
     /// Ertesi gün müdür gözden geçirmesi (KS9).
     ErtesiGun,
+}
+
+/// İmzanın atıldığı yer. `Telefon`: eşleşmiş telefondan (cihaz kimliği zorunlu). `Ekran`: telefon köprüsü
+/// bağlanana kadar yer tutucu; kişi kasa ekranında kendi adıyla imzalar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ImzaKanali {
+    Telefon,
+    Ekran,
+}
+
+/// Gün sonu imzası. `sira` 1: kasa sorumlusu, 2: mağaza sorumlusu / vekili.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImzaKaydi {
+    /// Gün sonu kaydının kimliği.
+    pub id: String,
+    pub sira: u8,
+    pub rol: String,
+    pub kisi: String,
+    pub zaman: i64,
+    pub kanal: ImzaKanali,
+    /// Telefonla imzada eşleşmiş cihazın kimliği.
+    #[serde(default)]
+    pub cihaz: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -432,6 +484,16 @@ pub enum GunKaydi {
         imzali: bool,
         zaman: i64,
     },
+    Imza(ImzaKaydi),
+    /// Tutanak ekleri: Nebim Excel'inden içe aktarılan ERP tutarları (kalem kodu → kuruş) ve "Yapılan
+    /// İşlem" metni. Son kayıt geçerlidir (eskisi silinmez).
+    Tutanak {
+        id: String,
+        erp: BTreeMap<String, i64>,
+        islem: String,
+        kisi: String,
+        zaman: i64,
+    },
 }
 
 // ---------------------------------------------------------------- masraf kayıtları (kasa.masraf@1)
@@ -454,6 +516,9 @@ pub struct MasrafKaydi {
     pub tur: String,
     pub tutar_kurus: i64,
     pub aciklama: String,
+    /// Kalem notu (ör. nereye/kime); WhatsApp özetinde ve Excel'de kalemin yanında parantez içinde yazılır.
+    #[serde(default)]
+    pub not: String,
     /// İsteğe bağlı fiş fotoğrafı (veri kökü altındaki göreli dosya adı).
     pub foto: Option<String>,
     pub onay_duzeyi: OnayDuzeyi,
@@ -497,6 +562,23 @@ pub struct MasrafGorunum {
     pub karar_veren: Option<String>,
 }
 
+/// Masraf kaleminin yazılışı: kalem adı (açıklama; yoksa tür) ve varsa not parantez içinde.
+pub fn masraf_kalemi(m: &MasrafKaydi) -> String {
+    let ad = if m.aciklama.trim().is_empty() {
+        m.tur.trim()
+    } else {
+        m.aciklama.trim()
+    };
+    if m.not.trim().is_empty() {
+        ad.to_string()
+    } else {
+        format!("{ad} ({})", m.not.trim())
+    }
+}
+
+/// Açıklama yazılabilen bilgi satırları (ör. havale farkının nedeni).
+pub const ACIKLAMALI_ALANLAR: [&str; 2] = ["havale_fark", "kredi_karti_fark"];
+
 // ---------------------------------------------------------------- girdi yapıları
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -522,6 +604,8 @@ pub struct GunSonuGirdi {
     pub devreden_kurus: i64,
     pub kontrol: Vec<bool>,
     pub not: String,
+    /// Satır açıklamaları (ör. `havale_fark` → "… iadesine istinaden fark"). Fark varsa zorunlu.
+    pub aciklamalar: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -532,6 +616,7 @@ pub struct MasrafGirdi {
     pub tur: String,
     pub tutar_kurus: i64,
     pub aciklama: String,
+    pub not: String,
     pub foto: Option<String>,
 }
 
@@ -567,9 +652,9 @@ pub fn karsilastir(
             fark_kurus: 0,
         },
         FarkSatiri {
-            ad: "Z raporu toplamı ↔ genel toplam (şablon)".into(),
+            ad: "Z raporu toplamı ↔ genel toplam + değişim (internet hariç) + iade".into(),
             beklenen_kurus: z,
-            bulunan_kurus: ciro_toplam,
+            bulunan_kurus: z_beklenen(ciro_toplam, &girdi.ciro),
             fark_kurus: 0,
         },
     ];
@@ -634,12 +719,19 @@ pub struct GunDurumu {
     pub sayimlar: Vec<SayimKaydi>,
     pub masraflar: Vec<MasrafGorunum>,
     pub gun_sonu: Option<GunSonuKaydi>,
+    /// İkinci imzayı atan (mağaza sorumlusu / vekili); yoksa `None`.
     pub ikinci_onay: Option<String>,
     pub ertesi_gun_onay: Option<String>,
+    /// Atılan imzalar (en çok iki).
+    pub imzalar: Vec<ImzaKaydi>,
+    /// İmza isteği görünür mü: gün sonu girildi, kapanış listesi tamam, gönderilmedi ve iki imza dolmadı.
+    pub imza_istegi: bool,
+    /// İkinci imzanın durumu: "imzaladı: <ad>" ya da `IKINCI_IMZA_ATMADI`.
+    pub ikinci_imza_durumu: String,
     pub gonderildi: bool,
     pub beklenen_nakit_kurus: i64,
     pub limit_asildi: bool,
-    /// Sıradaki iş: "acilis", "gun_ici", "onay", "gonder", "tamam".
+    /// Sıradaki iş: "acilis", "gun_ici", "kontrol" (liste eksik; yönetici düzeltir), "imza", "gonder", "tamam".
     pub asama: String,
 }
 
@@ -905,7 +997,7 @@ impl KasaDefteri {
         Self::ortak_denetim(ayar, &g.tarih, &g.cekmece, kisi)?;
         tutar_denetle("masraf", g.tutar_kurus)?;
         if g.tutar_kurus == 0 {
-            return Err("masraf tutarı sıfır olamaz".into());
+            return Err("masraf tutarı girin: tutarı olmayan kalem kaydedilmez (toplam kalemlerden hesaplanır)".into());
         }
         if g.tur.trim().is_empty() || !ayar.masraf_turleri.iter().any(|t| t == g.tur.trim()) {
             return Err("masraf türü listeden seçilmeli".into());
@@ -927,6 +1019,7 @@ impl KasaDefteri {
             tur: g.tur.trim().into(),
             tutar_kurus: g.tutar_kurus,
             aciklama: g.aciklama.trim().into(),
+            not: g.not.trim().chars().take(200).collect(),
             foto: g.foto.clone(),
             onay_duzeyi: if g.tutar_kurus >= ayar.masraf_merkez_esigi_kurus {
                 OnayDuzeyi::Merkez
@@ -1050,6 +1143,29 @@ impl KasaDefteri {
                 return Err(format!("{} için günlük kur girin", d.kod));
             }
         }
+        let mut aciklamalar = BTreeMap::new();
+        for (k, v) in &g.aciklamalar {
+            if !ACIKLAMALI_ALANLAR.contains(&k.as_str()) {
+                return Err(format!("açıklama yazılamayan alan: {k}"));
+            }
+            let v = v.trim();
+            if v.chars().count() > 300 {
+                return Err("açıklama en çok 300 karakter".into());
+            }
+            if !v.is_empty() {
+                aciklamalar.insert(k.clone(), v.to_string());
+            }
+        }
+        for k in ACIKLAMALI_ALANLAR {
+            if g.ciro.get(k).copied().unwrap_or(0) != 0 && !aciklamalar.contains_key(k) {
+                let ad = BILGI_ALANLARI
+                    .iter()
+                    .find(|(a, _)| *a == k)
+                    .map(|(_, b)| *b)
+                    .unwrap_or(k);
+                return Err(format!("{ad} için açıklama yazın (farkın nedeni)"));
+            }
+        }
         tutar_denetle("Nebim toplamı", g.nebim_toplam_kurus)?;
         tutar_denetle("devreden nakit", g.devreden_kurus)?;
         let nakit = sayim_toplam(&g.nakit_adetler)?;
@@ -1060,6 +1176,17 @@ impl KasaDefteri {
         kontrol.resize(KAPANIS_LISTESI.len(), false);
         let (acilis, masraf) = self.beklenen_nakit(&g.tarih, &g.cekmece)?;
         let k = karsilastir(ayar, g, nakit, acilis.unwrap_or(0), masraf);
+        // Kasa fazlası / açığı elle girilmez: nakit sayım farkından (dolu şablonda KASA FAZLASI = sayılan −
+        // sistem nakdi; 25.11.2026 dolu şablonunda kuruşu kuruşuna doğrulandı).
+        let mut ciro = g.ciro.clone();
+        ciro.remove("kasa_fazlasi");
+        ciro.remove(KASA_ACIGI.0);
+        let nf = k.satirlar.first().map(|x| x.fark_kurus).unwrap_or(0);
+        if nf > 0 {
+            ciro.insert("kasa_fazlasi".into(), nf);
+        } else if nf < 0 {
+            ciro.insert(KASA_ACIGI.0.into(), -nf);
+        }
         if k.fark_var && g.not.trim().is_empty() {
             return Err("karşılaştırmada fark var; açıklama notu yazın".into());
         }
@@ -1074,16 +1201,69 @@ impl KasaDefteri {
             nakit_sayilan_kurus: nakit,
             noktalar: g.noktalar.clone(),
             nebim_toplam_kurus: g.nebim_toplam_kurus,
-            ciro: g.ciro.clone(),
+            ciro,
             doviz: g.doviz.iter().filter(|d| d.tutar > 0).cloned().collect(),
             devreden_kurus: g.devreden_kurus,
             kontrol,
             not: g.not.trim().into(),
+            aciklamalar,
             karsilastirma: k,
             zaman: zaman::simdi_sn(),
             duzeltir: duzeltir.map(String::from),
         };
         Ok(s)
+    }
+
+    /// Akşam WhatsApp özeti (düz yazı). Her çekmece bir mağaza bölümüdür; kayıtlı gün sonu kullanılır.
+    /// `canli`: ekranda doldurulmakta olan (henüz kaydedilmemiş) gün sonu; o çekmece için kayıt yerine bu
+    /// girdi kullanılır, kasa fazlası/açığı aynı kuralla hesaplanır. Alanlar doldukça özet güncellenir.
+    pub fn whatsapp_ozeti(
+        &self,
+        ayar: &KasaAyar,
+        tarih: &str,
+        canli: Option<&GunSonuGirdi>,
+    ) -> Result<String, String> {
+        let gs = self.gun_sonlari()?;
+        let mut m = Vec::new();
+        for c in &ayar.cekmeceler {
+            let masraflar: Vec<(String, i64)> = self
+                .masraflar()?
+                .into_iter()
+                .filter(|x| x.kayit.tarih == tarih && x.kayit.cekmece == c.id)
+                .filter(|x| matches!(x.durum, MasrafDurumu::Bekliyor | MasrafDurumu::Onaylandi))
+                .map(|x| (masraf_kalemi(&x.kayit), x.kayit.tutar_kurus))
+                .collect();
+            let (ciro, doviz, aciklamalar) =
+                match canli.filter(|g| g.cekmece == c.id && g.tarih == tarih) {
+                    Some(g) => {
+                        let mut ciro = g.ciro.clone();
+                        ciro.remove("kasa_fazlasi");
+                        ciro.remove(KASA_ACIGI.0);
+                        if !g.nakit_adetler.is_empty() {
+                            let k = self.gun_sonu_onizle(ayar, g)?;
+                            let nf = k.satirlar.first().map(|x| x.fark_kurus).unwrap_or(0);
+                            if nf > 0 {
+                                ciro.insert("kasa_fazlasi".into(), nf);
+                            } else if nf < 0 {
+                                ciro.insert(KASA_ACIGI.0.into(), -nf);
+                            }
+                        }
+                        (ciro, g.doviz.clone(), g.aciklamalar.clone())
+                    }
+                    None => match gs.iter().rfind(|s| s.tarih == tarih && s.cekmece == c.id) {
+                        Some(s) => (s.ciro.clone(), s.doviz.clone(), s.aciklamalar.clone()),
+                        None => (BTreeMap::new(), vec![], BTreeMap::new()),
+                    },
+                };
+            m.push(crate::whatsapp::MagazaOzeti {
+                ad: c.ad.clone(),
+                ciro,
+                doviz,
+                masraflar,
+                aciklamalar,
+            });
+        }
+        Ok(crate::whatsapp::ozet(&m, tarih, ayar.whatsapp_kalin))
     }
 
     /// Kaydetmeden karşılaştırma (ekrandaki canlı fark paneli için).
@@ -1098,9 +1278,9 @@ impl KasaDefteri {
     }
 
     /// Kayıt onayı. Giren onaylayamaz; ertesi gün gözden geçirmesini müdür ya da yönetici yapar.
+    /// `IkinciKisi` onayı artık ekrandan atılan imzadır (`imzala`, kanal `Ekran`).
     pub fn onayla(&self, id: &str, tur: OnayTuru, kisi: &Kisi) -> Result<(), String> {
         ozellik_acik()?;
-        let k = self.gun_kayitlari()?;
         let gs = self
             .gun_sonlari()?
             .into_iter()
@@ -1109,7 +1289,11 @@ impl KasaDefteri {
         if ayni_kisi(&gs.kisi, &kisi.ad) {
             return Err("giren onaylayamaz: onayı ikinci bir kişi vermeli".into());
         }
-        if tur == OnayTuru::ErtesiGun && !matches!(kisi.rol, Rol::Mudur | Rol::Yonetici) {
+        if tur == OnayTuru::IkinciKisi {
+            return self.imzala(id, ImzaKanali::Ekran, None, kisi).map(|_| ());
+        }
+        let k = self.gun_kayitlari()?;
+        if !matches!(kisi.rol, Rol::Mudur | Rol::Yonetici) {
             return Err("ertesi gün gözden geçirmesini mağaza müdürü yapar".into());
         }
         if k.iter()
@@ -1123,6 +1307,186 @@ impl KasaDefteri {
             onay: tur,
             zaman: zaman::simdi_sn(),
         })
+    }
+
+    /// Tutanak eklerini yazar (ERP içe aktarma ve/veya yapılan işlem). Gönderilmiş güne yazılmaz.
+    pub fn tutanak_kaydet(
+        &self,
+        id: &str,
+        erp: Option<BTreeMap<String, i64>>,
+        islem: Option<&str>,
+        kisi: &Kisi,
+    ) -> Result<(), String> {
+        ozellik_acik()?;
+        if !self.gun_sonlari()?.iter().any(|s| s.id == id) {
+            return Err(format!("geçerli gün sonu yok: {id}"));
+        }
+        let k = self.gun_kayitlari()?;
+        if k.iter()
+            .any(|x| matches!(x, GunKaydi::Gonderim { id: i, .. } if i == id))
+        {
+            return Err("gün sonu gönderildi; tutanak değiştirilemez".into());
+        }
+        let (e0, i0) = Self::tutanak_ekleri(&k, id);
+        let erp = erp.unwrap_or(e0);
+        for (kod, t) in &erp {
+            if !crate::tutanak::TUTAA_KALEMLERI
+                .iter()
+                .any(|(k, _)| k == kod)
+            {
+                return Err(format!("bilinmeyen tutanak kalemi: {kod}"));
+            }
+            tutar_denetle(kod, t.abs())?;
+        }
+        let islem = islem
+            .map(|x| x.trim().chars().take(600).collect())
+            .unwrap_or(i0);
+        self.gun_ekle(&GunKaydi::Tutanak {
+            id: id.into(),
+            erp,
+            islem,
+            kisi: kisi.ad.trim().into(),
+            zaman: zaman::simdi_sn(),
+        })
+    }
+
+    fn tutanak_ekleri(k: &[GunKaydi], id: &str) -> (BTreeMap<String, i64>, String) {
+        k.iter()
+            .rev()
+            .find_map(|x| match x {
+                GunKaydi::Tutanak {
+                    id: i, erp, islem, ..
+                } if i == id => Some((erp.clone(), islem.clone())),
+                _ => None,
+            })
+            .unwrap_or_default()
+    }
+
+    /// Kasa çift doğrulama tutanağı verisi (gün sonu + imzalar + tutanak ekleri). Excel, WhatsApp ve paketle
+    /// aynı kayıtlardan.
+    pub fn tutanak(&self, ayar: &KasaAyar, id: &str) -> Result<Value, String> {
+        let gs = self
+            .gun_sonlari()?
+            .into_iter()
+            .find(|s| s.id == id)
+            .ok_or_else(|| format!("geçerli gün sonu yok: {id}"))?;
+        let d = self.gun_durumu(ayar, &gs.tarih, &gs.cekmece)?;
+        let k = self.gun_kayitlari()?;
+        let (erp, islem) = Self::tutanak_ekleri(&k, id);
+        Ok(crate::tutanak::cift_dogrulama_islem(
+            ayar,
+            &gs,
+            d.acilis.as_ref().map(|a| a.sayilan_kurus).unwrap_or(0),
+            &d.imzalar,
+            (!erp.is_empty()).then_some(&erp),
+            &islem,
+        ))
+    }
+
+    /// Tüm gün sonlarının imzaları (gün sonu kimliği → imzalar); Excel için.
+    pub fn imza_haritasi(&self) -> Result<BTreeMap<String, Vec<ImzaKaydi>>, String> {
+        let k = self.gun_kayitlari()?;
+        Ok(self
+            .gun_sonlari()?
+            .into_iter()
+            .map(|g| {
+                let v = Self::imzalar(&k, &g.id);
+                (g.id, v)
+            })
+            .collect())
+    }
+
+    /// Gün sonunun imzaları (sıra numarasına göre). Eski defterdeki ikinci kişi onayı ikinci imza sayılır.
+    fn imzalar(k: &[GunKaydi], id: &str) -> Vec<ImzaKaydi> {
+        let mut v: Vec<ImzaKaydi> = Vec::new();
+        for x in k {
+            match x {
+                GunKaydi::Imza(i) if i.id == id => v.push(i.clone()),
+                GunKaydi::Onay {
+                    id: i,
+                    kisi,
+                    onay: OnayTuru::IkinciKisi,
+                    zaman,
+                } if i == id => v.push(ImzaKaydi {
+                    id: id.into(),
+                    sira: 0,
+                    rol: String::new(),
+                    kisi: kisi.clone(),
+                    zaman: *zaman,
+                    kanal: ImzaKanali::Ekran,
+                    cihaz: None,
+                }),
+                _ => {}
+            }
+        }
+        v.truncate(2);
+        for (n, i) in v.iter_mut().enumerate() {
+            i.sira = n as u8 + 1;
+            i.rol = IMZA_ROLLERI[n].0.into();
+        }
+        v
+    }
+
+    /// Gün sonu imzası. Kurallar: imza isteği yalnız kapanış listesi tamamlanınca açılır; en çok iki imza;
+    /// aynı kişi iki kez imzalayamaz; ikinci imzayı kaydı giren atamaz (giren onaylayamaz). Telefonla imzada
+    /// cihaz kimliği zorunludur. Gönderilmiş güne imza eklenmez.
+    pub fn imzala(
+        &self,
+        id: &str,
+        kanal: ImzaKanali,
+        cihaz: Option<&str>,
+        kisi: &Kisi,
+    ) -> Result<ImzaKaydi, String> {
+        ozellik_acik()?;
+        let gs = self
+            .gun_sonlari()?
+            .into_iter()
+            .find(|s| s.id == id)
+            .ok_or_else(|| format!("geçerli gün sonu yok: {id}"))?;
+        if gs.kontrol.iter().filter(|x| **x).count() < KAPANIS_LISTESI.len() {
+            return Err("imza isteği kapanış kontrol listesi tamamlanınca açılır".into());
+        }
+        let k = self.gun_kayitlari()?;
+        if k.iter()
+            .any(|x| matches!(x, GunKaydi::Gonderim { id: i, .. } if i == id))
+        {
+            return Err("gün sonu gönderildi; imza eklenemez".into());
+        }
+        let mevcut = Self::imzalar(&k, id);
+        if mevcut.len() >= 2 {
+            return Err("iki imza da atılmış".into());
+        }
+        if kisi.ad.trim().is_empty() {
+            return Err("imzalayan kişiyi seçin".into());
+        }
+        if mevcut.iter().any(|i| ayni_kisi(&i.kisi, &kisi.ad)) {
+            return Err("aynı kişi iki kez imzalayamaz".into());
+        }
+        if mevcut.len() == 1 && ayni_kisi(&gs.kisi, &kisi.ad) {
+            return Err("giren onaylayamaz: ikinci imzayı başka bir kişi atar".into());
+        }
+        let cihaz = match kanal {
+            ImzaKanali::Telefon => {
+                let c = cihaz.map(str::trim).unwrap_or("");
+                if c.is_empty() {
+                    return Err("telefonla imzada cihaz kimliği gerekli".into());
+                }
+                Some(c.to_string())
+            }
+            ImzaKanali::Ekran => None,
+        };
+        let n = mevcut.len();
+        let i = ImzaKaydi {
+            id: id.into(),
+            sira: n as u8 + 1,
+            rol: IMZA_ROLLERI[n].0.into(),
+            kisi: kisi.ad.trim().into(),
+            zaman: zaman::simdi_sn(),
+            kanal,
+            cihaz,
+        };
+        self.gun_ekle(&GunKaydi::Imza(i.clone()))?;
+        Ok(i)
     }
 
     /// İptal (silmez). Yalnız yönetici girişiyle; neden zorunlu. Sayım, gün sonu ya da masraf olabilir.
@@ -1238,15 +1602,19 @@ impl KasaDefteri {
             .gun_sonlari()?
             .into_iter()
             .rfind(|s| s.tarih == tarih && s.cekmece == cekmece);
-        let (ikinci, ertesi, gonderildi) = match &gun_sonu {
+        let (imzalar, ertesi, gonderildi) = match &gun_sonu {
             Some(g) => (
-                Self::onay_kisi(&k, &g.id, OnayTuru::IkinciKisi),
+                Self::imzalar(&k, &g.id),
                 Self::onay_kisi(&k, &g.id, OnayTuru::ErtesiGun),
                 k.iter()
                     .any(|x| matches!(x, GunKaydi::Gonderim { id, .. } if id == &g.id)),
             ),
-            None => (None, None, false),
+            None => (vec![], None, false),
         };
+        let ikinci = imzalar.get(1).map(|i| i.kisi.clone());
+        let liste_tamam = gun_sonu
+            .as_ref()
+            .is_some_and(|g| g.kontrol.iter().filter(|x| **x).count() >= KAPANIS_LISTESI.len());
         let masraf = self.masraf_toplami(tarih, cekmece)?;
         let beklenen = acilis.as_ref().map(|a| a.sayilan_kurus).unwrap_or(0) - masraf;
         let son_sayim = sayimlar.last().map(|s| s.sayilan_kurus).unwrap_or(0);
@@ -1254,8 +1622,10 @@ impl KasaDefteri {
             "acilis"
         } else if gun_sonu.is_none() {
             "gun_ici"
-        } else if ikinci.is_none() {
-            "onay"
+        } else if !liste_tamam && !gonderildi {
+            "kontrol"
+        } else if imzalar.is_empty() {
+            "imza"
         } else if !gonderildi {
             "gonder"
         } else {
@@ -1269,6 +1639,12 @@ impl KasaDefteri {
             sayimlar,
             masraflar,
             gun_sonu,
+            ikinci_imza_durumu: match &ikinci {
+                Some(a) => format!("imzaladı: {a}"),
+                None => IKINCI_IMZA_ATMADI.into(),
+            },
+            imza_istegi: liste_tamam && !gonderildi && imzalar.len() < 2,
+            imzalar,
             ikinci_onay: ikinci,
             ertesi_gun_onay: ertesi,
             gonderildi,
@@ -1277,19 +1653,22 @@ impl KasaDefteri {
         })
     }
 
-    /// Gönderime hazır mı: ikinci kişi onayı ve kapanış listesinin tamamı.
+    /// Gönderime hazır mı: kapanış listesinin tamamı ve en az bir imza. İkinci imza yoksa gün yine kapanır,
+    /// kayıtta "ikinci imza atmadı" yazar.
     pub fn gonderime_hazir(&self, ayar: &KasaAyar, id: &str) -> Result<GunSonuKaydi, String> {
         let gs = self
             .gun_sonlari()?
             .into_iter()
             .find(|s| s.id == id)
             .ok_or_else(|| format!("geçerli gün sonu yok: {id}"))?;
-        let d = self.gun_durumu(ayar, &gs.tarih, &gs.cekmece)?;
-        if d.ikinci_onay.is_none() {
-            return Err("önce ikinci kişi onayı (çift doğrulama) gerekli".into());
-        }
         if gs.kontrol.iter().filter(|x| **x).count() < KAPANIS_LISTESI.len() {
             return Err("kapanış kontrol listesinin 7 maddesi de işaretlenmeli".into());
+        }
+        let d = self.gun_durumu(ayar, &gs.tarih, &gs.cekmece)?;
+        if d.imzalar.is_empty() {
+            return Err(
+                "en az bir imza gerekli: gün sonu imzasız kapanamaz ve gönderilemez".into(),
+            );
         }
         Ok(gs)
     }
@@ -1308,6 +1687,9 @@ impl KasaDefteri {
             "sayimlar": d.sayimlar,
             "masraflar": d.masraflar,
             "onaylar": {"ikinci_kisi": d.ikinci_onay, "ertesi_gun": d.ertesi_gun_onay},
+            "imzalar": imza_listesi(&d.imzalar),
+            "ikinci_imza_durumu": d.ikinci_imza_durumu,
+            "cift_dogrulama": self.tutanak(ayar, id)?,
             "olusturma": zaman::simdi_sn(),
         }))
     }
@@ -1374,9 +1756,12 @@ impl KasaDefteri {
                     .unwrap_or_default(),
             ),
             (
-                "Çift doğrulama".into(),
-                d.ikinci_onay.is_some(),
-                d.ikinci_onay.clone().unwrap_or_else(|| "bekliyor".into()),
+                "İmza (en az bir)".into(),
+                !d.imzalar.is_empty(),
+                match d.imzalar.first() {
+                    Some(i) => format!("{} · {}", i.kisi, d.ikinci_imza_durumu),
+                    None => "imza yok".into(),
+                },
             ),
             (
                 "Merkeze gönderildi".into(),
@@ -1397,6 +1782,25 @@ fn oku<T: for<'de> Deserialize<'de>>(yol: &Path) -> Result<Vec<T>, String> {
         .map_err(|e| e.to_string())?
         .iter()
         .map(|l| serde_json::from_str(l).map_err(|e| format!("defter satırı bozuk: {e}")))
+        .collect()
+}
+
+/// İmza listesi (paket ve Tutaa görünümü): iki rol de yazılır; atılmamış ikinci imza `imza_atmadi` olur.
+pub fn imza_listesi(imzalar: &[ImzaKaydi]) -> Vec<Value> {
+    IMZA_ROLLERI
+        .iter()
+        .enumerate()
+        .map(|(n, (rol, ad))| match imzalar.get(n) {
+            Some(i) => json!({
+                "sira": n + 1, "rol": rol, "rol_adi": ad, "kisi": i.kisi, "zaman": i.zaman,
+                "kanal": i.kanal, "cihaz": i.cihaz, "durum": "imzaladi", "imzalamadi": false,
+            }),
+            None => json!({
+                "sira": n + 1, "rol": rol, "rol_adi": ad, "kisi": null, "zaman": null,
+                "kanal": null, "cihaz": null, "durum": "imza_atmadi", "imzalamadi": true,
+                "not": if n == 1 { IKINCI_IMZA_ATMADI } else { "imza atmadı" },
+            }),
+        })
         .collect()
 }
 

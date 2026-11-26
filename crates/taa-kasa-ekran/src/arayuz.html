@@ -265,6 +265,15 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
     <div class="sira"><button class="dugme" id="dn-vazgec">Vazgeç</button><button class="dugme ana" id="dn-tamam">Onayla</button></div>
   </div>
 </dialog>
+<dialog id="d-wa">
+  <div class="yigin">
+    <h2>WhatsApp özeti</h2>
+    <p class="mut kucuk" style="margin:0">Düz yazı. Alanlar doldukça güncellenir; kopyalayıp WhatsApp'a yapıştırın (dosya gönderilmez).</p>
+    <textarea class="girdi mono" id="dw-metin" rows="18" readonly style="min-width:min(520px,80vw)"></textarea>
+    <div class="hata" id="dw-hata" role="alert"></div>
+    <div class="sira"><button class="dugme" id="dw-kapat">Kapat</button><button class="dugme ana" id="dw-kopyala">Kopyala</button></div>
+  </div>
+</dialog>
 <div id="bildirim" role="status" hidden></div>
 
 <script>
@@ -365,7 +374,7 @@ const bolum=e=>$(`.ekran[data-ekran="${e}"]`);
 // ---------------- Bugün (ilk ekran: en çok 3 eylem, tek vurgulu ana düğme)
 function bugunCiz(){const g=D.gun,s=bolum('bugun');
   const ANA={acilis:['sayim:acilis','Açılış sayımı','Bozukluğu say, önceki kapanışla karşılaştır'],gun_ici:['gunsonu','Gün sonu','Nakit, Z raporu, POS ve ciro'],
-    onay:['onay','İkinci onay ver','Giren: '+(g.gun_sonu?g.gun_sonu.kisi:'')+' · farklı kullanıcıyla'],gonder:['gonder','Merkeze gönder','Şube imzasıyla; çevrimdışıysa kuyruğa'],tamam:['kayitlar','Kayıtlar ve Excel','Gün tamamlandı']}[g.asama];
+    kontrol:['gunsonu','Kapanış listesi eksik','İmza isteği liste bitince çıkar · yönetici düzeltmesiyle'],imza:['imza','İmza al','En az bir imza gerekli · ikinci kişi yoksa "ikinci imza atmadı" yazar'],gonder:['gonder','Merkeze gönder','Şube imzasıyla; çevrimdışıysa kuyruğa'],tamam:['kayitlar','Kayıtlar ve Excel','Gün tamamlandı']}[g.asama];
   const acik=!!g.acilis||!!g.gun_sonu;
   const masrafBek=g.masraflar.filter(m=>m.durum==='bekliyor').length;
   s.innerHTML=`<div class="sayfa-bas"><div><h1>Bugün</h1><div class="mut">${esc(D.tarih)} · ${esc((D.cekmeceler.find(c=>c.id===D.cekmece)||{}).ad||'')}</div></div></div>
@@ -373,11 +382,12 @@ function bugunCiz(){const g=D.gun,s=bolum('bugun');
    ${g.acilis?`<span>Açılış: <b class="tutar">${tl(g.acilis.sayilan_kurus)}</b> (${esc(g.acilis.kisi)})</span>`:''}
    <span>Masraf: <b class="tutar">${tl(g.masraflar.filter(m=>m.durum!=='reddedildi'&&m.durum!=='iptal').reduce((a,m)=>a+m.tutar_kurus,0))}</b>${masrafBek?` · ${masrafBek} onay bekliyor`:''}</span>
    ${g.limit_asildi?'<span style="color:var(--eksik);font-weight:600">▲ Kasa limiti aşıldı: bankaya/kasa odasına aktarın</span>':''}</div>
-  ${g.asama==='onay'?`<div class="serit"><span>⏳</span><span><b>İkinci onay bekliyor.</b> Giren: ${esc(g.gun_sonu.kisi)}. Kaydı giren kişi onaylayamaz; ikinci yetkili kendi adıyla onaylar.</span></div>`:''}
+  ${g.imza_istegi?`<div class="serit"><span>✍</span><span><b>İmza isteği: ${g.imzalar.length}/2.</b> ${g.imzalar.map(i=>esc(i.kisi)).join(', ')||'Henüz imza yok.'} İkinci imza: <b>${esc(g.ikinci_imza_durumu)}</b>. Kaydı giren ikinci imzayı atamaz. Telefon köprüsü bağlanana kadar imza bu ekrandan atılır.</span></div>`:''}
   <div class="eylemler">
    <button class="dugme ana" id="b-ana"><span>${esc(ANA[1])}</span><small>${esc(ANA[2])}</small></button>
    <button class="dugme" data-git2="masraf" ${acik?'':'disabled title="Önce açılış sayımı"'}><span>Masraf gir</span><small>Eşik altı müdür, üstü merkez onayı</small></button>
    <button class="dugme" data-git2="sayim:ara" ${g.acilis&&!g.gun_sonu?'':'disabled title="Önce açılış sayımı"'}><span>Ara sayım / vardiya devri</span><small>İki kişiyle</small></button>
+   <button class="dugme" data-git2="whatsapp"><span>WhatsApp özeti</span><small>Akşam metni, kopyala</small></button>
   </div>
   <div class="kart"><h2>Günlük kontrol formu</h2><p class="mut kucuk" style="margin-top:-6px">Yapılan işlemlerden kendiliğinden dolar; ayrıca form doldurulmaz.</p>
    <div class="liste">${D.form.map(f=>`<div class="satir"><span class="isaret ${f.tamam?'tam':'yok'}" aria-hidden="true">${f.tamam?'✓':'○'}</span><span class="ana">${esc(f.ad)}</span><span class="mut kucuk">${esc(f.ayrinti)}</span><span class="sr" style="position:absolute;left:-9999px">${f.tamam?'tamam':'eksik'}</span></div>`).join('')}</div></div>`;
@@ -385,8 +395,10 @@ function bugunCiz(){const g=D.gun,s=bolum('bugun');
   s.querySelectorAll('[data-git2]').forEach(b=>b.onclick=()=>anaEylem(b.dataset.git2))}
 async function anaEylem(e){
   if(e.startsWith('sayim:')){SAYIM.tur=e.split(':')[1];git('sayim');return}
-  if(e==='onay'){const ad=await kisiSec('İkinci onay','Kaydı giren kişi onaylayamaz. Onaylayacak kişiyi seçin; kayıt bu kişi adına yazılır.',D.gun.gun_sonu.kisi);if(!ad)return;
-    try{await api('POST','/api/giris',{ad});await api('POST','/api/onay',{id:D.gun.gun_sonu.id,tur:'ikinci_kisi'});bildir('Çift doğrulama kaydedildi');yenile()}catch(x){bildir(x.message);yenile()}return}
+  if(e==='whatsapp'){waAc(null);return}
+  if(e==='imza'){const ikinci=D.gun.imzalar.length===1;
+    const ad=await kisiSec(ikinci?'İkinci imza (Mağaza Sorumlusu / Vekili)':'Birinci imza (Kasa Sorumlusu)',ikinci?'Kaydı giren kişi ikinci imzayı atamaz. İmzalayacak kişiyi seçin.':'İmzalayacak kişiyi seçin. Telefon köprüsü bağlanana kadar imza bu ekrandan atılır (yer tutucu).',ikinci?D.gun.gun_sonu.kisi:null);if(!ad)return;
+    try{await api('POST','/api/giris',{ad});await api('POST','/api/imza',{id:D.gun.gun_sonu.id,kanal:'ekran'});bildir(ikinci?'İkinci imza kaydedildi':'İmza kaydedildi. İkinci kişi yoksa gün "ikinci imza atmadı" ile gönderilebilir.');yenile()}catch(x){bildir(x.message);yenile()}return}
   if(e==='gonder'){try{const v=await api('POST','/api/gonder',{id:D.gun.gun_sonu.id});bildir((v.imzali?'İmzalandı, ':'Cihaz anahtarı yok, imzasız; ')+(v.teslim?'merkeze teslim edildi.':'kuyruğa alındı. '+(v.hata||'')));yenile()}catch(x){bildir(x.message)}return}
   git(e)}
 
@@ -432,7 +444,9 @@ function masrafCiz(){const g=D.gun,s=bolum('masraf'),ben=(D.yonetici||D.kisi||{}
   <div class="kart yigin"><div class="form-uc">
     <label class="alan">Tür<select class="girdi" id="m-tur">${D.masraf_turleri.map(t=>`<option>${esc(t)}</option>`).join('')}</select></label>
     <label class="alan">Tutar (TL)<input class="girdi tutar" id="m-tutar" inputmode="decimal" placeholder="0,00"></label>
-    <label class="alan">Açıklama<input class="girdi" id="m-aciklama" maxlength="300"></label></div>
+    <label class="alan">Kalem (ör. Ekmek, Nalbur)<input class="girdi" id="m-aciklama" maxlength="300"></label>
+    <label class="alan">Not (isteğe bağlı: nereye / kime)<input class="girdi" id="m-not" maxlength="200"></label></div>
+    <p class="mut kucuk">Her masraf ayrı kalemdir; tutarı olmayan kalem kaydedilmez. WhatsApp özetinde ve Excel'de kalem, tutar ve not ayrı yazılır.</p>
    <div class="mut kucuk">Fiş fotoğrafı: dosya ekleme bir sonraki adımda (KS6 ek) bağlanacak; şimdilik fişi masraf fişleri zarfına ayırın.</div>
    <div class="hata" id="m-hata" role="alert"></div>
    <div class="sira"><button class="dugme ana" id="m-kaydet">Masrafı kaydet</button></div></div>
@@ -442,7 +456,7 @@ function masrafCiz(){const g=D.gun,s=bolum('masraf'),ben=(D.yonetici||D.kisi||{}
     <td class="sira">${yetki?`<button class="dugme" data-onay="${esc(m.id)}">Onayla</button><button class="dugme dolu-tehlike" data-ret="${esc(m.id)}">Reddet</button>`:''}${D.yonetici&&m.durum!=='iptal'?`<button class="dugme" data-iptal="${esc(m.id)}">İptal et</button>`:''}</td></tr>`}).join('')}</tbody></table>`:'<p class="mut">Bugün masraf yok.</p>'}</div>`;
   const tt=s.querySelector('#m-tutar');tt.onblur=()=>{const k=kurusCoz(tt.value);if(k!=null&&tt.value)tt.value=tl(k).replace(' TL','')};
   s.querySelector('#m-kaydet').onclick=async()=>{const k=kurusCoz(tt.value);if(k==null){s.querySelector('#m-hata').textContent='Tutar sayı olmalı (ör. 125,50).';return}
-    try{const v=await api('POST','/api/masraf',{tarih:D.tarih,cekmece:D.cekmece,tur:s.querySelector('#m-tur').value,tutar_kurus:k,aciklama:s.querySelector('#m-aciklama').value});bildir(v.onay_duzeyi==='merkez'?'Kaydedildi · merkez onayı bekliyor':'Kaydedildi · müdür onayı bekliyor');yenile()}catch(e){s.querySelector('#m-hata').textContent=e.message}};
+    try{const v=await api('POST','/api/masraf',{tarih:D.tarih,cekmece:D.cekmece,tur:s.querySelector('#m-tur').value,tutar_kurus:k,aciklama:s.querySelector('#m-aciklama').value,not:s.querySelector('#m-not').value});bildir(v.onay_duzeyi==='merkez'?'Kaydedildi · merkez onayı bekliyor':'Kaydedildi · müdür onayı bekliyor');yenile()}catch(e){s.querySelector('#m-hata').textContent=e.message}};
   s.querySelectorAll('[data-onay]').forEach(b=>b.onclick=async()=>{try{await api('POST','/api/masraf/karar',{id:b.dataset.onay,onay:true});yenile()}catch(e){bildir(e.message)}});
   s.querySelectorAll('[data-ret]').forEach(b=>b.onclick=async()=>{const n=await nedenSor('Masrafı reddet','Ret nedeni kayda yazılır.');if(!n)return;try{await api('POST','/api/masraf/karar',{id:b.dataset.ret,onay:false,not:n});yenile()}catch(e){bildir(e.message)}});
   iptalBagla(s)}
@@ -454,8 +468,8 @@ function gsYeni(eski){const c=D.cekmeceler.find(x=>x.id===D.cekmece);
     noktalar:c.noktalar.map(n=>{const e=eski&&eski.noktalar.find(x=>x.nokta===n.id);return {nokta:n.id,z_toplam_kurus:e?e.z_toplam_kurus:0,pos:Object.fromEntries(n.poslar.map(p=>[p.id,e&&e.pos[p.id]||0]))}}),
     nebim_toplam_kurus:eski?eski.nebim_toplam_kurus:0,ciro:eski?{...eski.ciro}:{},
     doviz:D.sabitler.dovizler.map(([k])=>{const e=eski&&eski.doviz.find(d=>d.kod===k);return {kod:k,tutar:e?e.tutar:0,kur_onbinde:e?e.kur_onbinde:0}}),
-    devreden_kurus:eski?eski.devreden_kurus:0,kontrol:eski?[...eski.kontrol]:Array(7).fill(false),not:eski?eski.not:'',k:null}}
-function gsGirdi(){return {tarih:D.tarih,cekmece:D.cekmece,nakit_adetler:GS.nakit_adetler,noktalar:GS.noktalar,nebim_toplam_kurus:GS.nebim_toplam_kurus,ciro:GS.ciro,doviz:GS.doviz,devreden_kurus:GS.devreden_kurus,kontrol:GS.kontrol,not:GS.not}}
+    devreden_kurus:eski?eski.devreden_kurus:0,kontrol:eski?[...eski.kontrol]:Array(7).fill(false),not:eski?eski.not:'',aciklamalar:eski?{...(eski.aciklamalar||{})}:{},k:null}}
+function gsGirdi(){return {tarih:D.tarih,cekmece:D.cekmece,nakit_adetler:GS.nakit_adetler,noktalar:GS.noktalar,nebim_toplam_kurus:GS.nebim_toplam_kurus,ciro:GS.ciro,doviz:GS.doviz,devreden_kurus:GS.devreden_kurus,kontrol:GS.kontrol,not:GS.not,aciklamalar:GS.aciklamalar||{}}}
 const ADIMLAR=['Nakit ve döviz','Z raporu ve POS','Satış sistemi ve ödeme türleri','Kapanış listesi ve not','Özet ve kayıt'];
 function gunSonuCiz(){const g=D.gun,s=bolum('gunsonu');
   if(g.gun_sonu&&!(GS&&GS.duzelt===g.gun_sonu.id)){return gsKayitli(s,g)}
@@ -471,13 +485,16 @@ function gunSonuCiz(){const g=D.gun,s=bolum('gunsonu');
     <p class="mut kucuk">Z raporu ve POS gün sonu fişinin fotoğrafı: dosya ekleme bir sonraki adımda bağlanacak.</p>`;
   if(GS.adim===2)govde=`<h2>Satış sistemi toplamı ve ödeme türleri</h2><label class="alan" style="max-width:320px">Nebim mağaza raporu toplamı<input class="girdi tutar" id="g-nebim" inputmode="decimal" value="${GS.nebim_toplam_kurus?tl(GS.nebim_toplam_kurus).replace(' TL',''):''}"></label>
     <p class="mut kucuk">Satırlar şubelerin akşam ciro Excel'iyle aynı sıradadır; Excel bu kayıtlardan üretilir (Kayıtlar ve Excel).</p>
-    <div class="form-iki">${[...D.sabitler.odeme_turleri,D.sabitler.kasa_acigi].map(([k,a])=>`<label class="alan">${esc(a)}<input class="girdi tutar" data-ciro="${k}" inputmode="decimal" value="${GS.ciro[k]?tl(GS.ciro[k]).replace(' TL',''):''}"></label>`).join('')}</div>
+    <div class="form-iki">${D.sabitler.odeme_turleri.map(([k,a])=>`<label class="alan">${esc(a)}<input class="girdi tutar" data-ciro="${k}" inputmode="decimal" value="${GS.ciro[k]?tl(GS.ciro[k]).replace(' TL',''):''}"></label>`).join('')}</div>
     <h2 style="margin-top:8px">Bilgi satırları</h2><p class="mut kucuk">Genel toplama girmez; eksi olabilir (ör. −150,00).</p>
-    <div class="form-iki">${D.sabitler.bilgi_alanlari.map(([k,a])=>`<label class="alan">${esc(a)}<input class="girdi tutar" data-ciro="${k}" data-eksi="1" inputmode="decimal" value="${GS.ciro[k]?tl(GS.ciro[k]).replace(' TL',''):''}"></label>`).join('')}</div>`;
+    <p class="mut kucuk">NAKİT TL: Nebim/sistem nakdi (masraf ve para üstü düşülmüş). Kasa fazlası ve açığı elle girilmez: sayılan nakitten hesaplanır.</p>
+    <div class="form-iki">${D.sabitler.bilgi_alanlari.filter(([k])=>k!=='kasa_fazlasi').map(([k,a])=>`<label class="alan">${esc(a)}<input class="girdi tutar" data-ciro="${k}" data-eksi="1" inputmode="decimal" value="${GS.ciro[k]?tl(GS.ciro[k]).replace(' TL',''):''}"></label>`).join('')}</div>
+    <div class="form-iki"><label class="alan">Havale +/- açıklaması (fark varsa zorunlu)<input class="girdi" data-acik="havale_fark" maxlength="300" value="${esc((GS.aciklamalar||{}).havale_fark||'')}"></label>
+    <label class="alan">Kredi kartı +/- açıklaması (fark varsa zorunlu)<input class="girdi" data-acik="kredi_karti_fark" maxlength="300" value="${esc((GS.aciklamalar||{}).kredi_karti_fark||'')}"></label></div>`;
   if(GS.adim===3)govde=`<h2>Kapanış kontrol listesi</h2><div class="kontrol">${D.sabitler.kapanis_listesi.map((m,i)=>`<label><input type="checkbox" data-k="${i}" ${GS.kontrol[i]?'checked':''}>${esc(m)}</label>`).join('')}</div>
     <div class="form-iki"><label class="alan">Ertesi güne devreden nakit (bozukluk)<input class="girdi tutar" id="g-devreden" inputmode="decimal" value="${GS.devreden_kurus?tl(GS.devreden_kurus).replace(' TL',''):''}"></label>
     <label class="alan">Açıklama notu (fark varsa zorunlu)<textarea class="girdi" id="g-not" maxlength="600">${esc(GS.not)}</textarea></label></div>
-    <p class="mut kucuk">"Çift doğrulama" maddesi, kayıttan sonra ikinci kişinin onayıyla tamamlanır; gönderim için 7 madde de işaretli olmalı.</p>`;
+    <p class="mut kucuk">İmza isteği 7 madde de işaretliyse kayıttan sonra çıkar. En az bir imza gerekli; ikinci imzayı giren atamaz, ikinci kişi yoksa "ikinci imza atmadı" yazılır.</p>`;
   if(GS.adim===4)govde=`<h2>Özet</h2><table class="tablo"><tbody>
     <tr><td>Sayılan nakit</td><td class="s">${tl(topla(GS.nakit_adetler))}</td></tr>
     <tr><td>Z raporu toplamı</td><td class="s">${tl(GS.noktalar.reduce((a,n)=>a+n.z_toplam_kurus,0))}</td></tr>
@@ -499,7 +516,7 @@ function gunSonuCiz(){const g=D.gun,s=bolum('gunsonu');
   const para=(sel,f)=>kok.querySelectorAll(sel).forEach(i=>{const cz=i.dataset.eksi?kurusCozEksi:kurusCoz;i.oninput=()=>{const v=cz(i.value);i.style.borderColor=v==null?'var(--eksik)':'';f(i,v||0);onizle()};i.onblur=()=>{const v=cz(i.value);if(v!=null&&i.value)i.value=tl(v).replace(' TL','')}});
   para('[data-z]',(i,v)=>GS.noktalar[+i.dataset.z].z_toplam_kurus=v);
   para('[data-pos]',(i,v)=>{const [n,p]=i.dataset.pos.split(':');GS.noktalar[+n].pos[p]=v});
-  para('#g-nebim',(i,v)=>GS.nebim_toplam_kurus=v);para('[data-ciro]',(i,v)=>{GS.ciro[i.dataset.ciro]=v});para('#g-devreden',(i,v)=>GS.devreden_kurus=v);
+  para('#g-nebim',(i,v)=>GS.nebim_toplam_kurus=v);para('[data-ciro]',(i,v)=>{GS.ciro[i.dataset.ciro]=v});kok.querySelectorAll('[data-acik]').forEach(i=>i.oninput=()=>{GS.aciklamalar=GS.aciklamalar||{};GS.aciklamalar[i.dataset.acik]=i.value;onizle()});para('#g-devreden',(i,v)=>GS.devreden_kurus=v);
   kok.querySelectorAll('[data-k]').forEach(i=>i.onchange=()=>GS.kontrol[+i.dataset.k]=i.checked);
   const nt=kok.querySelector('#g-not');if(nt)nt.oninput=()=>GS.not=nt.value;
   s.querySelectorAll('[data-adim]').forEach(b=>b.onclick=()=>{GS.adim=+b.dataset.adim;gunSonuCiz()});
@@ -508,31 +525,49 @@ function gunSonuCiz(){const g=D.gun,s=bolum('gunsonu');
   const kd=s.querySelector('#g-kaydet');if(kd)kd.onclick=gsKaydet;
   ozetCiz();onizle();const ilk=kok.querySelector('input');if(ilk)ilk.focus()}
 const topla=a=>Object.entries(a).reduce((t,[d,n])=>t+d*n,0);
-function onizle(){clearTimeout(onizle.t);onizle.t=setTimeout(async()=>{try{GS.k=await api('POST','/api/gunsonu/onizle',gsGirdi());ozetCiz()}catch(e){}},250)}
+function onizle(){clearTimeout(onizle.t);onizle.t=setTimeout(async()=>{try{GS.k=await api('POST','/api/gunsonu/onizle',gsGirdi());ozetCiz()}catch(e){}if($('#d-wa').open)waYenile()},250)}
+// WhatsApp özeti: düz yazı; gün sonu girilirken alanlar doldukça güncellenir (canlı girdi gönderilir).
+async function waYenile(){try{const v=await api('POST','/api/whatsapp',{tarih:D.tarih,girdi:(GS&&EKRAN==='gunsonu')?gsGirdi():null});$('#dw-metin').value=v.metin;$('#dw-hata').textContent=''}catch(x){$('#dw-hata').textContent=x.message}}
+function waAc(){const d=$('#d-wa');d.showModal();waYenile();
+  $('#dw-kopyala').onclick=async()=>{const t=$('#dw-metin');try{await navigator.clipboard.writeText(t.value);bildir('Kopyalandı; WhatsApp\'a yapıştırın.')}catch(e){t.select();document.execCommand('copy');bildir('Kopyalandı.')}};
+  $('#dw-kapat').onclick=()=>d.close()}
 function ozetCiz(){const o=$('#g-ozet');if(!o)return;const k=GS.k;
   o.innerHTML=`<h2>Canlı karşılaştırma</h2>${k?k.satirlar.map(r=>`<div class="fs"><span>${esc(r.ad)}</span><div class="sira" style="justify-content:space-between"><span class="tutar kucuk">${tl(r.bulunan_kurus)} / ${tl(r.beklenen_kurus)}</span>${farkHtml(r.fark_kurus)}</div></div>`).join(''):'<p class="mut">Tutar girdikçe güncellenir.</p>'}
    ${k&&k.kasa_ciro_uyusmuyor?'<div class="uyari-kutu">▼▲ Kasa ile ciro uyuşmuyor. Açıklama notu zorunlu.</div>':''}
-   <div class="mut kucuk">✓ farksız · ▲ fazla · ▼ eksik. Fark varsa 4. adımda not yazın.</div>`}
+   <div class="mut kucuk">✓ farksız · ▲ fazla · ▼ eksik. Fark varsa 4. adımda not yazın.</div>
+   <button class="dugme" id="g-wa">WhatsApp özeti (canlı)</button>`;$('#g-wa').onclick=()=>waAc()}
 async function gsKaydet(){const h=$('#g-hata');h.textContent='';
   try{if(GS.duzelt){const n=await nedenSor('İptal et ve yeniden gir','Eski gün sonu iptal kaydıyla kapanır (silinmez), yenisi yazılır. Gerekçe zorunlu.');if(!n)return;
       await api('POST','/api/gunsonu/duzelt',{eski_id:GS.duzelt,neden:n,girdi:gsGirdi()})}
     else await api('POST','/api/gunsonu',gsGirdi());
-    GS=null;bildir('Gün sonu kaydedildi. Sıradaki: ikinci kişi onayı.');await yenile()}catch(e){h.textContent=e.message}}
+    GS=null;bildir('Gün sonu kaydedildi. Sıradaki: imza.');await yenile()}catch(e){h.textContent=e.message}}
 function gsKayitli(s,g){const x=g.gun_sonu,k=x.karsilastirma;
   s.innerHTML=`<div class="sayfa-bas"><div><h1>Gün sonu</h1><div class="mut">${esc(x.id)} · giren ${esc(x.kisi)}${x.duzeltir?' · '+esc(x.duzeltir)+' kaydının düzeltmesi':''}</div></div></div>
-  ${!g.ikinci_onay?`<div class="serit"><span>⏳</span><span><b>İkinci onay bekliyor — Giren: ${esc(x.kisi)}.</b> Kaydı giren kişi onaylayamaz.</span></div>`:''}
+  ${g.asama==='kontrol'?`<div class="serit"><span>⏳</span><span><b>Kapanış listesi eksik.</b> İmza isteği liste tamamlanınca çıkar; yönetici "İptal et ve yeniden gir" ile tamamlar.</span></div>`:''}
+  ${g.imza_istegi&&!g.imzalar.length?`<div class="serit"><span>✍</span><span><b>İmza bekliyor.</b> En az bir imza olmadan gün kapanmaz ve gönderilmez.</span></div>`:''}
   ${k.kasa_ciro_uyusmuyor?'<div class="uyari-kutu">▼▲ Kasa ile ciro uyuşmuyor.</div>':''}
   <div class="gs"><div class="kart"><h2>Karşılaştırma</h2><table class="tablo"><thead><tr><th>Satır</th><th style="text-align:right">Beklenen</th><th style="text-align:right">Bulunan</th><th style="text-align:right">Fark</th></tr></thead><tbody>
    ${k.satirlar.map(r=>`<tr><td>${esc(r.ad)}</td><td class="s">${tl(r.beklenen_kurus)}</td><td class="s">${tl(r.bulunan_kurus)}</td><td class="s">${farkHtml(r.fark_kurus)}</td></tr>`).join('')}</tbody></table>
    ${x.not?`<p><b>Not:</b> ${esc(x.not)}</p>`:''}</div>
    <aside class="kart yigin"><h2>Durum</h2>
-    <div>Çift doğrulama: <b>${esc(g.ikinci_onay||'bekliyor')}</b></div><div>Ertesi gün müdür: <b>${esc(g.ertesi_gun_onay||'bekliyor')}</b></div>
+    <div>1. imza (Kasa Sorumlusu): <b>${g.imzalar[0]?esc(g.imzalar[0].kisi)+' · '+(g.imzalar[0].kanal==='telefon'?'telefon':'ekran'):'imza atmadı'}</b></div>
+    <div>2. imza (Mağaza Sorumlusu / Vekili): <b>${g.imzalar[1]?esc(g.imzalar[1].kisi)+' · '+(g.imzalar[1].kanal==='telefon'?'telefon':'ekran'):esc(g.ikinci_imza_durumu)}</b></div>
+    <div>Ertesi gün müdür: <b>${esc(g.ertesi_gun_onay||'bekliyor')}</b></div>
     <div>Merkeze: <b>${g.gonderildi?'gönderildi (kuyrukta ya da teslim)':'gönderilmedi'}</b></div><div>Kapanış listesi: <b>${x.kontrol.filter(Boolean).length}/7</b></div>
-    ${!g.ikinci_onay?'<button class="dugme ana" data-e="onay">Farklı kullanıcıyla onayla</button>':(!g.gonderildi?'<button class="dugme ana" data-e="gonder">Merkeze gönder</button>':'')}
-    ${g.ikinci_onay&&!g.ertesi_gun_onay?'<button class="dugme" data-e="ertesi">Ertesi gün gözden geçirdim (müdür)</button>':''}
+    ${g.imza_istegi?`<button class="dugme ${g.imzalar.length?'':'ana'}" data-e="imza">${g.imzalar.length?'İkinci imzayı al':'İmza al'}</button>`:''}
+    ${g.imzalar.length&&!g.gonderildi?`<button class="dugme ana" data-e="gonder">Merkeze gönder${g.imzalar.length<2?' (ikinci imza atmadı)':''}</button>`:''}
+    <button class="dugme" data-e="whatsapp">WhatsApp özeti</button>
+    <button class="dugme" data-e="tutanak">Çift doğrulama tutanağı (A4)</button>
+    ${!g.gonderildi?`<label class="alan">Nebim kasa Excel'i (ERP sütunu)<input type="file" accept=".xlsx" id="t-excel" class="girdi"></label>
+    <label class="alan">Yapılan işlem (tutanak)<input class="girdi" id="t-islem" maxlength="600"></label><button class="dugme" data-e="tutanak-kaydet">Tutanağa işle</button>`:''}
+    ${g.imzalar.length&&!g.ertesi_gun_onay?'<button class="dugme" data-e="ertesi">Ertesi gün gözden geçirdim (müdür)</button>':''}
     ${D.yonetici?'<button class="dugme" data-e="duzelt">İptal et ve yeniden gir</button>':''}</aside></div>`;
   s.querySelectorAll('[data-e]').forEach(b=>b.onclick=async()=>{const e=b.dataset.e;
-    if(e==='onay'||e==='gonder')return anaEylem(e);
+    if(e==='imza'||e==='gonder'||e==='whatsapp')return anaEylem(e);
+    if(e==='tutanak'){window.open('/api/tutanak?id='+encodeURIComponent(x.id),'_blank');return}
+    if(e==='tutanak-kaydet'){const f=s.querySelector('#t-excel').files[0],g2={id:x.id,islem:s.querySelector('#t-islem').value};
+      try{if(f){if(f.size>180000)throw new Error('Excel 180 KB\'den büyük; satırları azaltın.');g2.excel_b64=await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=()=>no(new Error('dosya okunamadı'));r.readAsDataURL(f)})}
+        const v=await api('POST','/api/tutanak',g2);const e2=v.eslesme;bildir(e2?('ERP aktarıldı'+(e2.eslesmeyen.length?' · eşleşmeyen: '+e2.eslesmeyen.join(', '):'')+(e2.yok_olan.length?' · dosyada yok: '+e2.yok_olan.join(', '):'')):'Tutanak güncellendi')}catch(z){bildir(z.message)}return}
     if(e==='ertesi'){try{await api('POST','/api/onay',{id:x.id,tur:'ertesi_gun'});bildir('Gözden geçirme kaydedildi');yenile()}catch(z){bildir(z.message)}return}
     if(e==='duzelt'){GS=gsYeni(x);GS.tarih=D.tarih;GS.cekmece=D.cekmece;gunSonuCiz()}})}
 
@@ -562,7 +597,8 @@ async function ayarlarCiz(){const s=bolum('ayarlar');if(!D.yonetici){s.innerHTML
    <label class="alan">Gün sonu son saati<input class="girdi mono" id="a-saat" value="${esc(a.gonderim_son_saat)}" maxlength="5"></label>
    <label class="alan">Merkez klasörü (sunucu ucu gelene kadar)<input class="girdi mono" id="a-merkez" value="${esc(a.merkez_klasoru||'')}"></label>
    <label class="alan">Ciro Excel'i başlığı (A1, işletme adı)<input class="girdi" id="a-baslik" value="${esc(a.excel_baslik||'')}" maxlength="80"></label>
-   <label class="alan">Havale satırı adı (firma hesabı)<input class="girdi" id="a-havale" value="${esc(a.havale_hesap_adi||'')}" maxlength="80"></label></div>
+   <label class="alan">Havale satırı adı (firma hesabı)<input class="girdi" id="a-havale" value="${esc(a.havale_hesap_adi||'')}" maxlength="80"></label>
+   <label class="alan"><span><input type="checkbox" id="a-wakalin" ${a.whatsapp_kalin?'checked':''}> WhatsApp özetinde başlık ve toplamlar kalın (*…*)</span></label></div>
    <p class="mut kucuk">Ciro Excel'inde her çekmece bir mağaza sütunudur; sütun başlığı çekmecenin adıdır (ör. Outlet Mağaza, Ana Mağaza).</p>
    <div class="form-iki"><label class="alan">Personel (her satır: Ad;rol — rol: personel, mudur, yonetici)<textarea class="girdi" id="a-personel">${esc(a.personel.map(p=>p.ad+';'+p.rol).join('\n'))}</textarea></label>
    <label class="alan">Masraf türleri (her satır bir tür)<textarea class="girdi" id="a-turler">${esc(a.masraf_turleri.join('\n'))}</textarea></label></div>
@@ -573,15 +609,15 @@ async function ayarlarCiz(){const s=bolum('ayarlar');if(!D.yonetici){s.innerHTML
       if(es==null||to==null||(lim&&li==null))throw new Error('Tutar alanları sayı olmalı.');
       const personel=s.querySelector('#a-personel').value.split('\n').map(x=>x.trim()).filter(Boolean).map(x=>{const [ad,rol='personel']=x.split(';').map(y=>y.trim());if(!['personel','mudur','yonetici'].includes(rol))throw new Error('Rol geçersiz: '+x);return {ad,rol}});
       const y={...a,sube:s.querySelector('#a-sube').value.trim(),kasa_limiti_kurus:li,masraf_merkez_esigi_kurus:es,fark_toleransi_kurus:to,gonderim_son_saat:s.querySelector('#a-saat').value.trim(),
-        merkez_klasoru:s.querySelector('#a-merkez').value.trim()||null,excel_baslik:s.querySelector('#a-baslik').value.trim(),havale_hesap_adi:s.querySelector('#a-havale').value.trim(),personel,masraf_turleri:s.querySelector('#a-turler').value.split('\n').map(x=>x.trim()).filter(Boolean),cekmeceler:JSON.parse(s.querySelector('#a-cekmece').value)};
+        merkez_klasoru:s.querySelector('#a-merkez').value.trim()||null,excel_baslik:s.querySelector('#a-baslik').value.trim(),havale_hesap_adi:s.querySelector('#a-havale').value.trim(),whatsapp_kalin:s.querySelector('#a-wakalin').checked,personel,masraf_turleri:s.querySelector('#a-turler').value.split('\n').map(x=>x.trim()).filter(Boolean),cekmeceler:JSON.parse(s.querySelector('#a-cekmece').value)};
       await api('POST','/api/ayar',y);bildir('Ayarlar kaydedildi');await yenile();uygulamaGoster()}catch(e){h.textContent=e.message}}}
 
 // ---------------- Merkez matrisi (yönetici)
 async function matrisCiz(){const s=bolum('matris');s.innerHTML='<h1>Merkez matrisi</h1><p class="mut">Yükleniyor…</p>';
   try{const v=await api('GET','/api/matris?gun=14');const SY={geldi:['✓','Geldi'],gec:['⏱','Geç'],eksik:['✕','Eksik'],bekleniyor:['…','Bekleniyor']};
-    s.innerHTML=`<div class="sayfa-bas"><div><h1>Merkez matrisi</h1><div class="mut">Mağaza × gün: ✓ geldi · ⏱ geç · ✕ eksik · … bekleniyor · ⚠ kasa ile ciro uyuşmuyor. ${esc(v.not)}</div></div></div>
+    s.innerHTML=`<div class="sayfa-bas"><div><h1>Merkez matrisi</h1><div class="mut">Mağaza × gün: ✓ geldi · ⏱ geç · ✕ eksik · … bekleniyor · ⚠ kasa ile ciro uyuşmuyor · ½ ikinci imza atmadı (tek imza). ${esc(v.not)}</div></div></div>
     <div class="kart" style="overflow:auto"><table class="tablo matris"><thead><tr><th>Şube</th>${v.tarihler.map(t=>`<th>${esc(t.slice(5))}</th>`).join('')}</tr></thead><tbody>
-    ${v.satirlar.map(r=>`<tr><th>${esc(r.sube)}</th>${r.hucreler.map(h=>`<td class="m-${h.durum}" title="${SY[h.durum][1]}${h.kasa_ciro_uyusmuyor?' · kasa ile ciro uyuşmuyor':''}">${SY[h.durum][0]}${h.kasa_ciro_uyusmuyor?' ⚠':''}</td>`).join('')}</tr>`).join('')}</tbody></table>
+    ${v.satirlar.map(r=>`<tr><th>${esc(r.sube)}</th>${r.hucreler.map(h=>`<td class="m-${h.durum}" title="${SY[h.durum][1]}${h.kasa_ciro_uyusmuyor?' · kasa ile ciro uyuşmuyor':''}${h.ikinci_imza_atmadi?' · ikinci imza atmadı':''}">${SY[h.durum][0]}${h.kasa_ciro_uyusmuyor?' ⚠':''}${h.ikinci_imza_atmadi?' ½':''}</td>`).join('')}</tr>`).join('')}</tbody></table>
     ${v.okunamayan?`<p class="hata">${v.okunamayan} dosya okunamadı.</p>`:''}</div>`}catch(e){s.innerHTML=`<h1>Merkez matrisi</h1><p class="hata">${esc(e.message)}</p>`}}
 
 basla().catch(e=>{document.body.innerHTML='<p style="padding:24px">TAA Kasa açılamadı: '+esc(e.message)+'</p>'});

@@ -8,8 +8,8 @@ use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use taa_kasa::gunsonu::{
-    GunSonuGirdi, KasaAyar, KasaDefteri, Kisi, MasrafGirdi, OnayTuru, Rol, SayimGirdi, SayimTuru,
-    BILGI_ALANLARI, DOVIZLER, KAPANIS_LISTESI, KASA_ACIGI, ODEME_TURLERI,
+    GunSonuGirdi, ImzaKanali, KasaAyar, KasaDefteri, Kisi, MasrafGirdi, OnayTuru, Rol, SayimGirdi,
+    SayimTuru, BILGI_ALANLARI, DOVIZLER, KAPANIS_LISTESI, KASA_ACIGI, ODEME_TURLERI,
 };
 use taa_kasa::merkez::{self, KlasorTasiyici, Kuyruk};
 use taa_kasa::sablon;
@@ -22,6 +22,8 @@ const PIN_KILIT: Duration = Duration::from_secs(5 * 60);
 
 pub enum Cevap {
     Json(u16, Value),
+    /// Sayfada gösterilen HTML (A4 tutanak; indirme değil).
+    Html(String),
     Dosya {
         ad: String,
         tur: &'static str,
@@ -177,6 +179,84 @@ impl Uygulama {
                 };
                 d.onayla(id, tur, k).map(|_| json!({"tamam": true}))
             }),
+            ("POST", "/api/imza") => {
+                // Telefon köprüsü (eşleşmiş telefondan imza) henüz bağlı değil: bu ekran yalnız 127.0.0.1'de
+                // açılır, telefon erişemez. Yer tutucu olarak kişi ekranda kendi adıyla imzalar.
+                if s("kanal") == "telefon" {
+                    return hata(
+                        501,
+                        "Telefonla imza köprüsü henüz bağlı değil; imza bu ekrandan (yer tutucu) atılır.",
+                    );
+                }
+                self.yaz(govde, |d, k, g| {
+                    let id = g.get("id").and_then(Value::as_str).unwrap_or("");
+                    d.imzala(id, ImzaKanali::Ekran, None, k).map(|x| json!(x))
+                })
+            }
+            ("POST", "/api/whatsapp") => {
+                let tarih = s("tarih");
+                if !zaman::tarih_gecerli(&tarih) {
+                    return hata(400, "tarih YYYY-AA-GG olmalı");
+                }
+                let canli = match govde.get("girdi").filter(|v| !v.is_null()) {
+                    Some(v) => match girdi::<GunSonuGirdi>(v) {
+                        Ok(g) => Some(g),
+                        Err(e) => return hata(400, e),
+                    },
+                    None => None,
+                };
+                match self.defter().whatsapp_ozeti(&ayar, &tarih, canli.as_ref()) {
+                    Ok(m) => tamam(json!({"metin": m})),
+                    Err(e) => hata(422, e),
+                }
+            }
+            ("GET", "/api/tutanak") => {
+                if self.kisi.is_none() && self.yonetici().is_none() {
+                    return hata(401, "Tutanak için önce giriş yapın.");
+                }
+                let id = crate::sorgu_degeri(sorgu, "id").unwrap_or("").to_string();
+                match self.defter().tutanak(&ayar, &id) {
+                    Ok(cd) => {
+                        let sube = if ayar.excel_baslik.trim().is_empty() {
+                            ayar.sube.clone()
+                        } else {
+                            format!("{} · {}", ayar.excel_baslik.trim(), ayar.sube)
+                        };
+                        let an = zaman::yerel_zaman(zaman::simdi_sn(), ayar.saat_farki_dk);
+                        if crate::sorgu_degeri(sorgu, "bicim") == Some("json") {
+                            tamam(cd)
+                        } else {
+                            Cevap::Html(taa_kasa::tutanak::tutanak_html(&cd, &sube, &an))
+                        }
+                    }
+                    Err(e) => hata(422, e),
+                }
+            }
+            ("POST", "/api/tutanak") => {
+                // Nebim kasa Excel'i (Tutaa kasa-excel.js karşılığı) base64 olarak gelir; ERP sütununa yazılır.
+                let mut eslesme = None;
+                let erp = match govde.get("excel_b64").and_then(Value::as_str) {
+                    Some(b) => {
+                        match crate::base64_coz(b).and_then(|x| taa_kasa::tutanak::excel_erp(&x)) {
+                            Ok(e) => {
+                                let d = e.degerler.clone();
+                                eslesme = Some(
+                                    json!({"eslesmeyen": e.eslesmeyen, "yok_olan": e.yok_olan, "degerler": e.degerler}),
+                                );
+                                Some(d)
+                            }
+                            Err(e) => return hata(422, e),
+                        }
+                    }
+                    None => None,
+                };
+                let islem = govde.get("islem").and_then(Value::as_str).map(String::from);
+                self.yaz(govde, |d, k, g| {
+                    let id = g.get("id").and_then(Value::as_str).unwrap_or("");
+                    d.tutanak_kaydet(id, erp, islem.as_deref(), k)?;
+                    Ok(json!({"tamam": true, "eslesme": eslesme}))
+                })
+            }
             ("POST", "/api/gonder") => self.gonder(&ayar, &s("id")),
             ("POST", "/api/kuyruk/bosalt") => self.bosalt(&ayar),
             ("POST", "/api/iptal") => match self.yonetici() {
@@ -546,7 +626,7 @@ impl Uygulama {
                 .filter(|x| ic(&x.kayit.tarih))
                 .collect();
             let s: Vec<_> = d.sayimlar()?.into_iter().filter(|x| ic(&x.tarih)).collect();
-            Ok(merkez::excel(&ayar.sube, &g, &m, &s))
+            Ok(merkez::excel(&ayar.sube, &g, &m, &s, &d.imza_haritasi()?))
         })();
         match r {
             Ok(b) => Cevap::Dosya {
@@ -676,6 +756,92 @@ mod testler {
         // Ayar yazmak yönetici ister.
         let (d, _) = json_of(u.istek("POST", "/api/ayar", "", &json!({})));
         assert_eq!(d, 403);
+    }
+
+    #[test]
+    fn imza_ve_whatsapp_uclari() {
+        let mut u = uyg();
+        u.istek("POST", "/api/giris", "", &json!({"ad":"Ayşe"}));
+        let t = "2026-11-25";
+        u.istek(
+            "POST",
+            "/api/sayim",
+            "",
+            &json!({"tur":"acilis","tarih":t,"cekmece":"c1","adetler":{"10000":1}}),
+        );
+        let g = json!({"tarih":t,"cekmece":"c1","nakit_adetler":{"10000":3},"ciro":{"nakit":20000},
+            "nebim_toplam_kurus":20000,"noktalar":[],"not":"Z ayrı girilecek","kontrol":[true,true,true,true,true,true,true]});
+        // Canlı özet: kaydedilmemiş girdiden.
+        let (d, v) = json_of(u.istek("POST", "/api/whatsapp", "", &json!({"tarih":t,"girdi":g})));
+        assert_eq!(d, 200, "{v}");
+        assert!(v["metin"].as_str().unwrap().contains("Nakit: 200,00 TL"));
+        let (d, gs) = json_of(u.istek("POST", "/api/gunsonu", "", &g));
+        assert_eq!(d, 200, "{gs}");
+        let id = gs["id"].as_str().unwrap().to_string();
+        // Telefon köprüsü yok: açıkça reddedilir.
+        let (d, _) = json_of(u.istek("POST", "/api/imza", "", &json!({"id":id,"kanal":"telefon"})));
+        assert_eq!(d, 501);
+        let (d, v) = json_of(u.istek("POST", "/api/imza", "", &json!({"id":id,"kanal":"ekran"})));
+        assert_eq!((d, v["sira"].as_i64()), (200, Some(1)));
+        let (_, v) = json_of(u.istek("GET", "/api/durum", "tarih=2026-11-25", &Value::Null));
+        assert_eq!(v["gun"]["asama"], "gonder");
+        assert_eq!(v["gun"]["ikinci_imza_durumu"], "ikinci imza atmadı");
+        // Giren ikinci imzayı atamaz.
+        let (d, _) = json_of(u.istek("POST", "/api/imza", "", &json!({"id":id,"kanal":"ekran"})));
+        assert_eq!(d, 422);
+    }
+
+    #[test]
+    fn tutanak_a4_ve_excel_ice_aktarma() {
+        let mut u = uyg();
+        assert!(matches!(
+            u.istek("GET", "/api/tutanak", "id=x", &Value::Null),
+            Cevap::Json(401, _)
+        ));
+        u.istek("POST", "/api/giris", "", &json!({"ad":"Ayşe"}));
+        let t = "2026-11-25";
+        u.istek(
+            "POST",
+            "/api/sayim",
+            "",
+            &json!({"tur":"acilis","tarih":t,"cekmece":"c1","adetler":{"10000":1}}),
+        );
+        let g = json!({"tarih":t,"cekmece":"c1","nakit_adetler":{"10000":3},"ciro":{"nakit":20000},
+            "nebim_toplam_kurus":20000,"noktalar":[],"not":"Z ayrı","kontrol":[true,true,true,true,true,true,true]});
+        let (_, gs) = json_of(u.istek("POST", "/api/gunsonu", "", &g));
+        let id = gs["id"].as_str().unwrap().to_string();
+        let html = match u.istek("GET", "/api/tutanak", &format!("id={id}"), &Value::Null) {
+            Cevap::Html(h) => h,
+            _ => panic!("html bekleniyordu"),
+        };
+        assert!(html.contains("TASLAK") && html.contains("KCD-2026-"));
+        // Nebim Excel'i: ERP sütunu içe aktarılır.
+        use taa_kasa::xlsx::{Hucre, Sayfa};
+        let x = taa_kasa::xlsx::xlsx_uret(&[Sayfa {
+            ad: "N".into(),
+            satirlar: vec![
+                vec![Hucre::from("Kalem"), Hucre::from("ERP")],
+                vec![Hucre::from("Nakit (TL)"), Hucre::Kurus(19_000)],
+            ],
+            ..Default::default()
+        }]);
+        let (d, v) = json_of(u.istek(
+            "POST",
+            "/api/tutanak",
+            "",
+            &json!({"id":id,"excel_b64":crate::base64_kodla(&x),"islem":"kamera incelendi"}),
+        ));
+        assert_eq!(d, 200, "{v}");
+        let (_, cd) = json_of(u.istek(
+            "GET",
+            "/api/tutanak",
+            &format!("id={id}&bicim=json"),
+            &Value::Null,
+        ));
+        assert_eq!(cd["kalemler"][0]["erp_kurus"], 19_000);
+        assert_eq!(cd["kalemler"][0]["fark_kurus"], 1_000);
+        assert_eq!(cd["sonuc"], "Fark tespit edilmiştir.");
+        assert_eq!(cd["islem"], "kamera incelendi");
     }
 
     #[test]

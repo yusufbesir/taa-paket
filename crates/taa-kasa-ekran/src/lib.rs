@@ -22,6 +22,46 @@ pub const ARAYUZ_HTML: &str = include_str!("arayuz.html");
 pub const SIMGE_SVG: &str = include_str!("simge.svg");
 
 pub const CEREZ: &str = "taa_kasa";
+
+const B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+/// Base64 çözücü (Excel içe aktarma; dış bağımlılık yok). `data:...;base64,` öneki kabul edilir.
+pub fn base64_coz(s: &str) -> Result<Vec<u8>, String> {
+    let s = s.rsplit(',').next().unwrap_or(s);
+    let mut o = Vec::with_capacity(s.len() * 3 / 4);
+    let (mut tampon, mut bit) = (0u32, 0u32);
+    for c in s.bytes().filter(|c| !c.is_ascii_whitespace() && *c != b'=') {
+        let v = B64
+            .iter()
+            .position(|x| *x == c)
+            .ok_or("dosya kodlaması bozuk")? as u32;
+        tampon = (tampon << 6) | v;
+        bit += 6;
+        if bit >= 8 {
+            bit -= 8;
+            o.push((tampon >> bit) as u8);
+            tampon &= (1 << bit) - 1;
+        }
+    }
+    Ok(o)
+}
+
+pub fn base64_kodla(b: &[u8]) -> String {
+    let mut o = String::new();
+    for p in b.chunks(3) {
+        let n = (p[0] as u32) << 16
+            | (*p.get(1).unwrap_or(&0) as u32) << 8
+            | *p.get(2).unwrap_or(&0) as u32;
+        for i in 0..4 {
+            if i <= p.len() {
+                o.push(B64[(n >> (18 - 6 * i) & 63) as usize] as char);
+            } else {
+                o.push('=');
+            }
+        }
+    }
+    o
+}
 pub const GOVDE_EN_COK: usize = 256 * 1024;
 
 pub const GUVENLIK_BASLIKLARI: &[(&str, &str)] = &[

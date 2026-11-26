@@ -3,7 +3,9 @@
 Program adı `taakasa`, exe `taa-kasa` (crates/taa-kasa-ekran). Çekirdek: crates/taa-kasa (`gunsonu`, `merkez`,
 `sablon`, `xlsx`, `zaman`; eski `Defter` uyumlu). Fiyat Etiketi'ndeki "Kasa" ekranıyla ilgisi yoktur.
 
-Tek yazar TAA Kasa'dır (`kasa.gunsonu@1`, `kasa.masraf@1`); Tutaa yalnız okur. Sözleşmeler:
+Tek yazar TAA Kasa'dır (`kasa.gunsonu@1`, `kasa.masraf@1`). **Kasa çift doğrulama tutanağı TAA Kasa'da üretilir ve raporlanır**
+(Yusuf'un kararı, 2026-11-26): ana plandaki T6b ("Tutaa tutanağı üretir") iptal; Tutaa yalnız eski tutanakları tutar. Şablon
+Tutaa'dan birebir alındı (`crates/taa-kasa/sablonlar/kasa-cift-dogrulama.json`). Sözleşmeler:
 docs/sozlesmeler/kasa.gunsonu.md, docs/sozlesmeler/kasa.masraf.md.
 
 ## Akış
@@ -12,8 +14,13 @@ docs/sozlesmeler/kasa.gunsonu.md, docs/sozlesmeler/kasa.masraf.md.
 2. **Gün içi:** ara sayım ve vardiya devri (ikinci kişi zorunlu, giren olamaz), masraf girişi.
 3. **Gün sonu sihirbazı (5 adım):** nakit sayımı → döviz → Z raporu / POS → Nebim ve ciro satırları (akşam ciro
    Excel'inin satırları, aynı sırayla) → kontrol listesi. Sağda canlı fark paneli.
-4. **İkinci kişi onayı** ("giren onaylayamaz").
-5. **Gönder:** paket (imzalı, cihaz anahtarı varsa) kuyruğa yazılır, merkeze teslim edilir; ağ yoksa kuyrukta bekler.
+4. **İmza** (kapanış listesi tamamlanınca istek çıkar): 1. imza Kasa Sorumlusu, 2. imza Mağaza Sorumlusu / Vekili. En az bir
+   imza zorunlu; ikinci imzayı giren atamaz; ikinci kişi yoksa "ikinci imza atmadı" yazılır (kayıt, Excel, tutanak, ekran, matris).
+   Telefonla imza çekirdekte hazır (`kanal: telefon`, cihaz kimliği); kasa ekranı yalnız 127.0.0.1'de açıldığı için telefon
+   köprüsü henüz bağlı değil, imza ekrandan atılır (yer tutucu, ekranda yazar).
+5. **Tutanak ve raporlar:** Kasa Çift Doğrulama Tutanağı (A4, yazdırılabilir; `GET /api/tutanak?id=`; Nebim kasa Excel'i ERP
+   sütununa içe aktarılabilir), WhatsApp özeti (`POST /api/whatsapp`, alanlar doldukça), akşam ciro Excel'i ve kayıt Excel'i aynı kayıtlardan.
+6. **Gönder:** paket (imzalı, cihaz anahtarı varsa) kuyruğa yazılır, merkeze teslim edilir; ağ yoksa kuyrukta bekler.
 
 Fark varsa açıklama zorunlu; nakit ya da Z↔ciro tutmazsa "kasa ile ciro uyuşmuyor" uyarısı çıkar.
 
@@ -38,17 +45,42 @@ Ortak giriş neden bağlanmadı: depoda `taa-fis-sunucu/src/ortak_giris.rs` (taa
 `taakasa` program izni tanımlı değil (giriş `program_kapali` döner) ve rol eşlemesi (personel/müdür/yönetici)
 henüz kararlaştırılmadı. Bağlanması ayrı iş olarak bırakıldı.
 
-## Açık sorular
+## Yanıtlanan sorular
 
-- Z raporu ve Nebim, şablonun hangi toplamıyla karşılaştırılmalı? Şimdilik son GENEL TOPLAM (kredi çeki ve
-  internet değişimi dahil). Z bunları içermiyorsa ilk GENEL TOPLAM'a (E28) çevrilir.
-- NAKİT TL masraflar çıktıktan sonra kalan nakit mi (çekmece beklentisi = açılış + NAKİT TL varsayıldı)?
-- KASA AÇIĞI / KASA FAZLASI elle mi girilsin, yoksa nakit sayım farkından mı doldurulsun? (Şimdilik elle.)
-- E-FATURA POS:2 ve İYZİCO ÖDEMESİ'nin hangi POS/kanaldan geldiği; E-fatura için ayrı POS karşılaştırması gerekir mi?
-- Masraf satırları 9 ile sınırlı; fazlası son satırda toplanıyor. Uygun mu?
-- Masraf türü listesi (şimdilik örnek liste), kasa limiti, fark toleransı (varsayılan 0), gönderim son saati
-  (varsayılan 23:00).
-- Mağaza imza anahtarı ve sunucu kasa ucu.
+Kanıt: 25.11.2026 ve 12.10.2026 dolu dosyaları (şablon, Z raporları, hareket özeti, ödeme listesi, WhatsApp metni); her eşitlik
+kuruşu kuruşuna tuttu. Tutarlar depoya yazılmadı.
+
+| Soru | Yanıt | Kanıt (ilişki) |
+|---|---|---|
+| Nebim hangi toplamla? | Son GENEL TOPLAM | Nebim "Peşin Satış Toplam" net = Excel son GENEL TOPLAM |
+| Z hangi toplamla? | GENEL TOPLAM + DEĞİŞİM − İNTERNET DEĞİŞİMİ (+ İADE) | Üç yazarkasanın Z toplamı = bu formül = Nebim "Peşin Satış Normal" |
+| NAKİT TL nedir? | Sistem nakdi, masraf ve para üstü düşülmüş | Nakit peşinat + para üstü − masraf = ödeme listesindeki "Elden Teslim" (her mağaza) |
+| Kasa fazlası/açığı elle mi? | Hayır, sayımdan | KASA FAZLASI = sayılan − sistem nakdi; genel toplama girmez |
+| Masraf 9 satırla sınırlı mı? | Hayır | "masraf eklendikçe olsun" (Yusuf); satırlar artar |
+| Kredi kartı satırları? | Cihaza göre, bankaya göre değil | İyzico yazarkasasındaki tüm bankalar ve QR = İYZİCO POS:2; Nebim banka kırılımı kartı veren bankadır |
+| Nebim havale? | BANKAYA HAVALE + İYZİCO ÖDEMESİ | Nebim "Banka Havalesi / EFT" = iki satırın toplamı |
+| Nebim "Kredi Çeki"? | Değişim çeki | Nebim kredi çeki = Excel DEĞİŞİM |
+| Havale farkı ve döviz toplamda? | Döviz ve masraf girer; havale farkı ve kasa fazlası girmez | 12.10 WhatsApp metninin üç toplamı bu kuralla tuttu |
+| Kasiyer bazlı Nebim? | Mağaza ayrımı ödemelerden | Kasiyer satışları mağaza sütunlarından farklı; kasiyer ödemeleri birebir |
+
+## Açık sorular (kalan)
+
+- E-FATURA POS:2 satırı ne zaman dolu? (25.11'de e-fatura satışı olduğu halde 0.)
+- Excel KREDİ ÇEKİ satırı ne zaman dolu? (Nebim kredi çeki DEĞİŞİM'e gidiyor; satır 0.)
+- KASA AÇIĞI ve İADE'nin Z formülündeki yeri örneksiz çıkarım (açıklı ya da iadeli gün örneği gerekli).
+- Veri bilgisi: 25.11 Outlet yazarkasasında bir havale ödemesi nakit tipiyle girilmiş (Nebim ve Excel'de havale).
+- Masraf türü listesi, kasa limiti, fark toleransı, gönderim son saati; mağaza imza anahtarı; sunucu kasa ucu; telefon köprüsü.
+
+## Tutaa'dan taşınanlar (çift doğrulama)
+
+| Tutaa | TAA Kasa karşılığı |
+|---|---|
+| `masaustu/sablonlar/kasa-cift-dogrulama.json` | `crates/taa-kasa/sablonlar/kasa-cift-dogrulama.json` + `tutanak::sablon()` |
+| `masaustu/cekirdek/sablon.js` (fark = fiili − erp, gerekçe kuralı) | `tutanak::cift_dogrulama` / `cift_dogrulama_islem` |
+| `web/paket.js` farktan sonucu seçme | `tutanak::sonuc_sec` |
+| `web/kasa-excel.js` Nebim Excel içe aktarma | `tutanak::xlsx_oku`, `sutun_oner`, `eslestir`, `sayi_oku`, `excel_erp`; API `POST /api/tutanak` |
+| Genel şablon A4 çıktısı | `tutanak::tutanak_html`; API `GET /api/tutanak?id=` |
+| İki imza rolü (kâğıt) | `GunKaydi::Imza`, `KasaDefteri::imzala` (en az bir imza, "ikinci imza atmadı") |
 
 ## Akşam ciro Excel'i (şablon)
 
@@ -91,6 +123,18 @@ program değerleriyle 30 sayfada fark çıkmadı. Şablondan ayrılan yerler:
 - Formüller tablo adıyla değil düz hücre başvurusuyla yazılır; veri doğrulama yazılmaz; G5'e "TAA Kasa
   kayıtlarından üretildi" notu eklenir.
 - Kur, o gün kuru giren ilk çekmeceden alınır (şablonda tek kur satırı var).
+
+## Okuyucular ve üçlü karşılaştırma (tools/kasa_hareket_oku.py)
+
+- `hareket rapor.pdf`: Nebim Mağaza Hareket Özeti (dosya adı .xlsx olsa da PDF'tir; `pdftotext -raw`). Satış normal/iade/toplam,
+  ödemeler (tip, para, kartı veren banka, peşinat, iade, diğer, toplam), masraf; kasiyer bazlı raporda her bölüm numaralanır
+  (ad yazılmaz). `sablon` alanı ödemeleri şablon satırlarına toplar.
+- `odeme liste.xlsx`: Alınan Ödemeler Listesi; mağaza ve para birimi başına satış, para üstü, masraf, elden teslim (müşteri adı okunmaz).
+- `uclu rapor.pdf --z … --excel-genel-toplam … --internet-degisimi …`: Z ↔ Nebim Normal, Nebim Toplam ↔ Excel, Z ↔ genel toplam
+  formülü, Nebim ödemeleri ↔ genel toplam. 25.11.2026'da dört satırda da fark 0; kasiyer bölümleri mağaza sütunlarıyla birebir.
+- 25.11 verisi programa girilip üretilen Excel, `kasa_ciro_karsilastir.py --dolu-sayfa Sayfa1 --gun 25.11.2026` ile dolu dosyayla
+  karşılaştırıldı: tüm toplamlar ve ödeme satırları aynı; kalan 2 fark yapısal (dolu dosyada EUR tutarı 0 iken EUR kuru yazılı;
+  masraf dolu dosyada masraf satırlarında değil, toplamda). 12.10 verisi de girildi: WhatsApp metninin üç toplamı aynı çıktı.
 
 ## Karşılaştırma yöntemi
 

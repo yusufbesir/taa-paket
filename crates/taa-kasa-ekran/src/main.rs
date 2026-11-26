@@ -257,6 +257,12 @@ fn isle(
         ),
         _ => match uyg.istek(yontem, &yol, &sorgu, &govde) {
             Cevap::Json(d, v) => json_yanit(istek, d, &v),
+            Cevap::Html(h) => yanitla(
+                istek,
+                Response::from_string(h),
+                "text/html; charset=utf-8",
+                &[],
+            ),
             Cevap::Dosya { ad, tur, bayt } => yanitla(
                 istek,
                 Response::from_data(bayt),

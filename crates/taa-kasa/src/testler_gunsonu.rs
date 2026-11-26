@@ -101,6 +101,7 @@ fn gun_sonu_girdi() -> GunSonuGirdi {
         }],
         devreden_kurus: 50_000,
         kontrol: vec![true; 7],
+        aciklamalar: BTreeMap::new(),
         not: String::new(),
     }
 }
@@ -216,6 +217,7 @@ fn masraf_esigi_ve_giren_onaylayamaz() {
         tutar_kurus: 150_000,
         aciklama: "koli".into(),
         foto: None,
+        not: String::new(),
     };
     let kucuk = d.masraf_ekle(&a, &g, &ayse()).unwrap();
     assert_eq!(kucuk.onay_duzeyi, OnayDuzeyi::Mudur);
@@ -367,39 +369,19 @@ fn onay_giren_olamaz_ve_gonderim_kosullari() {
     let mut g = gun_sonu_girdi();
     g.kontrol[3] = false;
     let gs = d.gun_sonu_ekle(&a, &g, &ayse()).unwrap();
-    assert_eq!(d.gun_durumu(&a, T, "c1").unwrap().asama, "onay");
+    let du = d.gun_durumu(&a, T, "c1").unwrap();
+    assert_eq!(du.asama, "kontrol");
+    assert!(!du.imza_istegi, "liste eksikken imza isteği çıkmaz");
+    // Liste eksik: imza da onay da alınmaz, gönderilmez.
     assert!(d
-        .onayla(
-            &gs.id,
-            OnayTuru::IkinciKisi,
-            &Kisi {
-                ad: "AYŞE".into(),
-                ..ayse()
-            }
-        )
-        .is_err());
-    assert!(d
-        .gonderim_paketi(&a, &gs.id)
+        .imzala(&gs.id, ImzaKanali::Ekran, None, &ayse())
         .unwrap_err()
-        .contains("ikinci"));
-    d.onayla(
-        &gs.id,
-        OnayTuru::IkinciKisi,
-        &Kisi {
-            ad: "Zeynep".into(),
-            ..ayse()
-        },
-    )
-    .unwrap();
-    assert!(
-        d.onayla(&gs.id, OnayTuru::IkinciKisi, &mehmet_mudur())
-            .is_err(),
-        "tekrar yok"
-    );
-    assert!(
-        d.gonderim_paketi(&a, &gs.id).unwrap_err().contains("7"),
-        "liste eksik"
-    );
+        .contains("kapanış"));
+    assert!(d
+        .onayla(&gs.id, OnayTuru::IkinciKisi, &mehmet_mudur())
+        .is_err());
+    assert!(d.gonderim_paketi(&a, &gs.id).unwrap_err().contains("7"));
+    // Ertesi gün gözden geçirmesi müdürün.
     assert!(d
         .onayla(
             &gs.id,
@@ -414,7 +396,108 @@ fn onay_giren_olamaz_ve_gonderim_kosullari() {
         .unwrap();
     let form = KasaDefteri::gunluk_form(&d.gun_durumu(&a, T, "c1").unwrap());
     assert_eq!(form.len(), 8);
-    assert!(form[0].1 && !form[5].1 && form[6].1 && !form[7].1);
+    assert!(form[0].1 && !form[5].1 && !form[6].1 && !form[7].1);
+}
+
+#[test]
+fn imza_kurallari_en_az_tek_imza_ve_ikinci_imza_atmadi() {
+    let d = defter("imza");
+    let a = esenyurt();
+    acilis(&d, &a);
+    let gs = d.gun_sonu_ekle(&a, &gun_sonu_girdi(), &ayse()).unwrap();
+    let du = d.gun_durumu(&a, T, "c1").unwrap();
+    assert_eq!(du.asama, "imza");
+    assert!(du.imza_istegi);
+    assert_eq!(du.ikinci_imza_durumu, IKINCI_IMZA_ATMADI);
+    // İmzasız gönderilemez.
+    assert!(d
+        .gonderim_paketi(&a, &gs.id)
+        .unwrap_err()
+        .contains("en az bir imza"));
+    // Telefonla imzada cihaz kimliği zorunlu.
+    assert!(d
+        .imzala(&gs.id, ImzaKanali::Telefon, None, &ayse())
+        .is_err());
+    // Giren birinci imzayı (kasa sorumlusu) atabilir.
+    let i1 = d
+        .imzala(&gs.id, ImzaKanali::Telefon, Some("tel-1"), &ayse())
+        .unwrap();
+    assert_eq!((i1.sira, i1.rol.as_str()), (1, "kasa_sorumlusu"));
+    assert!(
+        d.imzala(&gs.id, ImzaKanali::Ekran, None, &ayse()).is_err(),
+        "aynı kişi iki kez imzalayamaz"
+    );
+    // Tek imzayla gönderilir; ikinci imza "imza atmadı" yazar.
+    let p = d.gonderim_paketi(&a, &gs.id).unwrap();
+    assert_eq!(p["imzalar"][0]["durum"], "imzaladi");
+    assert_eq!(p["imzalar"][0]["cihaz"], "tel-1");
+    assert_eq!(p["imzalar"][1]["durum"], "imza_atmadi");
+    assert_eq!(p["ikinci_imza_durumu"], IKINCI_IMZA_ATMADI);
+    assert_eq!(p["cift_dogrulama"]["imzalar"][1]["imzalamadi"], true);
+    assert_eq!(p["cift_dogrulama"]["kalemler"].as_array().unwrap().len(), 8);
+    assert_eq!(d.gun_durumu(&a, T, "c1").unwrap().asama, "gonder");
+    // İkinci imza: giren olamaz (müdür olarak bile); başka kişi atar.
+    assert!(d
+        .onayla(
+            &gs.id,
+            OnayTuru::IkinciKisi,
+            &Kisi {
+                ad: "AYŞE".into(),
+                ..mehmet_mudur()
+            }
+        )
+        .is_err());
+    let i2 = d
+        .imzala(&gs.id, ImzaKanali::Telefon, Some("tel-2"), &mehmet_mudur())
+        .unwrap();
+    assert_eq!((i2.sira, i2.rol.as_str()), (2, "magaza_sorumlusu"));
+    let du = d.gun_durumu(&a, T, "c1").unwrap();
+    assert!(!du.imza_istegi, "iki imza dolunca istek kapanır");
+    assert_eq!(du.ikinci_onay.as_deref(), Some(mehmet_mudur().ad.as_str()));
+    assert!(du.ikinci_imza_durumu.starts_with("imzaladı"));
+    assert!(d
+        .imzala(&gs.id, ImzaKanali::Ekran, None, &yonetici())
+        .is_err());
+    d.gonderim_kaydet(&gs.id, "x.json", false).unwrap();
+    assert_eq!(d.gun_durumu(&a, T, "c1").unwrap().asama, "tamam");
+}
+
+#[test]
+fn imza_tek_imzayla_gonderildiyse_sonradan_eklenmez() {
+    let d = defter("imza2");
+    let a = esenyurt();
+    acilis(&d, &a);
+    let gs = d.gun_sonu_ekle(&a, &gun_sonu_girdi(), &ayse()).unwrap();
+    d.imzala(&gs.id, ImzaKanali::Ekran, None, &ayse()).unwrap();
+    d.gonderim_kaydet(&gs.id, "x.json", false).unwrap();
+    assert!(d
+        .imzala(&gs.id, ImzaKanali::Ekran, None, &mehmet_mudur())
+        .unwrap_err()
+        .contains("gönderildi"));
+}
+
+#[test]
+fn whatsapp_ozeti_kayittan_ve_canli_girdiden() {
+    let d = defter("wa");
+    let mut a = esenyurt();
+    a.cekmeceler[0].ad = "Merkez".into();
+    acilis(&d, &a);
+    let bos = d.whatsapp_ozeti(&a, T, None).unwrap();
+    assert!(bos.starts_with("MERKEZ MAĞAZA "));
+    assert!(bos.ends_with("MAĞAZA GENEL TOPLAM: 0 TL"));
+    let g = gun_sonu_girdi();
+    let canli = d.whatsapp_ozeti(&a, T, Some(&g)).unwrap();
+    let gs = d.gun_sonu_ekle(&a, &g, &ayse()).unwrap();
+    let kayit = d.whatsapp_ozeti(&a, T, None).unwrap();
+    assert_eq!(canli, kayit, "canlı özet kayıtla aynı");
+    assert!(kayit.contains(&format!(
+        "GENEL TOPLAM: {}",
+        taa_kasa_tl(gs.karsilastirma.ciro_toplam_kurus)
+    )));
+}
+
+fn taa_kasa_tl(k: i64) -> String {
+    crate::whatsapp::tl(k)
 }
 
 #[test]
@@ -463,6 +546,7 @@ fn iptal_yalniz_yonetici_silmez_duzeltme_iz_birakir() {
                 tutar_kurus: 100,
                 aciklama: "çay".into(),
                 foto: None,
+                not: String::new(),
             },
             &ayse(),
         )
@@ -503,6 +587,7 @@ fn kuyruk_cevrimdisi_bekletir_sonra_teslim_eder_ve_matris() {
     d.onayla(&gs.id, OnayTuru::IkinciKisi, &mehmet_mudur())
         .unwrap();
     let p = d.gonderim_paketi(&a, &gs.id).unwrap();
+    assert_eq!(p["imzalar"][0]["kisi"], mehmet_mudur().ad);
     assert_eq!(p["tur"], "kasa.gunsonu@1");
     let q = Kuyruk { kok: d.kok.clone() };
     let ad = format!("{}.json", gs.id);
@@ -535,12 +620,14 @@ fn kuyruk_cevrimdisi_bekletir_sonra_teslim_eder_ve_matris() {
             tarih: "2026-11-24".into(),
             alinma_sn: son("2026-11-24") - 60,
             kasa_ciro_uyusmuyor: true,
+            ikinci_imza_atmadi: true,
         },
         GelenPaket {
             sube: "ESY".into(),
             tarih: "2026-11-25".into(),
             alinma_sn: son("2026-11-25") + 60,
             kasa_ciro_uyusmuyor: false,
+            ikinci_imza_atmadi: false,
         },
     ];
     let tarihler: Vec<String> = ["2026-11-24", "2026-11-25", "2026-11-26", "2026-11-27"]
@@ -579,8 +666,10 @@ fn excel_uc_sayfa_uretir() {
         &d.gun_sonlari().unwrap(),
         &d.masraflar().unwrap(),
         &d.sayimlar().unwrap(),
+        &d.imza_haritasi().unwrap(),
     );
     let m = String::from_utf8_lossy(&b);
+    assert!(m.contains("ikinci imza atmadı"));
     assert!(
         m.contains("name=\"Gün sonu\"")
             && m.contains("name=\"Masraf\"")

@@ -15,3 +15,5 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 taa-ayar = { path = "../taa-ayar" }
 taa-dosya = { path = "../taa-dosya" }
+# Nebim kasa Excel içe aktarma (Tutaa kasa-excel.js karşılığı); çalışma alanında zaten var.
+zip = { version = "9.3.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }

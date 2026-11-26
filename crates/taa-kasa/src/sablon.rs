@@ -23,7 +23,7 @@ use crate::xlsx::{sutun, Hucre, Sayfa, Stil};
 use crate::zaman;
 use std::collections::BTreeMap;
 
-/// Şablondaki masraf satırı sayısı (18–26).
+/// Şablondaki en az masraf satırı sayısı (18–26). Masraf eklendikçe satır artar; alttaki bölüm kayar.
 pub const MASRAF_SATIRI: usize = 9;
 
 /// Bir mağaza sütunu (bir çekmece).
@@ -115,24 +115,8 @@ pub fn ciro_gunu(
         };
         let mut tutar = vec![0; n];
         tutar[i] = m.kayit.tutar_kurus;
-        let ad = if m.kayit.aciklama.trim().is_empty() {
-            m.kayit.tur.clone()
-        } else {
-            format!("{}: {}", m.kayit.tur, m.kayit.aciklama.trim())
-        };
-        g.masraflar.push((ad, tutar));
-    }
-    // Şablonda 9 masraf satırı var; fazlası son satırda toplanır.
-    if g.masraflar.len() > MASRAF_SATIRI {
-        let fazla: Vec<(String, Vec<i64>)> = g.masraflar.split_off(MASRAF_SATIRI - 1);
-        let mut t = vec![0; n];
-        for (_, v) in &fazla {
-            for (a, b) in t.iter_mut().zip(v) {
-                *a += b;
-            }
-        }
         g.masraflar
-            .push((format!("Diğer masraflar ({} kalem)", fazla.len()), t));
+            .push((crate::gunsonu::masraf_kalemi(&m.kayit), tutar));
     }
     g
 }
@@ -167,7 +151,6 @@ impl CiroGunu {
                 .iter()
                 .map(|(k, _)| self.doviz_tl(i, k))
                 .sum::<i64>()
-            + self.c(i, KASA_ACIGI.0)
             + self.masraf(i)
             + ozel.iter().map(|k| self.c(i, k)).sum::<i64>()
     }
@@ -188,13 +171,27 @@ impl CiroGunu {
             .sum()
     }
 
+    /// Excel'deki NAKİT TL: sistem nakdi − kasa açığı (açık MASRAFLAR'da ayrıca yazılır).
+    fn nakit_excel(&self, i: usize) -> i64 {
+        self.c(i, "nakit") - self.c(i, KASA_ACIGI.0)
+    }
+
     /// Şablon sayfası.
     pub fn sayfa(&self) -> Sayfa {
         let n = self.sutunlar.len().max(1);
         let sc: Vec<String> = (1..=n).map(sutun).collect();
         let e = sutun(n + 2);
         let gen = n + 4; // toplam sütunundan sonra boş F, sonra G (yardım)
-        let r_toplam = 32;
+                         // Masraf satırları: en az 9, masraf eklendikçe artar; alttaki satırlar `k` kadar kayar.
+        let ms = self.masraflar.len().max(MASRAF_SATIRI);
+        let k = ms - MASRAF_SATIRI;
+        let r_mson = 17 + ms; // son masraf satırı (şablonda 26)
+        let r_tm = 27 + k;
+        let r_gt = 28 + k;
+        let r_kc = 29 + k;
+        let r_id = 30 + k;
+        let r_gt2 = 31 + k;
+        let r_toplam = 32 + k;
         let r_dbas = r_toplam + n;
         let r_kur = r_dbas + 1;
         let r_tl0 = r_kur + 1;
@@ -278,7 +275,16 @@ impl CiroGunu {
                 koy(r, n + 2, Hucre::Formul(topla(r), t).stil(Stil::HesapTl));
             };
 
-        ciro_satiri(&mut koy, 2, ad("nakit"), "nakit");
+        {
+            koy(2, 0, etiket(ad("nakit")));
+            let mut t = 0;
+            for i in 0..self.sutunlar.len() {
+                let v = self.nakit_excel(i);
+                t += v;
+                koy(2, 1 + i, tl(v));
+            }
+            koy(2, n + 2, Hucre::Formul(topla(2), t).stil(Stil::HesapTl));
+        }
         // 3–6: döviz
         let giris_doviz = [
             Stil::GirisUsd,
@@ -334,11 +340,11 @@ impl CiroGunu {
         }
         koy(16, 0, Hucre::from("MASRAFLAR").stil(Stil::Bolum));
         ciro_satiri(&mut koy, 17, KASA_ACIGI.1, KASA_ACIGI.0);
-        for k in 0..MASRAF_SATIRI {
-            let r = 18 + k;
+        for j in 0..ms {
+            let r = 18 + j;
             let (ad, v) = self
                 .masraflar
-                .get(k)
+                .get(j)
                 .cloned()
                 .unwrap_or_else(|| (String::new(), vec![0; self.sutunlar.len()]));
             koy(r, 0, Hucre::from(ad).stil(Stil::GirisMetin));
@@ -353,38 +359,50 @@ impl CiroGunu {
             .map(|i| self.c(i, KASA_ACIGI.0) + self.masraf(i))
             .sum();
         for c in 0..=n + 1 {
-            koy(27, c, Hucre::Bos.stil(Stil::ToplamMasraf));
+            koy(r_tm, c, Hucre::Bos.stil(Stil::ToplamMasraf));
         }
-        koy(27, 0, Hucre::from("TOPLAM MASRAF").stil(Stil::ToplamMasraf));
         koy(
-            27,
+            r_tm,
+            0,
+            Hucre::from("TOPLAM MASRAF").stil(Stil::ToplamMasraf),
+        );
+        koy(
+            r_tm,
             n + 2,
-            Hucre::Formul(format!("SUM({e}17:{e}26)"), toplam_masraf).stil(Stil::ToplamMasrafTutar),
+            Hucre::Formul(format!("SUM({e}17:{e}{r_mson})"), toplam_masraf)
+                .stil(Stil::ToplamMasrafTutar),
         );
         for c in 0..=n + 1 {
-            koy(28, c, Hucre::Bos.stil(Stil::GenelToplam));
+            koy(r_gt, c, Hucre::Bos.stil(Stil::GenelToplam));
         }
-        koy(28, 0, Hucre::from("GENEL TOPLAM").stil(Stil::GenelToplam));
+        koy(r_gt, 0, Hucre::from("GENEL TOPLAM").stil(Stil::GenelToplam));
         koy(
-            28,
+            r_gt,
             n + 2,
             Hucre::Formul(
-                format!("SUM({e}2:{e}9,{e}13:{e}14,{e}27)"),
+                format!("SUM({e}2:{e}9,{e}13:{e}14,{e}{r_tm})"),
                 self.genel_toplam_ara(),
             )
             .stil(Stil::GenelToplamTutar),
         );
-        ciro_satiri(&mut koy, 29, ad("kredi_ceki"), "kredi_ceki");
-        ciro_satiri(&mut koy, 30, ad("internet_degisimi"), "internet_degisimi");
+        ciro_satiri(&mut koy, r_kc, ad("kredi_ceki"), "kredi_ceki");
+        ciro_satiri(&mut koy, r_id, ad("internet_degisimi"), "internet_degisimi");
         for c in 0..=n + 1 {
-            koy(31, c, Hucre::Bos.stil(Stil::GenelToplam2));
+            koy(r_gt2, c, Hucre::Bos.stil(Stil::GenelToplam2));
         }
-        koy(31, 0, Hucre::from("GENEL TOPLAM").stil(Stil::GenelToplam2));
         koy(
-            31,
+            r_gt2,
+            0,
+            Hucre::from("GENEL TOPLAM").stil(Stil::GenelToplam2),
+        );
+        koy(
+            r_gt2,
             n + 2,
-            Hucre::Formul(format!("{e}28+{e}29+{e}30"), self.genel_toplam())
-                .stil(Stil::GenelToplam2Tutar),
+            Hucre::Formul(
+                format!("{e}{r_gt}+{e}{r_kc}+{e}{r_id}"),
+                self.genel_toplam(),
+            )
+            .stil(Stil::GenelToplam2Tutar),
         );
         // Mağaza toplamları
         for (i, s) in self.sutunlar.iter().enumerate() {
@@ -404,7 +422,7 @@ impl CiroGunu {
                 n + 2,
                 Hucre::Formul(
                     format!(
-                        "SUM({x}2,{x}7:{x}9,{x}13:{x}14,{x}17:{x}26,{x}29:{x}30,B{tlr}:E{tlr})"
+                        "SUM({x}2,{x}7:{x}9,{x}13:{x}14,{x}17:{x}{r_mson},{x}{r_kc}:{x}{r_id},B{tlr}:E{tlr})"
                     ),
                     self.sutun_toplami(i),
                 )
@@ -586,6 +604,7 @@ mod testler {
                 tur: "Kargo".into(),
                 tutar_kurus: tutar,
                 aciklama: String::new(),
+                not: String::new(),
                 foto: None,
                 onay_duzeyi: OnayDuzeyi::Mudur,
                 zaman: 0,
@@ -622,12 +641,13 @@ mod testler {
     #[test]
     fn toplamlar_sablon_formulune_uyar() {
         let g = ornek();
-        // Outlet: 1000+500+200+50+300 + 400 (10 USD) + 5 açık + 80 masraf + 20 kredi çeki = 2.555
-        assert_eq!(g.sutun_toplami(0), 255_500);
+        // Outlet: 1000 (sistem nakdi; 5 TL açık bunun içinde) +500+200+50+300 + 400 (10 USD) + 80 masraf
+        // + 20 kredi çeki = 2.550
+        assert_eq!(g.sutun_toplami(0), 255_000);
         // Ana: 2000+100 + 227,50 (5 EUR × 45,5) + 150 masraf + 30 internet = 2.507,50
         assert_eq!(g.sutun_toplami(1), 250_750);
-        assert_eq!(g.genel_toplam(), 506_250);
-        assert_eq!(g.genel_toplam_ara(), 506_250 - 2_000 - 3_000);
+        assert_eq!(g.genel_toplam(), 505_750);
+        assert_eq!(g.genel_toplam_ara(), 505_750 - 2_000 - 3_000);
         assert_eq!(g.masraflar.len(), 2, "reddedilen masraf girmez");
     }
 
@@ -645,8 +665,9 @@ mod testler {
             ">TOPLAM DÖVİZ<",
             "r=\"E1\" t=\"inlineStr\" s=\"4\"><is><t xml:space=\"preserve\">26.11.2026<",
             "r=\"A2\" t=\"inlineStr\" s=\"5\"><is><t xml:space=\"preserve\">NAKİT TL<",
-            "<c r=\"B2\" s=\"6\"><v>1000.00</v></c>",
-            "<c r=\"E2\" s=\"11\"><f>B2+C2</f><v>3000.00</v></c>",
+            // NAKİT TL = sistem nakdi − kasa açığı (açık MASRAFLAR'da)
+            "<c r=\"B2\" s=\"6\"><v>995.00</v></c>",
+            "<c r=\"E2\" s=\"11\"><f>B2+C2</f><v>2995.00</v></c>",
             "<c r=\"D3\" s=\"12\"><f>B3+C3</f><v>10.00</v></c>",
             "<c r=\"E3\" s=\"11\"><f>B36+B37</f><v>400.00</v></c>",
             ">ZİRAAT BANKASI POS:1<",
@@ -655,9 +676,9 @@ mod testler {
             ">FİRMA HESABINA HAVALE<",
             ">KASA AÇIĞI<",
             "<c r=\"E27\" s=\"18\"><f>SUM(E17:E26)</f><v>235.00</v></c>",
-            "<c r=\"E28\" s=\"20\"><f>SUM(E2:E9,E13:E14,E27)</f><v>5012.50</v></c>",
-            "<c r=\"E31\" s=\"22\"><f>E28+E29+E30</f><v>5062.50</v></c>",
-            "<f>SUM(B2,B7:B9,B13:B14,B17:B26,B29:B30,B37:E37)</f><v>2555.00</v>",
+            "<c r=\"E28\" s=\"20\"><f>SUM(E2:E9,E13:E14,E27)</f><v>5007.50</v></c>",
+            "<c r=\"E31\" s=\"22\"><f>E28+E29+E30</f><v>5057.50</v></c>",
+            "<f>SUM(B2,B7:B9,B13:B14,B17:B26,B29:B30,B37:E37)</f><v>2550.00</v>",
             "<f>SUM(C2,C7:C9,C13:C14,C17:C26,C29:C30,B36:E36)</f><v>2507.50</v>",
             ">OUTLET MAĞAZA TOPLAMI<",
             ">ANA MAĞAZA DÖVİZ KURU TL KARŞILIĞI<",
@@ -692,14 +713,26 @@ mod testler {
     }
 
     #[test]
-    fn fazla_masraf_son_satirda_toplanir() {
+    fn masraf_eklendikce_satir_artar_ve_alt_bolum_kayar() {
         let m: Vec<MasrafGorunum> = (0..12)
             .map(|i| masraf(&format!("MS-{i}"), "outlet", 100, MasrafDurumu::Onaylandi))
             .collect();
         let g = ciro_gunu(&ayar(), "2026-11-26", &[], &m);
-        assert_eq!(g.masraflar.len(), MASRAF_SATIRI);
-        assert_eq!(g.masraflar[8].0, "Diğer masraflar (4 kalem)");
-        assert_eq!(g.masraflar[8].1, vec![400, 0]);
+        assert_eq!(g.masraflar.len(), 12, "birleştirme yok");
         assert_eq!(g.genel_toplam(), 1_200);
+        let b = crate::xlsx::xlsx_uret(&[g.sayfa()]);
+        let x = String::from_utf8_lossy(&b);
+        for parca in [
+            "<c r=\"E29\" s=\"6\"><v>1.00</v></c>",
+            "r=\"A30\" t=\"inlineStr\" s=\"17\"><is><t xml:space=\"preserve\">TOPLAM MASRAF<",
+            "<f>SUM(E17:E29)</f><v>12.00</v>",
+            "<f>SUM(E2:E9,E13:E14,E30)</f><v>12.00</v>",
+            "<f>E31+E32+E33</f><v>12.00</v>",
+            "<f>SUM(B2,B7:B9,B13:B14,B17:B29,B32:B33,B40:E40)</f><v>12.00</v>",
+            "r=\"A43\" t=\"inlineStr\" s=\"5\"><is><t xml:space=\"preserve\">İADE<",
+            "'26.11.2026'!$A$1:$E$43",
+        ] {
+            assert!(x.contains(parca), "eksik: {parca}");
+        }
     }
 }

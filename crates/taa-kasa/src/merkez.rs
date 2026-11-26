@@ -6,11 +6,15 @@
 //! `KlasorTasiyici`, paketi ortak bir klasöre (ör. merkezin paylaşılan klasörü) yazar. Sunucu ucu gelince
 //! aynı `Tasiyici` arayüzüyle değiştirilir.
 
-use crate::gunsonu::{GunSonuKaydi, MasrafGorunum, SayimKaydi, KAPANIS_LISTESI, ODEME_TURLERI};
+use crate::gunsonu::{
+    GunSonuKaydi, ImzaKanali, ImzaKaydi, MasrafGorunum, SayimKaydi, IKINCI_IMZA_ATMADI,
+    KAPANIS_LISTESI, ODEME_TURLERI,
+};
 use crate::xlsx::{Hucre, Sayfa};
 use crate::zaman;
 use serde::Serialize;
 use serde_json::Value;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 /// Paketi bir yere teslim eden taşıyıcı.
@@ -136,6 +140,8 @@ pub struct MatrisHucre {
     pub durum: MatrisDurumu,
     pub kasa_ciro_uyusmuyor: bool,
     pub cekmece_sayisi: usize,
+    /// Gelen paketlerden en az birinde ikinci imza yok ("ikinci imza atmadı").
+    pub ikinci_imza_atmadi: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -151,6 +157,7 @@ pub struct GelenPaket {
     pub tarih: String,
     pub alinma_sn: i64,
     pub kasa_ciro_uyusmuyor: bool,
+    pub ikinci_imza_atmadi: bool,
 }
 
 /// Merkez klasöründeki paketleri okur (bozuk ya da tanınmayan dosyalar atlanır, sayısı döner).
@@ -185,6 +192,7 @@ pub fn gelenleri_oku(klasor: &Path) -> (Vec<GelenPaket>, usize) {
                 kasa_ciro_uyusmuyor: p["gun_sonu"]["karsilastirma"]["kasa_ciro_uyusmuyor"]
                     .as_bool()
                     .unwrap_or(false),
+                ikinci_imza_atmadi: p["ikinci_imza_durumu"] == IKINCI_IMZA_ATMADI,
             }),
             None => bozuk += 1,
         }
@@ -230,6 +238,7 @@ pub fn matris(
                         durum,
                         kasa_ciro_uyusmuyor: p.iter().any(|g| g.kasa_ciro_uyusmuyor),
                         cekmece_sayisi: p.len(),
+                        ikinci_imza_atmadi: p.iter().any(|g| g.ikinci_imza_atmadi),
                     }
                 })
                 .collect(),
@@ -249,6 +258,7 @@ pub fn excel(
     gun_sonlari: &[GunSonuKaydi],
     masraflar: &[MasrafGorunum],
     sayimlar: &[SayimKaydi],
+    imzalar: &BTreeMap<String, Vec<ImzaKaydi>>,
 ) -> Vec<u8> {
     let mut b: Vec<Hucre> = [
         "Şube",
@@ -272,6 +282,8 @@ pub fn excel(
         "Fark var",
         "Kasa ile ciro uyuşmuyor",
         "Kapanış listesi",
+        "1. imza (Kasa Sorumlusu)",
+        "2. imza (Mağaza Sorumlusu / Vekili)",
         "Not",
         "Düzeltir",
     ] {
@@ -312,6 +324,24 @@ pub fn excel(
             )
             .into(),
         );
+        let im = imzalar.get(&g.id).map(Vec::as_slice).unwrap_or(&[]);
+        for n in 0..2 {
+            r.push(
+                match im.get(n) {
+                    Some(i) => format!(
+                        "{} ({})",
+                        i.kisi,
+                        match i.kanal {
+                            ImzaKanali::Telefon => "telefon",
+                            ImzaKanali::Ekran => "ekran",
+                        }
+                    ),
+                    None if n == 1 => IKINCI_IMZA_ATMADI.to_string(),
+                    None => "imza atmadı".to_string(),
+                }
+                .into(),
+            );
+        }
         r.push(g.not.clone().into());
         r.push(g.duzeltir.clone().unwrap_or_default().into());
         gs.push(r);
