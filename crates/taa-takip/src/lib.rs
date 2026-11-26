@@ -364,11 +364,13 @@ mod testler {
                 dogrulama: "fis".into(),
                 imza_sha256: String::new(),
                 imza_dosyasi: String::new(),
+                imza_yontemi: String::new(),
                 kim: "PC".into(),
                 tarih: "2026-11-06".into(),
                 saat: "10:00:00".into(),
                 ana_fis: String::new(),
                 sifreli: None,
+                teslim_id: String::new(),
                 gorunen: None,
             },
         )

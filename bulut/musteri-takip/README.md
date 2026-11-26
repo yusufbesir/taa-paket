@@ -53,6 +53,170 @@ bilgisi, tarih/saat şifreli tutulur. Ortak kod `ortak/onay.mjs` (kopyala.sh iki
   Rust testindeki vektörler bulutun gerçek `sifrele()` çıktısıdır).
 - Sayfa çerçevelenemez (`frame-ancestors 'none'`, `X-Frame-Options: DENY`).
 
+### Parmakla imza (Yusuf 2026-11-26 06:23: "fişi yanında olmayan için")
+- Aç gövdesine isteğe bağlı `"i": 0|1` eklendi (yoksa 0 = eski istemci; başka değer 400). `i = 1` → `/o/<t>` sayfasında
+  parmakla imza ZORUNLU (sunucuda yöntem `qr_imza`); `i = 0` → sayfa eskisi gibi betiksiz, imza alanı yok (gelirse
+  doğrulanıp yüke girer, bozuksa red). Fişsiz teslimde sunucu `i = 1` gönderir.
+- Betik satır içi değildir: `GET /o/imza.js` (Cloudflare'de worker, Vercel'de `vercel.json` yeniden yazımı `/o/:t`'den
+  önce). CSP yalnız imzalı form sayfasında `script-src 'self'` ile açılır; diğer bütün sayfalar betiksiz kalır.
+  Kaynak `ortak/imza.mjs` (`imzaIstemci`, `griPng`; toString ile metne çevrilir, test/dene7 sunulan metni sahte DOM'da çalıştırır).
+- Tuval 600×240, pointer olayları (dokunmatik, fare, kalem basıncıyla kalınlık), Temizle düğmesi, "en az birkaç çizgi"
+  denetimi (toplam ≥ 150 px ve ≥ 2 vuruş ya da ≥ 400 px). Çıktı 8 bit gri tonlamalı PNG (CompressionStream); sınırı
+  aşarsa 4 gri düzeye iner; CompressionStream yoksa `toDataURL` (RGBA) yedeği, gerekirse 300×120.
+- Bulut doğrular: `data:image/png;base64,` öneki, çözülmüş ≤ 61 440 bayt, PNG imzası, IHDR en ≤ 800, boy ≤ 400, IEND.
+  Ardından **içerik** (`imzaIcerik`): PNG gerçekten çözülür (parça CRC'leri, IDAT açılır ve tam boy, satır süzgeçleri) ve
+  koyu piksel kuralı uygulanır: koyu (beyaz zemine göre parlaklık < 128) ≥ 60 ve ≥ binde 1,5; ≤ %60; koyu sütun aralığı
+  ≥ en/10. Boş beyaz tuval, tek nokta, kara tuval ve yalnız başlığı doğru sahte PNG reddedilir (400, imza hatası). Mağaza
+  sunucusu aynı kuralı ayrıca uygular (`crates/taa-fis-sunucu/src/imza_png.rs`; hem `qr_imza` hem `cihaz_imza`; boş ya da
+  çözülemeyen imza 422 `imza_gerekli`). Bu kural "gerçek imza" kanıtı değildir; yalnız boş/sahte gönderimi keser.
+  Gövde sınırı 131 072 bayt (önceden 2 048); gövde akıştan okunur ve sınır aşılınca kesilir (content-length olmasa da).
+  JavaScript kapalıysa `<noscript>` uyarısı görünür ve imzasız gönderim reddedilir.
+- `/o/imza.js` işlevlerin `toString` çıktısından üretilir. Paketleyici hedefi düşürürse (async yardımcıları) betik
+  sunulmaz (503). **Dağıtımdan sonra** canlı `/o/imza.js` yanıtı `node --check` ile sınanmalı ve iOS Safari + Android
+  Chrome'da elle bir imza denenmeli.
+- **Fişli teslimde imza isteğe bağlıdır.** 2026-11-26'dan beri "fişli" işaretini kasiyer KOYAMAZ: fiş ancak karekodu
+  okutulursa fişli sayılır (bkz. aşağıda "Teslim sepeti"). Eski not (kasiyerin elle "fişli" işaretleyip imzasız teslim
+  edebilmesi) bu kararla kapandı.
+- Şifreli yükte düz metin P = `{ad, tel, ua, ip, zaman, dil, imza}`; `imza` öneksiz base64 PNG'dir (≤ 81 920 karakter).
+  En büyük imzayla `GET /api/onay/<t>` yanıtı ~110 KB'dir (sunucu en az 128 KiB okumalı).
+- Bilinen sınır: tuval klavyeyle kullanılamaz; imza atamayan müşteri için mağaza cihazında imza (`cihaz_imza`) yolu vardır.
+- Gerçek telefonlarda (iOS Safari, Android Chrome) dokunmatik çizim ve gönderim elle denenmedi; yalnız sahte DOM testi var.
+
+### Teslim sepeti: tek karekodla zincir, çok fiş tek teslimat (Yusuf 2026-11-26 06:25)
+"teslim edilirken de teslim edilen ürünler zincirlenebilsin karekod zinciri ile yani tek karekod ile de teslim
+edilebilsin, birden fazla karekod da tek teslimatta yapılabilsin." Mağaza sunucusu: `crates/taa-fis-sunucu/src/teslim_sepet.rs`,
+arayüz: `ortak.js` `TKD.teslimSor` (masaüstü ve telefon teslim penceresi artık bu sepettir).
+- **Tek karekodla zincir:** bağlı fişlerden birinin karekodu okutulunca (ya da no yazılınca) bütün bağlı fişler sepete
+  gelir; varsayılan hepsi seçili, tek tek çıkarılabilir.
+- **Çok karekodlu sepet:** "Karekod okut / no yaz" alanına tabanca/klavyeyle (telefonda kamera: Android uygulamasında yerel
+  okuyucu, yoksa BarcodeDetector) sırayla başka fişler eklenir; bağlı olmaları gerekmez. Liste: fiş no, müşteri adı (fiş
+  listesindeki düzeyde), ürün sayısı, durum, fişli/fişsiz. Çift okutma yok sayılır; teslim edilmiş ya da iptal fiş eklenmez;
+  hazır olmayan fiş uyarıyla görünür ama **teslim edilmez** (istisna yok; teslim isteğinde varsa 409 `hazir_degil` ve
+  hiçbir fiş teslim edilmez).
+- **Tek teslimat:** sepetin tamamı tek teslim alan bilgisi, tek karekod onayı (`n` = sepetteki toplam ürün; sepette fişsiz
+  fiş varsa `i = 1`; belirteç sepet kimliğine — sıralı fiş no'larının özetine — ve cihaza bağlı, sepet değişirse onay
+  geçmez) ya da tek cihaz imzasıyla tamamlanır. Her fişe ayrı `TeslimKaydi` yazılır; hepsinde ortak **`teslim_id`**
+  (`T-YYYYAAGG-XXXXXX`, rastgele), `ana_fis` = ilk okutulan fiş. **İmza bir kez** şifreli yazılır
+  (`imzalar/<ana>-<n>.png.enc`), bütün kayıtlar aynı dosyaya ve özete başvurur. Kişisel bilgi bloğu her fiş için ayrı
+  şifrelenir (aynı düz metin, aad = fiş no: bir fişin bloğu başka fişe taşınamaz).
+- **Ya hepsi ya hiçbiri:** yetki, hazır durumu, karekod onayı, son 4, imza ve şifreleme YAZMADAN önce denetlenir; kayıtlar
+  `Defter::teslim_et_toplu` ile tek yazımda (`taa_dosya::satirlar_ekle`) eklenir, araya başka satır girmez. Yazım yine de
+  hata verirse hiçbir fiş teslim sayılmaz, yeni imza dosyası `imzalar/artik/` altına alınır (silinmez), 500
+  `teslim_yazilamadi` döner ve `teslim-sepet.jsonl` günlüğüne kişisel veri olmadan yazılır. Neden "ters kayıt" değil:
+  defter yalnız eklemelidir ve teslim satırı aynı zamanda Hazır → Teslim geçişidir; yarım kalmış teslimi geri alan bir
+  satır türü yeni bir "teslimden geri dönüş" yolu açardı. Tek yazım bu riski en aza indirir; işletim sistemi tek yazımın
+  elektrik kesintisinde bölünmeyeceğini garanti etmez (bu durumda son satır yarım kalabilir; defter okuma hatası verir ve
+  elle onarım gerekir — tek satırlık teslimde de aynı sınır vardır). Yarım satırdan sonra eklenen satır ona
+  yapışmaz: `satir_ekle`/`satirlar_ekle` dosya satır sonuyla bitmiyorsa önce satır sonu yazar (onarımda yalnız yarım
+  satır çıkarılır). `kismi_hata_hicbiri_yazilmaz` testi yazımdan önceki hatayı sınar; gerçek yarım yazım sınanmadı.
+- **Müşteri takip (bulut):** her fiş ayrı ayrı "teslim" durumuna geçer (mevcut kuyruk). Teslim alan bilgisi ve
+  `teslim_id` buluta gitmez.
+
+#### Fişli / fişsiz kararı (Yusuf gözetimsiz; denetçinin önerisi)
+- **Fiş karekodu okutularak** sepete giren fiş **fişli**dir. Kanıt sunucuda yeniden doğrulanır (istemci okunan metni
+  gönderir): müşteri nüshasındaki **takip karekodu** (`<bulut>/t/<kod>`; kod gizli anahtarla üretilir, tahmin edilemez)
+  her zaman kanıttır. Personel karekodu artık **gizli anahtarlı bir kanıt parçası** taşır:
+  `…/telefon#fis=<no>&k=<HMAC(yerel anahtar, "fis:"+no) ilk 12 karakter>` (anahtar `musteri-takip/anahtar`, takip/bulut
+  ayarı olmasa da yerelde üretilir; 60 bit, fiş no'dan tahmin edilemez). Bu karekod yalnız müşteri takip **ayarlı
+  değilken** ve `k` doğruysa kanıttır (o zaman müşteri nüshasına bu karekod basılır); takip ayarlıyken o karekod yalnız
+  terzihane nüshasındadır, mağazada durur ve kanıt sayılmaz (ekranda "terzihane nüshasının karekodu: fişsiz" yazar).
+  `k`'siz ya da yanlış `k`'li metin (2026-11-26 öncesi basılmış fişler, elle yazılmış "#fis=<no>") **fişsizdir**
+  (`kanit: "karekod-kanitsiz"`). (Denetçi bulgusu: önceki sürümde takip ayarsız kurulumda "#fis=<no>" elle yazılarak
+  fişsiz kuralları tamamen atlanabiliyordu.)
+- **Yapısal sınırlar (açıkça):** (1) Tabanca klavye gibi yazar; sunucu tabancayla okutmayı klavyeyle yazmaktan ayırt
+  edemez. Kanıt "karekodun içeriği elde" demektir, "şimdi okutuldu" değil. (2) Mağaza cihazı fişin müşteri nüshasını
+  **yeniden yazdırabilir** (`POST /api/fis/<no>/yazdir`) ve fiş karekodu ekranda (`/api/fis/<no>/karekod.svg`) görünür;
+  personel bu yolla kanıtlı karekodu elde edip fişsiz kuralları atlayabilir. Bu, mağaza içi güven sınırıdır; yeniden
+  yazdırma ve teslimler günlükte (`kim`) görünür. Sıkılaştırmak için yeniden yazdırmaya ayrı yetki eklenebilir (karar:
+  Yusuf'a sorulacak).
+- **Elle no yazılarak** ya da **bağlı zincirden otomatik gelen** ama karekodu okutulmayan fiş **fişsiz**dir. Sonradan
+  karekodu okutulursa fişliye yükselir.
+- Sepette **en az bir fişsiz** fiş varsa: cihazın `fissiz-teslim` yetkisi (yoksa 403, hiçbiri teslim edilmez), **her
+  fişsiz müşteri için telefonun son 4 hanesi** (aynı telefonlu fişlerde bir kez; yanlışta gruptaki her fişin sayacı artar,
+  5 yanlışta 15 dk kilit) ve **imza** zorunlu (karekod sayfasında `qr_imza` ya da cihaz ekranında `cihaz_imza`).
+- **Kasiyerin "fişli" işaretini elle koyma yolu kaldırıldı.** Arayüzde "Fişiyle geldi / Fişi yok" seçeneği yoktur.
+  Geri uyum: eski `POST /api/fis/<no>/teslim-al` ucu durur ve `fisli` alanı yok sayılmaz (`fisli: false` yine fişsizdir),
+  ama `fisli: true` yalnız `fis_karekodu` (okunan karekod metni) bu fişin kanıtıysa geçer; kanıt yoksa istek fişsiz
+  kurallarıyla değerlendirilir ve hata yanıtında `"fis_karekodu_yok": true` bulunur. Sepette `okutuldu: true` denilip
+  kanıt verilmeyen fiş de fişsiz sayılır (yanıtta `kanitsiz`).
+- **Eski uçta bağlı fişler:** `POST /api/fis/<no>/teslim-al` gövdesinde `"bagli": [..]` doluysa istek iç olarak teslim
+  sepetine çevrilir (ana fiş `fisli`/`fis_karekodu` ile, bağlı fişler `okutuldu: false`). Bağlı fişler **fişsizdir**:
+  yetki + her fişsiz müşteri için son 4 + imza; yazım ya hepsi ya hiçbiri; ortak `teslim_id`; yanıt eski alanları
+  (`birlikte_teslim`, `birlikte_atlanan: []`) taşır. Eski tek `telefon_son4` metni sepette tek telefon grubu varsa
+  geçer; farklı telefonlu bağlı fişte `{<no>: "1234"}` nesnesi gerekir (422 `son4_gerekli` hangi fişler için olduğunu
+  söyler). Tek fişe açılmış karekod belirteci bağlı fişlerle kullanılamaz (409 `sepet_gerekli`; sepet karekodu açın).
+  (Denetçi bulgusu: önceki sürümde bağlı fişe ana fişin kaydı `fisli=true`, imzasız kopyalanıyordu; yetkisiz telefon
+  farklı telefonlu bağlı fişi son 4 ve imza olmadan teslim edebiliyordu.)
+
+#### Uçlar (yetkili cihaz: mağaza PC ya da eşleşmiş telefon)
+- `POST /api/teslim/karekod-coz {metin}` → `{no, kanit: "takip"|"fis-karekodu"|"elle", okutuldu, not}` (404 bulunamadı).
+  Masaüstü tabancası ve telefon kamerası takip karekodunu bununla fişe çevirir.
+- `POST /api/teslim/sepet/denetle {fisler: [{no, okutuldu, karekod?}], ekle?: "<okunan/yazılan>"}` → `{fisler: [{no,
+  musteri, urun_sayisi, durum, hazir, okutuldu, kanit, karekod?, uyari?}], toplam_urun, fissiz, fissiz_var, fissiz_yetki,
+  imza_zorunlu, son4_gruplari: [{anahtar, fisler, musteri}], sepet_kimligi, eklenen, zaten_sepette, yok_sayilan,
+  reddedilen: [{no, neden}], kanitsiz, uyarilar, en_cok, fazla, dolu}`. Durumsuzdur: istemci listeyi her istekte geri
+  gönderir; arayüz istekleri sıraya koyar (art arda okutmada bir yanıt öbür okutmayı silmesin).
+- **Sepet sınırı:** bir teslimatta en çok **30 fiş**. Fazlası sessizce kırpılmaz: denetlede `fazla` ve `reddedilen`
+  ("sepet sınırı aşıldı") olarak bildirilir, dolu sepete okutma `ekle_hatasi` verir; teslim ve karekod isteğinde sepet
+  **tümden** reddedilir (413 `sepet_cok_buyuk`, hiçbir fiş teslim edilmez).
+- **Karekod onayında ürün sınırı:** bulut `n` için 1..50 kabul eder. Toplam 50'yi aşarsa sayı sıkıştırılmaz (müşteri
+  "50 ürünü teslim aldım" derken fazlası teslim edilmesin): 409 `qr_cok_urun`, arayüz ekran imzasına geçer.
+- `POST /api/teslim/sepet/onay-ac {fisler}` → karekod (`t, url, qr_svg, sil, kalan_sn, imza_gerekli, sepet_kimligi,
+  toplam_urun`); `POST /api/teslim/sepet/onay-durum {fisler, t}` → `teslim-qr` durumuyla aynı; `fis_telefonu` sepet için
+  `ayni | farkli | kismen | yok` (farkli/kismen'de ilişki yakını/diğer zorunlu).
+- `POST /api/teslim/sepet {fisler, teslim_alan?, iliski?, onay_belirteci?, imza_png_base64?, telefon_son4?: {<no>: "1234"}}`
+  (tek telefon grubu varsa `telefon_son4` düz metin de olur) → 200 `{tamam, teslim_id, ana_fis, fisler: [{no, musteri,
+  urun_sayisi, fisli, dogrulama, ana_fis, teslim_id, imzali, tarih, saat}], yok_sayilan, kanitsiz, birlikte_teslim,
+  teslim_kaydi}`. Hatalar: 400/413 biçim, 403 `yetki_yok` (+`fissiz`), 409 `hazir_degil` / `sepet_gecersiz`, 409
+  `onay_bekliyor`, 413 `sepet_cok_buyuk`, 422 `onay_yok` / `iliski_gerekli` / `imza_gerekli` / `son4_gerekli` / `son4_yanlis` / `telefon_yok`,
+  429 `son4_kilitli`, 500 `teslim_yazilamadi`. Gövde sınırı teslim-al ile aynı (512 KB, imza base64).
+
+### Şifre anahtarı
+- Teslim şifre anahtarının yeri ve yedeği şimdilik değişmez: **sunucuya kuruluma geçerken sorulacak** (Yusuf 2026-11-26).
+  Aynı anda sorulacak: şifreli defter yedeklerinin (`yedek/fisler-*.jsonl.enc`) saklama süresi (şu an süresiz).
+- Not: anahtar varsayılan olarak veri klasöründedir (`--teslim-anahtar` ile dışarı alınabilir). Anahtar veri klasöründe
+  dururken şifreleme yalnız **kısmi kopyaya** (yalnız defter, yalnız imzalar, yalnız yedek) karşı korur; veri klasörünü
+  bütün olarak kopyalayan biri şifreli yedeği ve imzaları da çözebilir.
+
+## Teslim bilgisi: maskeleme, `teslim-acik` yetkisi, eski kayıt geçişi (Yusuf 2026-11-26)
+### Maskeli görünüm ve açık görme yetkisi
+- Teslimden sonra bütün ekranlarda ve basılı mağaza nüshasında teslim bilgisi **maskelidir**: ad "M*** Y***", telefon son
+  4 hane dışında gizli, IP hiç gösterilmez, okutan cihazın yalnız özeti ("Android 14 · Chrome"); imza görüntüsü yok.
+- Açık hâl (`GET /api/fis/<no>/teslim-acik`: tam ad, telefon, IP, ham user-agent; imza `GET /api/fis/<no>/imza`) yalnız
+  `teslim-acik` yetkisiyle verilir. Karar sırası: (1) mağaza bilgisayarında yönetici (PIN) oturumu; (2) cihaza
+  yöneticinin yazdığı kayıt (ver/geri al); (3) kişiye yöneticinin yazdığı kayıt — yalnız kişi hâlâ açık listedeyse
+  (kişi kapatılınca kayıt da geri alınır); (4) kayıt yoksa rol varsayılanı: "yonetici" ya da "magaza-muduru" — **yalnız
+  rolü yöneticinin bu bilgisayarda verdiği kişide** (Personel ekranı / ilk kurulum). TAA Çatı'dan (unvan metninden
+  tahmin) ya da Telegram'dan gelen rol kendiliğinden yetki vermez; "müdür yardımcısı" gibi unvanlar personel sayılır.
+  Yönetici bu yetkiyi Telefonlar ekranından cihaza ya da kişiye verip geri alır.
+- Her açık görüntüleme (ve imza görüntüleme) `teslim-ayrinti.jsonl` denetim günlüğüne **önce** yazılır: olay, fiş no,
+  kim (cihaz / kişi kimliği / "PC"), hangi yetkiyle, tarih-saat. Günlükte teslim alanın kişisel verisi yoktur. Günlük
+  yazılamazsa (disk dolu, dosya kilitli) açık veri **verilmez** (500 `gunluk_yazilamadi`).
+- Mağaza bilgisayarında "kim" yalnız "PC" yazar: PIN ortak olduğundan hangi yöneticinin baktığı ayırt edilmez (Yusuf'a
+  soruldu: yönetici girişine kişi seçimi eklensin mi).
+- Ekrandaki açık görünüm 60 sn sonra, "Maskele" ile, fiş değişince ya da yönetici oturumu kapanınca yeniden maskelenir.
+
+### Eski kayıt geçişi
+- Sunucu **açılışında, istek almadan önce** bir kez çalışır (idempotent; `teslim_gecis.rs`). Defterde (`fisler.jsonl`,
+  yalnız eklemeli) düz metin `teslim_alan` taşıyan satırlar şifreli biçime çevrilir. Bunun için defter bir kez yeniden
+  yazılır: önce defterin tamamı `yedek/fisler-<YYYYMMDD-HHMMSS>.jsonl.enc` olarak **yerel anahtarla tek blok AES-256-GCM
+  şifreli** yedeklenir ve geri okunup doğrulanır; sonra defter atomik yazılır (okuma sonrası defter değiştiyse yazılmaz,
+  sonraki açılışta yeniden dener). Yedekte eski düz metin vardır ama dosya şifrelidir.
+- Sunucu çalışırken defter yeniden yazılmaz (eklenen satır kaybolabilirdi): `POST /api/yonetim/teslim-gecis` yalnız
+  imzaları şifreler ve gerekiyorsa "yeniden başlatın" der; `GET` durumu verir. Masaüstü Telefonlar ekranında uyarı kartı
+  bekleyen defter satırı ve şifresiz imza sayısını gösterir.
+- İmzalar: `imzalar/<no>-<n>.png` için şifreli kopya `imzalar/<no>-<n>.png.enc` yazılır ve doğrulanır. **Şifresiz PNG
+  program tarafından silinmez** (kalıcı silme yok): `imzalar/silinecek-duz-imzalar.json` listesine yazılır; yönetici
+  listeye bakıp dosyaları kendisi Geri Dönüşüm Kutusu'na siler.
+- Teslim kaydı yazılamazsa yeni yazılmış (hiçbir kayda bağlanmamış) şifreli imza dosyası silinmez, `imzalar/artik/`
+  altına taşınır.
+- **Kalan düz metin (bilerek):** (1) yönetici silene kadar şifresiz imza PNG'leri (liste dosyasındakiler); (2) veri
+  klasörü dışındaki eski kopyalar/yedekler (program onlara erişmez); (3) atomik yeniden yazım eski dosyanın disk
+  bloklarını güvenle silmez (dosya sistemi düzeyi; SSD'de de garanti yok).
+- **Zincir uyarısı:** geçiş defter zinciri (TT1) başlatılmadan **önce** tamamlanmalıdır. Zincir başlatılmışsa yeniden
+  yazım merkezdeki zincir ucunu bozar; bu yüzden zincir varken defter yeniden yazılmaz, yönetici açıkça onaylarsa
+  program `--teslim-gecis-zincir-onay` ile açılır (merkezdeki uç yenilenmeli). Bugün zincir üretim kodunda başlatılmıyor.
+
 ### Bilinen sınırlar (Yusuf'a söylenmeli)
 - **Platform erişim günlükleri:** Kod hiçbir şeyi loglamaz, ama Cloudflare ve Vercel'in kendi erişim günlükleri
   `/o/<t>` yolunu, IP'yi ve user-agent'ı kod dışında tutar (ad ve telefon gövdede olduğu için oraya düşmez). "IP bulutta

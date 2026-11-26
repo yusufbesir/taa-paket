@@ -3,7 +3,7 @@
 //! Değişiklik: Yusuf'un kuralları çerçevesinde; yalnız std kullanır.
 
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -188,8 +188,64 @@ pub fn satir_ekle(yol: &Path, satir: &str) -> io::Result<()> {
             fs::create_dir_all(d)?;
         }
     }
-    let mut f = fs::OpenOptions::new().create(true).append(true).open(yol)?;
-    f.write_all(format!("{satir}\n").as_bytes())?;
+    let mut f = fs::OpenOptions::new()
+        .create(true)
+        .read(true)
+        .append(true)
+        .open(yol)?;
+    let bas = if satir_sonu_eksik(&mut f)? { "\n" } else { "" };
+    f.write_all(format!("{bas}{satir}\n").as_bytes())?;
+    f.sync_all()
+}
+
+/// Dosya boş değilse ve son baytı satır sonu değilse `true` (önceki yazım yarıda kalmış: elektrik kesintisi, disk
+/// dolu). Yeni satır yarım satıra YAPIŞMASIN diye önce bir satır sonu yazılır; yarım satır olduğu gibi kalır
+/// (okuyan taraf onu bozuk satır olarak bildirir, yeni kayıt bozulmaz).
+fn satir_sonu_eksik(f: &mut fs::File) -> io::Result<bool> {
+    let n = f.metadata()?.len();
+    if n == 0 {
+        return Ok(false);
+    }
+    f.seek(SeekFrom::Start(n - 1))?;
+    let mut b = [0u8; 1];
+    f.read_exact(&mut b)?;
+    Ok(b[0] != b'\n')
+}
+
+/// Birden çok satırı TEK yazımla ekler (hepsi ya da hiçbiri için en iyi çaba): satırlar önce bellekte birleştirilir,
+/// tek `write_all` ile eklenir ve diske zorlanır. Satırlardan biri satır sonu içeriyorsa hiçbir şey yazılmaz.
+/// Not: işletim sistemi tek yazımın yarıda kesilmeyeceğini garanti etmez (disk dolu, elektrik kesintisi); bu
+/// durumda son satır yarım kalabilir. Tek tek `satir_ekle` çağırmaktan farkı, satırlar arasında başka bir
+/// isteğin satırının girmemesi ve doğrulama hatasında hiçbir satırın yazılmamasıdır.
+pub fn satirlar_ekle(yol: &Path, satirlar: &[String]) -> io::Result<()> {
+    if satirlar.is_empty() {
+        return Ok(());
+    }
+    if satirlar.iter().any(|s| s.contains(['\n', '\r'])) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "satır tek satır olmalı",
+        ));
+    }
+    if let Some(d) = yol.parent() {
+        if !d.as_os_str().is_empty() {
+            fs::create_dir_all(d)?;
+        }
+    }
+    let mut f = fs::OpenOptions::new()
+        .create(true)
+        .read(true)
+        .append(true)
+        .open(yol)?;
+    let mut tampon = String::with_capacity(satirlar.iter().map(|s| s.len() + 1).sum::<usize>() + 1);
+    if satir_sonu_eksik(&mut f)? {
+        tampon.push('\n');
+    }
+    for s in satirlar {
+        tampon.push_str(s);
+        tampon.push('\n');
+    }
+    f.write_all(tampon.as_bytes())?;
     f.sync_all()
 }
 
@@ -267,6 +323,20 @@ mod testler {
         let b = gecici_klasor().unwrap();
         assert_ne!(a, b);
         assert!(a.is_dir() && b.is_dir());
+    }
+
+    #[test]
+    fn yarim_satira_yapismaz() {
+        let d = gecici_klasor().unwrap();
+        let y = d.join("k.jsonl");
+        fs::write(&y, "tam\nyarim").unwrap();
+        satirlar_ekle(&y, &["bir".into(), "iki".into()]).unwrap();
+        satir_ekle(&y, "uc").unwrap();
+        assert_eq!(
+            fs::read_to_string(&y).unwrap(),
+            "tam\nyarim\nbir\niki\nuc\n"
+        );
+        let _ = fs::remove_dir_all(&d);
     }
 
     #[test]

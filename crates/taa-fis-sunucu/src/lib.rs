@@ -8,6 +8,7 @@ pub mod cati_pin;
 pub mod cihaz;
 mod ek_uclar;
 mod hesap_uclari;
+mod imza_png;
 pub mod kisi;
 pub mod kurulum;
 pub mod musteri_takip;
@@ -16,8 +17,11 @@ pub mod pencere;
 pub mod sayfalar;
 pub mod sube_esitle;
 mod teslim_al;
+pub mod teslim_gecis;
 pub mod teslim_onay;
+mod teslim_sepet;
 pub mod teslim_sifre;
+mod teslim_yetki;
 mod yonetici;
 
 pub use ek_uclar::karekod_svg;
@@ -274,12 +278,10 @@ impl Uygulama {
     pub fn isle(&self, i: &Istek) -> Yanit {
         let foto = i.metot == "POST" && i.yol.split('?').next().unwrap_or("").ends_with("/foto");
         // Teslim alma ucunda imza PNG'si base64 gelir: sınır daha geniş (bkz. teslim_al.rs).
-        let teslim_al_ucu = i.metot == "POST"
-            && i.yol
-                .split('?')
-                .next()
-                .unwrap_or("")
-                .ends_with("/teslim-al");
+        let teslim_al_ucu = i.metot == "POST" && {
+            let y = i.yol.split('?').next().unwrap_or("");
+            y.ends_with("/teslim-al") || y.trim_end_matches('/') == "/api/teslim/sepet"
+        };
         let sinir = if foto {
             FOTO_SINIRI
         } else if teslim_al_ucu {
@@ -352,6 +354,9 @@ impl Uygulama {
             ("POST", ["api", "yonetim", "kisi", id, "kapat"]) => self.kisi_kapat(i, id),
             ("POST", ["api", "yonetim", "cihaz", id, "ad"]) => self.cihaz_ad(i, id),
             ("POST", ["api", "yonetim", "cihaz", id, "yetki"]) => self.cihaz_yetki(i, id),
+            ("POST", ["api", "yonetim", "kisi", id, "yetki"]) => self.kisi_yetki(i, id),
+            ("GET", ["api", "yonetim", "teslim-gecis"]) => self.teslim_gecis_durumu(i),
+            ("POST", ["api", "yonetim", "teslim-gecis"]) => self.teslim_gecis_calistir(i),
             ("GET", ["api", "yonetim", "yetkiler"]) => self.yetki_listesi(i),
             ("POST", ["api", "yonetim", "cihaz", id, "kapat"]) => {
                 if let Some(y) = self.yonetim_izni(i) {
@@ -908,7 +913,7 @@ impl Uygulama {
         let defter_yolu = self.fis_yolu();
         let d = Defter { yol: &defter_yolu };
         match (i.metot.as_str(), parca) {
-            ("GET", ["api", "oturum"]) => self.oturum(&cihaz),
+            ("GET", ["api", "oturum"]) => self.oturum(&cihaz, i),
             ("GET", ["api", "kisiler"]) => Yanit::json(
                 200,
                 json!({ "kisiler": kisi::secilebilir(&self.dizin, &self.sube_kodu().unwrap_or_default()) }),
@@ -1115,8 +1120,8 @@ impl Uygulama {
                     tur: "text/plain; charset=utf-8",
                     govde: {
                         self.adlari_doldur(&mut f);
-                        // Teslim alanın adı ("Ad S.") yalnız imzayı görebilen cihazda çözülür.
-                        if teslim_al::imza_gorebilir(self, &cihaz) {
+                        // Teslim alanın adı yalnız maskeli ("A*** S***") basılır ve yalnız özeti görebilen cihazda çözülür.
+                        if self.teslim_ozet_gorebilir(i, &cihaz) {
                             self.teslim_gorunen_doldur(&mut f);
                         }
                         taa_fis::duz_metin(&f, 42).into_bytes()
@@ -1141,16 +1146,20 @@ impl Uygulama {
                     let teslim = f.teslim_kaydi.clone();
                     let mut v = fis_json(f, &h);
                     v["foto_adet"] = json!(self.foto_sayisi(no));
-                    // Şifreli teslim bilgisi yalnız yetkili cihaza (mağaza PC, fişsiz teslim / düzeltme yetkisi)
-                    // çözülerek verilir; tam telefon ekrana gelmez (maskeli).
-                    if let Some(t) = teslim.filter(|t| t.sifreli.is_some()) {
-                        if teslim_al::imza_gorebilir(self, &cihaz) {
-                            if let Some(g) = self.teslim_goruntusu(no, &t) {
-                                for (k, d) in g.as_object().into_iter().flatten() {
-                                    v["teslim_kaydi"][k] = d.clone();
-                                }
+                    // Teslim bilgisi ekranda MASKELİ (ad "M*** Y***", telefon son 4, IP yok, cihaz özeti); yalnız
+                    // özeti görebilen cihaza (mağaza PC, fişsiz teslim / düzeltme / teslim-acik yetkisi) verilir.
+                    // Açık hâl ve imza görüntüsü ayrı uçlardadır (teslim-acik, imza), her açılış günlüğe yazılır.
+                    if let Some(t) = teslim {
+                        if self.teslim_ozet_gorebilir(i, &cihaz) {
+                            let g = self.teslim_maskeli(no, &t);
+                            for (k, d) in g.as_object().into_iter().flatten() {
+                                v["teslim_kaydi"][k] = d.clone();
                             }
                         }
+                        // "Açık göster" düğmesi: yetkili cihazda; mağaza bilgisayarında her zaman (PIN istenir).
+                        v["teslim_kaydi"]["acik_yetki"] = json!(
+                            cihaz.id == PC_ID || self.teslim_acik_yetkisi(i, &cihaz).is_some()
+                        );
                     }
                     Yanit::json(200, v)
                 }
@@ -1251,9 +1260,17 @@ impl Uygulama {
                 }
             }
             ("POST", ["api", "fis", no, "teslim-al"]) => self.teslim_al(&d, no, &cihaz, i),
-            ("POST", ["api", "fis", no, "teslim-qr"]) => self.teslim_qr_ac(&d, no, &cihaz),
+            ("POST", ["api", "teslim", "karekod-coz"]) => self.karekod_coz(&d, i),
+            ("POST", ["api", "teslim", "sepet"]) => self.teslim_sepet(&d, &cihaz, i),
+            ("POST", ["api", "teslim", "sepet", "denetle"]) => self.sepet_denetle(&d, &cihaz, i),
+            ("POST", ["api", "teslim", "sepet", "onay-ac"]) => self.sepet_onay_ac(&d, &cihaz, i),
+            ("POST", ["api", "teslim", "sepet", "onay-durum"]) => {
+                self.sepet_onay_durum(&d, &cihaz, i)
+            }
+            ("POST", ["api", "fis", no, "teslim-qr"]) => self.teslim_qr_ac(&d, no, &cihaz, i),
             ("GET", ["api", "fis", no, "teslim-qr", t]) => self.teslim_qr_durum(&d, no, t, &cihaz),
-            ("GET", ["api", "fis", no, "imza"]) => self.teslim_imzasi(&d, no, &cihaz),
+            ("GET", ["api", "fis", no, "imza"]) => self.teslim_imzasi(&d, no, &cihaz, i),
+            ("GET", ["api", "fis", no, "teslim-acik"]) => self.teslim_acik(&d, no, &cihaz, i),
             ("POST", ["api", "fis", no, "okut"]) => {
                 if cihaz.id == PC_ID {
                     return Yanit::hata(403, "iş bitti okutması ustanın telefonundan yapılır");
@@ -3108,7 +3125,10 @@ mod testler {
         ));
         assert_eq!(y.kod, 409);
         assert_eq!(json_of(&y)["hata"], "teslim_al_gerekli");
-        let teslim = r#""fisli":true,"teslim_alan":"Deneme Müşteri","iliski":"kendisi""#;
+        let teslim = format!(
+            r#""fisli":true,"fis_karekodu":"{}","teslim_alan":"Deneme Müşteri","iliski":"kendisi""#,
+            u.fis_karekod_adresi(&a)
+        );
         let y = u.isle(&pc(
             "POST",
             &format!("/api/fis/{a}/teslim-al"),
@@ -3122,11 +3142,20 @@ mod testler {
             &format!("/api/fis/{a}/teslim-al"),
             &format!(r#"{{{teslim},"bagli":["{b}"]}}"#),
         ));
+        // Bağlı fiş B'nin karekodu okutulmadı: fişsizdir (teslim sepeti D kararı), imza ve son 4 ister.
+        assert_eq!(y.kod, 422, "{}", String::from_utf8_lossy(&y.govde));
+        assert_eq!(json_of(&y)["hata"], "imza_gerekli");
+        let imza = crate::teslim_al::testler::imza_b64();
+        let y = u.isle(&pc(
+            "POST",
+            &format!("/api/fis/{a}/teslim-al"),
+            &format!(
+                r#"{{{teslim},"bagli":["{b}"],"imza_png_base64":"{imza}","telefon_son4":"4567"}}"#
+            ),
+        ));
         assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
-        assert_eq!(
-            json_of(&u.isle(&pc("GET", &format!("/api/fis/{b}"), "")))["durum"],
-            "teslim"
-        );
+        let fb = json_of(&u.isle(&pc("GET", &format!("/api/fis/{b}"), "")));
+        assert_eq!(fb["durum"], "teslim");
         // personel ad soyad birlikte
         assert_eq!(
             u.isle(&pc(

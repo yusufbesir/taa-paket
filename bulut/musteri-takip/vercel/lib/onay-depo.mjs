@@ -8,6 +8,7 @@
 // de temizler; asıl 15 dk tavanını mağaza sunucusu sağlar (süresi geçen karekod için dakikada bir "kapat" gönderir).
 // Konsola hiçbir şey yazılmaz.
 import { onayIsle, ONAY_OMUR } from "./onay.mjs";
+import { IMZA_BETIK_YOLU } from "./imza.mjs";
 
 export const ONAY_ONEKI = "onay/";
 const yol = (t) => `${ONAY_ONEKI}${t}.json`;
@@ -68,12 +69,13 @@ export function onayDeposuKur(blob, getir = (...a) => fetch(...a)) {
   return { oku, yaz, sil, temizle };
 }
 
-/** İşlemi ve belirteci bulur. Önce asıl yoldan (/o/<t>, /api/onay/<t|ac|kapat>), sonra vercel.json yeniden yazımının
+/** İşlemi ve belirteci bulur. Önce asıl yoldan (/o/imza.js, /o/<t>, /api/onay/<t|ac|kapat>), sonra vercel.json yeniden yazımının
  *  sorgusundan (?islem=&t=): Vercel'in yeniden yazımda istek.url'e hangisini koyduğuna bağlı kalmamak için. */
 export function onayYolu(adres) {
   const u = new URL(adres);
   const p = u.pathname;
   if (p === "/api/onay/ac" || p === "/api/onay/kapat") return { islem: p.slice(10), t: "" };
+  if (p === IMZA_BETIK_YOLU) return { islem: "betik", t: "" };
   let m = p.match(/^\/o\/([^/]+)$/);
   if (m) return { islem: "sayfa", t: m[1] };
   m = p.match(/^\/api\/onay\/([^/]+)$/);
@@ -81,7 +83,7 @@ export function onayYolu(adres) {
   return { islem: u.searchParams.get("islem") || "", t: u.searchParams.get("t") || "" };
 }
 
-const ISLEMLER = ["ac", "kapat", "oku", "sayfa"];
+const ISLEMLER = ["ac", "kapat", "oku", "sayfa", "betik"];
 
 /** api/onay.mjs'in işleyicisi. depo: onayDeposuKur(...) + {tablo}. */
 export async function vercelOnay(istek, depo, genel) {

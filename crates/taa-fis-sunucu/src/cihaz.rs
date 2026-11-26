@@ -51,7 +51,36 @@ pub const YETKILER: &[(&str, &str, bool, bool)] = &[
         true,
         false,
     ),
+    // Yusuf 2026-11-26: "yalnızca yöneticiler ve mağaza müdürleri görebilsin. bu ayarları yine yönetici
+    // değiştirebilsin". Varsayılan HER YERDE kapalı; açık görünüm şu yollarla gelir (bkz. lib.rs
+    // `teslim_acik_yetkisi`): mağaza bilgisayarında yönetici (PIN) oturumu; kişisel telefonda rolü yönetici ya da
+    // mağaza müdürü olan kişi (`TESLIM_ACIK_ROLLER`); yöneticinin bu yetkiyi verdiği cihaz ya da kişi. Yönetici
+    // rol varsayılanını da kişi bazında geri alabilir. Her açık görüntüleme denetim günlüğüne yazılır.
+    (
+        "teslim-acik",
+        "Teslim bilgisini açık görme: teslim alanın tam adı, telefonu, IP'si ve imzası (her görüntüleme günlüğe yazılır)",
+        false,
+        false,
+    ),
 ];
+
+/// "teslim-acik" yetkisini varsayılan olarak taşıyan kişi rolleri (kisi.rs ROLLER).
+pub const TESLIM_ACIK_ROLLER: &[&str] = &["yonetici", "magaza-muduru"];
+/// Rol varsayılanının geçtiği kişi kaynakları: rolü yöneticinin BU bilgisayarda verdiği kişiler ("" = Personel
+/// ekranı, "ilk-kurulum"). TAA Çatı (unvan metninden tahmin) ve Telegram rolü kendiliğinden "teslim-acik" vermez.
+pub const ROL_VARSAYILANI_KAYNAKLARI: &[&str] = &["", "ilk-kurulum"];
+
+/// Bu rol + kaynak "teslim-acik" yetkisini varsayılan olarak taşır mı?
+pub fn rol_varsayilani_acik(rol: &str, kaynak: &str) -> bool {
+    TESLIM_ACIK_ROLLER.contains(&rol) && ROL_VARSAYILANI_KAYNAKLARI.contains(&kaynak)
+}
+/// Kişi bazında verilebilen yetkiler (cihazdan bağımsız; kişinin bütün kişisel telefonlarına geçer).
+pub const KISI_YETKILERI: &[&str] = &["teslim-acik"];
+
+/// Kişi yetkisi kaydının kimliği (cihaz kimlikleriyle karışmasın).
+pub fn kisi_anahtari(kisi_id: &str) -> String {
+    format!("kisi:{kisi_id}")
+}
 
 pub struct Kayitci {
     pub yol: PathBuf,
@@ -169,7 +198,51 @@ impl Kayitci {
         taa_dosya::satir_ekle(&self.yol, &s).map_err(|e| e.to_string())
     }
 
+    /// Kişiye (cihazdan bağımsız) yetki verir/geri alır; yalnız `KISI_YETKILERI`. Kişinin varlığını çağıran denetler.
+    pub fn kisi_yetki_ata(
+        &self,
+        kisi_id: &str,
+        yetki: &str,
+        ver: bool,
+        tarih: &str,
+    ) -> Result<(), String> {
+        if !KISI_YETKILERI.contains(&yetki) {
+            return Err(format!("kişiye verilemeyen yetki: {yetki}"));
+        }
+        if !crate::kisi::kimlik_gecerli(kisi_id) {
+            return Err("kişi kimliği geçersiz".into());
+        }
+        let s = serde_json::to_string(&Kayit::Yetki {
+            id: kisi_anahtari(kisi_id),
+            yetki: yetki.into(),
+            ver,
+            tarih: tarih.into(),
+        })
+        .map_err(|e| e.to_string())?;
+        taa_dosya::satir_ekle(&self.yol, &s).map_err(|e| e.to_string())
+    }
+
+    /// Bu kimlik (cihaz, "PC" ya da `kisi_anahtari`) için yöneticinin yazdığı son yetki kaydı; yoksa `None`.
+    pub fn yetki_kaydi(&self, id: &str, yetki: &str) -> Option<bool> {
+        let mut v = None;
+        for x in self.oku().ok()? {
+            if let Kayit::Yetki {
+                id: i,
+                yetki: y,
+                ver,
+                ..
+            } = x
+            {
+                if i == id && y == yetki {
+                    v = Some(ver);
+                }
+            }
+        }
+        v
+    }
+
     /// Cihazın yetkisi var mı? Son kayıt geçerli; kayıt yoksa varsayılan (PC: açık, telefon: kapalı).
+    /// "teslim-acik" için asıl karar `Uygulama::teslim_acik_yetkisi`dedir (kişi/rol ve yönetici oturumu).
     pub fn yetki_var(&self, id: &str, yetki: &str) -> bool {
         let Some((_, _, pc, tel)) = YETKILER.iter().find(|(k, ..)| *k == yetki) else {
             return false;

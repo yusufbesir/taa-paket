@@ -7,6 +7,7 @@
     { "source": "/api/onay/ac", "destination": "/api/onay?islem=ac" },
     { "source": "/api/onay/kapat", "destination": "/api/onay?islem=kapat" },
     { "source": "/api/onay/:t", "destination": "/api/onay?islem=oku&t=:t" },
+    { "source": "/o/imza.js", "destination": "/api/onay?islem=betik" },
     { "source": "/o/:t", "destination": "/api/onay?islem=sayfa&t=:t" }
   ],
   "crons": [{ "path": "/api/temizle", "schedule": "17 3 * * *" }]

@@ -74,11 +74,16 @@ mod testler {
             m.contains("TaaGirisEkrani") && m.contains("'/api/giris/'") && !m.contains("@GIRIS-")
         );
         assert!(!t.contains("TaaGirisEkrani"));
-        // Karekodla teslim onayı iki sayfada da (ortak.js): karekod ucu, 2 sn sorgu, ekran imzası yedeği.
+        // Teslim sepeti iki sayfada da (ortak.js): tek karekod onayı (sepet kimliğine bağlı), 2 sn sorgu, ekran imzası
+        // yedeği, "karekod okut / no yaz" alanı; elle "Fişiyle geldi" işaretleme seçeneği yok.
         for s in [&m, &t] {
-            assert!(s.contains("/teslim-qr") && s.contains("onay_belirteci"));
+            assert!(s.contains("/api/teslim/sepet/onay-ac") && s.contains("onay_belirteci"));
+            assert!(s.contains("/api/teslim/sepet/denetle") && s.contains("'/api/teslim/sepet'"));
             assert!(s.contains("Telefonu yok: ekranda imza") && s.contains("Yeni karekod"));
+            assert!(s.contains("Karekod okut / no yaz") && s.contains("/api/teslim/karekod-coz"));
+            assert!(!s.contains("Fişiyle geldi'"));
         }
+        assert!(t.contains("kamera:true"));
     }
 
     #[test]

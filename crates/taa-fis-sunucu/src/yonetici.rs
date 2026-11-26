@@ -171,7 +171,8 @@ impl Uygulama {
                 let son = gorulme.get(&c.id).copied();
                 json!({
                     "id": c.id, "ad": c.ad, "tarih": c.tarih,
-                    "yetkiler": self.cihazlar().yetkileri(&c.id),
+                    // "teslim-acik" kişi/rol kuralıyla (etkin karar).
+                    "yetkiler": self.etkin_yetkiler(None, &c),
                     "kisi_id": c.kisi_id,
                     "kisi": h.get(&c.kisi_id).cloned().unwrap_or_default(),
                     "son_gorulme_sn": son.map(|t| simdi.saturating_sub(t)),
@@ -242,7 +243,23 @@ impl Uygulama {
             return y;
         }
         match kisi::Kisiler::dizinden(&self.dizin).kapat(id, &tarih_iso(self.simdi())) {
-            Ok(()) => Yanit::json(200, json!({ "tamam": true })),
+            Ok(()) => {
+                // Kapatılan kişinin "teslim-acik" kaydı da geri alınır (karar ayrıca açık listeye bakar; bu kayıt
+                // kişi yeniden açılırsa yetkinin kendiliğinden geri gelmemesi içindir).
+                if self
+                    .cihazlar()
+                    .yetki_kaydi(&cihaz::kisi_anahtari(id), "teslim-acik")
+                    == Some(true)
+                {
+                    let _ = self.cihazlar().kisi_yetki_ata(
+                        id,
+                        "teslim-acik",
+                        false,
+                        &tarih_iso(self.simdi()),
+                    );
+                }
+                Yanit::json(200, json!({ "tamam": true }))
+            }
             Err(e) => Yanit::hata(404, &e),
         }
     }
@@ -279,13 +296,34 @@ impl Uygulama {
             .iter()
             .map(|(k, a, pc, tel)| json!({ "anahtar": k, "aciklama": a, "pc_varsayilan": pc, "telefon_varsayilan": tel }))
             .collect();
+        // Yetkiler oturumdan bağımsız (kalıcı) karardır: "teslim-acik" cihaz kaydı > kişi kaydı > rol.
+        let pc = cihaz::Cihaz {
+            id: crate::PC_ID.into(),
+            ad: "Mağaza bilgisayarı".into(),
+            token_sha256: String::new(),
+            tarih: String::new(),
+            kisi_id: String::new(),
+        };
         let mut cihazlar = vec![
-            json!({ "id": crate::PC_ID, "ad": "Mağaza bilgisayarı", "yetkiler": c.yetkileri(crate::PC_ID) }),
+            json!({ "id": crate::PC_ID, "ad": "Mağaza bilgisayarı", "yetkiler": self.etkin_yetkiler(None, &pc) }),
         ];
         for x in c.aktifler().unwrap_or_default() {
-            cihazlar.push(json!({ "id": x.id, "ad": x.ad, "yetkiler": c.yetkileri(&x.id) }));
+            cihazlar.push(json!({
+                "id": x.id, "ad": x.ad, "kisi_id": x.kisi_id,
+                "yetkiler": self.etkin_yetkiler(None, &x),
+                "teslim_acik_kaynagi": self.teslim_acik_kalici(&x.id, &x.kisi_id).map(|k| k.ad()),
+            }));
         }
-        Yanit::json(200, json!({ "yetkiler": tanim, "cihazlar": cihazlar }))
+        Yanit::json(
+            200,
+            json!({
+                "yetkiler": tanim,
+                "cihazlar": cihazlar,
+                // Kişi bazında "teslim-acik" (rol varsayılanı: yönetici, mağaza müdürü).
+                "kisiler": self.kisi_yetki_listesi(),
+                "teslim_acik_rolleri": cihaz::TESLIM_ACIK_ROLLER,
+            }),
+        )
     }
 
     /// POST /api/yonetim/cihaz/<id>/yetki {yetki, ver}: yönetici yetki verir/geri alır.
@@ -310,6 +348,7 @@ impl Uygulama {
                     200,
                     json!({ "tamam": true, "yetkiler": self.cihazlar().yetkileri(id) }),
                 )
+                // Not: "teslim-acik" listede etkin karar olarak `yetki_listesi`nden okunur.
             }
             Err(e) => Yanit::hata(422, &e),
         }

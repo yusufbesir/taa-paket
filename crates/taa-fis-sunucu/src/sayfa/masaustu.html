@@ -90,6 +90,45 @@ kbd{font:600 max(12px,.75em) var(--tk-fm);padding:1px 6px;border:1px solid curre
 .gez .ad{white-space:nowrap}
 .gez-baslik{padding:var(--tk-g3) var(--tk-g3) var(--tk-g1);font-weight:700;color:var(--tk-mut)}
 .gez-alt{margin-top:auto;display:grid;gap:var(--tk-g1)}
+/* hesap kartı ve açılır menüsü (sıra: kullanıcı, çizgi, Yönetici girişi, çizgi, Ayarlar/tema) */
+.hesap{position:relative}
+.hesap-kart{width:100%;min-height:var(--tk-hedef);display:flex;align-items:center;gap:var(--tk-g2);padding:var(--tk-g1) var(--tk-g2);border:var(--tk-kenar) solid var(--tk-line);
+  border-radius:var(--tk-r);background:var(--tk-panel2);color:inherit;text-align:left;cursor:pointer}
+.hesap-kart:hover{border-color:var(--tk-tx)}
+.hesap-kart:focus-visible,.hesap-menu button:focus-visible,.cekmece-ok:focus-visible{outline:3px solid var(--tk-ac);outline-offset:2px}
+.hesap-bas{flex:none;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:var(--tk-tx);color:var(--tk-bg);font-weight:700}
+.hesap-metin{display:grid;min-width:0;line-height:1.2}.hesap-metin b,.hesap-metin small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hesap-kart .ok{margin-left:auto;flex:none;transition:transform .15s}.hesap-kart[aria-expanded="true"] .ok{transform:rotate(180deg)}
+.hesap-menu{position:absolute;left:0;bottom:calc(100% + 6px);min-width:268px;z-index:30;display:grid;gap:2px;padding:var(--tk-g2);background:var(--tk-panel);
+  color:var(--tk-tx);border:var(--tk-kenar) solid var(--tk-line);border-radius:var(--tk-r);box-shadow:0 10px 30px rgba(0,0,0,.25)}
+.hesap-menu[hidden]{display:none}
+.hesap-menu hr{border:0;border-top:var(--tk-kenar) solid var(--tk-line);margin:var(--tk-g1) 0;width:100%}
+.hesap-menu button{min-height:40px;display:flex;align-items:center;gap:var(--tk-g2);padding:0 var(--tk-g2);border:0;border-radius:calc(var(--tk-r) - 2px);background:none;color:inherit;font-weight:600;text-align:left;cursor:pointer}
+.hesap-menu button:hover{background:var(--tk-panel2)}
+.hm-kisi{display:grid;padding:var(--tk-g1) var(--tk-g2)}.hm-kisi small{color:var(--tk-mut)}
+.hm-tema{display:flex;flex-wrap:wrap;gap:6px;padding:var(--tk-g1) var(--tk-g2)}
+.hesap-menu .hm-tema button{min-height:32px;width:32px;padding:0;justify-content:center;border:var(--tk-kenar) solid var(--tk-line);border-radius:50%}
+.hesap-menu .hm-tema button[aria-pressed="true"]{outline:3px solid var(--tk-ac);outline-offset:1px}
+.hm-tema i{width:20px;height:20px;border-radius:50%;display:block;background:linear-gradient(135deg,var(--tk-bg) 50%,var(--tk-ac) 50%);border:1px solid var(--tk-line)}
+/* çekmece okları: menüler içe katlanır, kenardaki okla açılır (durum bu bilgisayarda hatırlanır) */
+.cekmece-ok{position:absolute;top:50%;transform:translateY(-50%);z-index:20;width:22px;height:56px;display:grid;place-items:center;padding:0;
+  border:var(--tk-kenar) solid var(--tk-line);background:var(--tk-panel2);color:var(--tk-tx);cursor:pointer}
+.cekmece-ok:hover{background:var(--tk-tx);color:var(--tk-bg)}
+.cekmece-ok svg{width:14px;height:14px}
+.gezinti{position:relative}
+.gezinti>.cekmece-ok{right:0;border-radius:8px 0 0 8px;border-right:0}
+.gezinti:has(.hesap-menu:not([hidden])){overflow:visible;z-index:25}
+.pencere[data-sol="kapali"] .gezinti{width:64px;align-items:center}
+.pencere[data-sol="kapali"] .gez{justify-content:center;padding:0}
+.pencere[data-sol="kapali"] .gez .ad,.pencere[data-sol="kapali"] .gez kbd,.pencere[data-sol="kapali"] .gez-baslik,.pencere[data-sol="kapali"] .hesap-metin,.pencere[data-sol="kapali"] .hesap-kart .ok{display:none}
+.pencere[data-sol="kapali"] .hesap-kart{justify-content:center;padding:var(--tk-g1)}
+.pencere[data-sol="kapali"] .gezinti>.cekmece-ok svg,.pencere[data-sag="kapali"] .sag-ok svg{transform:scaleX(-1)}
+.fis-iki,.fisler-iki{position:relative}
+.sag-ok{right:0;border-radius:8px 0 0 8px}
+.pencere:not([data-sag="kapali"]) .sag-ok{right:calc(clamp(328px,31%,380px) + var(--tk-g4) - 11px)}
+.pencere:not([data-sag="kapali"]) .fisler-iki>.sag-ok{right:calc(clamp(370px,38%,560px) + var(--tk-g4) - 11px)}
+.pencere[data-sag="kapali"] .fis-iki,.pencere[data-sag="kapali"] .fisler-iki{grid-template-columns:minmax(0,1fr) 12px}
+.pencere[data-sag="kapali"] .onizleme,.pencere[data-sag="kapali"] .ayrinti{visibility:hidden;overflow:hidden;padding:0;border:0}
 .pencere[data-yon="kapali"] .yon-acik,.pencere[data-yon="acik"] .yon-kapali{display:none}
 
 /* ana alan ve ekranlar */
@@ -678,14 +717,29 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
     <button class="gez" data-git="fisler" title="Fişler (Ctrl+F)"><svg class="sm"><use href="#i-liste"/></svg><span class="ad">Fişler</span><kbd>Ctrl+F</kbd></button>
     <button class="gez" data-git="ac" title="Fiş aç, okut (F2)"><svg class="sm"><use href="#i-kod"/></svg><span class="ad">Fiş aç</span><kbd>F2</kbd></button>
     <button class="gez" data-git="kurulum" id="gez-kurulum" title="İlk kurulum: şube ve kişiler" hidden><svg class="sm"><use href="#i-ayar"/></svg><span class="ad">İlk kurulum</span></button>
-    <div class="gez-baslik kucuk">Yönetim</div>
-    <button class="gez yon-kapali" data-git="telefonlar" data-yonetim title="Yönetici girişi"><svg class="sm"><use href="#i-kilit"/></svg><span class="ad">Yönetici girişi</span></button>
+    <div class="gez-baslik kucuk yon-acik">Yönetim</div>
     <button class="gez yon-acik" data-git="telefonlar" title="Telefonlar"><svg class="sm"><use href="#i-tel"/></svg><span class="ad">Telefonlar</span></button>
     <button class="gez yon-acik" data-git="personel" title="Personel ve usta"><svg class="sm"><use href="#i-kisi"/></svg><span class="ad">Personel ve usta</span></button>
     <button class="gez yon-acik" data-git="puan" title="Usta puanı"><svg class="sm"><use href="#i-puan"/></svg><span class="ad">Usta puanı</span></button>
     <div class="gez-alt">
-      <button class="gez" data-git="ayarlar" title="Ayarlar"><svg class="sm"><use href="#i-ayar"/></svg><span class="ad">Ayarlar</span></button>
+      <div class="hesap" id="hesap">
+        <button class="hesap-kart" id="hesap-dugme" aria-haspopup="menu" aria-expanded="false" aria-controls="hesap-menu" title="Hesap ve ayarlar">
+          <span class="hesap-bas" id="hesap-bas" aria-hidden="true">M</span>
+          <span class="hesap-metin"><b id="hesap-ad">Mağaza bilgisayarı</b><small class="mut" id="hesap-alt">Şube</small></span>
+          <svg class="sm ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg>
+        </button>
+        <div class="hesap-menu" id="hesap-menu" role="menu" aria-label="Hesap" hidden>
+          <div class="hm-kisi" role="presentation"><b id="hm-ad">Mağaza bilgisayarı</b><small id="hm-alt">Şube</small></div>
+          <hr role="separator">
+          <button role="menuitem" class="yon-kapali" data-git="telefonlar" data-yonetim><svg class="sm"><use href="#i-kilit"/></svg>Yönetici girişi</button>
+          <button role="menuitem" class="yon-acik" data-hm-kilitle><svg class="sm"><use href="#i-acik"/></svg>Yönetici oturumunu kapat</button>
+          <hr role="separator">
+          <button role="menuitem" data-git="ayarlar"><svg class="sm"><use href="#i-ayar"/></svg>Ayarlar</button>
+          <div class="hm-tema" role="group" aria-label="Tema"><button role="menuitemradio" data-tema-sec="kocan" title="Tema: Koçan" aria-label="Tema: Koçan"><i data-onizleme="kocan"></i></button><button role="menuitemradio" data-tema-sec="tebesir" title="Tema: Tebeşir" aria-label="Tema: Tebeşir"><i data-onizleme="tebesir"></i></button><button role="menuitemradio" data-tema-sec="aski" title="Tema: Askı" aria-label="Tema: Askı"><i data-onizleme="aski"></i></button><button role="menuitemradio" data-tema-sec="cozgu" title="Tema: Çözgü" aria-label="Tema: Çözgü"><i data-onizleme="cozgu"></i></button><button role="menuitemradio" data-tema-sec="civit" title="Tema: Çivit" aria-label="Tema: Çivit"><i data-onizleme="civit"></i></button><button role="menuitemradio" data-tema-sec="keten" title="Tema: Keten" aria-label="Tema: Keten"><i data-onizleme="keten"></i></button></div>
+        </div>
+      </div>
     </div>
+    <button class="cekmece-ok" data-cekmece="sol" aria-expanded="true" aria-label="Sol menüyü daralt" title="Sol menüyü daralt / aç"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></button>
   </nav>
 
   <main class="ana-alan" id="ana">
@@ -714,7 +768,7 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
     <section class="ekran dolu" data-ekran="yeni" aria-label="Yeni fiş">
       <div class="sayfa-bas"><div><h1>Yeni tadilat fişi</h1><div class="imza-cizgi"></div></div>
         <span class="mut kucuk">Sekme tuşuyla ilerleyin · taslak kendiliğinden saklanır</span></div>
-      <div class="fis-iki">
+      <div class="fis-iki"><button class="cekmece-ok sag-ok" data-cekmece="sag" aria-expanded="true" aria-label="Sağ paneli kapat" title="Sağ paneli kapat / aç"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
         <div class="form-sutun">
           <div class="form-kayar">
             <div class="kart duz bolum">
@@ -805,7 +859,7 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
             <button class="dugme" data-suz-sec="tumu" aria-pressed="false">Tümü</button></div>
           <button class="dugme" id="okutarak" aria-pressed="false" title="Açıkken okutulan fişler açılmaz, seçime eklenir"><svg class="sm"><use href="#i-tabanca"/></svg>Okutarak seç</button>
         </div></div>
-      <div class="fisler-iki">
+      <div class="fisler-iki"><button class="cekmece-ok sag-ok" data-cekmece="sag" aria-expanded="true" aria-label="Sağ paneli kapat" title="Sağ paneli kapat / aç"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
         <div class="kart duz liste-kutu">
           <div class="liste" id="liste" role="grid" aria-label="Fiş listesi">
             <div class="liste-ic" id="liste-ic"></div>
@@ -832,6 +886,8 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
           <div class="elle"><div class="alan"><label for="ac-no">Ya da fiş no yazın</label><input id="ac-no" class="mono" placeholder="F-20261117-001 ya da 1" autocomplete="off"></div>
             <button class="dugme ana" id="ac-dugme">Fişi aç <kbd>Enter</kbd></button></div>
           <p class="mut kucuk">Yalnız sıra numarası yazarsanız bugünün fişi açılır (ör. 7 → bugünün 007 numaralı fişi).</p>
+          <button class="dugme" id="sepet-ac" type="button"><svg class="sm"><use href="#i-kod"/></svg>Teslim sepeti: birden çok fişi tek seferde teslim et</button>
+          <p class="mut kucuk">Sepette fişleri sırayla okutun; bağlı fişler kendiliğinden gelir. Müşteri nüshasının karekodu okutulan fiş fişli, numarası yazılan fiş fişsiz sayılır (fişsizde telefon son 4 + imza).</p>
           <div class="mesaj hata" id="ac-mesaj" hidden><svg class="sm"><use href="#i-uyari"/></svg><span></span></div>
         </div>
         <div class="kart duz yigin"><h2>Son açılanlar</h2><div class="bugun-liste" id="son-liste"></div></div>
@@ -911,6 +967,14 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
             <thead><tr><th>Cihaz</th><th>Yetkiler</th><th>Son görülme</th><th>Durum</th><th><span class="sr">İşlem</span></th></tr></thead>
             <tbody id="tel-liste"></tbody></table></div>
           <div class="mesaj"><svg class="sm"><use href="#i-tel"/></svg><div>Kapatılan telefon siteye giremez; yeniden kullanmak için baştan eşleştirilir. Kişisel telefonda fişi düzenleyen her zaman o kişidir.</div></div>
+          <!-- Eski teslim kayıtlarının şifrelenmesi (GET /api/yonetim/teslim-gecis): bekleyen düz imza / defter satırı varsa uyarı. -->
+          <div class="mesaj uyari" id="teslim-gecis-uyari" role="status" hidden><svg class="sm"><use href="#i-uyari"/></svg><div></div></div>
+          <!-- Teslim bilgisini açık görme ("teslim-acik"): kişi bazında. Rol varsayılanı (yalnız bu bilgisayarda verilen rol): yönetici ve mağaza müdürü açık. -->
+          <div class="sira ara-bosluk"><h2>Teslim bilgisini açık görebilen kişiler</h2></div>
+          <p class="mut kucuk" style="margin:0">Teslim alanın adı, telefonu, IP'si ve imzası ekranlarda maskeli görünür. Açık hâlini yönetici, mağaza müdürü (rolü bu bilgisayarda verilmişse; TAA Çatı ya da Telegram'dan gelen rol kendiliğinden açmaz) ve burada izin verilen kişiler (kişisel telefonlarında) görür; her açılış günlüğe yazılır. Cihaz bazında izin yukarıdaki tablodan verilir.</p>
+          <div class="tablo-sar"><table>
+            <thead><tr><th>Kişi</th><th>Rol</th><th>Açık görme</th></tr></thead>
+            <tbody id="teslim-kisi-liste"></tbody></table></div>
         </div>
       </div>
     </section>
@@ -929,7 +993,7 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
           <div class="kart yigin" id="k-ekle-kart">
             <h2>Kişi kaydına ekle</h2>
             <div class="alan"><label for="k-ad">Ad Soyad</label><input id="k-ad" maxlength="40" autocomplete="off" placeholder="Ad Soyad" aria-describedby="k-ad-not"><span class="mut kucuk" id="k-ad-not">Adı ve soyadı birlikte yazın; fişe "Ad S." olarak basılır.</span></div>
-            <div class="cipler" role="group" aria-label="Rol" id="k-rol"><button class="cip" data-rol="danisman" aria-pressed="true">Danışman</button><button class="cip" data-rol="usta" aria-pressed="false">Usta</button><button class="cip" data-rol="personel" aria-pressed="false">Personel</button><button class="cip" data-rol="yonetici" aria-pressed="false">Yönetici</button></div>
+            <div class="cipler" role="group" aria-label="Rol" id="k-rol"><button class="cip" data-rol="danisman" aria-pressed="true">Danışman</button><button class="cip" data-rol="usta" aria-pressed="false">Usta</button><button class="cip" data-rol="personel" aria-pressed="false">Personel</button><button class="cip" data-rol="yonetici" aria-pressed="false">Yönetici</button><button class="cip" data-rol="magaza-muduru" aria-pressed="false">Mağaza müdürü</button></div>
             <button class="dugme sonraki genis" id="k-ekle"><svg class="sm"><use href="#i-arti"/></svg>Ekle</button>
             <div class="mesaj hata kucuk" id="k-mesaj" hidden><svg class="sm"><use href="#i-uyari"/></svg><span></span></div>
           </div>
@@ -1117,6 +1181,8 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
 
   /* ---------- yerel sunucu ---------- */
   var YON=null;
+  /* İkili istekler (imza görüntüsü) için aynı başlıklar: masaüstü işareti ve varsa yönetici oturumu. */
+  function yoneticiBasliklari(){var b={'X-TAA-Masaustu':'1'};if(YON)b['X-TAA-Yonetici']=YON;return b}
   function api(metot,yol,govde,secenek){
     var b={'X-TAA-Masaustu':'1'};if(YON)b['X-TAA-Yonetici']=YON;
     var o={method:metot,headers:b,cache:'no-store'};
@@ -1147,7 +1213,7 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
   function durumYukle(){
     return api('GET','/api/durum').then(function(d){
       DURUM=d;if(d.tarih)BUGUN=d.tarih;pen.dataset.hal='normal';
-      $('#cubuk-sube').textContent=d.sube?'Şube '+d.sube:'Şube ayarlı değil';
+      $('#cubuk-sube').textContent=d.sube?'Şube '+d.sube:'Şube ayarlı değil';if(typeof hesapCiz==='function')hesapCiz();
       var as=$('#acilis-sube');if(as)as.textContent=d.sube?'Şube '+d.sube+' hazırlanıyor':'Hazırlanıyor';
       $('#cubuk-tel').textContent=d.bagli_telefon+' telefon';
       $('#cubuk-tel').parentNode.title='Eşleşmiş '+d.telefon+' telefon, şu an bağlı '+d.bagli_telefon;
@@ -1170,7 +1236,7 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
   function renklerYukle(){
     return api('GET','/api/renkler').then(function(v){RENKLER=v.renkler||[];kalemCiz();ayrintiCiz()},function(){})}
   function oturumYukle(){
-    return api('GET','/api/oturum').then(function(o){OTURUM=o;ayrintiCiz()},function(){})}
+    return api('GET','/api/oturum').then(function(o){OTURUM=o;ayrintiCiz();hesapCiz()},function(){hesapCiz()})}
 
   /* ---------- bildirim ---------- */
   function bildir(metin,geriAl,sure){var b=document.createElement('div');b.className='bildirim';b.setAttribute('role','status');b.innerHTML='<span></span>';b.firstChild.textContent=metin;
@@ -1332,6 +1398,11 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
     b.liste.forEach(function(x){var f=bul(x.no);if(f)f.durum=x.eski});tumunuCiz(true);bildir('Geri alındı')}
   function bekleyeniGonder(kapanis){
     var b=BEKLEYEN;if(!b)return Promise.resolve();clearTimeout(b.t);BEKLEYEN=null;
+    // Teslime geçenler /durum'a gitmez (sunucu 409 verir): hepsi tek teslim sepetinde açılır.
+    var tes=b.liste.filter(function(x){return x.yeni==='teslim'});
+    tes.forEach(function(x){var f=bul(x.no);if(f)f.durum=x.eski});
+    b.liste=b.liste.filter(function(x){return x.yeni!=='teslim'});
+    if(tes.length&&!kapanis){tumunuCiz(true);setTimeout(function(){teslimAkisi(tes[0].no,tes.slice(1).map(function(x){return x.no}))},0)}
     return b.liste.reduce(function(p,x){return p.then(function(){
       return api('POST','/api/fis/'+encodeURIComponent(x.no)+'/durum',{durum:x.yeni},{keepalive:!!kapanis}).catch(function(e){
         var f=bul(x.no);if(f)f.durum=x.eski;if(kapanis)return;
@@ -1342,7 +1413,8 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
   function tumunuCiz(degisti){listeCiz();ayrintiCiz(degisti);anaCiz()}
 
   // B2: fişsiz teslim ve imza buraya bağlanır
-  /* Teslim akışının tamamı (ortak.js TKD.teslimSor): kutuda "Fişiyle geldi" / "Fişi yok"; varsayılan "Karekodla onay"
+  /* Teslim akışının tamamı (ortak.js TKD.teslimSor = teslim sepeti). Aşağıdaki eski açıklama tek fiş kutusu içindi; "Fişiyle
+     geldi" seçeneği KALDIRILDI: fişli/fişsiz, fişin karekodunun okutulup okutulmadığına göre belirlenir. Varsayılan "Karekodla onay"
      (müşteri kendi telefonuyla okutur, ad + telefon şifreli gelir; /teslim-qr), yedek "Telefonu yok: ekranda imza"
      (ad soyad elle, imza tuvalde). Fişsizde son 4 hane ve karekod ya da imza zorunlu. İstek /teslim-al ucuna gider.
      Bağlı açık fiş varsa sunucu 409 {soru:"bagli_teslim"} ile sorar; TKD.bagliSor kutusu teslim kutusunun üstünde açılır,
@@ -1350,27 +1422,43 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
      Teslim kaydı defterde kalıcıdır; bu yüzden 10 sn'lik geri alma beklemesi teslimde yoktur, kutunun kendisi onaydır.
      Sunucu /durum ile teslimi reddeder (409 teslim_al_gerekli); toplu işlemde de her fiş sırayla bu kutudan geçer.
      Fiş artık hazır değilse (ör. bağlı fişle birlikte teslim edildi) kutu açılmaz. */
-  function teslimAkisi(no){
-    var f=bul(no);if(!f||f.durum!=='hazir')return Promise.resolve();
+  /* Teslim SEPETİ (2026-11-26): kutu fişi (ve bağlı fişlerini) sepete koyar; tabancayla başka fişler eklenir, hepsi
+     tek teslimatta teslim edilir (POST /api/teslim/sepet). ek: sepete baştan eklenecek diğer fiş no'ları (toplu teslim).
+     no boşsa sepet boş açılır (Fiş aç ekranındaki "Teslim sepeti" düğmesi). */
+  function teslimAkisi(no,ek){
+    var f=no?bul(no):null;if(no&&(!f||f.durum!=='hazir'))return Promise.resolve();
     bekleyeniGonder();
-    // Oturum (yetkiler) henüz gelmediyse önce okunur; yoksa "Fişi yok" yanlışlıkla kapalı görünürdü.
-    return (OTURUM?Promise.resolve():oturumYukle()).then(function(){return TKD.teslimSor({fis:f,oturum:OTURUM,api:api})}).then(function(r){
-      if(!r){bildir(no+': teslim edilmedi');return}
-      var bt=r.birlikte_teslim||[],tk=r.teslim_kaydi||{};
-      bildir(no+(bt.length?' ve '+bt.join(', '):'')+': Teslim · '+((tk.ad||tk.teslim_alan)?kisaAd(tk.ad||tk.teslim_alan)+' ('+TKD.iliskiAd(tk.iliski)+')':'')+(tk.fisli===false?' · fişsiz':'')+(tk.dogrulama&&tk.dogrulama.indexOf('qr')===0?' · karekod onaylı':''),null,6000);
+    // Oturum (yetkiler) henüz gelmediyse önce okunur; yoksa fişsiz teslim yetkisi yanlışlıkla kapalı görünürdü.
+    return (OTURUM?Promise.resolve():oturumYukle()).then(function(){return TKD.teslimSor({fis:f||{},karekod:no?OKUTMA[no]:'',ek:ek||[],oturum:OTURUM,api:api})}).then(function(r){
+      if(!r){if(no)bildir(no+': teslim edilmedi');return fislerYukle(true)}
+      var l=(r.fisler||[]).map(function(x){return x.no}),tk=r.teslim_kaydi||{};
+      l.forEach(function(n){delete OKUTMA[n]});
+      bildir((l.length?l.join(', '):no)+': Teslim'+(r.teslim_id?' · '+r.teslim_id:'')+((tk.ad||tk.teslim_alan)?' · '+(tk.ad||tk.teslim_alan)+' ('+TKD.iliskiAd(tk.iliski)+')':'')+(tk.fisli===false?' · fişsiz fiş var':'')+(tk.dogrulama&&tk.dogrulama.indexOf('qr')===0?' · karekod onaylı':''),null,6000);
       return fislerYukle(true)})}
-  /* Fiş ayrıntısında teslim kaydı ve imza görüntüsü (GET /api/fis/<no>/imza). */
-  function teslimKaydiCiz(f){TKD.teslimKaydiCiz($('#ay-teslim-kaydi'),f,{imzaGorebilir:true,imzaGetir:function(no){return TKD.imzaCek(no,{'X-TAA-Masaustu':'1'})},
-    /* Tam teslim kaydı (tam telefon, IP, cihaz): yalnız bu bilgisayarda, yönetici oturumuyla (sunucu denetler, günlüğe yazar). */
-    ayrintiGetir:function(no){return api('GET','/api/yonetim/teslim/'+encodeURIComponent(no))}})}
+  /* Fiş ayrıntısında teslim kaydı: varsayılan maskeli. "Açık göster" (GET /api/fis/<no>/teslim-acik) ve imza görüntüsü
+     (GET /api/fis/<no>/imza, sunucuda çözülür) bu bilgisayarda yönetici oturumu ister (401 -> PIN); her açılış günlüğe yazılır. */
+  function teslimKaydiCiz(f){TKD.teslimKaydiCiz($('#ay-teslim-kaydi'),f,{imzaGetir:function(no){return TKD.imzaCek(no,yoneticiBasliklari())},
+    acikGetir:function(no){return api('GET','/api/fis/'+encodeURIComponent(no)+'/teslim-acik')}})}
 
   /* ---------- karekod tabancası ---------- */
   var testAcik=false;
   function noCoz(ham){var m=String(ham).match(/F.?(\d{8}).?(\d{3})/i);return m?'F-'+m[1]+'-'+m[2]:null}
+  /* Teslim sepeti (2026-11-26): okunan karekod metni fiş no'suyla saklanır; teslimde sunucu bunu "fişli" kanıtı olarak
+     yeniden doğrular (müşteri nüshasının takip karekodu; takip ayarı yoksa fiş karekodu). Elle yazılan no kanıt değildir. */
+  var OKUTMA={};
+  var TAKIP_DESENI=/\/t\/[a-z2-9]{16}(?:[?#\/]|$)/;
   function tara(ham,ms){
     var no=noCoz(ham);
     if(testAcik){testAcik=false;$('#test-baslat').setAttribute('aria-pressed','false');
       var p=$('#test-sonuc');p.className='';p.innerHTML=sm('i-onay')+' <b>Okundu: '+esc(no||ham)+'</b> · '+String(ham).length+' karakter · '+ms+' ms · sonunda Enter var. Tabanca hazır.';return}
+    // Teslim sepeti açıksa okutma sepete eklenir (fiş açılmaz).
+    var sp=TKD.sepetAcik&&TKD.sepetAcik();if(sp){sp.ekle(ham);return}
+    // Müşteri nüshasındaki takip karekodu: fiş no'su sunucuda çözülür.
+    if(!no&&TAKIP_DESENI.test(String(ham))){
+      api('POST','/api/teslim/karekod-coz',{metin:String(ham)}).then(function(r){OKUTMA[r.no]=String(ham);
+        return (bul(r.no)?Promise.resolve():fislerYukle(true)).then(function(){if(bul(r.no))fisAc(r.no,'karekod');else bildir('Bu şubede böyle bir fiş yok: '+r.no)})},
+        function(){bildir('Bu karekod bu şubedeki bir fişe ait değil')});return}
+    if(no)OKUTMA[no]=String(ham);
     if(!no||!bul(no)){
       if(no)return api('GET','/api/fis/'+encodeURIComponent(no)).then(function(){return fislerYukle(true)}).then(function(){if(bul(no))tara(no,ms);else bildir('Bu kod bir fiş değil ya da bu şubede yok: '+no)},function(){bildir('Bu şubede böyle bir fiş yok: '+no)});
       bildir('Bu kod bir fiş değil: '+String(ham).slice(0,40));return}
@@ -1394,10 +1482,10 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
   var yon={acik:false,kalan:600,sonEtkinlik:0,sonPing:0}, hedef='telefonlar', pin='', pinHal='normal', kilitSn=0;
   var KILITLI={telefonlar:1,personel:1,puan:1};
   function sureYaz(){var k=Math.max(0,yon.kalan);$('#yon-sure').textContent=Math.floor(k/60)+':'+('0'+k%60).slice(-2)}
-  function kilitle(sessiz){if(!yon.acik)return;var t=YON;yon.acik=false;YON=null;pen.dataset.yon='kapali';
+  function kilitle(sessiz){if(!yon.acik)return;var t=YON;yon.acik=false;YON=null;pen.dataset.yon='kapali';TKD.teslimMaskele();
     if(t)fetch('/api/yonetici/cikis',{method:'POST',headers:{'X-TAA-Masaustu':'1','X-TAA-Yonetici':t}}).catch(function(){});
     if(KILITLI[$('.ekran.acik').dataset.ekran])git('ana');if(!sessiz)bildir('Yönetici oturumu kilitlendi')}
-  function yoneticiKapandi(){if(!yon.acik)return;yon.acik=false;YON=null;pen.dataset.yon='kapali';
+  function yoneticiKapandi(){if(!yon.acik)return;yon.acik=false;YON=null;pen.dataset.yon='kapali';TKD.teslimMaskele();
     var ek=$('.ekran.acik');if(ek&&KILITLI[ek.dataset.ekran]){hedef=ek.dataset.ekran;git(hedef)}bildir('Yönetici oturumu kapandı; PIN ile yeniden girin')}
   function pinCiz(){$$('#pin-kutular i').forEach(function(x,i){x.classList.toggle('dolu',i<pin.length)});
     $('#pin-say').textContent='4–8 rakam · '+pin.length+' hane girildi';
@@ -1585,7 +1673,7 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
 
   /* ---------- ilk kurulum (yalnız bu bilgisayar, bir kez) ---------- */
   var KURULUM={};
-  var IK_ROL=[['danisman','Satış danışmanı'],['usta','Usta'],['personel','Personel'],['yonetici','Yönetici']];
+  var IK_ROL=[['danisman','Satış danışmanı'],['usta','Usta'],['personel','Personel'],['yonetici','Yönetici'],['magaza-muduru','Mağaza müdürü']];
   function subeSecenekleri(sel,secili){sel.innerHTML='<option value="">Şube seçin…</option>'+(KURULUM.subeler||[]).map(function(x){
     return '<option value="'+esc(x.kod)+'"'+(x.kod===secili?' selected':'')+'>'+esc(x.kod+' · '+x.ad)+'</option>'}).join('')}
   function catiMetni(c){c=c||{};
@@ -1655,7 +1743,7 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
   function telefonlarAc(){
     var s=$('#esles-kisi'),v=s.value;s.innerHTML='<option value="">Mağaza telefonu (ortak)</option>'+KISILER.map(function(k){return '<option value="'+esc(k.id)+'">Kişisel: '+esc(k.ad)+'</option>'}).join('');s.value=v;
     if(Date.now()>esles.bitis-5000||esles.kisi!==s.value)yeniKod();
-    TEL_IMZA='';yetkilerYukle().then(cihazlarYukle);clearInterval(telPoll);telPoll=setInterval(function(){yetkilerYukle().then(cihazlarYukle)},5000)}
+    TEL_IMZA='';yetkilerYukle().then(cihazlarYukle);teslimGecisYukle();clearInterval(telPoll);telPoll=setInterval(function(){yetkilerYukle().then(cihazlarYukle)},5000)}
   function yeniKod(){var kisi=$('#esles-kisi').value;
     api('GET','/api/yonetim/eslestirme'+(kisi?'?kisi='+encodeURIComponent(kisi):'')).then(function(v){
       esles={bitis:Date.now()+v.gecerli_sn*1000,kisi:kisi};$('#esles-kare').innerHTML=v.qr_svg;$('#esles-kod').textContent=v.kod.slice(0,3)+' '+v.kod.slice(3);
@@ -1682,8 +1770,37 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
      Satırlar yalnız cihaz/ad/yetki değişince yeniden kurulur (5 sn yoklamada odak ve açık ad formu korunur);
      son görülme ve bağlılık hücreleri yerinde güncellenir. Metinler textContent ile yazılır. */
   var YETKI_TANIM=[], PC_YETKI=[], TEL_IMZA='', AD_DUZEN=null;
+  var TESLIM_KISI_IMZA='';
   function yetkilerYukle(){return api('GET','/api/yonetim/yetkiler').then(function(v){
-    YETKI_TANIM=v.yetkiler||[];var pc=(v.cihazlar||[]).filter(function(c){return c.id==='PC'})[0];PC_YETKI=pc?pc.yetkiler||[]:[]},function(){})}
+    YETKI_TANIM=v.yetkiler||[];var pc=(v.cihazlar||[]).filter(function(c){return c.id==='PC'})[0];PC_YETKI=pc?pc.yetkiler||[]:[];
+    teslimKisiTablosu(v.kisiler||[])},function(){})}
+  /* Kişi bazında "teslim-acik": anahtar yöneticinin kaydını yazar (POST /api/yonetim/kisi/<id>/yetki); kaynak sütunu
+     rol varsayılanı mı, yönetici kararı mı olduğunu gösterir. Yalnız değişince yeniden kurulur (5 sn yoklama). */
+  var ROL_AD={danisman:'Danışman',usta:'Usta',personel:'Personel',yonetici:'Yönetici','magaza-muduru':'Mağaza müdürü'};
+  /* Eski teslim kaydı geçişi uyarısı: şifresiz imza PNG'leri program tarafından SİLİNMEZ; yönetici liste dosyasına bakıp
+     kendisi siler (Geri Dönüşüm Kutusu). Defter satırları sunucu açılışında şifrelenir; bekleyen varsa "yeniden başlatın". */
+  function teslimGecisYukle(){api('GET','/api/yonetim/teslim-gecis').then(function(v){
+    var k=$('#teslim-gecis-uyari');if(!k)return;var el=TKD.el,d=k.lastElementChild,n=(v.duz_imza_dosyalari||[]).length;
+    d.textContent='';
+    if(!n&&!v.gecis_gerekli){k.hidden=true;return}
+    if(v.gecis_gerekli)d.appendChild(el('p',{style:'margin:0'},el('b',{metin:'Eski teslim kayıtları henüz şifrelenmedi. '}),
+      (v.duz_metin_teslim_satiri||0)+' satır düz metin. Programı kapatıp yeniden açın: açılışta önce şifreli yedek alınır, sonra kayıtlar şifrelenir.'));
+    if(n)d.appendChild(el('p',{style:'margin:0'},el('b',{metin:n+' şifresiz imza dosyası silinmeyi bekliyor. '}),
+      'Şifreli kopyaları yazıldı ve doğrulandı; program bu dosyaları silmez. Listeyi ('+(v.silinecek_listesi||'imzalar/silinecek-duz-imzalar.json')+') açıp dosyaları veri klasöründen Geri Dönüşüm Kutusu\'na siz silin. Silinene kadar imzalar diskte şifresiz durur.'));
+    k.hidden=false},function(){})}
+  function teslimKisiTablosu(l){
+    var el=TKD.el,tb=$('#teslim-kisi-liste');if(!tb)return;
+    var imza=JSON.stringify(l);if(imza===TESLIM_KISI_IMZA)return;TESLIM_KISI_IMZA=imza;tb.textContent='';
+    l.forEach(function(k){
+      var g=el('input',{type:'checkbox',role:'switch','aria-label':k.ad+': teslim bilgisini açık görme'});g.checked=!!k.teslim_acik;
+      g.addEventListener('change',function(){var ver=g.checked;g.disabled=true;
+        api('POST','/api/yonetim/kisi/'+encodeURIComponent(k.id)+'/yetki',{yetki:'teslim-acik',ver:ver}).then(function(){
+          bildir(k.ad+': teslim bilgisini açık görme '+(ver?'açıldı':'kapatıldı'));TESLIM_KISI_IMZA='';TEL_IMZA='';return yetkilerYukle().then(cihazlarYukle)},
+          function(x){g.checked=!ver;if(x.kod!==401)bildir(k.ad+': yetki değişmedi ('+x.message+')',null,6000)}).then(function(){g.disabled=false})});
+      var kaynak=k.kaynak==='rol'?'rol varsayılanı':k.kaynak==='yonetici'?'yönetici kararı'+(k.rol_varsayilani?' (rol varsayılanı: açık)':''):(k.rol==='yonetici'||k.rol==='magaza-muduru')&&(k.rol_kaynagi==='cati'||k.rol_kaynagi==='telegram')?'varsayılan: kapalı (rol '+(k.rol_kaynagi==='cati'?'TAA Çatı':'Telegram')+'\'dan geldi; isterseniz açın)':'varsayılan: kapalı';
+      tb.appendChild(el('tr',{},el('td',{},el('b',{metin:k.ad})),el('td',{metin:ROL_AD[k.rol]||k.rol||'—'}),
+        el('td',{},el('label',{sinif:'onay'},g,el('span',{metin:(k.teslim_acik?'Açık':'Kapalı')+' · '+kaynak})))))});
+    if(!l.length)tb.appendChild(el('tr',{},el('td',{colspan:3,sinif:'mut',metin:'Kişi listesi boş.'})))}
   function cihazTablosu(l){
     var el=TKD.el,tb=$('#tel-liste');
     var imza=JSON.stringify([YETKI_TANIM,PC_YETKI,l.map(function(c){return [c.id,c.ad,c.tarih,c.kisi,c.yetkiler]})]);
@@ -1730,7 +1847,7 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
 
   /* ---------- personel ve usta ---------- */
   var YONETICI_AD='Yönetici (PIN)';
-  var ROL={danisman:'Danışman',usta:'Usta',personel:'Personel',yonetici:'Yönetici',magaza:'Mağaza telefonu'};
+  var ROL={danisman:'Danışman',usta:'Usta',personel:'Personel',yonetici:'Yönetici','magaza-muduru':'Mağaza müdürü',magaza:'Mağaza telefonu'};
   var HD={'onay-bekliyor':['bekliyor','i-saat','Onay bekliyor'],onayli:['hazir','i-onay','Onaylı'],askida:['teslim','i-x','Askıda'],kaldirildi:['teslim','i-x','Kaldırıldı']};
   var KAYNAK={cati:'TAA Çatı',telegram:'Telegram','ilk-kurulum':'İlk kurulum'};
   function personelYukle(){kurulumYukle().then(function(k){subeSecenekleri($('#y-sube'),k.sube||'');$('#y-cati').textContent=catiMetni(k.cati)});
@@ -1771,8 +1888,32 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
     },function(e){if(e.kod!==401)$('#pu-isaretler').innerHTML='<p class="mut">'+esc(e.message)+'</p>'})}
 
   /* ---------- tıklamalar ---------- */
+  /* ---------- hesap menüsü ve çekmeceler ---------- */
+  var HM=$('#hesap-menu'), HD=$('#hesap-dugme');
+  function hesapMenu(ac){HM.hidden=!ac;HD.setAttribute('aria-expanded',String(ac));if(ac){temaIsaretle();
+    var g=Array.prototype.filter.call(HM.querySelectorAll('button'),function(x){return x.offsetParent!==null});if(g[0])g[0].focus()}}
+  document.addEventListener('click',function(e){if(!HM.hidden&&!e.target.closest('#hesap'))hesapMenu(false)},true);
+  HM.addEventListener('keydown',function(e){var g=Array.prototype.filter.call(HM.querySelectorAll('button'),function(x){return x.offsetParent!==null}),i=g.indexOf(document.activeElement);
+    if(e.key==='Escape'){hesapMenu(false);HD.focus();e.preventDefault()}
+    else if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();var n=e.key==='ArrowDown'?(i+1)%g.length:(i-1+g.length)%g.length;g[n].focus()}});
+  function hesapCiz(){var o=OTURUM||{},k=o.kisi||{},c=o.cihaz||{};
+    var ad=k.ad||c.ad||'Mağaza bilgisayarı',alt=$('#cubuk-sube').textContent||'';
+    $('#hesap-ad').textContent=ad;$('#hm-ad').textContent=ad;$('#hesap-alt').textContent=alt;$('#hm-alt').textContent=alt;
+    $('#hesap-bas').textContent=(ad.trim().charAt(0)||'M').toLocaleUpperCase('tr-TR');HD.title=ad+' · hesap ve ayarlar'}
+  var CK='taa:terzitakip:cekmece-';
+  function cekmeceOku(y){try{return localStorage.getItem(CK+y)}catch(e){return null}}
+  function cekmece(y,acik,sakla){var p=$('#pencere');if(acik)p.removeAttribute('data-'+y);else p.setAttribute('data-'+y,'kapali');
+    $$('[data-cekmece="'+y+'"]').forEach(function(b){b.setAttribute('aria-expanded',String(acik));
+      b.setAttribute('aria-label',y==='sol'?(acik?'Sol menüyü daralt':'Sol menüyü aç'):(acik?'Sağ paneli kapat':'Sağ paneli aç'))});
+    if(sakla)try{localStorage.setItem(CK+y,acik?'acik':'kapali')}catch(e){}}
+  cekmece('sol',cekmeceOku('sol')!=='kapali',false);cekmece('sag',cekmeceOku('sag')!=='kapali',false);
+
   document.addEventListener('click',function(e){
     var b=e.target.closest('button,[data-no]');if(!b)return;var d=b.dataset;
+    if(b.id==='hesap-dugme'){hesapMenu(HM.hidden);return}
+    if(d.cekmece){cekmece(d.cekmece,$('#pencere').getAttribute('data-'+d.cekmece)==='kapali',true);return}
+    if(d.hmKilitle!==undefined){hesapMenu(false);kilitle();return}
+    if(d.git&&b.closest('#hesap-menu'))hesapMenu(false);
     if(d.temaSec){temaSec(d.temaSec,kok.dataset.ton);return}
     if(d.tonSec){temaSec(kok.dataset.tema,d.tonSec==='koyu'?'koyu':null);return}
     if(d.yaziSec!==undefined){TK.yaziUygula(d.yaziSec,true);temaIsaretle();return}
@@ -1801,6 +1942,7 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
       .then(function(){b.disabled=false;personelYukle();kisilerYukle();durumYukle()});return}
     if(d.git){if(d.suz){suz=d.suz;sorgu='';$('#liste-ara').value='';suzIsaret();listeCiz()}git(d.git,d.odak);return}
     if(d.suzSec){suz=d.suzSec;suzIsaret();listeCiz();return}
+    if(b.id==='sepet-ac'){teslimAkisi('',[]);return}
     if(b.id==='okutarak'){okutarak=!okutarak;b.setAttribute('aria-pressed',String(okutarak));return}
     if(d.no&&b.classList.contains('satir')){ if(e.target.classList.contains('s-sec')){if(e.target.checked)SEC[d.no]=1;else delete SEC[d.no];topluCiz();return}
       if(acikNo!==d.no)formKapat();acikNo=d.no;$$('.satir').forEach(function(s){s.setAttribute('aria-selected',String(s===b))});ayrintiCiz();return}
@@ -1810,7 +1952,8 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
       if(d.toplu==='yazdir'){fisYazdir(s.map(function(f){return f.no}));return}
       var h=s.filter(function(f){return f.durum===d.toplu}),yeni=D[d.toplu][3];SEC={};
       // Teslim toplu /durum ile yapılmaz: her fiş sırayla teslim kutusundan geçer (teslim alan, gerekiyorsa imza).
-      if(yeni==='teslim'){listeCiz();h.reduce(function(p,f){return p.then(function(){return teslimAkisi(f.no)})},Promise.resolve());return}
+      // Toplu teslim: seçilen hazır fişlerin hepsi tek teslim sepetine konur (tek teslimat).
+      if(yeni==='teslim'){listeCiz();if(h.length)teslimAkisi(h[0].no,h.slice(1).map(function(f){return f.no}));return}
       durumDegistir(h.map(function(f){return {f:f,yeni:yeni}}),h.length+' fiş: '+D[yeni][1]);return}
     if(d.is){var fi=bul(acikNo);if(!fi)return;
       if(d.is==='yazdir'){fisYazdir([fi.no]);return}

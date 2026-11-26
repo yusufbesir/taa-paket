@@ -152,9 +152,12 @@ pub fn gorunen_ad(ad: &str) -> String {
     }
 }
 
-/// Görevlendirme rolünden (iletişim rolü ve unvan) fişteki rol; yalnız gösterim içindir, yetki vermez.
+/// Görevlendirme rolünden (iletişim rolü ve unvan) fişteki rol. Gösterim içindir: Çatı'dan gelen kişinin rolü
+/// "teslim-acik" yetkisini kendiliğinden VERMEZ (cihaz::rol_varsayilani_acik yalnız bu bilgisayarda verilen rolü
+/// sayar); yönetici kişiye açıkça verir. "Yardımcı" geçen unvan (müdür yardımcısı vb.) müdür/yönetici sayılmaz.
 fn rol_esle(rol: &str, gorev: &str) -> &'static str {
     let m = format!("{rol} {gorev}").to_lowercase();
+    let yardimci = m.contains("yardımcı") || m.contains("yardimci") || m.contains("yrd");
     if m.contains("usta") || m.contains("terzi") {
         "usta"
     } else if m.contains("danis")
@@ -163,6 +166,12 @@ fn rol_esle(rol: &str, gorev: &str) -> &'static str {
         || m.contains("satış")
     {
         "danisman"
+    } else if yardimci {
+        "personel"
+    } else if (m.contains("mağaza") || m.contains("magaza"))
+        && (m.contains("müdür") || m.contains("mudur"))
+    {
+        "magaza-muduru"
     } else if m.contains("mudur")
         || m.contains("müdür")
         || m.contains("yonetici")
@@ -638,6 +647,25 @@ mod testler {
             ]
         );
         assert!(l.iter().all(|k| k.kaynak == "cati"));
+    }
+
+    #[test]
+    fn rol_esle_yardimci_ve_mudur() {
+        assert_eq!(rol_esle("", "Mağaza Müdürü"), "magaza-muduru");
+        assert_eq!(rol_esle("magaza-muduru", ""), "magaza-muduru");
+        assert_eq!(rol_esle("", "Mağaza Müdür Yardımcısı"), "personel");
+        assert_eq!(rol_esle("", "Müdür Yardımcısı"), "personel");
+        assert_eq!(rol_esle("mudur-yardimcisi", ""), "personel");
+        assert_eq!(rol_esle("", "Bölge Müdürü"), "yonetici");
+        // Çatı kaynaklı rol, "yonetici" ya da "magaza-muduru" olsa da teslim-acik vermez.
+        assert!(!crate::cihaz::rol_varsayilani_acik("magaza-muduru", "cati"));
+        assert!(!crate::cihaz::rol_varsayilani_acik("yonetici", "telegram"));
+        assert!(crate::cihaz::rol_varsayilani_acik("magaza-muduru", ""));
+        assert!(crate::cihaz::rol_varsayilani_acik(
+            "yonetici",
+            "ilk-kurulum"
+        ));
+        assert!(!crate::cihaz::rol_varsayilani_acik("personel", ""));
     }
 
     struct Sahte(Result<CatiVerisi, String>);
