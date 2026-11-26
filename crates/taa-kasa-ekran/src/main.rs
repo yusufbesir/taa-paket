@@ -267,10 +267,7 @@ fn isle(
                 istek,
                 Response::from_data(bayt),
                 tur,
-                &[(
-                    "Content-Disposition",
-                    format!("attachment; filename=\"{ad}\""),
-                )],
+                &[("Content-Disposition", ek::indirme_basligi(&ad))],
             ),
             Cevap::Kapat => {
                 json_yanit(istek, 200, &json!({"tamam": true}));
@@ -287,16 +284,22 @@ fn pencere_ac(adres: &str) {
     {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        let adaylar = ["ProgramFiles(x86)", "ProgramFiles", "LOCALAPPDATA"]
-            .iter()
-            .filter_map(|e| std::env::var(e).ok())
-            .map(|k| {
-                Path::new(&k)
-                    .join("Microsoft")
-                    .join("Edge")
-                    .join("Application")
-                    .join("msedge.exe")
-            });
+        // 32 bit süreçte ProgramFiles x86'yı gösterir; 64 bit Edge yolu ProgramW6432'dedir.
+        let adaylar = [
+            "ProgramFiles(x86)",
+            "ProgramFiles",
+            "ProgramW6432",
+            "LOCALAPPDATA",
+        ]
+        .iter()
+        .filter_map(|e| std::env::var(e).ok())
+        .map(|k| {
+            Path::new(&k)
+                .join("Microsoft")
+                .join("Edge")
+                .join("Application")
+                .join("msedge.exe")
+        });
         for edge in adaylar {
             if edge.is_file()
                 && std::process::Command::new(&edge)
