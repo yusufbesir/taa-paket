@@ -40,5 +40,5 @@ yazH("v3-hazir-tr.html", h);
 const t3 = {...t2, k:"cdefghjkmnpqrstu", d:"terzide", ts:now+2};
 r = await yaz(t3); yazH("v3-terzide-en.html", await al(t3.k,"?dil=en"));
 const t4 = {...t, k:"defghjkmnpqrstuv", d:"terzide", kg:{d:"hazirlaniyor",f:"aras",n:"",t:"",y:""}, ts:now+3};
-r = await yaz(t4); assert.equal(r.status,200); h=await al(t4.k); assert(h.includes("Kargoya hazırlanıyor") && h.includes("Takip numarası kargoya"));
+r = await yaz(t4); assert.equal(r.status,200); h=await al(t4.k); assert(h.includes("Kargoya hazırlanıyor") && h.includes("takip numarası burada görünecek"));
 console.log("v3 testleri geçti");

@@ -137,7 +137,7 @@ const adim = (d, kgd) => sayfa({ ...sakli, v: 3, d, kg: { d: kgd, f: "diger", n:
 const guncel = (h) => (h.match(/<li class="su" aria-current="step">[\s\S]*?<span class="ad">([^<]+)</) || [])[1];
 const bitenler = (h) => (h.match(/<li class="bitti"/g) || []).length;
 t_("kargoya hazırlanıyor: alındı/terzide'de terzi adımı bitmiş görünmez", () => {
-  let h = adim("alindi", "hazirlaniyor"); assert.equal(guncel(h), "Fişiniz alındı"); assert.equal(bitenler(h), 0); assert(!h.includes("Ürününüz kargoya hazırlanıyor"));
+  let h = adim("alindi", "hazirlaniyor"); assert.equal(guncel(h), "Ürün alındı"); assert.equal(bitenler(h), 0); assert(!h.includes("Ürününüz kargoya hazırlanıyor"));
   h = adim("terzide", "hazirlaniyor"); assert.equal(guncel(h), "Terzide"); assert.equal(bitenler(h), 1);
   h = adim("hazir", "hazirlaniyor"); assert.equal(guncel(h), "Kargoya hazırlanıyor"); assert.equal(bitenler(h), 2);
   h = adim("terzide", "yolda"); assert.equal(guncel(h), "Kargolandı"); assert.equal(bitenler(h), 2); });
