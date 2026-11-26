@@ -929,7 +929,10 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
         </div>
         <div class="pin-sag">
           <div class="sira"><svg class="sm buyuk"><use href="#i-kilit"/></svg><h1>Yönetici girişi</h1></div>
-          <p class="mut">Yönetim ekranları yönetici PIN'i ile açılır. PIN 4 ile 8 rakam arasındadır; yazıp <kbd>Enter</kbd> tuşuna basın.</p>
+          <div class="mesaj" id="yon-ortak" hidden><svg class="sm"><use href="#i-kisi"/></svg><div><span id="yon-ortak-metin"></span><br>
+            <div id="yon-ortak-form" class="yigin" style="margin-top:var(--tk-g2)"><input type="password" id="yon-ortak-parola" autocomplete="current-password" aria-label="Ortak giriş şifresi" placeholder="Şifre" style="max-width:14em">
+            <button class="dugme ana kucuk" id="yon-ortak-gir">Şifreyle doğrula ve aç</button></div></div></div>
+          <p class="mut">Yönetim ekranları, TAA ortak girişle giren <b>yönetici rolündeki</b> kişiyle, o kişinin <b>şifresi yeniden sorularak</b> açılır; günlüklere o kişi yazılır. Ortak girişte bu kişi çıkarsa ya da başka biri girerse yönetici oturumu kendiliğinden kapanır. Ortak giriş kapalıysa ya da ulaşılamıyorsa yönetici PIN'i ile girilir (günlükte "PC (PIN)"). PIN 4 ile 8 rakam arasındadır; yazıp <kbd>Enter</kbd> tuşuna basın.</p>
           <div class="mesaj hata" id="pin-mesaj" role="alert" hidden><svg class="sm"><use href="#i-uyari"/></svg><div></div></div>
           <div class="mesaj pin-not"><svg class="sm"><use href="#i-kilit"/></svg><div><b>Yönetici PIN'i TAA Çatı'dan belirlenir.</b><br>Bu programda PIN belirlenmez, değiştirilmez, sıfırlanmaz; yalnız giriş yapılır.</div></div>
           <p class="mut kucuk">Klavyeden de yazabilirsiniz. Çok sayıda yanlış denemede TAA Çatı girişi bir süre kilitler. Oturum 10 dakika işlem yapılmazsa kapanır.</p>
@@ -1091,6 +1094,19 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
               <p id="test-sonuc" class="mut">Testi başlatıp herhangi bir fişin karekodunu okutun. Test sırasında fiş açılmaz.</p>
             </div>
             <p class="mut kucuk">Tabanca klavye gibi yazar ve sonunda Enter gönderir. Program hızlı gelen yazıyı tabanca sayar; hangi kutuda olursanız olun fiş açılır.</p>
+          </div>
+          <div class="kart duz yigin" id="ayar-yonetim">
+            <h2>Yönetim</h2>
+            <p class="mut kucuk yon-kapali">Bu ayarlar yalnız yönetici oturumuyla görünür ve değişir. <button class="dugme kucuk" data-git="telefonlar" data-yonetim>Yönetici girişi</button></p>
+            <div class="yon-acik yigin">
+              <div class="ayar-satir">
+                <label class="etiket" for="a-gecis-gun">Eski fiş geçiş süresi</label>
+                <div class="sira"><input id="a-gecis-gun" type="number" min="0" max="90" step="1" inputmode="numeric" class="mono" style="width:6em" aria-describedby="a-gecis-not"> <span>gün</span>
+                  <button class="dugme kucuk" id="a-gecis-kaydet">Kaydet</button></div>
+                <span class="etiket">Durum</span><span id="a-gecis-durum" class="kucuk">…</span>
+              </div>
+              <p class="mut kucuk" id="a-gecis-not">Karekod kanıtı devreye girmeden önce basılmış fişlerde, müşteri fişiyle geldiğinde personel karekodu ya da elle yazılan fiş no bu süre boyunca "fişli" sayılır. 0 = kapalı (varsayılan). Süre kaydettiğiniz andan başlar ve bitince kendiliğinden kapanır; her kullanım günlüğe yazılır.</p>
+            </div>
           </div>
           <div class="kart duz yigin">
             <h2>Tanıtım</h2>
@@ -1484,9 +1500,9 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
   function sureYaz(){var k=Math.max(0,yon.kalan);$('#yon-sure').textContent=Math.floor(k/60)+':'+('0'+k%60).slice(-2)}
   function kilitle(sessiz){if(!yon.acik)return;var t=YON;yon.acik=false;YON=null;pen.dataset.yon='kapali';TKD.teslimMaskele();
     if(t)fetch('/api/yonetici/cikis',{method:'POST',headers:{'X-TAA-Masaustu':'1','X-TAA-Yonetici':t}}).catch(function(){});
-    if(KILITLI[$('.ekran.acik').dataset.ekran])git('ana');if(!sessiz)bildir('Yönetici oturumu kilitlendi')}
+    if(KILITLI[$('.ekran.acik').dataset.ekran])git('ana');oturumYukle();if(!sessiz)bildir('Yönetici oturumu kilitlendi')}
   function yoneticiKapandi(){if(!yon.acik)return;yon.acik=false;YON=null;pen.dataset.yon='kapali';TKD.teslimMaskele();
-    var ek=$('.ekran.acik');if(ek&&KILITLI[ek.dataset.ekran]){hedef=ek.dataset.ekran;git(hedef)}bildir('Yönetici oturumu kapandı; PIN ile yeniden girin')}
+    var ek=$('.ekran.acik');if(ek&&KILITLI[ek.dataset.ekran]){hedef=ek.dataset.ekran;git(hedef)}oturumYukle();bildir('Yönetici oturumu kapandı; yeniden girin')}
   function pinCiz(){$$('#pin-kutular i').forEach(function(x,i){x.classList.toggle('dolu',i<pin.length)});
     $('#pin-say').textContent='4–8 rakam · '+pin.length+' hane girildi';
     var kapali=pinHal==='kilitli'||pinHal==='belirsiz'||pinHal==='cati'||pinHal==='bekle';
@@ -1502,11 +1518,40 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
     if(h==='cati')t.innerHTML='<b>TAA Çatı\'ya ulaşılamıyor, yönetim ekranları açılamaz.</b>'+(ek?'<br><span class="kucuk">'+esc(ek)+'</span>':'')+'<br><button class="dugme kucuk" id="pin-yeniden" style="margin-top:var(--tk-g2)">Yeniden dene</button>';
     if(h==='hata')t.innerHTML='<b>Giriş yapılamadı.</b> '+esc(ek||'');
     pinCiz()}
+  function yoneticiAcildi(v){if(v.kim)YONETICI_AD=v.kim;YON=v.belirtec;yon.acik=true;yon.kalan=600;yon.sonPing=Date.now();sureYaz();pen.dataset.yon='acik';pinHalAyarla('normal');
+    oturumYukle();if(v.kim)bildir('Yönetici oturumu: '+v.kim);git(hedef)}
+  /* Ortak giriş (TAA ortak giriş, yönetici rolü): PIN ekranında kişi görünürse tek düğmeyle açılır. */
+  function yonOrtakDenetle(){api('GET','/api/yonetici/durum').then(function(v){var o=v&&v.ortak,k=$('#yon-ortak');
+    if(!o){k.hidden=true;return}k.hidden=false;$('#yon-ortak-form').hidden=!o.yonetici;$('#yon-ortak-parola').value='';
+    $('#yon-ortak-metin').textContent=o.yonetici?'Ortak girişte: '+o.kullanici+' (yönetici). Yönetim ekranlarını bu kişiyle açmak için '+o.kullanici+' hesabının şifresini yazın.':'Ortak girişte: '+o.kullanici+'. Bu kişi yönetici rolünde değil; yönetici PIN\'i ile girebilirsiniz.'},function(){$('#yon-ortak').hidden=true})}
+  /* Ortak girişteki yönetici, şifresi yeniden sorularak doğrulanır (bilgisayarın başındaki herkes tek tıkla açamasın).
+     Şifre yalnız sunucuya gider; burada saklanmaz. */
+  function yonOrtakGir(){var d=$('#yon-ortak-gir'),g=$('#yon-ortak-parola'),p=g.value;
+    if(!p){pinHalAyarla('hata','Şifreyi yazın.');g.focus();return}
+    d.disabled=true;g.value='';
+    api('POST','/api/yonetici/giris',{ortak:true,parola:p}).then(yoneticiAcildi,function(e){p='';
+      if(e.kod===409||e.kod===403){pinHalAyarla('hata',e.message);yonOrtakDenetle();return}pinHalAyarla('hata',e.message);g.focus()}).then(function(){p='';d.disabled=false})}
+  /* Ayarlar > Yönetim: eski fiş geçiş süresi (gün; 0 = kapalı). Yalnız yönetici oturumuyla (sunucu da denetler). */
+  function gecisDurumYaz(v){var d=$('#a-gecis-durum');if(!d)return;$('#a-gecis-gun').value=v.eski_fis_gecis_gun||0;
+    d.textContent=v.eski_fis_gecis_acik?'Açık · '+v.eski_fis_gecis_bitis+' '+String(v.eski_fis_gecis_bitis_saat||'').slice(0,5)+' tarihinde kendiliğinden kapanır (kalan '+v.eski_fis_gecis_kalan_gun+' gün)'+(v.eski_fis_gecis_ayarlayan?' · ayarlayan: '+v.eski_fis_gecis_ayarlayan:''):
+      (v.eski_fis_gecis_gun>0?'Süre doldu, kapalı ('+v.eski_fis_gecis_bitis+')':'Kapalı')+(v.fisli_kanit_baslangic?' · karekod kanıtı başlangıcı: '+v.fisli_kanit_baslangic:'')}
+  function yonetimAyarYukle(){api('GET','/api/yonetim/ayar').then(gecisDurumYaz,function(e){if(e.kod!==401)$('#a-gecis-durum').textContent=e.message})}
+  function yonetimAyarKaydet(){var g=parseInt($('#a-gecis-gun').value||'0',10);
+    if(!(g>=0&&g<=90)){bildir('Geçiş süresi 0 ile 90 gün arasında olmalı');$('#a-gecis-gun').focus();return}
+    api('POST','/api/yonetim/ayar',{eski_fis_gecis_gun:g}).then(function(v){gecisDurumYaz(v);bildir(g?'Eski fiş geçiş süresi: '+g+' gün (bugünden başladı)':'Eski fiş geçiş süresi kapatıldı')},
+      function(e){if(e.kod!==401)bildir('Kaydedilmedi: '+e.message,null,6000)})}
+  /* Ortak girişte biri girdi / çıktı (taa-giris-baslat.js): hesap kartı oturumdaki kişiyi göstersin. Kişi DEĞİŞTİYSE
+     (çıkış ya da başka biri girdi) açık yönetici oturumu hemen kilitlenir: yönetim ekranları ve günlükteki "kim" bir
+     sonraki kişiye devredilmez (sunucu da ortak girişle açılmış oturumu geçersiz sayar). */
+  window.addEventListener('taa-giris-degisti',function(e){var d=e&&e.detail||{};
+    if(d.degisti&&yon.acik){kilitle(true);bildir('Ortak girişte kişi değişti; yönetici oturumu kapandı');return}
+    oturumYukle();
+    if(yon.acik)api('GET','/api/yonetici/durum').then(function(v){if(!v.acik)yoneticiKapandi()},function(){})});
   function pinGonder(){
     if(pin.length<4||pinHal==='kilitli'||pinHal==='belirsiz'||pinHal==='cati'||pinHal==='bekle')return;
     var p=pin;pin='';pinHal='bekle';pinCiz();$('#pin-say').textContent='TAA Çatı\'ya soruluyor…';
     api('POST','/api/yonetici/giris',{pin:p}).then(function(v){p='';
-      if(v.gecerli){YON=v.belirtec;yon.acik=true;yon.kalan=600;yon.sonPing=Date.now();sureYaz();pen.dataset.yon='acik';pinHalAyarla('normal');git(hedef);return}
+      if(v.gecerli){yoneticiAcildi(v);return}
       if(v.belirlendi===false){pinHalAyarla('belirsiz');return}
       pinHalAyarla('yanlis',v.kalan!=null?'Kalan deneme: '+v.kalan+'.':'Yeniden deneyin.')
     },function(e){p='';var v=e.veri||{};
@@ -1537,6 +1582,8 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
     if(e==='personel')personelYukle();
     if(e==='kurulum')kurulumYukle();
     if(e==='puan'){yon.sonEtkinlik=Date.now();puanYukle()}
+    if(e==='pin')yonOrtakDenetle();
+    if(e==='ayarlar'&&yon.acik)yonetimAyarYukle();
     if(e==='yeni')onizle();
     if(e!=='telefonlar')clearInterval(telPoll);
     if(odak!==false){var o=e==='yeni'?'#f-ad':e==='ac'?'#ac-no':e==='fisler'&&odak==='ara'?'#liste-ara':null;if(o)$(o).focus({preventScroll:true})}
@@ -1592,13 +1639,13 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
       teslim:$('#f-tar').value,teslim_saati:$('#f-saat').value||'17:00',ucret_kurus:u,on_odeme_kurus:o,kalan_kurus:u-o,usta:$('#f-usta').value,
       satis_danismani:AD[SEC_K.dan]||'',olcu_alan:AD[SEC_K.olc]||'',sube:DURUM.sube||''}}
   /* 80 mm fiş: müşteri nüshası + ürün üstü nüsha. Düzenleyen fişe basılmaz. */
-  function fis80(v,qr,sira){
+  function fis80(v,qr,sira,yalnizUrun){
     var s=sira==null?'':sira, sube=v.sube?'Şube '+esc(v.sube):'Şube';
     var no=v.no?noHtml(v.no):'F-····', kare=function(){return qr?'<div class="f-kare">'+qr+'</div>':'<div class="kare-bos">'+sm('i-kod')+'</div>'};
     var kl=(v.kalemler||[]).map(function(k){return '<li><span><b>'+esc(k.urun)+'</b> · '+esc(kalemMetni(k))+'</span><span class="mono">'+esc(olcuMetni(k)||'?')+'</span></li>'}).join('');
     var teslim='<div class="f-teslim"><span>TESLİM</span><b class="f-tarih">'+(v.teslim?esc(tKisa(v.teslim)):'—')+'</b><b class="f-saat">'+esc(v.teslim_saati||'')+'</b></div>';
     var yaz=v.no?esc(tNesne(v.tarih).toLocaleDateString('tr-TR'))+(v.saat?'<br>'+esc(v.saat):''):'Fiş no kaydedince verilir';
-    return '<div class="fis80" aria-label="80 mm termal fiş, iki nüsha">'+
+    return '<div class="fis80" aria-label="80 mm termal fiş, '+(yalnizUrun?'yalnız terzihane nüshası':'iki nüsha')+'">'+(yalnizUrun?'':
       '<section class="fis-nusha" data-nusha="musteri" data-p="m'+s+'" aria-label="Müşteri nüshası">'+
         '<div class="f-bas"><svg class="f-logo" aria-hidden="true"><use href="#i-yaka-tek"/></svg><div><b class="f-marka">TAA TERZİ TAKİP</b><span>'+sube+'</span></div></div>'+
         '<div class="f-tur">MÜŞTERİ NÜSHASI</div>'+
@@ -1611,7 +1658,7 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
         '<div class="f-kare-sira">'+kare()+'<span>Ürününüzü bu fişle teslim alın. Karekod fişinizi açar.</span></div>'+
         '<dl class="f-dl"><dt>Danışman</dt><dd>'+esc(v.satis_danismani||'Seçilmedi')+'</dd><dt>Ölçü alan</dt><dd>'+esc(v.olcu_alan||'Seçilmedi')+'</dd></dl>'+
       '</section>'+
-      '<div class="f-kesim" aria-hidden="true"><hr class="yirtma"><span>kesim (bıçak)</span><hr class="yirtma"></div>'+
+      '<div class="f-kesim" aria-hidden="true"><hr class="yirtma"><span>kesim (bıçak)</span><hr class="yirtma"></div>')+
       '<section class="fis-nusha" data-nusha="urun" data-p="u'+s+'" aria-label="Ürün üstü nüsha">'+
         '<div class="f-tur">ÜRÜN ÜSTÜ NÜSHA</div>'+
         '<div class="f-urun-ust"><div><span class="k-no">'+no+'</span><span class="f-ad">'+esc(kisaAd(v.musteri)||'—')+'</span><span>'+sube+'</span></div><div>'+kare()+'</div></div>'+
@@ -1718,15 +1765,32 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
     var k=yaziciKipi();
     if(k==='ekran'){bildir('Yazdırma kapalı: fiş yalnız ekranda gösterilir (Ayarlar > Yazıcı)');return Promise.resolve()}
     if(k==='dogrudan'&&DURUM.yazici){
-      return nolar.reduce(function(p,no){return p.then(function(){return api('POST','/api/fis/'+encodeURIComponent(no)+'/yazdir',{})})},Promise.resolve())
-        .then(function(){bildir(nolar.length+' fiş yazıcıya gönderildi (2 nüsha)')},function(e){
-          if(e.kod===409)return tarayiciYazdir(nolar);bildir('Yazdırılamadı: '+e.message,null,6000)})}
+      return nolar.reduce(function(p,no){return p.then(function(){return api('POST','/api/fis/'+encodeURIComponent(no)+'/yazdir',{}).catch(function(e){
+          /* Müşteri nüshası daha önce verildi ve "yeniden-yazdir" yetkisi yok: yalnız terzihane nüshası önerilir. */
+          if(e.kod===403&&e.veri&&e.veri.hata==='yetki_yok'){
+            if(window.confirm(e.message+'\n\n'+no+' için yalnız terzihane nüshası yazdırılsın mı?'))
+              return api('POST','/api/fis/'+encodeURIComponent(no)+'/yazdir',{nusha:1}).then(function(){bildir(no+': yalnız terzihane nüshası yazdırıldı')});
+            var h=new Error('vazgeçildi');h.vazgec=true;throw h}
+          throw e})})},Promise.resolve())
+        .then(function(){bildir(nolar.length+' fiş yazıcıya gönderildi')},function(e){
+          if(e.vazgec)return;if(e.kod===409)return tarayiciYazdir(nolar);bildir('Yazdırılamadı: '+e.message,null,6000)})}
     return tarayiciYazdir(nolar)}
+  /* Windows yazdırma penceresi: müşteri nüshası daha önce verildi ve "yeniden-yazdir" yetkisi yoksa (403 yetki_yok),
+     doğrudan yazıcı kipindeki gibi yalnız terzihane nüshası önerilir (karekodunda yalnız fiş no; günlüğe "terzihane"). */
   function tarayiciYazdir(nolar){
-    return Promise.all(nolar.map(function(no){return Promise.all([
-      KAYITLI_FIS&&KAYITLI_FIS.no===no?Promise.resolve(KAYITLI_FIS):api('GET','/api/fis/'+encodeURIComponent(no)),
-      api('GET','/api/fis/'+encodeURIComponent(no)+'/karekod')])})).then(function(l){
-      baskiHazirla(l.map(function(x,i){return fis80(x[0],x[1],i)}).join(''));window.print()},function(e){bildir('Yazdırılamadı: '+e.message,null,6000)})}
+    return Promise.all(nolar.map(function(no){var e2=encodeURIComponent(no);return Promise.all([
+      KAYITLI_FIS&&KAYITLI_FIS.no===no?Promise.resolve(KAYITLI_FIS):api('GET','/api/fis/'+e2),
+      api('GET','/api/fis/'+e2+'/karekod?basim=1').then(function(qr){return {qr:qr}},function(e){
+        if(e.kod===403&&e.veri&&e.veri.hata==='yetki_yok'){
+          if(window.confirm(e.message+'\n\n'+no+' için yalnız terzihane nüshası yazdırılsın mı?'))
+            return api('GET','/api/fis/'+e2+'/karekod?nusha=1').then(function(qr){return {qr:qr,terzihane:true}});
+          return {atla:true}}
+        throw e})])})).then(function(l){
+      l=l.filter(function(x){return !x[1].atla});
+      if(!l.length){bildir('Yazdırılacak fiş kalmadı');return}
+      baskiHazirla(l.map(function(x,i){return fis80(x[0],x[1].qr,i,x[1].terzihane)}).join(''));window.print();
+      if(l.some(function(x){return x[1].terzihane}))bildir('Müşteri nüshası yetkisi olmayan fişlerde yalnız terzihane nüshası yazdırıldı')},
+      function(e){bildir('Yazdırılamadı: '+e.message,null,6000)})}
   /* Yazdırma görünümü: her nüsha ayrı sayfa; sayfa yüksekliği ölçülüp @page kuralına yazılır (size:80mm auto geçerli değil). */
   function baskiHazirla(html){
     var b=$('#baski');b.innerHTML=html;
@@ -1896,8 +1960,11 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
   HM.addEventListener('keydown',function(e){var g=Array.prototype.filter.call(HM.querySelectorAll('button'),function(x){return x.offsetParent!==null}),i=g.indexOf(document.activeElement);
     if(e.key==='Escape'){hesapMenu(false);HD.focus();e.preventDefault()}
     else if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();var n=e.key==='ArrowDown'?(i+1)%g.length:(i-1+g.length)%g.length;g[n].focus()}});
+  /* Hesap kartı: mağaza bilgisayarında oturumdaki kişi (yönetici oturumu ya da TAA ortak giriş kullanıcısı; sunucu
+     /api/oturum "oturum_kisi" olarak verir), yoksa cihaz adı. */
   function hesapCiz(){var o=OTURUM||{},k=o.kisi||{},c=o.cihaz||{};
-    var ad=k.ad||c.ad||'Mağaza bilgisayarı',alt=$('#cubuk-sube').textContent||'';
+    var ad=o.oturum_kisi||k.ad||c.ad||'Mağaza bilgisayarı',alt=$('#cubuk-sube').textContent||'';
+    if(o.oturum_kisi&&c.ad)alt=c.ad+(alt?' · '+alt:'');
     $('#hesap-ad').textContent=ad;$('#hm-ad').textContent=ad;$('#hesap-alt').textContent=alt;$('#hm-alt').textContent=alt;
     $('#hesap-bas').textContent=(ad.trim().charAt(0)||'M').toLocaleUpperCase('tr-TR');HD.title=ad+' · hesap ve ayarlar'}
   var CK='taa:terzitakip:cekmece-';
@@ -1994,6 +2061,8 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
     if(d.tutanakYaz){var id=d.tutanakYaz,son2=($('[data-tutanak="'+id+'"] [aria-pressed="true"]')||{dataset:{sonuc:'usta_kaynakli'}}).dataset.sonuc;
       api('POST','/api/yonetim/tutanak',{isaret_id:+id,sonuc:son2,yuzde:parseInt($('#tu-y'+id).value||'0',10),agir:$('#tu-g'+id).checked,aciklama:$('#tu-a'+id).value,yonetici:YONETICI_AD})
         .then(function(){bildir('Tutanak yazıldı');puanYukle()},function(x){bildir(x.message,null,6000)});return}
+    if(b.id==='yon-ortak-gir'){yonOrtakGir();return}
+    if(b.id==='a-gecis-kaydet'){yonetimAyarKaydet();return}
     if(b.id==='test-baslat'){testAcik=!testAcik;b.setAttribute('aria-pressed',String(testAcik));var p=$('#test-sonuc');p.className='mut';p.textContent=testAcik?'Bekleniyor: şimdi tabancayla bir karekod okutun.':'Testi başlatıp herhangi bir fişin karekodunu okutun. Test sırasında fiş açılmaz.';return}
     if(b.id==='deneme-fis'){denemeFisi();return}
     if(b.classList.contains('cip')&&b.getAttribute('aria-pressed')!==null){var g=b.closest('[role=group]');
@@ -2018,6 +2087,7 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
   $('#esles-kisi').addEventListener('change',yeniKod);
   $('#esles-kod2').addEventListener('input',function(e){var v=e.target.value.replace(/\D/g,'').slice(0,4);if(v!==e.target.value)e.target.value=v;$('#esles-onayla').disabled=v.length!==4});
   $('#esles-kod2').addEventListener('keydown',function(e){if(e.key==='Enter')eslesOnayla()});
+  $('#yon-ortak-parola').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();e.stopPropagation();yonOrtakGir()}});
   $('.fis-iki').addEventListener('input',function(e){var k=e.target.closest('.kalem');
     if(e.target.dataset.kisiSec){SEC_K[e.target.dataset.kisiSec]=e.target.value}
     if(k){var x=KALEM[+k.dataset.n],a=e.target.dataset.k;
@@ -2040,7 +2110,7 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
       if(ACIK_FORM){formKapat();return}if(yazi){ae.blur()}return}
     if(e.key==='F1')return al(function(){$('#kisayollar').classList.add('acik')});
     if(e.key==='F2')return al(function(){git('ac')});
-    if(ek==='pin'&&!c){if(/^\d$/.test(e.key))return al(function(){pinBas(e.key)});if(e.key==='Backspace')return al(function(){pinBas('sil')});
+    if(ek==='pin'&&!c&&!(ae&&ae.id==='yon-ortak-parola')){if(/^\d$/.test(e.key))return al(function(){pinBas(e.key)});if(e.key==='Backspace')return al(function(){pinBas('sil')});
       if(e.key==='Enter')return al(function(){pinGonder()})}
     if(c&&k==='n')return al(function(){git('yeni')});
     if((c&&k==='f')||e.key==='F3')return al(function(){git('fisler','ara');$('#liste-ara').select()});

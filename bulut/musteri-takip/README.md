@@ -127,8 +127,9 @@ arayüz: `ortak.js` `TKD.teslimSor` (masaüstü ve telefon teslim penceresi art�
   edemez. Kanıt "karekodun içeriği elde" demektir, "şimdi okutuldu" değil. (2) Mağaza cihazı fişin müşteri nüshasını
   **yeniden yazdırabilir** (`POST /api/fis/<no>/yazdir`) ve fiş karekodu ekranda (`/api/fis/<no>/karekod.svg`) görünür;
   personel bu yolla kanıtlı karekodu elde edip fişsiz kuralları atlayabilir. Bu, mağaza içi güven sınırıdır; yeniden
-  yazdırma ve teslimler günlükte (`kim`) görünür. Sıkılaştırmak için yeniden yazdırmaya ayrı yetki eklenebilir (karar:
-  Yusuf'a sorulacak).
+  yazdırma ve teslimler günlükte (`kim`) görünür. **Sıkılaştırma (2026-11-26):** yeniden basım artık
+  `yeniden-yazdir` cihaz yetkisine bağlıdır (varsayılan açık; yönetici kapatabilir), bkz. aşağıda
+  "[Yeniden basım yetkisi](#yeniden-basım-yetkisi-yeniden-yazdir)".
 - **Elle no yazılarak** ya da **bağlı zincirden otomatik gelen** ama karekodu okutulmayan fiş **fişsiz**dir. Sonradan
   karekodu okutulursa fişliye yükselir.
 - Sepette **en az bir fişsiz** fiş varsa: cihazın `fissiz-teslim` yetkisi (yoksa 403, hiçbiri teslim edilmez), **her
@@ -170,6 +171,76 @@ arayüz: `ortak.js` `TKD.teslimSor` (masaüstü ve telefon teslim penceresi art�
   teslim_kaydi}`. Hatalar: 400/413 biçim, 403 `yetki_yok` (+`fissiz`), 409 `hazir_degil` / `sepet_gecersiz`, 409
   `onay_bekliyor`, 413 `sepet_cok_buyuk`, 422 `onay_yok` / `iliski_gerekli` / `imza_gerekli` / `son4_gerekli` / `son4_yanlis` / `telefon_yok`,
   429 `son4_kilitli`, 500 `teslim_yazilamadi`. Gövde sınırı teslim-al ile aynı (512 KB, imza base64).
+
+#### Eski fiş geçiş süresi (koordinatör kararı 2026-11-26, geri alınabilir)
+- Yönetici ayarı **"eski fiş geçiş süresi"** (gün; **varsayılan 0 = kapalı**, en çok 90). Masaüstünde **Ayarlar > Yönetim**
+  (yalnız yönetici oturumuyla görünür ve değişir); uç `GET/POST /api/yonetim/ayar {eski_fis_gecis_gun}` (yalnız bu
+  bilgisayar + yönetici oturumu; 422 sınır dışı). Süre kaydedildiği anda başlar, bitince **kendiliğinden kapanır** (ayar
+  dosyası değişmez, karar zamana bakar; yeniden kaydetmek süreyi yeniler, ama geçiş `fisli_kanit_baslangic`'tan **en
+  çok 180 gün** sonra hiçbir şekilde açık kalmaz — geri alınabilir varsayılan, koordinatöre bildirildi). Ayar
+  `yonetim-ayar.json` dosyasındadır.
+- Açıkken, **kanıt mekanizmasından önce basılmış** fişlerde kanıt parçasız personel karekodu (`karekod-kanitsiz`) ya da
+  elle yazılan fiş no (`elle`) **fişli** sayılır. "Önce basılmış": fiş tarihi < `fisli_kanit_baslangic` (programın bu
+  sürümle ilk açıldığı gün; teslim sepeti günlüğü — kanıt mekanizmasıyla, 5b1f004'te gelen — daha eskiyse o gün; ilk
+  açılışta `yonetim-ayar.json`'a bir kez yazılır, değişmez, yönetim günlüğüne `fisli_kanit_baslangic` olarak da yazılır;
+  dosya silinirse günlükten geri alınır, dosya bozuksa yeniden yazılmaz ve geçiş kapalı kalır) ya da aynı gün ve fiş no ≤
+  `fisli_kanit_son_eski_fis` (ilk açılıştaki son fiş; sıra sayısal karşılaştırılır). Yeni fişler, terzihane nüshasının kanıtlı karekodu (takip
+  ayarlıyken) ve bağlı zincirden kendiliğinden gelen (okutulmamış) fişler geçişle fişli **olmaz**.
+- Yanıtlarda satır `gecis: true` taşır, `uyarilar`/`kanit_notu` "eski fiş geçiş süresi" der; `karekod-coz` yanıtında
+  `gecis`. Her kullanım `teslim-sepet.jsonl` günlüğüne `eski_fis_gecisi` olayıyla (fiş no'ları, kim, teslim_id, aşama
+  `teslim`|`teslim-al`, zaman; kişisel veri yok) yazılır: satır teslim kaydından hemen önce, bütün denetimler geçtikten
+  sonra düşülür; **yazılamazsa teslim yapılmaz** (500 `gunluk_yazilamadi`); kayıt sonra başarısız olursa aynı teslim_id
+  ile hata satırı. Ayar değişikliği `eslestirme.jsonl`'a (`olay: "ayar"`, eski/yeni gün, kim) yazılır.
+
+#### Yeniden basım yetkisi (`yeniden-yazdir`)
+- Yeni cihaz yetkisi `yeniden-yazdir` (`cihaz::YETKILER`; **varsayılan her yerde açık**, eski davranış). Yönetici
+  Telefonlar ekranındaki yetki anahtarlarından cihaz bazında (mağaza bilgisayarı dahil) kapatır.
+- "Yeniden": fişin müşteri nüshası daha önce verildiyse (yazıcıya basıldı; Windows yazdırma penceresi için karekod
+  `GET /api/fis/<no>/karekod?basim=1` ile alındı; yetkisi kapalı cihaz karekodu ekranda gördü). Fişli kanıttan önce
+  basılmış fişler (`fisli_kanit_baslangic`'tan eski) basım kaydı olmasa da **verilmiş** sayılır. İlk basım serbesttir.
+- Yetkisi kapalı cihazda `GET /api/fis/<no>/karekod` (`basim=1` olmasa da) **her gösterim müşteri nüshasının verilmesi
+  sayılır**: ilki günlüğe `basim` (yöntem `karekod`) yazılarak verilir, sonrakiler 403. İstisna: cihaz fişi bu süreçte
+  kendisi oluşturduysa 10 dakika boyunca önizleme günlüksüz (yeni fiş ekranı). Yetkisi kapalı cihazın ilk yazıcı basımı
+  önce günlüğe yazılır (yazılamazsa basılmaz; yazıcı hatasında `basim_iptal`). Yetkili cihazda basım yapılıp günlük
+  yazılamazsa fiş yeniden başlatılana dek bellekte "verildi" sayılır.
+- Yetki kapalıyken müşteri nüshalı basım (`POST /api/fis/<no>/yazdir` gövdesiz) ve müşteri karekodunun yeniden gösterimi
+  (`GET /api/fis/<no>/karekod`) **403 `yetki_yok`** (`terzihane_yazdirilabilir: true`). Terzihane nüshası
+  (`{"nusha":1}`; karekodunda yalnız fiş no var) etkilenmez; arayüz reddedilince "yalnız terzihane nüshası" önerir
+  (Windows yazdırma penceresinde de: `GET /api/fis/<no>/karekod?nusha=1` yalnız fiş no'lu karekod verir, günlüğe
+  `terzihane`).
+- Takip ayarlıyken takip bağlantısı da kanıttır: `GET /api/bildirimler` hazır bildirimindeki takip bağlantısını ve kodu
+  yetkisi kapalı cihaza **maskeli** verir. Müşteriye giden bildirim (WhatsApp) bağlantıyı taşır (müşteri tarafı).
+- Günlük `basim.jsonl` (kişisel veri yok): `basim` / `yeniden_basim` (müşteri nüshası, yöntem `yazici`|`tarayici`),
+  terzihane basımı, `karekod_gosterim` (yeniden gösterim), `basim_iptal`, `yeniden_basim_reddedildi`; her satırda fiş no, cihaz, kim,
+  tarih, saat. Yeniden verilen karekod günlüğe yazılamazsa verilmez (500).
+
+### Yönetici girişi ve günlükte "kim" (koordinatör kararı 2026-11-26)
+- Yönetici girişi **TAA ortak giriş** kullanıcısıyla yapılır: `POST /api/yonetici/giris {ortak:true, parola}` bu
+  bilgisayardaki taa-kimlik oturumunu sorar; kullanıcı TAA Çatı'da yönetici rolündeyse (`yonetim-ayar.json`
+  `yonetici_rolleri`, varsayılan `["yonetici"]`; rol adı TAA Çatı tarafıyla henüz teyit edilmedi, yanlışsa ortak girişle
+  yönetici açılmaz, PIN'e düşer) **o kişinin şifresi** ortak girişin `giris` akışıyla (aynı kullanıcı için taa-kimlik)
+  yeniden doğrulanır ve oturum o kişiyle açılır (yanıtta `kim`, `kaynak: "ortak-giris"`). Oturum yoksa 409
+  `ortak_oturum_yok`, rol yoksa 403 `yonetici_degil`, şifre yoksa 400 `parola_gerekli`, yanlışsa 401 `parola_hatali`
+  (günlükte `yonetici_giris_red`, şifre yazılmaz). Ortak girişte biri oturuyor diye bilgisayar başındaki herkes yönetici
+  olamaz.
+- **Oturum kişiye bağlıdır:** ortak girişte bu kişi çıkınca ya da başka biri girince ortak girişle açılmış yönetici
+  oturumu geçersizdir (sunucu her istekte denetler: yönetim 401, günlükte yeni kişi; masaüstü `taa-giris-degisti`
+  olayında kişi değiştiyse kilitler). Bellekteki ortak kullanıcı `/api/giris/*` yanıtlarından (main.rs'de ayrı iş
+  parçacığında da) ve 45 sn'de bir taa-kimlik'ten yeniden sorularak güncellenir; kişi başka bir TAA programından
+  çıktıysa en çok bu süre kadar eski kişi yazılabilir.
+- **PIN yolu geri uyum için durur** (`{pin}`): ortak giriş kapalı/erişilemezken girilir; günlükte yalnız `"PC (PIN)"`
+  (PIN kişiyi belirlemez; ortak girişteki kişinin adı eklenmez). Yönetim satırlarında ayrı `kim_kaynak` alanı
+  (`ortak-giris` | `pin` | `ortak-oturum` | `yok`). Ortak kullanıcı adı `PC`, `PC (…)` ya da kişi/cihaz kimliğine
+  benziyorsa (`K-`, `U-`, `T-`) günlükte `ortak:` önekiyle yazılır.
+- Günlüklerde mağaza bilgisayarı için `"PC"` yerine oturumdaki kişi yazılır: teslim denetim günlüğü
+  (`teslim-ayrinti.jsonl`: `teslim_ayrintisi`, `teslim_acik`, `imza_goruntuleme`), `teslim-sepet.jsonl`, `basim.jsonl`,
+  yönetim günlüğü (`eslestirme.jsonl`: `yetki`, `kisi_yetki`, `ayar`, yeni `yonetici_giris`), fiş düzeltme kayıtları ve
+  teslim kaydındaki `kim`, tutanak/Telegram hesap işlemlerindeki yönetici adı (istemcinin beyanı yalnız yedek). Kişi:
+  geçerli yönetici oturumunun kişisi, yoksa ortak girişle giren kullanıcı (sunucu belleğinde; `/api/giris/*`
+  yanıtlarından güncellenir, çıkışta silinir); ikisi de yoksa eskisi gibi `"PC"` / `"Mağaza PC"`.
+- `GET /api/yonetici/durum` artık `kim`, `kaynak` ve `ortak: {kullanici, yonetici}` döndürür (PIN ekranındaki ortak giriş şifre kutusu
+  buna bakar); `GET /api/oturum` mağaza bilgisayarında `oturum_kisi` döndürür (hesap kartı menüsündeki
+  ad).
 
 ### Şifre anahtarı
 - Teslim şifre anahtarının yeri ve yedeği şimdilik değişmez: **sunucuya kuruluma geçerken sorulacak** (Yusuf 2026-11-26).

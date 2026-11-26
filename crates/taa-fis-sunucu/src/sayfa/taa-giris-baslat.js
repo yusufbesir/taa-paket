@@ -61,11 +61,22 @@
   // Ortak bilgisayarda giren kişi kalıcı olmasın: köşede "Çıkış" düğmesi (basınca giriş yeniden istenir).
   function cikisGoster(oturum) {
     if (window.TaaGirisEkrani && window.TaaGirisEkrani.cikisDugmesi) {
-      window.TaaGirisEkrani.cikisDugmesi({ api: api, oturum: oturum, cikinca: girisAc });
+      window.TaaGirisEkrani.cikisDugmesi({ api: api, oturum: oturum, cikinca: function () { degisti(null); girisAc(); } });
     }
   }
 
-  function girildi(oturum) { uyariGoster(oturum); cikisGoster(oturum); }
+  // Program oturumdaki kişiyi (hesap kartı, günlükler) yeniden okusun. detail.kullanici: ortak girişteki kişi ('' = yok);
+  // detail.degisti: kişi bir önceki bilinen kişiden farklı (ilk denetimde false). Program kişi değişince yönetici
+  // oturumunu kapatır; olay aralıklı denetimde ve pencere öne gelince de (değişmeden) gelir.
+  var sonKullanici = null;
+  function degisti(oturum) {
+    var k = (oturum && oturum.kullanici) || '';
+    var d = sonKullanici !== null && sonKullanici !== k;
+    sonKullanici = k;
+    try { window.dispatchEvent(new CustomEvent('taa-giris-degisti', { detail: { kullanici: k, degisti: d } })); } catch (e) { /* eski tarayıcı */ }
+  }
+
+  function girildi(oturum) { uyariGoster(oturum); cikisGoster(oturum); degisti(oturum); }
 
   function girisAc() {
     var d = document.getElementById('taa-giris-cikis'); if (d) d.remove();
@@ -77,6 +88,7 @@
   function denetle() {
     return api.baslangic().then(function (b) {
       if (!b || !b.arac) return;          // taa-kimlik kurulu değil: eski davranış
+      degisti(b.oturum);
       if (b.oturum) { cikisGoster(b.oturum); return; }   // geçerli oturum var
       girisAc();
     }).catch(function () { girisAc(); }); // emin olunamıyorsa giriş istenir

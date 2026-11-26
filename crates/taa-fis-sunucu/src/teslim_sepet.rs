@@ -25,7 +25,10 @@
 //!   (o zaman müşteri nüshasında bu karekod basılıdır); takip ayarlıyken o karekod yalnız terzihane nüshasındadır,
 //!   mağazada durur, kanıt sayılmaz. k'siz/yanlış k'li metin (eski basılı fiş, elle yazılmış "#fis=") fişsizdir.
 //! - Sınır: tabanca klavye gibi yazar (okutma ile yazma ayırt edilemez); mağaza cihazı müşteri nüshasını yeniden
-//!   yazdırabilir. Kanıt "karekod içeriği elde" demektir; mağaza içi güven sınırıdır.
+//!   yazdırabilir (2026-11-26'dan beri `yeniden-yazdir` yetkisine bağlı, bkz. `yeniden_basim`). Kanıt "karekod
+//!   içeriği elde" demektir; mağaza içi güven sınırıdır.
+//! - Eski fiş geçiş süresi (yönetici ayarı, varsayılan kapalı): kanıt mekanizmasından önce basılmış fişte kanıtsız
+//!   karekod / elle no süre boyunca fişlidir (bkz. `eski_fis_gecis`; satırda `gecis`, günlükte `eski_fis_gecisi`).
 //! - Elle no yazılarak ya da bağlı zincirden otomatik gelen ama karekodu okutulmayan fiş "fişsiz"dir.
 //! - Sepette en az bir fişsiz fiş varsa: cihazın "fissiz-teslim" yetkisi, her fişsiz müşteri için telefonun son 4
 //!   hanesi (aynı telefonlu fişlerde bir kez) ve imza ZORUNLU.
@@ -56,6 +59,8 @@ const EN_UZUN_METIN: usize = 400;
 thread_local! {
     /// Test: doğrulamadan sonra deftere yazım hatası benzetimi (yalnız bu iş parçacığında).
     pub(crate) static SEPET_YAZIM_HATASI: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// Test: eski fiş geçişi günlüğü yazılamıyor benzetimi.
+    pub(crate) static GECIS_GUNLUK_HATASI: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// Okutulan metnin kanıt türü.
@@ -72,7 +77,7 @@ pub(crate) enum Kanit {
 }
 
 impl Kanit {
-    fn ad(self) -> &'static str {
+    pub(crate) fn ad(self) -> &'static str {
         match self {
             Kanit::Takip => "takip",
             Kanit::FisKarekodu => "fis-karekodu",
@@ -135,6 +140,8 @@ struct Satir {
     kanit: Kanit,
     /// Kanıt olan okunmuş metin (yalnız okutulduysa; istemci sonraki isteklerde geri gönderir).
     karekod: String,
+    /// Eski fiş geçiş süresiyle fişli sayıldı (bkz. `eski_fis_gecis`; teslimde günlüğe yazılır).
+    gecis: bool,
     fis: taa_fis::Fis,
 }
 
@@ -312,15 +319,28 @@ impl Uygulama {
         }
     }
 
-    /// teslim-al için: `fis_karekodu` metni bu fişin karekod kanıtı mı?
-    pub(crate) fn fis_karekodu_kanitli(&self, d: &Defter, no: &str, metin: &str) -> bool {
+    /// teslim-al için: `fis_karekodu` metni bu fişin karekod kanıtı mı? `(fişli, geçişle)`: ikincisi, fişli sayılması
+    /// yalnız eski fiş geçiş süresinden geliyorsa `true` (günlük, teslim kaydından hemen önce yazılır; burada değil).
+    pub(crate) fn fis_karekodu_kaniti(&self, d: &Defter, no: &str, metin: &str) -> (bool, bool) {
         if metin.trim().is_empty() {
-            return false;
+            return (false, false);
         }
         let Ok(fisler) = d.fisler() else {
-            return false;
+            return (false, false);
         };
-        matches!(self.metin_coz(&fisler, metin), Some((n, k)) if n == no && self.kanit_fisli(k))
+        match self.metin_coz(&fisler, metin) {
+            Some((n, k)) if n == no => {
+                if self.kanit_fisli(k) {
+                    return (true, false);
+                }
+                let gecis = fisler
+                    .iter()
+                    .find(|f| f.no == no)
+                    .is_some_and(|f| self.gecis_fisli(k, f));
+                (gecis, gecis)
+            }
+            _ => (false, false),
+        }
     }
 
     /// Girdileri sepete çevirir: fiş bulunur, çift satır birleşir, kanıt yeniden doğrulanır.
@@ -342,7 +362,10 @@ impl Uygulama {
                     _ => None,
                 }
             };
-            let okutuldu = kanit.is_some_and(|k| self.kanit_fisli(k));
+            let normal = kanit.is_some_and(|k| self.kanit_fisli(k));
+            // Eski fiş geçiş süresi açıksa, kanıt mekanizmasından önce basılmış fişte kanıtsız karekod / elle no fişlidir.
+            let gecis = !normal && kanit.is_some_and(|k| self.gecis_fisli(k, f));
+            let okutuldu = normal || gecis;
             if g.okutuldu && !okutuldu && !s.kanitsiz.contains(&g.no) {
                 s.kanitsiz.push(g.no.clone());
             }
@@ -350,6 +373,7 @@ impl Uygulama {
                 s.yok_sayilan.push(g.no.clone());
                 if okutuldu && !var.okutuldu {
                     var.okutuldu = true;
+                    var.gecis = gecis;
                     var.kanit = kanit.unwrap_or(Kanit::Elle);
                     var.karekod = g.karekod;
                 }
@@ -382,6 +406,7 @@ impl Uygulama {
                 okutuldu,
                 kanit: kanit.unwrap_or(Kanit::Elle),
                 karekod: if okutuldu { g.karekod } else { String::new() },
+                gecis,
                 fis: f.clone(),
             });
         }
@@ -413,6 +438,7 @@ impl Uygulama {
             "okutuldu": x.okutuldu,
             "kanit": x.kanit.ad(),
             "bagli": x.fis.bagli,
+            "gecis": x.gecis,
         });
         if x.okutuldu {
             v["karekod"] = json!(x.karekod);
@@ -457,6 +483,18 @@ impl Uygulama {
         for (n, e) in &s.reddedilen {
             uyarilar.push(format!("{n}: {e}; sepete eklenmedi."));
         }
+        let gecisli: Vec<&str> = s
+            .satirlar
+            .iter()
+            .filter(|x| x.gecis)
+            .map(|x| x.no.as_str())
+            .collect();
+        if !gecisli.is_empty() {
+            uyarilar.push(format!(
+                "Eski fiş geçiş süresi: {} kanıtsız karekod / elle no ile fişli sayıldı (günlüğe yazılır).",
+                gecisli.join(", ")
+            ));
+        }
         if !s.kanitsiz.is_empty() {
             uyarilar.push(format!(
                 "Fiş karekodu okutulmadığı için fişsiz sayıldı: {}.",
@@ -498,19 +536,25 @@ impl Uygulama {
         match self.metin_coz(&fisler, metin) {
             Some((no, k)) => {
                 let fisli = self.kanit_fisli(k);
+                let gecis = !fisli
+                    && fisler
+                        .iter()
+                        .find(|f| f.no == no)
+                        .is_some_and(|f| self.gecis_fisli(k, f));
                 Yanit::json(
                     200,
                     json!({
                         "no": no,
                         "kanit": k.ad(),
-                        "okutuldu": fisli,
-                        "not": match k {
+                        "okutuldu": fisli || gecis,
+                        "gecis": gecis,
+                        "not": if gecis { "Eski fiş (kanıt mekanizmasından önce basılmış): geçiş süresi boyunca fişli sayılır." } else { match k {
                             Kanit::Takip => "Müşteri nüshasının karekodu okutuldu (fişli).",
                             Kanit::FisKarekodu if fisli => "Fiş karekodu okutuldu (fişli).",
                             Kanit::FisKarekodu => "Bu, terzihane nüshasının karekodu: müşterinin fişi sayılmaz (fişsiz).",
                             Kanit::KarekodKanitsiz => "Karekodda kanıt parçası yok ya da yanlış (eski basılı fiş ya da elle yazılmış): fişsiz.",
                             Kanit::Elle => "Numara yazıldı: fiş okutulmadı (fişsiz).",
-                        },
+                        } },
                     }),
                 )
             }
@@ -553,8 +597,17 @@ impl Uygulama {
                     ))
                 }
                 Some((no, k)) => {
-                    let fisli = self.kanit_fisli(k);
-                    if k == Kanit::FisKarekodu && !fisli {
+                    let gecis = !self.kanit_fisli(k)
+                        && fisler
+                            .iter()
+                            .find(|f| f.no == no)
+                            .is_some_and(|f| self.gecis_fisli(k, f));
+                    let fisli = self.kanit_fisli(k) || gecis;
+                    if gecis {
+                        kanit_notu = format!(
+                            "{no}: eski fiş (kanıt mekanizmasından önce basılmış); geçiş süresi boyunca fişli sayıldı."
+                        );
+                    } else if k == Kanit::FisKarekodu && !fisli {
                         kanit_notu = format!(
                             "{no}: terzihane nüshasının karekodu okutuldu; müşterinin fişi sayılmaz (fişsiz)."
                         );
@@ -745,16 +798,30 @@ impl Uygulama {
 
     /// Kişisel veri İÇERMEYEN sepet günlüğü (teslim_id, fiş no'ları, sonuç, kim). Yazılamazsa yalnız uyarı.
     fn sepet_gunlugu(&self, v: serde_json::Value) {
+        let _ = self.sepet_gunlugu_yaz(v);
+    }
+
+    /// Teslim sepeti günlüğüne yazar; yazılamazsa `Err` (zorunlu satırlar için: eski fiş geçişi).
+    pub(crate) fn sepet_gunlugu_yaz(&self, v: serde_json::Value) -> Result<(), String> {
         let s = self.simdi();
         let mut v = v;
         v["tarih"] = json!(tarih_iso(s));
         v["saat"] = json!(saat_iso(s));
-        if let Err(e) =
+        #[cfg(test)]
+        let deneme = GECIS_GUNLUK_HATASI.with(|h| h.get()) && v["olay"] == "eski_fis_gecisi";
+        #[cfg(not(test))]
+        let deneme = false;
+        let r = if deneme {
+            Err("deneme: günlük yazılamadı".to_string())
+        } else {
             taa_dosya::satir_ekle(&self.dizin.join("teslim-sepet.jsonl"), &v.to_string())
-        {
-            eprintln!("Teslim sepeti günlüğü yazılamadı: {e}");
+                .map_err(|e| e.to_string())
+        };
+        match &r {
+            Err(e) => eprintln!("Teslim sepeti günlüğü yazılamadı: {e}"),
+            Ok(()) => eprintln!("Teslim sepeti: {v}"),
         }
-        eprintln!("Teslim sepeti: {v}");
+        r
     }
 
     /// POST /api/teslim/sepet: sepetin tamamını TEK teslimatta teslim eder (bkz. modül açıklaması).
@@ -921,11 +988,7 @@ impl Uygulama {
                 Err(y) => return y,
             }
         }
-        let kim = if c.kisi_id.is_empty() {
-            c.ad.clone()
-        } else {
-            c.kisi_id.clone()
-        };
+        let kim = c.kayit_kimi();
         let kayitlar: Vec<(String, taa_fis::TeslimKaydi)> = s
             .satirlar
             .iter()
@@ -962,6 +1025,33 @@ impl Uygulama {
                 )
             })
             .collect();
+        // Eski fiş geçişiyle fişli sayılan fişler: günlük teslim kaydından HEMEN ÖNCE yazılır; yazılamazsa teslim
+        // yapılmaz (geçişle fişli teslim günlüksüz olmasın). Kayıt sonra başarısız olursa hata satırı aynı teslim_id'li.
+        let gecisli: Vec<&str> = s
+            .satirlar
+            .iter()
+            .filter(|x| x.gecis)
+            .map(|x| x.no.as_str())
+            .collect();
+        if !gecisli.is_empty() {
+            if let Err(e) = self.sepet_gunlugu_yaz(json!({
+                "olay": "eski_fis_gecisi", "asama": "teslim", "teslim_id": teslim_id, "fisler": gecisli,
+                "kim": Self::denetim_kimi(c),
+            })) {
+                if let Some(y) = &yazilan {
+                    self.imza_artigi_kenara(y);
+                }
+                return Yanit::json(
+                    500,
+                    json!({
+                        "hata": "gunluk_yazilamadi",
+                        "ileti": format!("Eski fiş geçişi günlüğe yazılamadı; hiçbir fiş teslim edilmedi ({e}). Yeniden deneyin."),
+                        "teslim_edilen": [],
+                        "fisler": nolar,
+                    }),
+                );
+            }
+        }
         #[cfg(test)]
         let deneme_hatasi = SEPET_YAZIM_HATASI.with(|h| h.get());
         #[cfg(not(test))]
@@ -1389,6 +1479,194 @@ mod testler {
     }
 
     /// Bağlı olmayan, farklı müşterilerin fişleri tek teslimatta; hepsi okutuldu: imza ve son 4 gerekmez.
+    /// Eski fiş geçiş süresi (koordinatör kararı 2026-11-26): kapalıyken eski fişin kanıtsız karekodu / elle no'su
+    /// fişsizdir; açıkken (yönetici ayarı, gün) fişli sayılır ve günlüğe yazılır; süre bitince kendiliğinden kapanır.
+    /// Yeni (kanıt mekanizmasından sonra basılmış) fiş geçişle fişli olmaz.
+    #[test]
+    fn eski_fis_gecis_suresi() {
+        let u = uyg();
+        let (a, b) = (hazir_fis(&u), baska_fis(&u));
+        // a eski fiş: başlangıç bugün, son eski fiş a (b ondan sonra basıldı).
+        let bugun = tarih_iso(u.simdi());
+        std::fs::write(
+            u.dizin.join(crate::eski_fis_gecis::AYAR_DOSYASI),
+            json!({ "fisli_kanit_baslangic": bugun, "fisli_kanit_son_eski_fis": a }).to_string(),
+        )
+        .unwrap();
+        let eski_kk = format!("http://192.168.1.20:8787/telefon#fis={a}");
+        // Kapalı (0 gün): kanıtsız karekod fişsiz.
+        let j = denetle(&u, &json!([]), &eski_kk);
+        assert_eq!(j["fissiz_var"], true);
+        assert_eq!(j["fisler"][0]["gecis"], false);
+        // Ayar yalnız yönetici oturumuyla, bu bilgisayardan; sınır 90 gün.
+        let mut uzak = pc("POST", "/api/yonetim/ayar", r#"{"eski_fis_gecis_gun":3}"#);
+        uzak.yerel = false;
+        assert_eq!(u.isle(&uzak).kod, 403);
+        assert_eq!(
+            u.isle(&pc(
+                "POST",
+                "/api/yonetim/ayar",
+                r#"{"eski_fis_gecis_gun":91}"#
+            ))
+            .kod,
+            422
+        );
+        let y = u.isle(&pc(
+            "POST",
+            "/api/yonetim/ayar",
+            r#"{"eski_fis_gecis_gun":3}"#,
+        ));
+        assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
+        let v = json_of(&y);
+        assert_eq!(v["eski_fis_gecis_acik"], true);
+        assert_eq!(v["eski_fis_gecis_kalan_gun"], 3);
+        assert_eq!(
+            v["fisli_kanit_baslangic"],
+            json!(bugun),
+            "başlangıç değişmez"
+        );
+        // Açık: eski fiş (kanıtsız karekod ve elle no) fişli; yeni fiş (b) elle no ile fişsiz kalır.
+        let j = denetle(&u, &json!([]), &eski_kk);
+        assert_eq!(j["fisler"][0]["okutuldu"], true);
+        assert_eq!(j["fisler"][0]["gecis"], true);
+        assert_eq!(j["fissiz_var"], false);
+        let j = denetle(&u, &gonderilecek(&j), &b);
+        assert_eq!(j["fissiz"], json!([b]));
+        let k = json_of(&u.isle(&pc(
+            "POST",
+            "/api/teslim/karekod-coz",
+            &json!({ "metin": a }).to_string(),
+        )));
+        assert_eq!(
+            (k["okutuldu"].clone(), k["gecis"].clone()),
+            (json!(true), json!(true))
+        );
+        // Teslim: a fişli (kanıtsız karekodla) — günlükte eski_fis_gecisi.
+        let j = denetle(&u, &json!([]), &eski_kk);
+        let y = teslim(
+            &u,
+            json!({ "fisler": gonderilecek(&j), "teslim_alan": "Deneme Müşteri", "iliski": "kendisi" }),
+        );
+        assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
+        assert!(fis(&u, &a).teslim_kaydi.unwrap().fisli);
+        let g = std::fs::read_to_string(u.dizin.join("teslim-sepet.jsonl")).unwrap();
+        assert!(g.contains("eski_fis_gecisi") && g.contains(&a), "{g}");
+        let yg = std::fs::read_to_string(u.dizin.join("eslestirme.jsonl")).unwrap();
+        assert!(
+            yg.contains("eski_fis_gecis_gun") && yg.contains("\"kim\":\"PC\""),
+            "{yg}"
+        );
+        // Süre bitince kendiliğinden kapanır: başka bir eski fiş (c) yeniden fişsiz.
+        let c = hazir_fis(&u);
+        let mut ay = crate::eski_fis_gecis::YonetimAyari::oku(&u.dizin);
+        ay.fisli_kanit_son_eski_fis = c.clone();
+        std::fs::write(
+            u.dizin.join(crate::eski_fis_gecis::AYAR_DOSYASI),
+            serde_json::to_string(&ay).unwrap(),
+        )
+        .unwrap();
+        let kk_c = format!("http://192.168.1.20:8787/telefon#fis={c}");
+        assert_eq!(denetle(&u, &json!([]), &kk_c)["fisler"][0]["gecis"], true);
+        u.ileri_sn
+            .store(3 * 86_400 + 1, std::sync::atomic::Ordering::SeqCst);
+        let j = denetle(&u, &json!([]), &kk_c);
+        assert_eq!(j["fisler"][0]["okutuldu"], false);
+        assert_eq!(j["fissiz_var"], true);
+        let v = json_of(&u.isle(&pc("GET", "/api/yonetim/ayar", "")));
+        assert_eq!(v["eski_fis_gecis_acik"], false);
+        assert_eq!(
+            v["eski_fis_gecis_gun"], 3,
+            "ayar kalır, yalnız karar kapanır"
+        );
+    }
+
+    /// Bulgu (orta): geçiş kullanımının günlüğü bağlayıcı. Reddedilen teslim günlüğe "kullanım" olarak düşmez; satır
+    /// teslimden hemen önce "kim" ile yazılır (teslim-al ve sepet); günlük yazılamazsa teslim yapılmaz.
+    #[test]
+    fn eski_fis_gecisi_gunlugu_baglayici() {
+        let u = uyg();
+        let (a, b) = (hazir_fis(&u), hazir_fis(&u));
+        std::fs::write(
+            u.dizin.join(crate::eski_fis_gecis::AYAR_DOSYASI),
+            json!({ "fisli_kanit_baslangic": tarih_iso(u.simdi()), "fisli_kanit_son_eski_fis": b })
+                .to_string(),
+        )
+        .unwrap();
+        assert_eq!(
+            u.isle(&pc(
+                "POST",
+                "/api/yonetim/ayar",
+                r#"{"eski_fis_gecis_gun":2}"#
+            ))
+            .kod,
+            200
+        );
+        let gunluk =
+            || std::fs::read_to_string(u.dizin.join("teslim-sepet.jsonl")).unwrap_or_default();
+        let kk = |n: &str| format!("http://192.168.1.20:8787/telefon#fis={n}");
+        let teslim_al = |n: &str, ek: serde_json::Value| {
+            let mut g = json!({ "fisli": true, "fis_karekodu": kk(n), "iliski": "kendisi" });
+            for (k, v) in ek.as_object().unwrap() {
+                g[k] = v.clone();
+            }
+            u.isle(&pc(
+                "POST",
+                &format!("/api/fis/{n}/teslim-al"),
+                &g.to_string(),
+            ))
+        };
+        // Reddedilen teslim (teslim alan yok): günlükte geçiş kullanımı yok.
+        let y = teslim_al(&a, json!({}));
+        assert_ne!(y.kod, 200);
+        assert!(!gunluk().contains("eski_fis_gecisi"), "{}", gunluk());
+        // Günlük yazılamıyor: teslim yapılmaz.
+        GECIS_GUNLUK_HATASI.with(|h| h.set(true));
+        let y = teslim_al(&a, json!({ "teslim_alan": "Deneme Müşteri" }));
+        GECIS_GUNLUK_HATASI.with(|h| h.set(false));
+        assert_eq!(
+            (y.kod, json_of(&y)["hata"].clone()),
+            (500, json!("gunluk_yazilamadi"))
+        );
+        assert!(fis(&u, &a).teslim_kaydi.is_none());
+        // Başarılı teslim-al: satır "kim" ve teslim_id ile.
+        let y = teslim_al(&a, json!({ "teslim_alan": "Deneme Müşteri" }));
+        assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
+        assert!(fis(&u, &a).teslim_kaydi.unwrap().fisli);
+        let tid = json_of(&y)["teslim_id"].as_str().unwrap().to_string();
+        let satir = gunluk()
+            .lines()
+            .find(|l| l.contains("eski_fis_gecisi") && l.contains("teslim-al"))
+            .unwrap()
+            .to_string();
+        assert!(
+            satir.contains(r#""kim":"PC""#) && satir.contains(&tid) && satir.contains(&a),
+            "{satir}"
+        );
+        // Sepet yolunda da: günlük yazılamazsa hiçbir fiş teslim edilmez.
+        let j = denetle(&u, &json!([]), &kk(&b));
+        assert_eq!(j["fisler"][0]["gecis"], true);
+        GECIS_GUNLUK_HATASI.with(|h| h.set(true));
+        let y = teslim(
+            &u,
+            json!({ "fisler": gonderilecek(&j), "teslim_alan": "Deneme Müşteri", "iliski": "kendisi" }),
+        );
+        GECIS_GUNLUK_HATASI.with(|h| h.set(false));
+        assert_eq!(
+            (y.kod, json_of(&y)["hata"].clone()),
+            (500, json!("gunluk_yazilamadi"))
+        );
+        assert!(fis(&u, &b).teslim_kaydi.is_none());
+        let y = teslim(
+            &u,
+            json!({ "fisler": gonderilecek(&j), "teslim_alan": "Deneme Müşteri", "iliski": "kendisi" }),
+        );
+        assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
+        assert!(gunluk().lines().any(|l| l.contains("eski_fis_gecisi")
+            && l.contains(r#""asama":"teslim""#)
+            && l.contains(&b)
+            && l.contains(r#""kim":"PC""#)));
+    }
+
     #[test]
     fn bagli_olmayan_cok_fis_hepsi_fisli() {
         let u = uyg();

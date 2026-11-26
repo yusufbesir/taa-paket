@@ -802,7 +802,10 @@ html[data-tema="keten"] .rozet{border-radius:8px}
     var b;
     if((b=ev.target.closest('[data-ilerlet]'))){ilerlet(b.dataset.ilerlet);return}
     if((b=ev.target.closest('[data-fis-ac]'))){fisAc(b.dataset.fisAc);return}
-    if((b=ev.target.closest('[data-yazdir]'))){api('POST','/api/fis/'+encodeURIComponent(b.dataset.yazdir)+'/yazdir',{}).then(function(){bildir('Yazıcıya gönderildi')},function(e){bildir(e.kod===409?'Mağaza bilgisayarında fiş yazıcısı ayarlı değil':e.message)});return}
+    if((b=ev.target.closest('[data-yazdir]'))){var yno=b.dataset.yazdir;api('POST','/api/fis/'+encodeURIComponent(yno)+'/yazdir',{}).then(function(){bildir('Yazıcıya gönderildi')},function(e){
+      /* Müşteri nüshası daha önce verildi, "yeniden-yazdir" yetkisi yok: yalnız terzihane nüshası önerilir. */
+      if(e.kod===403&&e.veri&&e.veri.hata==='yetki_yok'){if(window.confirm((e.veri.ileti||e.message)+'\n\nYalnız terzihane nüshası yazdırılsın mı?'))api('POST','/api/fis/'+encodeURIComponent(yno)+'/yazdir',{nusha:1}).then(function(){bildir('Terzihane nüshası yazıcıya gönderildi')},function(x){bildir(x.message)});return}
+      bildir(e.kod===409?'Mağaza bilgisayarında fiş yazıcısı ayarlı değil':e.message)});return}
     if((b=ev.target.closest('[data-foto]'))){fotoNo=b.dataset.foto;$('#foto-girdi').value='';$('#foto-girdi').click();return}});
 
   /* ---------- fotoğraf: en çok 1600 px JPEG ---------- */

@@ -44,6 +44,8 @@ impl Uygulama {
                 "giris": giris,
                 "cihaz": { "id": c.id, "ad": c.ad },
                 "kisi": kisi,
+                // Mağaza bilgisayarında oturumdaki kişi (yönetici oturumu ya da ortak giriş; hesap kartında gösterilir).
+                "oturum_kisi": (c.id == PC_ID && !c.oturum_kisi.is_empty()).then(|| c.oturum_kisi.clone()),
                 "sube": sube,
                 // Arayüz düzeltme gibi bölümleri bu listeye göre gösterir (asıl denetim sunucuda).
                 // "teslim-acik": kişi/rol ve (bilgisayarda) yönetici oturumu dahil etkin karar.

@@ -17,7 +17,8 @@
 //!
 //!   Mağaza telefonu (kişisiz) ve diğer roller varsayılan kapalıdır.
 //! - Her açık görüntüleme (ve imza görüntüleme) `teslim-ayrinti.jsonl` denetim günlüğüne yazılır: olay, fiş no,
-//!   kim (cihaz kimliği / kişi kimliği / "PC"), hangi yetkiyle, tarih-saat. Günlükte teslim alanın kişisel verisi
+//!   kim (cihaz kimliği / kişi kimliği; mağaza bilgisayarında oturumdaki kişi — yönetici oturumu ya da ortak giriş
+//!   kullanıcısı, PIN'le "PC (PIN)", kimse yoksa "PC"), hangi yetkiyle, tarih-saat. Günlükte teslim alanın kişisel verisi
 //!   (ad, telefon, IP, cihaz) YOKTUR.
 //!
 //! Yazan: [Claude Opus 5.5, TerziTakip başlığı, 2026-11-26].
@@ -110,9 +111,13 @@ impl Uygulama {
         v
     }
 
-    /// Denetim günlüğündeki "kim": cihaz kimliği (+ kişisel telefonda kişi kimliği). Kişisel veri değildir.
+    /// Denetim günlüğündeki "kim": cihaz kimliği (+ kişisel telefonda kişi kimliği). Mağaza bilgisayarında oturumdaki
+    /// kişi (yönetici oturumu ya da ortak giriş kullanıcısı; PIN'le "PC (PIN)") varsa "PC" yerine o yazılır.
+    /// Teslim alanın kişisel verisi değildir.
     pub(crate) fn denetim_kimi(c: &cihaz::Cihaz) -> String {
-        if c.kisi_id.is_empty() {
+        if c.id == PC_ID && !c.oturum_kisi.is_empty() {
+            c.oturum_kisi.clone()
+        } else if c.kisi_id.is_empty() {
             c.id.clone()
         } else {
             format!("{} / {}", c.id, c.kisi_id)
@@ -235,7 +240,7 @@ impl Uygulama {
             .kisi_yetki_ata(id, yetki, ver, &tarih_iso(s))
         {
             Ok(()) => {
-                let satir = json!({"olay": "kisi_yetki", "kisi": id, "yetki": yetki, "ver": ver, "tarih": tarih_iso(s), "saat": saat_iso(s)}).to_string();
+                let satir = json!({"olay": "kisi_yetki", "kisi": id, "yetki": yetki, "ver": ver, "kim": self.yonetici_kimi(i), "kim_kaynak": self.kim_kaynagi(i), "tarih": tarih_iso(s), "saat": saat_iso(s)}).to_string();
                 let _ = taa_dosya::satir_ekle(&self.dizin.join("eslestirme.jsonl"), &satir);
                 Yanit::json(
                     200,

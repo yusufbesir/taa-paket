@@ -244,8 +244,11 @@ impl Uygulama {
         let Some(fisli_istenen) = v["fisli"].as_bool() else {
             return Yanit::hata(400, "fisli alanı true/false olmalı");
         };
-        let fisli = fisli_istenen
-            && self.fis_karekodu_kanitli(d, no, v["fis_karekodu"].as_str().unwrap_or(""));
+        let (kanitli, gecisle) =
+            self.fis_karekodu_kaniti(d, no, v["fis_karekodu"].as_str().unwrap_or(""));
+        let fisli = fisli_istenen && kanitli;
+        // Fişli sayılması yalnız eski fiş geçiş süresinden geliyorsa günlüğe (teslim kaydından hemen önce) yazılır.
+        let gecis = fisli && gecisle;
         // Bağlı fişlerle birlikte teslim ("bagli": [..] dolu): istek iç olarak teslim sepetine çevrilir. Bağlı fişlerin
         // karekodu okutulmadığı için FİŞSİZDİR (D kararı): fişsiz teslim yetkisi, telefon son 4 ve imza zorunlu;
         // yazım da sepetteki gibi ya hepsi ya hiçbiri. (Eskiden ana fişin kaydı fisli=true kopyalanıyordu.)
@@ -256,7 +259,7 @@ impl Uygulama {
         let y = if bagli_dolu {
             self.bagli_sepetle_teslim(d, no, c, &v)
         } else {
-            self.teslim_al_ic(d, no, c, &v, fisli)
+            self.teslim_al_ic(d, no, c, &v, fisli, gecis)
         };
         if fisli_istenen && !fisli && matches!(y.kod, 403 | 422 | 429) {
             // Fişli istendi ama karekod kanıtı yok: neden fişsiz kuralların istendiği açıkça yazılsın.
@@ -336,6 +339,7 @@ impl Uygulama {
         c: &cihaz::Cihaz,
         v: &serde_json::Value,
         fisli: bool,
+        gecis: bool,
     ) -> Yanit {
         if !fisli && !self.cihazlar().yetki_var(&c.id, "fissiz-teslim") {
             return Yanit::json(
@@ -551,11 +555,7 @@ impl Uygulama {
             imza_sha256,
             imza_dosyasi,
             imza_yontemi,
-            kim: if c.kisi_id.is_empty() {
-                c.ad.clone()
-            } else {
-                c.kisi_id.clone()
-            },
+            kim: c.kayit_kimi(),
             tarih: tarih_iso(s),
             saat: saat_iso(s),
             ana_fis: String::new(),
@@ -563,10 +563,32 @@ impl Uygulama {
             teslim_id,
             gorunen: None,
         };
+        // Eski fiş geçişiyle fişli: günlük teslim kaydından HEMEN ÖNCE (tüm denetimler geçti) yazılır; yazılamazsa teslim
+        // yapılmaz. Kayıt sonra başarısız olursa aynı teslim_id ile hata satırı düşülür.
+        if gecis {
+            if let Err(e) = self.sepet_gunlugu_yaz(json!({
+                "olay": "eski_fis_gecisi", "asama": "teslim-al", "teslim_id": kayit.teslim_id,
+                "fisler": [no], "kim": Self::denetim_kimi(c),
+            })) {
+                if let Some(y) = &yazilan {
+                    self.imza_artigi_kenara(y);
+                }
+                return Yanit::json(
+                    500,
+                    json!({ "hata": "gunluk_yazilamadi", "ileti": format!("Eski fiş geçişi günlüğe yazılamadı; teslim edilmedi ({e}). Yeniden deneyin.") }),
+                );
+            }
+        }
         // Teslim kaydı ve Teslim durumu tek defter satırıdır: yarım kalmaz.
         if let Err(e) = d.teslim_et(no, kayit.clone()) {
             if let Some(y) = &yazilan {
                 self.imza_artigi_kenara(y);
+            }
+            if gecis {
+                let _ = self.sepet_gunlugu_yaz(json!({
+                    "olay": "eski_fis_gecisi_hata", "asama": "teslim-al", "teslim_id": kayit.teslim_id,
+                    "fisler": [no], "kim": Self::denetim_kimi(c), "hata": e,
+                }));
             }
             return Yanit::hata(422, &e);
         }
@@ -679,7 +701,7 @@ impl Uygulama {
         };
         let Some(s) = t.sifreli.as_ref() else {
             if let Err(y) = self.teslim_gunlugu(
-                json!({ "olay": "teslim_ayrintisi", "fis": no, "kim": PC_ID, "yetki": "yonetici-oturumu" }),
+                json!({ "olay": "teslim_ayrintisi", "fis": no, "kim": self.yonetici_kimi(i), "yetki": "yonetici-oturumu" }),
             ) {
             return y;
         }
@@ -693,7 +715,7 @@ impl Uygulama {
             Err(e) => return Yanit::hata(500, &e),
         };
         if let Err(y) = self.teslim_gunlugu(
-            json!({ "olay": "teslim_ayrintisi", "fis": no, "kim": PC_ID, "yetki": "yonetici-oturumu" }),
+            json!({ "olay": "teslim_ayrintisi", "fis": no, "kim": self.yonetici_kimi(i), "yetki": "yonetici-oturumu" }),
         ) {
             return y;
         }

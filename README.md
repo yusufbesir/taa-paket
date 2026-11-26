@@ -54,8 +54,14 @@ kendiliğinden gelen ya da karekodunda kanıt parçası olmayan (2026-11-26 önc
 fişsiz fiş varsa fişsiz teslim yetkisi, her müşteri için telefonun son 4 hanesi ve imza zorunludur. Kasiyerin "fişli"
 işaretini elle koyma yolu kaldırıldı (eski `teslim-al` ucunda `fisli: true` karekod kanıtı olmadan fişsiz sayılır;
 `"bagli": [..]` ile gelen bağlı fişler sepet akışına çevrilir ve fişsizdir). Bir teslimatta en çok 30 fiş. Sınır:
-tabanca klavyeden ayırt edilemez ve mağaza cihazı müşteri nüshasını yeniden yazdırabilir; kanıt mağaza içi güven
-sınırındadır.
+tabanca klavyeden ayırt edilemez; mağaza cihazının müşteri nüshasını yeniden yazdırması artık `yeniden-yazdir`
+yetkisine bağlıdır (varsayılan açık, yönetici kapatabilir; her yeniden basım `basim.jsonl`'da). Eski (kanıt öncesi
+basılmış) fişler için yönetici **Ayarlar > Yönetim**'den gün olarak bir **eski fiş geçiş süresi** açabilir (varsayılan 0 =
+kapalı; süre bitince kendiliğinden kapanır, başlangıçtan en çok 180 gün; her kullanım günlükte, günlük yazılamazsa
+teslim yapılmaz). Yönetici girişi TAA ortak giriş kullanıcısıyla (yönetici rolü) ve o kişinin şifresi yeniden
+sorularak yapılır, PIN yedektir; ortak girişte kişi değişince yönetici oturumu kapanır; günlüklerde "PC" yerine
+oturumdaki kişi (PIN'le "PC (PIN)") yazılır. Yeniden yazdırma yetkisi kapalı cihaz müşteri karekodunu ekranda da
+yalnız bir kez alır (ilk gösterim basım sayılır) ve hazır bildirimindeki takip bağlantısını maskeli görür.
 Ayrıntı, uçlar ve atomiklik: [bulut/musteri-takip/README.md](bulut/musteri-takip/README.md#teslim-sepeti-tek-karekodla-zincir-çok-fiş-tek-teslimat-yusuf-2026-11-26-0625).
 
 ## Mobil

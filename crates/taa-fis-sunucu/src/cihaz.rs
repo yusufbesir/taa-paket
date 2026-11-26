@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Cihaz {
     pub id: String,
     pub ad: String,
@@ -12,6 +12,25 @@ pub struct Cihaz {
     /// Kişisel telefon (kullanıcı girişi): fişi düzenleyen her zaman bu kişidir. Boş = mağaza telefonu.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub kisi_id: String,
+    /// Yalnız mağaza bilgisayarında (id "PC"), istek anında: oturumdaki kişi — yönetici oturumunun kişisi (ortak giriş
+    /// kullanıcısı ya da "PC (PIN)") ya da ortak girişle giren kullanıcı (çakışan adlar "ortak:" önekli). Kaydedilmez, okunmaz (bkz. lib.rs `pc_kimi`).
+    /// Günlüklerde ve kayıtlardaki "kim" alanında "PC" / "Mağaza PC" yerine bu yazılır.
+    #[serde(skip)]
+    pub oturum_kisi: String,
+}
+
+impl Cihaz {
+    /// Fiş düzeltme ve teslim kaydındaki "kim": kişisel telefonda kişi kimliği, mağaza bilgisayarında oturumdaki
+    /// kişi (varsa), yoksa cihaz adı (eski davranış).
+    pub fn kayit_kimi(&self) -> String {
+        if !self.kisi_id.is_empty() {
+            self.kisi_id.clone()
+        } else if !self.oturum_kisi.is_empty() {
+            self.oturum_kisi.clone()
+        } else {
+            self.ad.clone()
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -61,6 +80,16 @@ pub const YETKILER: &[(&str, &str, bool, bool)] = &[
         "Teslim bilgisini açık görme: teslim alanın tam adı, telefonu, IP'si ve imzası (her görüntüleme günlüğe yazılır)",
         false,
         false,
+    ),
+    // Koordinatör kararı 2026-11-26 (geri alınabilir varsayılan): müşteri nüshasının YENİDEN basımı ve müşteri
+    // nüshası karekodunun (kanıt parçalı personel karekodu) ekranda yeniden gösterimi. Varsayılan HER YERDE açık
+    // (eski davranış); yönetici cihaz bazında kapatabilir. İlk basım ve terzihane nüshası etkilenmez. Her yeniden
+    // basım `basim.jsonl` günlüğüne yazılır (bkz. lib.rs `musteri_nushasi_izni`).
+    (
+        "yeniden-yazdir",
+        "Müşteri nüshasını yeniden yazdırma ve müşteri karekodunu ekranda yeniden gösterme (her yeniden basım günlüğe yazılır)",
+        true,
+        true,
     ),
 ];
 
@@ -292,6 +321,7 @@ impl Kayitci {
             token_sha256: sha256_hex(token),
             tarih: tarih.into(),
             kisi_id: kisi_id.into(),
+            oturum_kisi: String::new(),
         };
         let s = serde_json::to_string(&Kayit::Cihaz(c.clone())).map_err(|e| e.to_string())?;
         taa_dosya::satir_ekle(&self.yol, &s).map_err(|e| e.to_string())?;

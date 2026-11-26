@@ -54,7 +54,10 @@ impl Uygulama {
             rol,
             v["sube"].as_str().unwrap_or(""),
             v["not"].as_str().unwrap_or(""),
-            v["yonetici"].as_str().unwrap_or(""),
+            // Oturumdaki kişi biliniyorsa o (istemci beyanı yalnız yedek).
+            &self
+                .pc_kimi(i)
+                .unwrap_or_else(|| v["yonetici"].as_str().unwrap_or("").to_string()),
             simdi,
             omur,
         ) {
@@ -104,10 +107,13 @@ impl Uygulama {
         let Ok(tg_id) = tg.parse::<i64>() else {
             return Yanit::hata(400, "geçersiz hesap");
         };
-        let yonetici = serde_json::from_slice::<serde_json::Value>(&i.govde)
-            .ok()
-            .and_then(|v| v["yonetici"].as_str().map(str::to_string))
-            .unwrap_or_default();
+        // Oturumdaki kişi biliniyorsa o (istemci beyanı yalnız yedek).
+        let yonetici = self.pc_kimi(i).unwrap_or_else(|| {
+            serde_json::from_slice::<serde_json::Value>(&i.govde)
+                .ok()
+                .and_then(|v| v["yonetici"].as_str().map(str::to_string))
+                .unwrap_or_default()
+        });
         if yonetici.trim().is_empty() {
             return Yanit::hata(422, "yönetici gerekli");
         }

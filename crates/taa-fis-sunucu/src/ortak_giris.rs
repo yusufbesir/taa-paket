@@ -1,4 +1,4 @@
-//! taa-giris.rs v1 — kaynak: yusufbesir/taa-paket/crates/taa-fis-sunucu/src/ortak_giris.rs; Rust programları
+//! taa-giris.rs v1.1 (v1.1: `oturum` eklendi, geriye uyumlu) — kaynak: yusufbesir/taa-paket/crates/taa-fis-sunucu/src/ortak_giris.rs; Rust programları
 //! kopyalar, elle düzenlemez (yalnız std + serde_json; programa özgü hiçbir şey içermez).
 //!
 //! TAA ortak giriş (KM1), yerel HTTP arayüzlü Rust programları için: `POST /api/giris/<islem>` uçlarının gövdesi.
@@ -292,6 +292,13 @@ fn durum(bul: KimlikBulucu, program: &str) -> serde_json::Value {
         }
         _ => serde_json::Value::Null,
     }
+}
+
+/// Süren ortak oturumun özeti ({kullanici, sube_id, roller, izinler, programlar}); bu programa kapalıysa, araç
+/// yoksa ya da oturum yoksa `None`. (Program, oturumdaki kişiyi kendi günlüğüne yazmak için kullanır.)
+pub fn oturum(bul: KimlikBulucu, program: &str) -> Option<serde_json::Value> {
+    bul()?;
+    Some(durum(bul, program)).filter(|v| !v.is_null())
 }
 
 /// `POST /api/giris/<islem>` gövdesi (islem: baslangic, giris, basvur, durum, cikis). Yanıt her zaman 200 ile

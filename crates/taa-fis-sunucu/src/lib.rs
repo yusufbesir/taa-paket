@@ -7,6 +7,7 @@
 pub mod cati_pin;
 pub mod cihaz;
 mod ek_uclar;
+pub mod eski_fis_gecis;
 mod hesap_uclari;
 mod imza_png;
 pub mod kisi;
@@ -21,7 +22,8 @@ pub mod teslim_onay;
 mod teslim_sepet;
 pub mod teslim_sifre;
 mod teslim_yetki;
-mod yonetici;
+mod yeniden_basim;
+pub mod yonetici;
 
 pub use ek_uclar::karekod_svg;
 use ek_uclar::{deneme_baytlari, fis_json};
@@ -121,8 +123,16 @@ pub struct Uygulama {
     /// (eşleştirme kodu, bitiş, telefonun bağlanacağı kişi)
     kodlar: Mutex<Vec<(String, u64, String)>>,
     yanlis: Mutex<(u32, u64)>,
-    /// Yönetici oturumları: (belirteç özeti, son işlem).
-    yonetici_oturum: Mutex<Vec<(String, u64)>>,
+    /// Yönetici oturumları: belirteç özeti, son işlem, kim ve giriş yolu (bkz. `yonetici`).
+    yonetici_oturum: Mutex<Vec<yonetici::YoneticiOturum>>,
+    /// Bu bilgisayarda TAA ortak girişle giren kullanıcı (yalnız bellekte; `/api/giris/*` yanıtlarından — main.rs'de
+    /// ayrı iş parçacığından da — ve arka plan yenilemesiyle güncellenir).
+    ortak_kullanici: yonetici::OrtakTutucu,
+    /// Basım günlüğü yazılamadığı hâlde müşteri nüshası verilmiş fişler (yeniden başlatılana dek "verildi" sayılır).
+    basim_verildi_bellek: Mutex<std::collections::BTreeSet<String>>,
+    /// Bu süreçte oluşturulan fişler: fiş no -> (oluşturan cihaz, an). Yeniden yazdırma yetkisi kapalı cihaz, kendi
+    /// oluşturduğu fişin karekodunu kısa süre (önizleme) günlüğe yazılmadan görebilir (bkz. `yeniden_basim`).
+    yeni_fisler: Mutex<std::collections::BTreeMap<String, (String, u64)>>,
     /// Cihaz kimliği -> son görülme (bellekte; yeniden başlatınca sıfırlanır).
     son_gorulme: Mutex<std::collections::BTreeMap<String, u64>>,
     /// Birinci kodu girmiş, ikinci kodu bekleyen telefonlar (çifte kod eşleştirme).
@@ -208,6 +218,9 @@ impl Uygulama {
             kodlar: Mutex::new(Vec::new()),
             yanlis: Mutex::new((0, 0)),
             yonetici_oturum: Mutex::new(Vec::new()),
+            ortak_kullanici: std::sync::Arc::new(Mutex::new(None)),
+            basim_verildi_bellek: Mutex::new(Default::default()),
+            yeni_fisler: Mutex::new(Default::default()),
             son_gorulme: Mutex::new(Default::default()),
             bekleyen: Mutex::new(Vec::new()),
             yanlis2: Mutex::new(0),
@@ -339,7 +352,11 @@ impl Uygulama {
                     return Yanit::hata(403, "yalnız bu bilgisayardaki programdan");
                 }
                 match ortak_giris::yanitla(self.kimlik_bulucu, cati_pin::PROGRAM, islem, &i.govde) {
-                    Some(v) => Yanit::json(200, v),
+                    Some(v) => {
+                        // Oturumdaki kişi bellekte tutulur: günlüklerde "PC" yerine bu kullanıcı yazılır.
+                        self.ortak_kullanici_guncelle(islem, &v);
+                        Yanit::json(200, v)
+                    }
                     None => Yanit::hata(404, "bulunamadı"),
                 }
             }
@@ -357,6 +374,8 @@ impl Uygulama {
             ("GET", ["api", "yonetim", "teslim-gecis"]) => self.teslim_gecis_durumu(i),
             ("POST", ["api", "yonetim", "teslim-gecis"]) => self.teslim_gecis_calistir(i),
             ("GET", ["api", "yonetim", "yetkiler"]) => self.yetki_listesi(i),
+            ("GET", ["api", "yonetim", "ayar"]) => self.yonetim_ayari(i),
+            ("POST", ["api", "yonetim", "ayar"]) => self.yonetim_ayari_yaz(i),
             ("POST", ["api", "yonetim", "cihaz", id, "kapat"]) => {
                 if let Some(y) = self.yonetim_izni(i) {
                     return y;
@@ -430,6 +449,25 @@ impl Uygulama {
         let a = musteri_takip::Ayar::dizinden(&self.dizin)?;
         let kod = musteri_takip::takip_kodu(&self.dizin, no).ok()?;
         Some((a.adres(&kod), a.yedek_adres(&kod)))
+    }
+
+    /// Metindeki bu fişin takip bağlantılarını (ve çıplak takip kodunu) gizler.
+    pub(crate) fn takip_maskele(&self, no: &str, metin: &str) -> String {
+        let mut m = metin.to_string();
+        // Takip ayarlı değilse metinde bağlantı yoktur (takip anahtarı da oluşturulmasın).
+        if let Some((a, y)) = self.takip_adresleri(no) {
+            for x in std::iter::once(a).chain(y) {
+                if !x.is_empty() {
+                    m = m.replace(&x, "[takip bağlantısı gizli]");
+                }
+            }
+            if let Ok(kod) = musteri_takip::takip_kodu(&self.dizin, no) {
+                if kod.len() >= 8 {
+                    m = m.replace(&kod, "[gizli]");
+                }
+            }
+        }
+        m
     }
 
     fn hazir_bildirimi(&self, d: &Defter, no: &str) -> serde_json::Value {
@@ -766,7 +804,10 @@ impl Uygulama {
             sonuc,
             agir: v["agir"].as_bool().unwrap_or(false),
             aciklama: v["aciklama"].as_str().unwrap_or("").to_string(),
-            yonetici: v["yonetici"].as_str().unwrap_or("").to_string(),
+            // Oturumdaki kişi biliniyorsa (yönetici oturumu / ortak giriş) o yazılır; istemcinin beyanı yalnız yedek.
+            yonetici: self
+                .pc_kimi(i)
+                .unwrap_or_else(|| v["yonetici"].as_str().unwrap_or("").to_string()),
             tarih: tarih_iso(self.simdi()),
         };
         let defter = taa_takip::PuanDefteri::dizinden(&self.dizin);
@@ -896,9 +937,9 @@ impl Uygulama {
             cihaz::Cihaz {
                 id: PC_ID.into(),
                 ad: "Mağaza PC".into(),
-                token_sha256: String::new(),
-                tarih: String::new(),
-                kisi_id: String::new(),
+                // Oturumdaki kişi (yönetici oturumu ya da ortak giriş): günlük ve kayıtlarda "PC" yerine yazılır.
+                oturum_kisi: self.pc_kimi(i).unwrap_or_default(),
+                ..Default::default()
             }
         } else {
             match self.cihazlar().dogrula(token) {
@@ -918,11 +959,69 @@ impl Uygulama {
                 json!({ "kisiler": kisi::secilebilir(&self.dizin, &self.sube_kodu().unwrap_or_default()) }),
             ),
             ("GET", ["api", "durum"]) => self.genel_durum(),
+            // Müşteri nüshasının karekodu (kanıt parçalı). Nüsha daha önce verildiyse "yeniden-yazdir" yetkisi gerekir
+            // (bkz. yeniden_basim). `?basim=1`: Windows yazdırma penceresiyle basılacak; müşteri nüshası verildi sayılır.
             ("GET", ["api", "fis", no, "karekod"]) => match d.bul(no) {
-                Ok(Some(f)) => match karekod_svg(&self.fis_karekod_adresi(&f.no)) {
-                    Ok(svg) => Yanit::tur("image/svg+xml", svg),
-                    Err(e) => Yanit::hata(500, &e),
-                },
+                Ok(Some(f)) => {
+                    let sorgu_var = |a: &str| {
+                        i.yol
+                            .split_once('?')
+                            .is_some_and(|(_, q)| q.split('&').any(|p| p == a))
+                    };
+                    let basim = sorgu_var("basim=1");
+                    // `?nusha=1`: terzihane nüshası (Windows yazdırma penceresi). Karekodunda yalnız fiş no vardır (kanıt
+                    // değildir, yazıcıdaki terzihane nüshasıyla aynı); yetki istemez, basım günlüğüne "terzihane" yazılır.
+                    if sorgu_var("nusha=1") {
+                        return match karekod_svg(&f.no) {
+                            Ok(svg) => {
+                                let _ = self.basim_gunlugu(json!({
+                                    "olay": "basim", "fis": f.no, "musteri": false, "nusha": "terzihane",
+                                    "yontem": "tarayici", "cihaz": cihaz.id, "kim": Self::denetim_kimi(&cihaz),
+                                }));
+                                Yanit::tur("image/svg+xml", svg)
+                            }
+                            Err(e) => Yanit::hata(500, &e),
+                        };
+                    }
+                    let yetkili = self.cihazlar().yetki_var(&cihaz.id, yeniden_basim::YETKI);
+                    let yeniden = match self.musteri_nushasi_izni(&f, &cihaz, "karekod") {
+                        Ok(y) => y,
+                        Err(y) => return y,
+                    };
+                    match karekod_svg(&self.fis_karekod_adresi(&f.no)) {
+                        Ok(svg) => {
+                            let g = if basim {
+                                self.musteri_nushasi_verildi_yaz(&f.no, &cihaz, yeniden, "tarayici")
+                            } else if !yetkili {
+                                // Yeniden yazdırma yetkisi kapalı: ekranda gösterim de müşteri nüshasının verilmesidir
+                                // (kendi oluşturduğu yeni fişin kısa önizlemesi hariç).
+                                if self.onizleme_serbest(&f.no, &cihaz) {
+                                    Ok(())
+                                } else {
+                                    self.musteri_nushasi_verildi_yaz(
+                                        &f.no, &cihaz, false, "karekod",
+                                    )
+                                }
+                            } else if yeniden {
+                                self.basim_gunlugu(json!({
+                                    "olay": "karekod_gosterim", "fis": f.no, "cihaz": cihaz.id,
+                                    "kim": Self::denetim_kimi(&cihaz),
+                                }))
+                            } else {
+                                Ok(())
+                            };
+                            // Günlüğe yazılması gereken karekod yazılamadıysa verilmez (kayıtsız basım olmasın).
+                            if g.is_err() {
+                                return Yanit::hata(
+                                    500,
+                                    "basım günlüğü yazılamadı; karekod verilmedi",
+                                );
+                            }
+                            Yanit::tur("image/svg+xml", svg)
+                        }
+                        Err(e) => Yanit::hata(500, &e),
+                    }
+                }
                 Ok(None) => Yanit::hata(404, "fiş yok"),
                 Err(e) => Yanit::hata(500, &e),
             },
@@ -964,6 +1063,7 @@ impl Uygulama {
                 match d.ekle_uyarili(g) {
                     Ok((f, uyarilar)) => {
                         self.takibe_yaz(&f);
+                        self.yeni_fis_kaydet(&f.no, &cihaz);
                         Yanit::json(200, json!({ "no": f.no, "uyarilar": uyarilar }))
                     }
                     Err(e) => Yanit::hata(422, &e),
@@ -989,11 +1089,7 @@ impl Uygulama {
                     return y;
                 }
                 let v: serde_json::Value = serde_json::from_slice(&i.govde).unwrap_or_default();
-                let kim = if cihaz.kisi_id.is_empty() {
-                    cihaz.ad.clone()
-                } else {
-                    cihaz.kisi_id.clone()
-                };
+                let kim = cihaz.kayit_kimi();
                 let tarih = tarih_iso(self.simdi());
                 let s = |k: &str| v[k].as_str().unwrap_or("").to_string();
                 let sonuc: Result<serde_json::Value, String> = match parca {
@@ -1135,7 +1231,16 @@ impl Uygulama {
                     yol: &self.dizin.join("bildirimler.jsonl"),
                 };
                 match k.mesajlar() {
-                    Ok(m) => Yanit::json(200, json!({ "mesajlar": m })),
+                    Ok(mut m) => {
+                        // Takip bağlantısı müşteri nüshasının kanıtıdır (takip kodu her zaman fişli): "yeniden-yazdir"
+                        // yetkisi kapalı cihaza bağlantı maskeli verilir (bkz. yeniden_basim).
+                        if !self.cihazlar().yetki_var(&cihaz.id, yeniden_basim::YETKI) {
+                            for x in &mut m {
+                                x.metin = self.takip_maskele(&x.fis_no, &x.metin);
+                            }
+                        }
+                        Yanit::json(200, json!({ "mesajlar": m }))
+                    }
                     Err(e) => Yanit::hata(500, &e),
                 }
             }
@@ -1293,7 +1398,29 @@ impl Uygulama {
                 // Mağaza nüshasına "Teslim alan: Ad S. - QR onaylı, ..." (telefon basılmaz).
                 self.teslim_gorunen_doldur(&mut f);
                 let nusha: serde_json::Value = serde_json::from_slice(&i.govde).unwrap_or_default();
-                let baytlar = if nusha["nusha"].as_u64() == Some(1) {
+                let yalniz_terzihane = nusha["nusha"].as_u64() == Some(1);
+                // Müşteri nüshası daha önce verildiyse yeniden basım "yeniden-yazdir" yetkisi ister (terzihane serbest).
+                let yeniden = if yalniz_terzihane {
+                    false
+                } else {
+                    match self.musteri_nushasi_izni(&f, &cihaz, "yazdir") {
+                        Ok(y) => y,
+                        Err(y) => return y,
+                    }
+                };
+                // Yetkisi kapalı cihazın (serbest) ilk basımı ÖNCE günlüğe yazılır: yazılamazsa basılmaz.
+                let once_yazildi = !yalniz_terzihane
+                    && !self.cihazlar().yetki_var(&cihaz.id, yeniden_basim::YETKI);
+                if once_yazildi {
+                    if let Err(e) = self.musteri_nushasi_verildi_yaz(&f.no, &cihaz, false, "yazici")
+                    {
+                        return Yanit::hata(
+                            500,
+                            &format!("basım günlüğü yazılamadı; müşteri nüshası basılmadı ({e})"),
+                        );
+                    }
+                }
+                let baytlar = if yalniz_terzihane {
                     taa_fis::escpos(&f, 42)
                 } else {
                     let qr = self.fis_karekod_adresi(&f.no);
@@ -1309,8 +1436,38 @@ impl Uygulama {
                     taa_fis::escpos_nushalar_takipli(&f, 42, &qr, Some(&ayd), t.as_ref())
                 };
                 match yaziciya_yaz(yazici, &baytlar) {
-                    Ok(()) => Yanit::json(200, json!({ "tamam": true })),
-                    Err(e) => Yanit::hata(502, &format!("yazıcıya yazılamadı: {e}")),
+                    Ok(()) => {
+                        let g = if yalniz_terzihane {
+                            self.basim_gunlugu(json!({
+                                "olay": "basim", "fis": f.no, "musteri": false, "nusha": "terzihane",
+                                "yontem": "yazici", "cihaz": cihaz.id, "kim": Self::denetim_kimi(&cihaz),
+                            }))
+                        } else if once_yazildi {
+                            Ok(())
+                        } else {
+                            let g =
+                                self.musteri_nushasi_verildi_yaz(&f.no, &cihaz, yeniden, "yazici");
+                            if g.is_err() {
+                                // Günlük yazılamadı: sonraki basım yine serbest geçmesin.
+                                self.verildi_bellege(&f.no);
+                            }
+                            g
+                        };
+                        let mut j = json!({ "tamam": true, "yeniden": yeniden });
+                        if g.is_err() {
+                            j["uyari"] = json!("Basım günlüğü yazılamadı.");
+                        }
+                        Yanit::json(200, j)
+                    }
+                    Err(e) => {
+                        if once_yazildi {
+                            let _ = self.basim_gunlugu(json!({
+                                "olay": "basim_iptal", "fis": f.no, "musteri": true, "yontem": "yazici",
+                                "cihaz": cihaz.id, "kim": Self::denetim_kimi(&cihaz), "neden": "yazici_hatasi",
+                            }));
+                        }
+                        Yanit::hata(502, &format!("yazıcıya yazılamadı: {e}"))
+                    }
                 }
             }
             _ => Yanit::hata(404, "bulunamadı"),
@@ -3165,5 +3322,585 @@ mod testler {
             .kod,
             422
         );
+    }
+
+    // ---- Koordinatör kararları 2026-11-26: yönetici ortak giriş kişisi, yeniden basım yetkisi ----
+
+    /// Sahte taa-kimlik: "mudur" yönetici rolünde, "deneme" personel. Şifre "Dogru-sifre1". (Yalnız Unix.)
+    #[cfg(unix)]
+    fn yon_sahte_dizin(ad: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("taa-yon-sahte-kimlik-{}-{ad}", std::process::id()))
+    }
+    /// Testler paralel koşar: her test kendi sahte araç klasörünü kullanır.
+    #[cfg(unix)]
+    fn yon_sahte_bul() -> Option<PathBuf> {
+        Some(yon_sahte_dizin("a").join("taa-kimlik"))
+    }
+    #[cfg(unix)]
+    fn yon_sahte_bul2() -> Option<PathBuf> {
+        Some(yon_sahte_dizin("b").join("taa-kimlik"))
+    }
+    #[cfg(unix)]
+    fn yon_sahte_kur(ad: &str) {
+        use std::os::unix::fs::PermissionsExt;
+        let dz = yon_sahte_dizin(ad);
+        let _ = std::fs::remove_dir_all(&dz);
+        std::fs::create_dir_all(&dz).unwrap();
+        let betik = r#"#!/bin/sh
+D="$(dirname "$0")"
+IFS= read -r GIRDI
+case "$1" in
+  durum)
+    if [ -f "$D/oturum" ]; then cat "$D/oturum"; exit 0; fi
+    echo '{"hata":"kayıtlı oturum yok"}' >&2; exit 5 ;;
+  giris)
+    if [ "$GIRDI" != "Dogru-sifre1" ]; then echo '{"http":401,"hata":"x {\"hata\":\"giris\"}"}' >&2; exit 4; fi
+    if [ "$3" = "mudur" ]; then R='["yonetici"]'; else R='["personel"]'; fi
+    echo "{\"kullanici\":\"$3\",\"sube_id\":1,\"roller\":$R,\"izinler\":[],\"programlar\":[\"terzitakip\"]}" > "$D/oturum"
+    cat "$D/oturum"; exit 0 ;;
+  cikis) rm -f "$D/oturum"; echo '{"durum":"cikis"}'; exit 0 ;;
+esac
+exit 1
+"#;
+        let yol = dz.join("taa-kimlik");
+        std::fs::write(&yol, betik).unwrap();
+        std::fs::set_permissions(&yol, std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn yonetici_girisi_ortak_giris_kisisiyle_ve_pin_yedegi() {
+        yon_sahte_kur("a");
+        let mut u = uyg();
+        u.yonetici_kilidi = true;
+        u.pin = Box::new(SahtePin(Default::default()));
+        u.kimlik_bulucu = yon_sahte_bul;
+        let ortak = |u: &Uygulama| {
+            u.isle(&pc(
+                "POST",
+                "/api/yonetici/giris",
+                r#"{"ortak":true,"parola":"Dogru-sifre1"}"#,
+            ))
+        };
+        // Ortak oturum yok: 409 (ekran PIN'e düşer).
+        let y = ortak(&u);
+        assert_eq!(
+            (y.kod, json_of(&y)["hata"].clone()),
+            (409, json!("ortak_oturum_yok"))
+        );
+        // PIN yedeği, ortak oturum yok: günlükte "PC (PIN)".
+        let g = json_of(&u.isle(&pc("POST", "/api/yonetici/giris", r#"{"pin":"4821"}"#)));
+        assert_eq!(g["kim"], "PC (PIN)");
+        let b = g["belirtec"].as_str().unwrap().to_string();
+        let yon = |b: &str, metot: &str, yol: &str, govde: &str| Istek {
+            yonetici: Some(b.to_string()),
+            ..pc(metot, yol, govde)
+        };
+        assert_eq!(
+            u.isle(&yon(
+                &b,
+                "POST",
+                "/api/yonetim/cihaz/PC/yetki",
+                r#"{"yetki":"duzelt","ver":true}"#
+            ))
+            .kod,
+            200
+        );
+        let log = std::fs::read_to_string(u.dizin.join("eslestirme.jsonl")).unwrap();
+        assert!(log.contains(r#""kim":"PC (PIN)""#), "{log}");
+        // Personel ortak girişle girer: yönetici değil (403); PIN'le girerse günlükte yalnız "PC (PIN)" (PIN kişiyi
+        // belirlemez; ortak girişteki kişinin adı PIN'le günlüğe taşınmaz).
+        let v = json_of(&u.isle(&pc(
+            "POST",
+            "/api/giris/giris",
+            r#"{"kullanici":"deneme","parola":"Dogru-sifre1"}"#,
+        )));
+        assert_eq!(v["tamam"], true);
+        let y = ortak(&u);
+        assert_eq!(
+            (y.kod, json_of(&y)["hata"].clone()),
+            (403, json!("yonetici_degil")),
+            "{}",
+            String::from_utf8_lossy(&y.govde)
+        );
+        let g = json_of(&u.isle(&pc("POST", "/api/yonetici/giris", r#"{"pin":"4821"}"#)));
+        assert_eq!(g["kim"], "PC (PIN)");
+        // Oturumsuz PC işlemi: oturumdaki kişi (ortak giriş) hesap kartına ve kayıtlara gelir.
+        let o = json_of(&u.isle(&pc("GET", "/api/oturum", "")));
+        assert_eq!(o["oturum_kisi"], "deneme");
+        // Yönetici ortak girişle: kişi kimliği günlüğe yazılır, durum ucu kişiyi söyler.
+        u.isle(&pc("POST", "/api/giris/cikis", "{}"));
+        assert_eq!(
+            json_of(&u.isle(&pc("GET", "/api/oturum", "")))["oturum_kisi"],
+            json!(null)
+        );
+        let v = json_of(&u.isle(&pc(
+            "POST",
+            "/api/giris/giris",
+            r#"{"kullanici":"mudur","parola":"Dogru-sifre1"}"#,
+        )));
+        assert_eq!(v["tamam"], true);
+        // Ortak girişteki yönetici şifresiz açamaz (400), yanlış şifreyle açamaz (401, günlükte ret).
+        let y = u.isle(&pc("POST", "/api/yonetici/giris", r#"{"ortak":true}"#));
+        assert_eq!(
+            (y.kod, json_of(&y)["hata"].clone()),
+            (400, json!("parola_gerekli"))
+        );
+        let y = u.isle(&pc(
+            "POST",
+            "/api/yonetici/giris",
+            r#"{"ortak":true,"parola":"yanlis"}"#,
+        ));
+        assert_eq!(
+            (y.kod, json_of(&y)["hata"].clone()),
+            (401, json!("parola_hatali"))
+        );
+        let log = std::fs::read_to_string(u.dizin.join("eslestirme.jsonl")).unwrap();
+        assert!(
+            log.contains("yonetici_giris_red") && !log.contains("yanlis"),
+            "{log}"
+        );
+        let y = ortak(&u);
+        assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
+        let g = json_of(&y);
+        assert_eq!(
+            (g["kim"].clone(), g["kaynak"].clone()),
+            (json!("mudur"), json!("ortak-giris"))
+        );
+        let b2 = g["belirtec"].as_str().unwrap().to_string();
+        let d = json_of(&u.isle(&yon(&b2, "GET", "/api/yonetici/durum", "")));
+        assert_eq!(
+            (d["acik"].clone(), d["kim"].clone()),
+            (json!(true), json!("mudur"))
+        );
+        assert_eq!(d["ortak"]["yonetici"], true);
+        assert_eq!(
+            u.isle(&yon(
+                &b2,
+                "POST",
+                "/api/yonetim/cihaz/PC/yetki",
+                r#"{"yetki":"duzelt","ver":true}"#
+            ))
+            .kod,
+            200
+        );
+        let log = std::fs::read_to_string(u.dizin.join("eslestirme.jsonl")).unwrap();
+        assert!(
+            log.contains(r#""olay":"yetki""#)
+                && log.contains(r#""kim":"mudur""#)
+                && log.contains(r#""kim_kaynak":"ortak-giris""#),
+            "{log}"
+        );
+        assert!(
+            log.contains(r#""olay":"yonetici_giris""#) && log.contains(r#""kaynak":"ortak-giris""#)
+        );
+        // Düzeltme kaydındaki "kim" de kişi (PC yerine).
+        let no = json_of(&u.isle(&yon(&b2, "POST", "/api/fis", FIS)))["no"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let y = u.isle(&yon(
+            &b2,
+            "POST",
+            &format!("/api/fis/{no}/kalem"),
+            r#"{"kalem":{"urun":"Ceket","islem":"kol kısalt"}}"#,
+        ));
+        assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
+        let defter = std::fs::read_to_string(u.fis_yolu()).unwrap();
+        assert!(defter.contains(r#""kim":"mudur""#), "{defter}");
+        // Ortak giriş kapalı (araç yok): PIN ile girilir, "PC (PIN)" (bellekteki kişi aracın yanıtıyla silinir).
+        u.kimlik_bulucu = || None;
+        u.isle(&pc("POST", "/api/giris/baslangic", "{}"));
+        assert_eq!(ortak(&u).kod, 409);
+        let g = json_of(&u.isle(&pc("POST", "/api/yonetici/giris", r#"{"pin":"4821"}"#)));
+        assert_eq!(g["kim"], "PC (PIN)");
+        let _ = std::fs::remove_dir_all(yon_sahte_dizin("a"));
+    }
+
+    /// Müşteri nüshasının yeniden basımı "yeniden-yazdir" yetkisine bağlı; varsayılan açık; terzihane serbest;
+    /// her basım günlükte.
+    #[test]
+    fn yeniden_basim_yetkisi() {
+        let mut u = uyg();
+        let yazici = u.dizin.join("yazici.bin");
+        std::fs::write(&yazici, b"").unwrap();
+        u.yazici_yolu = Some(yazici);
+        let t = esles(&u);
+        let no = json_of(&u.isle(&pc("POST", "/api/fis", FIS)))["no"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let yazdir = |govde: &str| u.isle(&pc("POST", &format!("/api/fis/{no}/yazdir"), govde));
+        let karekod = |ek: &str| u.isle(&pc("GET", &format!("/api/fis/{no}/karekod{ek}"), ""));
+        // Yetki listesinde, varsayılan her yerde açık.
+        let yl = json_of(&u.isle(&pc("GET", "/api/yonetim/yetkiler", "")));
+        assert!(yl["yetkiler"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|y| y["anahtar"] == "yeniden-yazdir"
+                && y["pc_varsayilan"] == true
+                && y["telefon_varsayilan"] == true));
+        // İlk basımdan önce karekod (önizleme) serbest; ilk basım serbest; ikinci basım "yeniden" (yetki açık).
+        assert_eq!(karekod("").kod, 200);
+        let y = yazdir("{}");
+        assert_eq!((y.kod, json_of(&y)["yeniden"].clone()), (200, json!(false)));
+        let y = yazdir("{}");
+        assert_eq!((y.kod, json_of(&y)["yeniden"].clone()), (200, json!(true)));
+        // Yönetici mağaza bilgisayarında kapatır: müşteri nüshası ve karekod 403, terzihane serbest.
+        assert_eq!(
+            u.isle(&pc(
+                "POST",
+                "/api/yonetim/cihaz/PC/yetki",
+                r#"{"yetki":"yeniden-yazdir","ver":false}"#
+            ))
+            .kod,
+            200
+        );
+        let y = yazdir("{}");
+        assert_eq!(
+            (y.kod, json_of(&y)["hata"].clone()),
+            (403, json!("yetki_yok"))
+        );
+        assert_eq!(karekod("").kod, 403);
+        assert_eq!(karekod("?basim=1").kod, 403);
+        assert_eq!(yazdir(r#"{"nusha":1}"#).kod, 200);
+        // Telefon (varsayılan açık) yeniden basabilir; kapatılınca o da 403.
+        let tel =
+            |yol: &str, govde: &str, metot: &str| u.isle(&ist(metot, yol, Some(&t), govde, false));
+        assert_eq!(tel(&format!("/api/fis/{no}/yazdir"), "{}", "POST").kod, 200);
+        assert_eq!(tel(&format!("/api/fis/{no}/karekod"), "", "GET").kod, 200);
+        let cid = u.cihazlar().aktifler().unwrap()[0].id.clone();
+        u.isle(&pc(
+            "POST",
+            &format!("/api/yonetim/cihaz/{cid}/yetki"),
+            r#"{"yetki":"yeniden-yazdir","ver":false}"#,
+        ));
+        assert_eq!(tel(&format!("/api/fis/{no}/yazdir"), "{}", "POST").kod, 403);
+        // Başka (hiç basılmamış) fişin ilk basımı yetkisiz de serbest (Windows penceresi: ?basim=1 basım sayılır).
+        let no2 = json_of(&u.isle(&pc("POST", "/api/fis", FIS)))["no"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert_eq!(
+            u.isle(&pc("GET", &format!("/api/fis/{no2}/karekod?basim=1"), ""))
+                .kod,
+            200
+        );
+        assert_eq!(
+            u.isle(&pc("GET", &format!("/api/fis/{no2}/karekod"), ""))
+                .kod,
+            403
+        );
+        // Günlük: her basım / yeniden basım / ret; kim, fiş, zaman.
+        let g = std::fs::read_to_string(u.dizin.join("basim.jsonl")).unwrap();
+        for olay in [
+            "\"basim\"",
+            "\"yeniden_basim\"",
+            "\"yeniden_basim_reddedildi\"",
+            "\"karekod_gosterim\"",
+        ] {
+            assert!(g.contains(olay), "{olay}: {g}");
+        }
+        assert!(g.contains(&no) && g.contains("\"kim\":\"PC\"") && g.contains("\"saat\""));
+        assert!(g.contains("\"nusha\":\"terzihane\"") && g.contains("\"yontem\":\"tarayici\""));
+    }
+
+    /// Bulgu (yüksek): ortak girişle açılan yönetici oturumu devralınamaz. Müdür girer, yönetici açar, ortak girişten
+    /// çıkar, personel girer: eski belirteçle yönetim 401, günlükte personel yazılır.
+    #[cfg(unix)]
+    #[test]
+    fn ortak_giris_yonetici_oturumu_kisi_degisince_kapanir() {
+        yon_sahte_kur("b");
+        let mut u = uyg();
+        u.yonetici_kilidi = true;
+        u.pin = Box::new(SahtePin(Default::default()));
+        u.kimlik_bulucu = yon_sahte_bul2;
+        let gir = |k: &str| {
+            let v = json_of(&u.isle(&pc(
+                "POST",
+                "/api/giris/giris",
+                &json!({"kullanici": k, "parola": "Dogru-sifre1"}).to_string(),
+            )));
+            assert_eq!(v["tamam"], true);
+        };
+        let yon = |b: &str, metot: &str, yol: &str, govde: &str| Istek {
+            yonetici: Some(b.to_string()),
+            ..pc(metot, yol, govde)
+        };
+        gir("mudur");
+        let g = json_of(&u.isle(&pc(
+            "POST",
+            "/api/yonetici/giris",
+            r#"{"ortak":true,"parola":"Dogru-sifre1"}"#,
+        )));
+        let b = g["belirtec"].as_str().unwrap().to_string();
+        assert_eq!(
+            u.isle(&yon(&b, "GET", "/api/yonetim/yetkiler", "")).kod,
+            200
+        );
+        // Müdür ortak girişten çıkar: belirteç geçersiz (yönetim 401, durum kapalı).
+        u.isle(&pc("POST", "/api/giris/cikis", "{}"));
+        assert_eq!(
+            u.isle(&yon(&b, "GET", "/api/yonetim/yetkiler", "")).kod,
+            401
+        );
+        assert_eq!(
+            json_of(&u.isle(&yon(&b, "GET", "/api/yonetici/durum", "")))["acik"],
+            false
+        );
+        // Personel girer: eski belirteç yine geçersiz; işlemleri personel adıyla yazılır (müdür değil).
+        gir("deneme");
+        assert_eq!(
+            u.isle(&yon(
+                &b,
+                "POST",
+                "/api/yonetim/cihaz/PC/yetki",
+                r#"{"yetki":"duzelt","ver":true}"#
+            ))
+            .kod,
+            401
+        );
+        let o = json_of(&u.isle(&yon(&b, "GET", "/api/oturum", "")));
+        assert_eq!(o["oturum_kisi"], "deneme");
+        let no = json_of(&u.isle(&yon(&b, "POST", "/api/fis", FIS)))["no"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let y = u.isle(&yon(
+            &b,
+            "POST",
+            &format!("/api/fis/{no}/kalem"),
+            r#"{"kalem":{"urun":"Ceket","islem":"kol kısalt"}}"#,
+        ));
+        assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
+        let defter = std::fs::read_to_string(u.fis_yolu()).unwrap();
+        assert!(
+            defter.contains(r#""kim":"deneme""#) && !defter.contains(r#""kim":"mudur""#),
+            "{defter}"
+        );
+        // Müdür geri girse de eski belirteç dirilmez (oturum silindi); yeniden şifreyle açmak gerekir.
+        gir("mudur");
+        assert_eq!(
+            u.isle(&yon(&b, "GET", "/api/yonetim/yetkiler", "")).kod,
+            401
+        );
+        // PIN oturumu kişiye bağlı değildir: kişi değişse de "PC (PIN)" yazar (giriş anında donmuş ad yok).
+        let p = json_of(&u.isle(&pc("POST", "/api/yonetici/giris", r#"{"pin":"4821"}"#)));
+        let bp = p["belirtec"].as_str().unwrap().to_string();
+        gir("deneme");
+        u.isle(&yon(
+            &bp,
+            "POST",
+            "/api/yonetim/cihaz/PC/yetki",
+            r#"{"yetki":"duzelt","ver":false}"#,
+        ));
+        let log = std::fs::read_to_string(u.dizin.join("eslestirme.jsonl")).unwrap();
+        let son = log
+            .lines()
+            .rev()
+            .find(|l| l.contains(r#""olay":"yetki""#))
+            .unwrap();
+        assert!(
+            son.contains(r#""kim":"PC (PIN)""#) && son.contains(r#""kim_kaynak":"pin""#),
+            "{son}"
+        );
+        let _ = std::fs::remove_dir_all(yon_sahte_dizin("b"));
+    }
+
+    #[test]
+    fn ortak_kullanici_gunluk_adi_cakismaz() {
+        let k = |a: &str| yonetici::OrtakKullanici {
+            kullanici: a.into(),
+            roller: vec![],
+        };
+        assert_eq!(k("mudur").gunluk_adi(), "mudur");
+        assert_eq!(k("PC").gunluk_adi(), "ortak:PC");
+        assert_eq!(k("pc").gunluk_adi(), "ortak:pc");
+        assert_eq!(k("PC (PIN)").gunluk_adi(), "ortak:PC (PIN)");
+        assert_eq!(k("K-1a2b3c4d").gunluk_adi(), "ortak:K-1a2b3c4d");
+        assert_eq!(k("T-001").gunluk_adi(), "ortak:T-001");
+        // Rol adı ayarlanabilir (yonetim-ayar.json yonetici_rolleri); varsayılan "yonetici".
+        let m = yonetici::OrtakKullanici {
+            kullanici: "m".into(),
+            roller: vec!["magaza-muduru".into()],
+        };
+        assert!(!m.yonetici(&["yonetici".to_string()]));
+        assert!(m.yonetici(&["yonetici".to_string(), "magaza-muduru".to_string()]));
+    }
+
+    /// Bulgu (orta): yetkisi kapalı cihaz, basım kaydı olmayan fişin karekodunu düz GET ile sınırsız/günlüksüz alamaz.
+    /// İlk gösterim basım sayılır (günlükte "karekod"), ikincisi 403. Kendi oluşturduğu yeni fişin önizlemesi serbest.
+    /// Fişli kanıttan önce basılmış fiş "verilmiş" sayılır. Yazıcı hatasında basım iptal edilir.
+    #[test]
+    fn yeniden_basim_karekod_ucu_sinirli() {
+        let mut u = uyg();
+        let yazici = u.dizin.join("yazici.bin");
+        std::fs::write(&yazici, b"").unwrap();
+        u.yazici_yolu = Some(yazici.clone());
+        let t = esles(&u);
+        let cid = u.cihazlar().aktifler().unwrap()[0].id.clone();
+        // Telefon fişi oluşturmaz; fişi PC oluşturur. Sonra telefonun yetkisi kapatılır.
+        let no = json_of(&u.isle(&pc("POST", "/api/fis", FIS)))["no"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        u.isle(&pc(
+            "POST",
+            &format!("/api/yonetim/cihaz/{cid}/yetki"),
+            r#"{"yetki":"yeniden-yazdir","ver":false}"#,
+        ));
+        let tel_kk = || {
+            u.isle(&ist(
+                "GET",
+                &format!("/api/fis/{no}/karekod"),
+                Some(&t),
+                "",
+                false,
+            ))
+        };
+        assert_eq!(tel_kk().kod, 200, "ilk gösterim serbest");
+        assert_eq!(tel_kk().kod, 403, "ikinci gösterim: verildi sayıldı");
+        let g = std::fs::read_to_string(u.dizin.join("basim.jsonl")).unwrap();
+        assert!(
+            g.contains(r#""yontem":"karekod""#) && g.contains(&no) && g.contains(&cid),
+            "{g}"
+        );
+        // Önizleme: PC'nin yetkisi kapalı; PC'nin kendi oluşturduğu yeni fişte karekod günlüksüz, birden çok kez.
+        u.isle(&pc(
+            "POST",
+            "/api/yonetim/cihaz/PC/yetki",
+            r#"{"yetki":"yeniden-yazdir","ver":false}"#,
+        ));
+        let no2 = json_of(&u.isle(&pc("POST", "/api/fis", FIS)))["no"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let pc_kk = |n: &str| u.isle(&pc("GET", &format!("/api/fis/{n}/karekod"), ""));
+        assert_eq!(pc_kk(&no2).kod, 200);
+        assert_eq!(pc_kk(&no2).kod, 200);
+        let g = std::fs::read_to_string(u.dizin.join("basim.jsonl")).unwrap();
+        assert!(!g.contains(&no2), "önizleme günlüğe yazılmaz: {g}");
+        // Telefon bu fişi oluşturmadı: önizleme hakkı yok, ilk gösterimi basım sayılır.
+        // Önizleme süresi geçince PC'de de ilk gösterim basım sayılır, ikincisi 403.
+        u.ileri_sn.fetch_add(
+            yeniden_basim::ONIZLEME_SN + 1,
+            std::sync::atomic::Ordering::SeqCst,
+        );
+        assert_eq!(pc_kk(&no2).kod, 200);
+        assert_eq!(pc_kk(&no2).kod, 403);
+        // Yazıcı hatası (yol klasör): yetkisiz ilk basım önce günlüğe yazılır, hata olunca iptal edilir; yeniden denenir.
+        let no3 = json_of(&u.isle(&pc("POST", "/api/fis", FIS)))["no"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        u.yazici_yolu = Some(u.dizin.clone());
+        assert_eq!(
+            u.isle(&pc("POST", &format!("/api/fis/{no3}/yazdir"), "{}"))
+                .kod,
+            502
+        );
+        u.yazici_yolu = Some(yazici);
+        assert_eq!(
+            u.isle(&pc("POST", &format!("/api/fis/{no3}/yazdir"), "{}"))
+                .kod,
+            200
+        );
+        assert_eq!(
+            u.isle(&pc("POST", &format!("/api/fis/{no3}/yazdir"), "{}"))
+                .kod,
+            403
+        );
+        let g = std::fs::read_to_string(u.dizin.join("basim.jsonl")).unwrap();
+        assert!(g.contains("basim_iptal"), "{g}");
+        // Fişli kanıttan önce basılmış fiş (başlangıç yarın): basım kaydı olmasa da verilmiş; yetkisiz 403.
+        let no4 = json_of(&u.isle(&pc("POST", "/api/fis", FIS)))["no"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        std::fs::write(
+            u.dizin.join(eski_fis_gecis::AYAR_DOSYASI),
+            json!({ "fisli_kanit_baslangic": "2999-01-01" }).to_string(),
+        )
+        .unwrap();
+        assert_eq!(
+            u.isle(&ist(
+                "GET",
+                &format!("/api/fis/{no4}/karekod"),
+                Some(&t),
+                "",
+                false
+            ))
+            .kod,
+            403
+        );
+        assert_eq!(
+            u.isle(&pc("POST", &format!("/api/fis/{no4}/yazdir"), "{}"))
+                .kod,
+            403
+        );
+        // Terzihane nüshası (yazıcı ve Windows penceresi ?nusha=1) yetkisiz de serbest; günlükte "terzihane".
+        assert_eq!(
+            u.isle(&pc(
+                "POST",
+                &format!("/api/fis/{no4}/yazdir"),
+                r#"{"nusha":1}"#
+            ))
+            .kod,
+            200
+        );
+        let y = u.isle(&pc("GET", &format!("/api/fis/{no4}/karekod?nusha=1"), ""));
+        assert_eq!(y.kod, 200);
+        let g = std::fs::read_to_string(u.dizin.join("basim.jsonl")).unwrap();
+        assert!(
+            g.lines()
+                .any(|l| l.contains(&no4) && l.contains("terzihane") && l.contains("tarayici")),
+            "{g}"
+        );
+    }
+
+    /// Bulgu (orta): takip ayarlıyken hazır bildirimindeki takip bağlantısı (müşteri nüshasının kanıtı) "yeniden-yazdir"
+    /// yetkisi kapalı cihaza maskeli verilir.
+    #[test]
+    fn bildirim_takip_baglantisi_yetkisize_maskeli() {
+        let u = uyg();
+        let t = esles(&u);
+        let no = json_of(&u.isle(&pc("POST", "/api/fis", FIS)))["no"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        std::fs::write(
+            u.dizin.join("musteri-takip.json"),
+            r#"{"acik":true,"sayfa":"https://takip.example/t"}"#,
+        )
+        .unwrap();
+        let (adres, _) = u.takip_adresleri(&no).unwrap();
+        taa_bildirim::Kuyruk {
+            yol: &u.dizin.join("bildirimler.jsonl"),
+        }
+        .hazir_ekle_takipli(
+            &no,
+            "05321234567",
+            taa_bildirim::VARSAYILAN_SABLON,
+            "2026-11-26",
+            Some(&adres),
+        )
+        .unwrap();
+        let tel =
+            || json_of(&u.isle(&ist("GET", "/api/bildirimler", Some(&t), "", false))).to_string();
+        assert!(
+            tel().contains(&adres),
+            "yetki açık (varsayılan): bağlantı görünür"
+        );
+        let cid = u.cihazlar().aktifler().unwrap()[0].id.clone();
+        u.isle(&pc(
+            "POST",
+            &format!("/api/yonetim/cihaz/{cid}/yetki"),
+            r#"{"yetki":"yeniden-yazdir","ver":false}"#,
+        ));
+        let m = tel();
+        assert!(!m.contains(&adres) && m.contains("gizli"), "{m}");
+        let kod = musteri_takip::takip_kodu(&u.dizin, &no).unwrap();
+        assert!(!m.contains(&kod), "{m}");
     }
 }

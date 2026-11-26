@@ -84,6 +84,21 @@ mod testler {
             assert!(!s.contains("Fişiyle geldi'"));
         }
         assert!(t.contains("kamera:true"));
+        // Koordinatör kararları 2026-11-26: yönetici ortak girişle (PIN yedek), hesap kartında oturumdaki kişi,
+        // Ayarlar > Yönetim'de eski fiş geçiş süresi, yeniden basım yetkisi reddinde yalnız terzihane nüshası.
+        assert!(
+            m.contains("{ortak:true,parola:p}")
+                && m.contains("yon-ortak-parola")
+                && m.contains("o.oturum_kisi")
+                && m.contains("taa-giris-degisti")
+                && m.contains("d.degisti&&yon.acik){kilitle(true)")
+        );
+        assert!(m.contains("'/api/yonetim/ayar'") && m.contains("a-gecis-gun"));
+        assert!(
+            m.contains("/karekod?basim=1") && m.contains("{nusha:1}") && t.contains("{nusha:1}")
+        );
+        // Windows yazdırma penceresinde de yetki reddinde yalnız terzihane nüshası (karekodunda yalnız fiş no).
+        assert!(m.contains("/karekod?nusha=1") && m.contains("x[1].terzihane"));
     }
 
     #[test]

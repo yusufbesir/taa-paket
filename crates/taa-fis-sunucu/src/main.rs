@@ -94,6 +94,12 @@ fn main() {
         }
         Err(e) => eprintln!("Teslim geçişi yapılamadı (defter değişmedi): {e}"),
     }
+    // Fişli kanıtın devreye girdiği gün (eski fiş geçiş süresi bunu esas alır): ilk açılışta bir kez yazılır.
+    if let Err(e) =
+        taa_fis_sunucu::eski_fis_gecis::baslangic_yaz_yoksa(&veri, taa_fis_sunucu::simdi())
+    {
+        eprintln!("Yönetim ayarı (fisli_kanit_baslangic) yazılamadı: {e}");
+    }
     let mut uyg = Uygulama::yeni(veri, arg("--yazici").map(PathBuf::from), taban.clone());
     // Karekod onayı: süresi geçen karekodların bulut kaydı dakikada bir kapattırılır (Vercel Blob'da kendi silme
     // zamanı yok; şifreli kayıt 15 dk + en çok 1 dk içinde silinir, sunucu açık ve internete ulaşıyorsa).
@@ -102,6 +108,18 @@ fn main() {
         std::thread::spawn(move || loop {
             std::thread::sleep(std::time::Duration::from_secs(60));
             temizleyici.calistir();
+        });
+    }
+    // Ortak giriş kullanıcısı (günlüklerdeki "kim"): kişi başka bir TAA programından çıkarsa da en çok
+    // ORTAK_YENILEME_SN içinde fark edilsin diye taa-kimlik arka planda yeniden sorulur (araç yoksa kişi boş kalır).
+    {
+        let ortak = uyg.ortak_tutucu();
+        let bul = uyg.kimlik_bulucu;
+        std::thread::spawn(move || loop {
+            taa_fis_sunucu::yonetici::ortak_yenile(&ortak, bul);
+            std::thread::sleep(std::time::Duration::from_secs(
+                taa_fis_sunucu::yonetici::ORTAK_YENILEME_SN,
+            ));
         });
     }
     uyg.aydinlatma_url = arg("--aydinlatma-url");
@@ -180,6 +198,7 @@ fn main() {
         if r.method() == &tiny_http::Method::Post && yerel && masaustu {
             if let Some(islem) = r.url().strip_prefix("/api/giris/").map(str::to_string) {
                 let bul = uyg.kimlik_bulucu;
+                let ortak = uyg.ortak_tutucu();
                 std::thread::spawn(move || {
                     let y = match taa_fis_sunucu::ortak_giris::yanitla(
                         bul,
@@ -187,7 +206,12 @@ fn main() {
                         &islem,
                         &govde,
                     ) {
-                        Some(v) => (200, v.to_string()),
+                        Some(v) => {
+                            // Oturumdaki kişi bellekte: günlüklerde "PC" yerine bu kullanıcı yazılır; kişi değişince
+                            // ortak girişle açılmış yönetici oturumu bir sonraki istekte geçersizdir.
+                            taa_fis_sunucu::yonetici::ortak_tutucu_guncelle(&ortak, &islem, &v);
+                            (200, v.to_string())
+                        }
                         None => (404, r#"{"hata":"bulunamadı"}"#.to_string()),
                     };
                     let mut cevap = tiny_http::Response::from_string(y.1).with_status_code(y.0);

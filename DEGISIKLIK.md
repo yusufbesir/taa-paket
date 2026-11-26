@@ -6,6 +6,46 @@
 
 ## Yayınlanmamış
 
+### Terzi Takip: yönetici ortak girişle, eski fiş geçiş süresi, yeniden basım yetkisi (koordinatör kararları 2026-11-26)
+
+- **Yönetici girişi ortak giriş kişisiyle:** `POST /api/yonetici/giris {ortak:true, parola}` taa-kimlik oturumundaki
+  kullanıcı yönetici rolündeyse (`yonetim-ayar.json` `yonetici_rolleri`, varsayılan `yonetici`) o kişinin şifresini
+  ortak girişin `giris` akışıyla yeniden doğrular ve oturumu o kişiyle açar (409 `ortak_oturum_yok`, 403
+  `yonetici_degil`, 400 `parola_gerekli`, 401 `parola_hatali` + günlükte `yonetici_giris_red`). Ortak girişte bu kişi
+  çıkınca ya da başka biri girince oturum geçersizdir (sunucu her istekte denetler; masaüstü `taa-giris-degisti`
+  olayında kişi değiştiyse kilitler). PIN yolu geri uyum için durur (günlükte yalnız "PC (PIN)"). Masaüstü PIN ekranında
+  şifre kutusu + "Şifreyle doğrula ve aç". Günlüklerde (teslim denetim, teslim sepeti, basım, yönetim: `yetki`, `kisi_yetki`, `ayar`, yeni
+  `yonetici_giris`), düzeltme ve teslim kaydındaki `kim`'de "PC"/"Mağaza PC" yerine oturumdaki kişi (yönetici oturumu,
+  yoksa ortak giriş kullanıcısı); tutanak ve Telegram hesap işlemlerinde yönetici adı sunucudan. `/api/oturum`
+  `oturum_kisi`, `/api/yonetici/durum` `kim`/`kaynak`/`ortak` döndürür; hesap kartı oturumdaki kişiyi gösterir
+  (`taa-giris-baslat.js` giriş/çıkışta `taa-giris-degisti` olayı yayar). `ortak_giris.rs` v1.1: `oturum()` eklendi.
+- **Eski fiş geçiş süresi** (`eski_fis_gecis.rs`): yönetici ayarı (gün, varsayılan 0 = kapalı, en çok 90; Ayarlar >
+  Yönetim; `GET/POST /api/yonetim/ayar`). Açıkken `fisli_kanit_baslangic`'tan (ilk açılışta `yonetim-ayar.json`'a bir kez
+  yazılır) önce basılmış fişlerde kanıtsız personel karekodu / elle no fişli sayılır; süre bitince kendiliğinden kapanır;
+  her kullanım `teslim-sepet.jsonl`'da `eski_fis_gecisi`.
+- **Yeniden basım yetkisi** (`yeniden_basim.rs`): yeni cihaz yetkisi `yeniden-yazdir` (varsayılan her yerde açık).
+  Kapalıyken müşteri nüshasının yeniden basımı ve müşteri karekodunun yeniden gösterimi 403 `yetki_yok`; terzihane
+  nüshası serbest; Windows yazdırma penceresi için `GET /api/fis/<no>/karekod?basim=1`. Her basım/yeniden basım/ret
+  `basim.jsonl`'da (kim, fiş no, zaman). Arayüz (masaüstü, telefon) reddedilince yalnız terzihane nüshasını önerir.
+- **İnceleme düzeltmeleri (aynı gün):** (1) ortak girişle açılan yönetici oturumu devralınamaz (kişi değişince 401,
+  günlükte yeni kişi); main.rs'deki ortak giriş iş parçacığı da bellekteki kişiyi günceller ve kişi 45 sn'de bir
+  taa-kimlik'ten yeniden sorulur. (2) Ortak girişle yönetici açmak şifre ister. (3) Yeniden basım: yetkisi kapalı
+  cihazda karekod ucunun her gösterimi basım sayılır (kendi yeni fişinin 10 dk önizlemesi hariç); kanıt öncesi fişler
+  "verilmiş" sayılır; yetkisiz ilk basım önce günlüğe yazılır (yazıcı hatasında `basim_iptal`); yetkili basımda günlük
+  yazılamazsa fiş bellekte "verildi" işaretlenir. (4) `GET /api/bildirimler` takip bağlantısını yetkisi kapalı cihaza
+  maskeli verir. (5) Geçiş günlüğü teslim kaydından hemen önce, `kim` ile (teslim-al dahil) yazılır; yazılamazsa
+  teslim yapılmaz. (6) `yonetim-ayar.json` bozuksa başlangıç yeniden yazılmaz (geçiş kapalı), silinirse yönetim
+  günlüğündeki `fisli_kanit_baslangic` kaydından geri alınır; teslim sepeti günlüğü daha eskiyse başlangıç o gün;
+  toplam geçiş başlangıçtan en çok 180 gün; aynı gün fiş no sayısal karşılaştırılır. (7) Günlükte çakışan ortak
+  kullanıcı adları `ortak:` önekli, yönetim satırlarında ayrı `kim_kaynak` alanı. (8) Windows yazdırma penceresinde
+  yetki reddinde yalnız terzihane nüshası (`GET /api/fis/<no>/karekod?nusha=1`, karekodunda yalnız fiş no).
+- Testler: `taa-fis-sunucu` +5 (`yonetici_girisi_ortak_giris_kisisiyle_ve_pin_yedegi`, `yeniden_basim_yetkisi`,
+  `eski_fis_gecis_suresi`, `eski_fis_ve_sure_kendiliginden_kapanir`, `baslangic_bir_kez_yazilir`; sayfa testine yeni
+  dizgiler); inceleme düzeltmeleriyle +7 (`ortak_giris_yonetici_oturumu_kisi_degisince_kapanir`,
+  `ortak_kullanici_gunluk_adi_cakismaz`, `yeniden_basim_karekod_ucu_sinirli`, `bildirim_takip_baglantisi_yetkisize_maskeli`,
+  `eski_fis_gecisi_gunlugu_baglayici`, `baslangic_sepet_gunlugunden`, `fis_no_sayisal_ve_mutlak_son`). **Sınır:** arayüz gerçek tarayıcıda elle denenmedi (sözdizimi ve sayfa testleri geçti); ortak giriş sahte
+  taa-kimlik betiğiyle sınandı (gerçek TAA Çatı rol adı `yonetici` varsayıldı).
+
 ### Terzi Takip: teslim sepeti (tek karekodla zincir, çok fiş tek teslimat; Yusuf 2026-11-26 06:25)
 
 - **Yeni:** teslim penceresi (masaüstü ve telefon) teslim sepetidir. Bağlı fişlerden birinin karekodu okutulunca bütün bağlı
