@@ -18,6 +18,7 @@ pub mod sayfalar;
 mod teslim_al;
 pub mod teslim_gecis;
 pub mod teslim_onay;
+mod teslim_sepet;
 pub mod teslim_sifre;
 mod teslim_yetki;
 mod yonetici;
@@ -276,12 +277,10 @@ impl Uygulama {
     pub fn isle(&self, i: &Istek) -> Yanit {
         let foto = i.metot == "POST" && i.yol.split('?').next().unwrap_or("").ends_with("/foto");
         // Teslim alma ucunda imza PNG'si base64 gelir: sınır daha geniş (bkz. teslim_al.rs).
-        let teslim_al_ucu = i.metot == "POST"
-            && i.yol
-                .split('?')
-                .next()
-                .unwrap_or("")
-                .ends_with("/teslim-al");
+        let teslim_al_ucu = i.metot == "POST" && {
+            let y = i.yol.split('?').next().unwrap_or("");
+            y.ends_with("/teslim-al") || y.trim_end_matches('/') == "/api/teslim/sepet"
+        };
         let sinir = if foto {
             FOTO_SINIRI
         } else if teslim_al_ucu {
@@ -1260,6 +1259,13 @@ impl Uygulama {
                 }
             }
             ("POST", ["api", "fis", no, "teslim-al"]) => self.teslim_al(&d, no, &cihaz, i),
+            ("POST", ["api", "teslim", "karekod-coz"]) => self.karekod_coz(&d, i),
+            ("POST", ["api", "teslim", "sepet"]) => self.teslim_sepet(&d, &cihaz, i),
+            ("POST", ["api", "teslim", "sepet", "denetle"]) => self.sepet_denetle(&d, &cihaz, i),
+            ("POST", ["api", "teslim", "sepet", "onay-ac"]) => self.sepet_onay_ac(&d, &cihaz, i),
+            ("POST", ["api", "teslim", "sepet", "onay-durum"]) => {
+                self.sepet_onay_durum(&d, &cihaz, i)
+            }
             ("POST", ["api", "fis", no, "teslim-qr"]) => self.teslim_qr_ac(&d, no, &cihaz, i),
             ("GET", ["api", "fis", no, "teslim-qr", t]) => self.teslim_qr_durum(&d, no, t, &cihaz),
             ("GET", ["api", "fis", no, "imza"]) => self.teslim_imzasi(&d, no, &cihaz, i),
@@ -3118,7 +3124,10 @@ mod testler {
         ));
         assert_eq!(y.kod, 409);
         assert_eq!(json_of(&y)["hata"], "teslim_al_gerekli");
-        let teslim = r#""fisli":true,"teslim_alan":"Deneme Müşteri","iliski":"kendisi""#;
+        let teslim = format!(
+            r#""fisli":true,"fis_karekodu":"{}","teslim_alan":"Deneme Müşteri","iliski":"kendisi""#,
+            u.fis_karekod_adresi(&a)
+        );
         let y = u.isle(&pc(
             "POST",
             &format!("/api/fis/{a}/teslim-al"),
@@ -3132,11 +3141,20 @@ mod testler {
             &format!("/api/fis/{a}/teslim-al"),
             &format!(r#"{{{teslim},"bagli":["{b}"]}}"#),
         ));
+        // Bağlı fiş B'nin karekodu okutulmadı: fişsizdir (teslim sepeti D kararı), imza ve son 4 ister.
+        assert_eq!(y.kod, 422, "{}", String::from_utf8_lossy(&y.govde));
+        assert_eq!(json_of(&y)["hata"], "imza_gerekli");
+        let imza = crate::teslim_al::testler::imza_b64();
+        let y = u.isle(&pc(
+            "POST",
+            &format!("/api/fis/{a}/teslim-al"),
+            &format!(
+                r#"{{{teslim},"bagli":["{b}"],"imza_png_base64":"{imza}","telefon_son4":"4567"}}"#
+            ),
+        ));
         assert_eq!(y.kod, 200, "{}", String::from_utf8_lossy(&y.govde));
-        assert_eq!(
-            json_of(&u.isle(&pc("GET", &format!("/api/fis/{b}"), "")))["durum"],
-            "teslim"
-        );
+        let fb = json_of(&u.isle(&pc("GET", &format!("/api/fis/{b}"), "")));
+        assert_eq!(fb["durum"], "teslim");
         // personel ad soyad birlikte
         assert_eq!(
             u.isle(&pc(

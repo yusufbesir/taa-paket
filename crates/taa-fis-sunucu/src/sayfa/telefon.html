@@ -452,6 +452,10 @@ html[data-tema="keten"] .rozet{border-radius:8px}
       <button class="dugme sonraki" id="elle-ac">Fişi aç</button>
       <div class="mesaj hata" id="okut-mesaj" role="status" hidden></div>
     </div>
+    <div class="kart duz yigin">
+      <button class="dugme genis" id="sepet-ac" type="button">Teslim sepeti: birden çok fişi tek seferde teslim et</button>
+      <p class="mut kucuk">Sepette fişleri sırayla kamerayla okutun ya da numarasını yazın; bağlı fişler kendiliğinden gelir. Müşteri nüshasının karekodu okutulan fiş fişli, numarası yazılan fiş fişsiz sayılır (fişsizde telefon son 4 + imza ve fişsiz teslim yetkisi gerekir).</p>
+    </div>
   </section>
 
   <!-- AYARLAR -->
@@ -761,23 +765,30 @@ html[data-tema="keten"] .rozet{border-radius:8px}
         bildir('Durum değişmedi: '+TKD.hataIleti(e))})}
 
   // B2: fişsiz teslim ve imza buraya bağlanır
-  /* Teslim akışının tamamı (ortak.js TKD.teslimSor): kutuda "Fişiyle geldi" / "Fişi yok"; varsayılan "Karekodla onay"
+  /* Teslim akışının tamamı (ortak.js TKD.teslimSor = teslim sepeti). Eski tek fiş kutusundaki "Fişiyle geldi" seçeneği
+     KALDIRILDI (fişli = fiş karekodu okutuldu). Önceki açıklama: varsayılan "Karekodla onay"
      (müşteri kendi telefonuyla okutur; /teslim-qr), yedek "Telefonu yok: ekranda imza". Fişsizde son 4 hane ve İMZA ZORUNLU: müşteri karekod sayfasında kendi telefonunda parmakla imzalar, imza gelmezse
      ya da karekod yoksa bu telefonun dokunmatik ekranındaki tam genişlik imza alanı zorunlu (telefonda varsayılan olarak "fissiz-teslim" yetkisi yok, seçenek kapalı ve
      nedeni yazılı), fişlide isteğe bağlı imza. İstek /teslim-al ucuna gider. Bağlı açık fiş varsa 409 {soru:"bagli_teslim"}
      gelir; TKD.bagliSor kutusu açılır ve aynı istek "bagli" listesiyle yeniden gönderilir.
      Teslim kaydı kalıcı olduğu için 6 sn'lik geri alma beklemesi teslimde yoktur; kutunun kendisi onaydır.
      Sunucu /durum ile teslimi reddeder (409 teslim_al_gerekli). Fiş artık hazır değilse kutu açılmaz. */
+  /* Teslim SEPETİ (2026-11-26, ortak.js TKD.teslimSor): fiş ve bağlı fişleri sepete gelir; başka fişler kamerayla
+     (Android uygulamasında yerel okuyucu, yoksa BarcodeDetector) ya da numarayla eklenir; hepsi tek teslimatta teslim
+     edilir. Fiş bu telefonda karekodla açıldıysa okunan metin "fişli" kanıtı olarak gider (sunucu doğrular).
+     no boşsa sepet boş açılır (Kod okut ekranındaki "Teslim sepeti"). */
   function teslimAkisi(no){
-    var f=bul(no)||(FIS&&FIS.no===no?FIS:null);if(!f||f.durum!=='hazir')return Promise.resolve();
-    function yenile(){fislerYukle().catch(function(){});if(EKRAN==='fis'&&ACIK_NO===no)fisAc(no)}
+    var f=no?(bul(no)||(FIS&&FIS.no===no?FIS:null)):null;if(no&&(!f||f.durum!=='hazir'))return Promise.resolve();
+    function yenile(){fislerYukle().catch(function(){});if(no&&EKRAN==='fis'&&ACIK_NO===no)fisAc(no)}
     bekleyeniGonder();
     // Oturum (yetkiler) henüz gelmediyse önce okunur.
     return (OTURUM?Promise.resolve():oturumYukle().catch(function(){})).then(function(){
-      return TKD.teslimSor({fis:f,oturum:OTURUM,api:function(m,y,g){return api(m,y,g)}})}).then(function(r){
-      if(!r){bildir('Teslim edilmedi: '+noKisa(no));return}
-      var bt=r.birlikte_teslim||[],tk=r.teslim_kaydi||{};
-      bildir('Teslim: '+noKisa(no)+(bt.length?' + '+bt.map(noKisa).join(', '):'')+(tk.fisli===false?' · fişsiz':'')+(tk.dogrulama&&tk.dogrulama.indexOf('qr')===0?' · karekod onaylı':''));
+      return TKD.teslimSor({fis:f||{},karekod:no?OKUTMA[no]:'',oturum:OTURUM,api:function(m,y,g){return api(m,y,g)},
+        kamera:true,yerelOku:YEREL?function(cb){yerelOku(cb)}:null})}).then(function(r){
+      if(!r){if(no)bildir('Teslim edilmedi: '+noKisa(no));yenile();return}
+      var l=(r.fisler||[]).map(function(x){return x.no}),tk=r.teslim_kaydi||{};
+      l.forEach(function(n){delete OKUTMA[n]});
+      bildir('Teslim: '+l.map(noKisa).join(', ')+(r.teslim_id?' · '+r.teslim_id:'')+(tk.fisli===false?' · fişsiz fiş var':'')+(tk.dogrulama&&tk.dogrulama.indexOf('qr')===0?' · karekod onaylı':''));
       yenile()})}
   /* Fiş sayfasında teslim kaydı: varsayılan maskeli. Açık hâl (GET /api/fis/<no>/teslim-acik) ve imza görüntüsü
      (GET /api/fis/<no>/imza) yalnız "teslim-acik" yetkili telefonda (yönetici / mağaza müdürü ya da yöneticinin yetki
@@ -876,6 +887,12 @@ html[data-tema="keten"] .rozet{border-radius:8px}
     if(!k){m.hidden=false;m.textContent='Bu bir eşleştirme karekodu değil.';return}
     m.hidden=true;$('#e-kod').value=k;$('#e-ad').focus()})})}
   var akis=null, tarayici=null, taraZaman=0;
+  /* Okunan karekod metni (teslim sepetinde "fişli" kanıtı; sunucu doğrular). Müşteri nüshasındaki takip karekodu
+     ("…/t/<kod>") sunucuda fişe çözülür. */
+  var OKUTMA={}, TAKIP_DESENI=/\/t\/[a-z2-9]{16}(?:[?#\/]|$)/;
+  function kodAc(ham){ham=String(ham||'').trim();
+    if(TAKIP_DESENI.test(ham)){api('POST','/api/teslim/karekod-coz',{metin:ham}).then(function(r){OKUTMA[r.no]=ham;fisAc(r.no)},function(){bildir('Bu karekod bu şubedeki bir fişe ait değil')});return}
+    var no=noCoz(ham);if(no&&/#fis=/.test(ham))OKUTMA[no]=ham;fisAc(no)}
   function noCoz(ham){ham=String(ham||'').trim();var m=ham.match(/#fis=([^&\s]+)/);if(m)return decodeURIComponent(m[1]);
     m=ham.match(/F.?(\d{8}).?(\d{3})/i);if(m)return 'F-'+m[1]+'-'+m[2];
     if(/^\d{1,3}$/.test(ham)){var bugun='F-'+BUGUN.replace(/-/g,'')+'-'+('00'+ham).slice(-3);return bugun}
@@ -888,7 +905,7 @@ html[data-tema="keten"] .rozet{border-radius:8px}
     $('#kamera-not').textContent=var_?'Karekodu çerçevenin içine tutun.':'Bu tarayıcı kamerayla karekod okuyamıyor; fiş numarasını elle yazın.';
     if(var_)kameraAc()}
   function kameraAc(){
-    if(YEREL){yerelOku(function(ham){if(EKRAN==='okut')fisAc(noCoz(ham))});return}
+    if(YEREL){yerelOku(function(ham){if(EKRAN==='okut')kodAc(ham)});return}
     if(akis)return;
     try{tarayici=tarayici||new window.BarcodeDetector({formats:['qr_code']})}catch(e){$('#kamera-ac').hidden=true;$('#kamera-not').textContent='Kamera okuyucu kullanılamıyor; fiş numarasını elle yazın.';return}
     navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false}).then(function(s){
@@ -898,11 +915,12 @@ html[data-tema="keten"] .rozet{border-radius:8px}
   function tara(){if(!akis)return;var v=$('#video');
     var sonra=function(){taraZaman=setTimeout(tara,250)};
     if(v.readyState<2){sonra();return}
-    tarayici.detect(v).then(function(k){if(k&&k.length){var no=noCoz(k[0].rawValue);kameraKapat();if(navigator.vibrate)try{navigator.vibrate(60)}catch(e){}fisAc(no)}else sonra()},sonra)}
+    tarayici.detect(v).then(function(k){if(k&&k.length){var ham=k[0].rawValue;kameraKapat();if(navigator.vibrate)try{navigator.vibrate(60)}catch(e){}kodAc(ham)}else sonra()},sonra)}
   function kameraKapat(){clearTimeout(taraZaman);if(akis){akis.getTracks().forEach(function(t){t.stop()});akis=null}var v=$('#video');if(v)v.srcObject=null;$('#kamera').hidden=true}
   $('#kamera-ac').addEventListener('click',kameraAc);
   function elleAc(){var no=noCoz($('#elle').value);if(!no){var m=$('#okut-mesaj');m.hidden=false;m.textContent='Fiş numarasını yazın.';return}$('#elle').value='';fisAc(no)}
   $('#elle-ac').addEventListener('click',elleAc);
+  $('#sepet-ac').addEventListener('click',function(){kameraKapat();teslimAkisi('')});
   $('#elle').addEventListener('keydown',function(e){if(e.key==='Enter')elleAc()});
 
   /* ---------- ayarlar ---------- */
@@ -937,7 +955,10 @@ html[data-tema="keten"] .rozet{border-radius:8px}
     document.body.appendChild(b);bilZaman=setTimeout(function(){b.remove()},sure||3500)}
 
   /* ---------- başlat ---------- */
-  function hashAc(){var m=location.hash.match(/^#fis=(.+)$/);if(m&&tok){fisAc(decodeURIComponent(m[1]));return true}return false}
+  /* Fiş karekodu telefonun kendi kamerasıyla açıldıysa adres "#fis=<no>&k=<kanıt>" olur: k varsa okunan metin
+     "fişli" kanıtı olarak saklanır (sunucu doğrular); k'siz adres (eski fiş, elle yazılmış) fişsizdir. */
+  function hashAc(){var m=location.hash.match(/^#fis=([^&]+)/);if(m&&tok){var no=decodeURIComponent(m[1]);
+    if(/[#&]k=/.test(location.hash))OKUTMA[no]=location.href;fisAc(no);return true}return false}
   function baslat(){
     $('#alt').hidden=!tok;
     if(!tok){var k=(location.search.match(/[?&]kod=(\d{6})/)||[])[1];if(k)$('#e-kod').value=k;git('esles');if(k)$('#e-ad').focus();return}

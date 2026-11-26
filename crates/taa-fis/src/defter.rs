@@ -631,88 +631,56 @@ impl Defter<'_> {
     pub fn teslim_et(&self, no: &str, kayit: TeslimKaydi) -> Result<(), String> {
         kapali()?;
         let f = self.bul(no)?.ok_or_else(|| format!("fiş yok: {no}"))?;
-        if f.durum != Durum::Hazir {
-            return Err("yalnız hazır fiş teslim edilir".into());
-        }
-        if f.teslim_kaydi.is_some() {
-            return Err("bu fişin teslim kaydı zaten var".into());
-        }
-        match &kayit.sifreli {
-            // Şifreli kayıt: ad yalnız şifreli alanda olur, düz metin ad yazılmaz.
-            Some(s) => {
-                if !kayit.teslim_alan.trim().is_empty() {
-                    return Err("şifreli teslim kaydında düz metin ad olamaz".into());
-                }
-                if !s.gecerli() {
-                    return Err("şifreli teslim bilgisi bozuk".into());
-                }
-                if iliski_adi(&kayit.iliski).is_none() {
-                    return Err("ilişki: kendisi, yakini ya da diger olmalı".into());
-                }
-            }
-            None => teslim_alan_denetle(&kayit.teslim_alan, &kayit.iliski)?,
-        }
-        match (kayit.fisli, kayit.dogrulama.as_str()) {
-            (true, "fis" | "qr") | (false, "telefon-son4" | "qr+telefon-son4") => {}
-            (true, _) => return Err("fişli teslimde doğrulama \"fis\" ya da \"qr\" olmalı".into()),
-            (false, _) => {
-                return Err(
-                    "fişsiz teslimde doğrulama \"telefon-son4\" ya da \"qr+telefon-son4\" olmalı"
-                        .into(),
-                )
-            }
-        }
-        if kayit.qr_onayli() && kayit.sifreli.is_none() {
-            return Err("karekod onaylı teslimde şifreli teslim bilgisi zorunlu".into());
-        }
-        let ozet_gecerli = |o: &str| {
-            o.len() == 64
-                && o.bytes()
-                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-        };
-        if kayit.imza_sha256.is_empty() {
-            // Fişsiz teslimde imza ZORUNLU (Yusuf 2026-11-26: "fişi yanında olmayan için" telefondan ya da
-            // ekrandan dokunmatik imza). Karekod onayı tek başına yetmez: müşteri imzayı karekod sayfasında
-            // (qr_imza) ya da mağaza cihazının ekranında (cihaz_imza) atar.
-            if !kayit.fisli {
-                return Err("fişsiz teslimde teslim alanın imzası zorunlu".into());
-            }
-            if !kayit.imza_dosyasi.is_empty() || !kayit.imza_yontemi.is_empty() {
-                return Err("imza dosyası/yöntemi var ama özeti yok".into());
-            }
-        } else {
-            if !ozet_gecerli(&kayit.imza_sha256) || kayit.imza_dosyasi.trim().is_empty() {
-                return Err("imza özeti (sha-256) ya da dosyası geçersiz".into());
-            }
-            if !IMZA_YONTEMLERI.contains(&kayit.imza_yontemi.as_str()) {
-                return Err("imza yöntemi \"qr_imza\" ya da \"cihaz_imza\" olmalı".into());
-            }
-            if kayit.imza_yontemi == "qr_imza" && !kayit.qr_onayli() {
-                return Err("karekod imzası yalnız karekod onaylı teslimde olur".into());
-            }
-        }
-        if kayit.kim.trim().is_empty() {
-            return Err("teslimi yapan cihaz/kişi boş olamaz".into());
-        }
-        if kayit.ana_fis == no {
-            return Err("ana fiş, fişin kendisi olamaz".into());
-        }
-        if !tarih_gecerli(&kayit.tarih) {
-            return Err("tarih YYYY-AA-GG olmalı".into());
-        }
-        let kayit = TeslimKaydi {
-            teslim_alan: kayit
-                .teslim_alan
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" "),
-            kim: kayit.kim.trim().into(),
-            ..kayit
-        };
+        let kayit = teslim_kaydi_denetle(&f, no, kayit)?;
         self.yaz(&Kayit::TeslimKaydi {
             no: no.into(),
             kayit,
         })
+    }
+
+    /// Birden çok fişi TEK teslimatta teslim eder (teslim sepeti, Yusuf 2026-11-26: "birden fazla karekod da tek
+    /// teslimatta yapılabilsin"). Ya hepsi ya hiçbiri: önce bütün kayıtlar `teslim_et` kurallarıyla denetlenir
+    /// (fiş var, hazır, teslim kaydı yok, aynı fiş iki kez yok, `teslim_id` hepsinde aynı ve dolu); biri bile
+    /// geçmezse HİÇBİR satır yazılmaz. Sonra bütün satırlar tek yazımla eklenir (`taa_dosya::satirlar_ekle`):
+    /// araya başka isteğin satırı girmez. Yazım G/Ç hatası verirse çağıran tutarlı hata döndürür ve günlüğe yazar
+    /// (defter yalnız eklemeli olduğu için "geri alma" satırı yoktur; tek yazım yarım kalma olasılığını en aza indirir).
+    pub fn teslim_et_toplu(&self, kayitlar: Vec<(String, TeslimKaydi)>) -> Result<(), String> {
+        kapali()?;
+        if kayitlar.is_empty() {
+            return Err("teslim edilecek fiş yok".into());
+        }
+        let teslim_id = kayitlar[0].1.teslim_id.clone();
+        if teslim_id.is_empty() {
+            return Err("toplu teslimde teslim_id zorunlu".into());
+        }
+        let mut gorulen: Vec<&str> = Vec::new();
+        for (no, k) in &kayitlar {
+            if gorulen.contains(&no.as_str()) {
+                return Err(format!("aynı fiş iki kez teslim edilemez: {no}"));
+            }
+            gorulen.push(no);
+            if k.teslim_id != teslim_id {
+                return Err("toplu teslimde bütün kayıtların teslim_id'si aynı olmalı".into());
+            }
+        }
+        let fisler = self.fisler()?;
+        let mut satirlar = Vec::with_capacity(kayitlar.len());
+        for (no, k) in kayitlar {
+            let f = fisler
+                .iter()
+                .find(|f| f.no == no)
+                .ok_or_else(|| format!("fiş yok: {no}"))?;
+            let k = teslim_kaydi_denetle(f, &no, k).map_err(|e| format!("{no}: {e}"))?;
+            satirlar.push(
+                serde_json::to_string(&Kayit::TeslimKaydi { no, kayit: k })
+                    .map_err(|e| e.to_string())?,
+            );
+        }
+        #[cfg(test)]
+        if TOPLU_YAZIM_HATASI.with(|h| h.get()) {
+            return Err("deneme: yazım hatası".into());
+        }
+        taa_dosya::satirlar_ekle(self.yol, &satirlar).map_err(|e| e.to_string())
     }
 
     /// Bir kezlik geçiş için teslim kayıtlarını yeniden yazar (ör. eski düz metin teslim bilgisini şifreli biçime
@@ -968,4 +936,116 @@ impl Defter<'_> {
             })
             .collect())
     }
+}
+
+/// Teslim kaydı kuralları (tek ve toplu teslim aynı denetimi kullanır); geçerse kaydın düzeltilmiş hâlini döndürür.
+pub(crate) fn teslim_kaydi_denetle(
+    f: &Fis,
+    no: &str,
+    kayit: TeslimKaydi,
+) -> Result<TeslimKaydi, String> {
+    {
+        if f.durum != Durum::Hazir {
+            return Err("yalnız hazır fiş teslim edilir".into());
+        }
+        if f.teslim_kaydi.is_some() {
+            return Err("bu fişin teslim kaydı zaten var".into());
+        }
+        match &kayit.sifreli {
+            // Şifreli kayıt: ad yalnız şifreli alanda olur, düz metin ad yazılmaz.
+            Some(s) => {
+                if !kayit.teslim_alan.trim().is_empty() {
+                    return Err("şifreli teslim kaydında düz metin ad olamaz".into());
+                }
+                if !s.gecerli() {
+                    return Err("şifreli teslim bilgisi bozuk".into());
+                }
+                if iliski_adi(&kayit.iliski).is_none() {
+                    return Err("ilişki: kendisi, yakini ya da diger olmalı".into());
+                }
+            }
+            None => teslim_alan_denetle(&kayit.teslim_alan, &kayit.iliski)?,
+        }
+        match (kayit.fisli, kayit.dogrulama.as_str()) {
+            (true, "fis" | "qr") | (false, "telefon-son4" | "qr+telefon-son4") => {}
+            (true, _) => return Err("fişli teslimde doğrulama \"fis\" ya da \"qr\" olmalı".into()),
+            (false, _) => {
+                return Err(
+                    "fişsiz teslimde doğrulama \"telefon-son4\" ya da \"qr+telefon-son4\" olmalı"
+                        .into(),
+                )
+            }
+        }
+        if kayit.qr_onayli() && kayit.sifreli.is_none() {
+            return Err("karekod onaylı teslimde şifreli teslim bilgisi zorunlu".into());
+        }
+        let ozet_gecerli = |o: &str| {
+            o.len() == 64
+                && o.bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        };
+        if kayit.imza_sha256.is_empty() {
+            // Fişsiz teslimde imza ZORUNLU (Yusuf 2026-11-26: "fişi yanında olmayan için" telefondan ya da
+            // ekrandan dokunmatik imza). Karekod onayı tek başına yetmez: müşteri imzayı karekod sayfasında
+            // (qr_imza) ya da mağaza cihazının ekranında (cihaz_imza) atar.
+            if !kayit.fisli {
+                return Err("fişsiz teslimde teslim alanın imzası zorunlu".into());
+            }
+            if !kayit.imza_dosyasi.is_empty() || !kayit.imza_yontemi.is_empty() {
+                return Err("imza dosyası/yöntemi var ama özeti yok".into());
+            }
+        } else {
+            if !ozet_gecerli(&kayit.imza_sha256) || kayit.imza_dosyasi.trim().is_empty() {
+                return Err("imza özeti (sha-256) ya da dosyası geçersiz".into());
+            }
+            if !IMZA_YONTEMLERI.contains(&kayit.imza_yontemi.as_str()) {
+                return Err("imza yöntemi \"qr_imza\" ya da \"cihaz_imza\" olmalı".into());
+            }
+            if kayit.imza_yontemi == "qr_imza" && !kayit.qr_onayli() {
+                return Err("karekod imzası yalnız karekod onaylı teslimde olur".into());
+            }
+        }
+        if kayit.kim.trim().is_empty() {
+            return Err("teslimi yapan cihaz/kişi boş olamaz".into());
+        }
+        if kayit.ana_fis == no {
+            return Err("ana fiş, fişin kendisi olamaz".into());
+        }
+        if !tarih_gecerli(&kayit.tarih) {
+            return Err("tarih YYYY-AA-GG olmalı".into());
+        }
+        if !kayit.teslim_id.is_empty() && !teslim_id_gecerli(&kayit.teslim_id) {
+            return Err("teslim_id biçimi T-YYYYAAGG-XXXXXX olmalı".into());
+        }
+        Ok(TeslimKaydi {
+            teslim_alan: kayit
+                .teslim_alan
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" "),
+            kim: kayit.kim.trim().into(),
+            ..kayit
+        })
+    }
+}
+
+/// Teslim kimliği biçimi: "T-" + 8 rakam (tarih) + "-" + 4..8 büyük harf/rakam.
+pub fn teslim_id_gecerli(t: &str) -> bool {
+    let Some(r) = t.strip_prefix("T-") else {
+        return false;
+    };
+    let Some((g, k)) = r.split_once('-') else {
+        return false;
+    };
+    g.len() == 8
+        && g.bytes().all(|b| b.is_ascii_digit())
+        && (4..=8).contains(&k.len())
+        && k.bytes()
+            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Test: toplu teslimde doğrulamadan sonra yazım hatası benzetimi (yalnız bu iş parçacığında).
+    pub static TOPLU_YAZIM_HATASI: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }

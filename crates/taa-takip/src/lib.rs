@@ -370,6 +370,7 @@ mod testler {
                 saat: "10:00:00".into(),
                 ana_fis: String::new(),
                 sifreli: None,
+                teslim_id: String::new(),
                 gorunen: None,
             },
         )

@@ -119,7 +119,7 @@ await t_("geçerli onay: teşekkür sayfası, kayıtta düz metin yok", async ()
   const k = JSON.parse(ham);
   assert.deepEqual(Object.keys(k).sort(), ["c", "durum", "e", "iv", "n", "s", "sil", "t"]);
   assert.equal(k.durum, "onaylandi"); assert.match(k.e, /^[0-9a-f]{64}$/); assert.match(k.iv, /^[0-9a-f]{24}$/);
-  for (const duz of ["Ayşe", "Deneme", "555", "Mozilla", "Android", "203.0.113", "198.51"]) assert(!ham.includes(duz), "düz metin: " + duz);
+  for (const duz of ["Ayşe", "Deneme", "5550000001", "Mozilla", "Android", "203.0.113", "198.51"]) assert(!ham.includes(duz), "düz metin: " + duz);
 });
 let ilkC;
 await t_("oku + node:crypto ile çözme: düz metin birebir", async () => {

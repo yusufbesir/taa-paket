@@ -8,9 +8,18 @@ use std::collections::BTreeMap;
 const BAGLI_SN: u64 = 120;
 
 impl Uygulama {
-    /// Fiş karekodunun içeriği: telefon sayfasında fişi açan adres.
+    /// Fiş karekodunun içeriği: telefon sayfasında fişi açan adres. `&k=` gizli anahtarlı kanıttır (bkz.
+    /// `musteri_takip::fis_kaniti`): teslim sepetinde karekodun gerçekten okutulduğunu gösterir; anahtar
+    /// okunamazsa k'siz basılır (o fiş karekodla okutulsa da fişsiz sayılır).
     pub(crate) fn fis_karekod_adresi(&self, no: &str) -> String {
-        format!("{}/telefon#fis={no}", self.taban_url.trim_end_matches('/'))
+        let taban = self.taban_url.trim_end_matches('/');
+        match musteri_takip::fis_kaniti(&self.dizin, no) {
+            Ok(k) => format!("{taban}/telefon#fis={no}&k={k}"),
+            Err(e) => {
+                eprintln!("Fiş karekodu kanıtı üretilemedi ({no}): {e}");
+                format!("{taban}/telefon#fis={no}")
+            }
+        }
     }
 
     /// GET /api/oturum: giriş türü (pc | tel | kullanici) ve kişisel telefonda kişi.

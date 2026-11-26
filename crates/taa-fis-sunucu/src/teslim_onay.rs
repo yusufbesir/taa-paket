@@ -44,6 +44,8 @@ pub const BELIRTEC_UZUNLUGU: usize = 20;
 pub const ONAY_OMRU_SN: u64 = 15 * 60;
 /// Bir fişe aynı anda en çok bu kadar geçerli karekod.
 const FIS_BASINA_EN_COK: usize = 5;
+/// Karekod onayında müşteriye gösterilebilen en çok ürün (bulut `onay.mjs` aynı sınırı denetler: 1..50).
+pub(crate) const QR_EN_COK_URUN: u32 = 50;
 /// HKDF bilgi dizesi (sözleşme).
 pub const HKDF_BILGI: &[u8] = b"taa-teslim-onay-v1";
 const ANAHTAR_DOSYASI: &str = "teslim-x25519.anahtar";
@@ -563,6 +565,36 @@ impl Uygulama {
         if f.teslim_kaydi.is_some() {
             return Yanit::hata(409, "bu fişin teslim kaydı zaten var");
         }
+        let n: u32 = f
+            .kalemler
+            .iter()
+            .map(|k| k.adet.unwrap_or(1).max(1))
+            .sum::<u32>();
+        self.onay_ac_ic(no, n, imza_gerekli, c)
+    }
+
+    /// Karekod açmanın ortak kısmı: `anahtar` fiş no ya da teslim sepeti kimliği ("S-..."); belirteç bu anahtara
+    /// ve cihaza bağlanır. `n` müşteriye gösterilen ürün sayısıdır; bulut en çok `QR_EN_COK_URUN` kabul eder.
+    /// Daha fazlası SIKIŞTIRILMAZ (müşteri "50 ürün" onaylarken daha fazlası teslim edilmesin): 409 `qr_cok_urun`
+    /// döner, arayüz ekran imzasına geçer.
+    pub(crate) fn onay_ac_ic(
+        &self,
+        no: &str,
+        n: u32,
+        imza_gerekli: bool,
+        c: &cihaz::Cihaz,
+    ) -> Yanit {
+        if n > QR_EN_COK_URUN {
+            return Yanit::json(
+                409,
+                json!({
+                    "hata": "qr_cok_urun",
+                    "ileti": format!("Karekod onayı en çok {QR_EN_COK_URUN} ürün içindir (bu teslimatta {n} ürün var). Ekranda imza kullanın ya da teslimatı bölün."),
+                    "toplam_urun": n,
+                    "en_cok": QR_EN_COK_URUN,
+                }),
+            );
+        }
         let Some(ayar) = musteri_takip::Ayar::dizinden(&self.dizin) else {
             return Yanit::json(
                 409,
@@ -603,12 +635,7 @@ impl Uygulama {
             Ok(p) => p,
             Err(e) => return Yanit::hata(500, &e),
         };
-        let n: u32 = f
-            .kalemler
-            .iter()
-            .map(|k| k.adet.unwrap_or(1).max(1))
-            .sum::<u32>()
-            .clamp(1, 50);
+        let n = n.max(1);
         let sil = simdi + ONAY_OMRU_SN;
         let govde = json!({
             "v": 1, "tur": "onay_ac", "t": t, "ts": simdi, "sil": sil,
@@ -711,6 +738,18 @@ impl Uygulama {
     /// Onaylandıysa karekoddaki telefon fişteki telefonla karşılaştırılır (numara açılmadan): "fis_telefonu":
     /// "ayni" | "farkli" | "yok" (fişte geçerli telefon yok). "farkli" ise teslimde ilişki (yakını/diğer) zorunludur.
     pub(crate) fn teslim_qr_durum(&self, d: &Defter, no: &str, t: &str, c: &cihaz::Cihaz) -> Yanit {
+        self.onay_durum_ic(no, t, c, &|tel| fis_telefonu_karsilastir(d, no, tel))
+    }
+
+    /// Onay durumunun ortak kısmı (fiş ya da teslim sepeti). `tel_karsilastir`: karekoddaki telefonun fiş(ler)deki
+    /// telefonla karşılaştırması ("ayni" | "farkli" | "kismen" | "yok").
+    pub(crate) fn onay_durum_ic(
+        &self,
+        no: &str,
+        t: &str,
+        c: &cihaz::Cihaz,
+        tel_karsilastir: &dyn Fn(&str) -> &'static str,
+    ) -> Yanit {
         if !belirtec_gecerli(t) {
             return Yanit::hata(404, "karekod bulunamadı");
         }
@@ -783,7 +822,7 @@ impl Uygulama {
                 let mut v = bilgi_json(&b);
                 v["durum"] = json!("onaylandi");
                 v["kalan_sn"] = json!(kalan);
-                v["fis_telefonu"] = json!(fis_telefonu_karsilastir(d, no, &b.tel));
+                v["fis_telefonu"] = json!(tel_karsilastir(&b.tel));
                 v["imza_gerekli"] = json!(imza_gerekli);
                 Yanit::json(200, v)
             }

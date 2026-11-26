@@ -274,6 +274,10 @@ pub struct TeslimKaydi {
     /// Şifreli teslim alan bilgisi (yeni kayıtlar).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sifreli: Option<TeslimSifreli>,
+    /// Ortak teslim kimliği ("T-20261126-K7Q2MX"): aynı teslimatta (teslim sepeti ya da bağlı fişlerle birlikte)
+    /// teslim edilen bütün fişlerin kayıtlarında aynıdır. Kişisel veri değildir. Eski kayıtlarda boş.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub teslim_id: String,
     /// Sunucunun çözüp doldurduğu görünüm; diske ve JSON'a hiç yazılmaz.
     #[serde(skip)]
     pub gorunen: Option<TeslimGorunen>,
@@ -1278,6 +1282,7 @@ mod testler {
             saat: "10:00:00".into(),
             ana_fis: String::new(),
             sifreli: None,
+            teslim_id: String::new(),
             gorunen: None,
         }
     }
@@ -1291,6 +1296,72 @@ mod testler {
             ad_indeks: "0123456789abcdef".into(),
             tel_indeks: "fedcba9876543210".into(),
         }
+    }
+
+    /// Toplu teslim (teslim sepeti): ya hepsi ya hiçbiri; ortak teslim_id; aynı fiş iki kez olmaz.
+    #[test]
+    fn toplu_teslim_hepsi_ya_da_hicbiri() {
+        let y = yol();
+        let d = Defter { yol: &y };
+        let a = d.ekle(girdi()).unwrap();
+        let b = d.ekle(girdi()).unwrap();
+        let c = d.ekle(girdi()).unwrap();
+        d.durum_ata(&a.no, Durum::Hazir, "2026-11-26").unwrap();
+        d.durum_ata(&b.no, Durum::Hazir, "2026-11-26").unwrap();
+        // c hazır değil
+        let tid = "T-20261126-ABCD23";
+        let k = |ana: &str| TeslimKaydi {
+            teslim_id: tid.into(),
+            ana_fis: ana.into(),
+            ..teslim_kaydi_ornek(true)
+        };
+        assert!(teslim_id_gecerli(tid));
+        assert!(!teslim_id_gecerli("T-2026-AB"));
+        assert!(!teslim_id_gecerli("T-20261126-ab12"));
+        let once = std::fs::read(&y).unwrap();
+        // hazır olmayan bir fiş: hiçbiri yazılmaz
+        let e = d
+            .teslim_et_toplu(vec![
+                (a.no.clone(), k("")),
+                (b.no.clone(), k(&a.no)),
+                (c.no.clone(), k(&a.no)),
+            ])
+            .unwrap_err();
+        assert!(e.contains(&c.no), "{e}");
+        assert_eq!(std::fs::read(&y).unwrap(), once);
+        // aynı fiş iki kez; farklı teslim_id; boş teslim_id: reddedilir
+        assert!(d
+            .teslim_et_toplu(vec![(a.no.clone(), k("")), (a.no.clone(), k(""))])
+            .is_err());
+        let mut farkli = k(&a.no);
+        farkli.teslim_id = "T-20261126-ZZZZ99".into();
+        assert!(d
+            .teslim_et_toplu(vec![(a.no.clone(), k("")), (b.no.clone(), farkli)])
+            .is_err());
+        let mut bos = k("");
+        bos.teslim_id.clear();
+        assert!(d.teslim_et_toplu(vec![(a.no.clone(), bos)]).is_err());
+        // doğrulama geçti ama yazım hatası: hiçbir satır yazılmaz
+        TOPLU_YAZIM_HATASI.with(|h| h.set(true));
+        assert!(d
+            .teslim_et_toplu(vec![(a.no.clone(), k("")), (b.no.clone(), k(&a.no))])
+            .is_err());
+        TOPLU_YAZIM_HATASI.with(|h| h.set(false));
+        assert_eq!(std::fs::read(&y).unwrap(), once);
+        // geçerli: ikisi de teslim, aynı teslim_id; ana fiş ilkinde boş
+        d.teslim_et_toplu(vec![(a.no.clone(), k("")), (b.no.clone(), k(&a.no))])
+            .unwrap();
+        let fa = d.bul(&a.no).unwrap().unwrap();
+        let fb = d.bul(&b.no).unwrap().unwrap();
+        assert_eq!(fa.durum, Durum::Teslim);
+        assert_eq!(fb.durum, Durum::Teslim);
+        let (ta, tb) = (fa.teslim_kaydi.unwrap(), fb.teslim_kaydi.unwrap());
+        assert_eq!(ta.teslim_id, tid);
+        assert_eq!(tb.teslim_id, tid);
+        assert_eq!(ta.ana_fis, "");
+        assert_eq!(tb.ana_fis, a.no);
+        // ikinci kez: zaten teslim
+        assert!(d.teslim_et_toplu(vec![(a.no.clone(), k(""))]).is_err());
     }
 
     #[test]
@@ -1312,6 +1383,7 @@ mod testler {
             saat: "14:32:09".into(),
             ana_fis: String::new(),
             sifreli: Some(sahte_sifreli()),
+            teslim_id: String::new(),
             gorunen: None,
         };
         // qr şifresiz olamaz; şifreli kayıtta düz metin ad olamaz; bozuk şifreli blok reddedilir
