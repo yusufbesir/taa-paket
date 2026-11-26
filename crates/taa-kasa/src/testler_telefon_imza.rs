@@ -21,10 +21,11 @@ fn defter(ad: &str) -> KasaDefteri {
     )
 }
 
+/// İmzalayan kişi: imza yalnız yöneticilerin (mağaza müdürü rolü).
 fn kisi(ad: &str) -> Kisi {
     Kisi {
         ad: ad.into(),
-        rol: Rol::Personel,
+        rol: Rol::Mudur,
         dogrulandi: false,
     }
 }
@@ -262,6 +263,14 @@ fn ozet_istek_kimligi_veya_tutar_tutmazsa_gecersiz() {
 fn gorev_ayriligi_istekten_once_denetlenir() {
     let (d, _, id) = hazir("gorev");
     let mut k = SahteKanal::default();
+    // Personel telefonla da imzalayamaz (yalnız yöneticiler); telefona istek gitmez.
+    let personel = Kisi {
+        rol: Rol::Personel,
+        ..kisi("Kasiyer B")
+    };
+    let e = TelefonImzaOturumu::baslat(&d, &mut k, &id, &personel, NONCE, SIMDI).unwrap_err();
+    assert_eq!(e, crate::gunsonu::YETKISIZ_IMZA);
+    assert!(k.giden.is_empty());
     // Birinci imza (giren, ekrandan).
     d.imzala(&id, ImzaKanali::Ekran, None, &kisi("Kasiyer A"))
         .unwrap();
@@ -341,6 +350,7 @@ fn merkez_cihaz_kaydi_iptal_ve_baska_kisi_onayi_gecersiz_kilar() {
     for (durum, beklenen) in [
         (CihazDurumu::Iptal, "gecersiz"),
         (CihazDurumu::BaskaKisi, "gecersiz"),
+        (CihazDurumu::YetkisizKisi, "gecersiz"),
         (CihazDurumu::Gecerli, "onaylandi"),
     ] {
         let (d, _, id) = hazir(&format!("kayit-{}", durum.kod()));
@@ -389,6 +399,18 @@ fn merkez_paketteki_telefon_imzasini_ozet_ve_cihazla_denetler() {
     );
     let (s, _) = telefon_imzalarini_denetle(&p, &SahteKayit(CihazDurumu::Iptal));
     assert!(s[0].contains("iptal"), "{s:?}");
+    let (s, _) = telefon_imzalarini_denetle(&p, &SahteKayit(CihazDurumu::YetkisizKisi));
+    assert!(s[0].contains("yönetici değil"), "{s:?}");
+    // Rol merkezde de denetlenir: pakette imzalayan personel görünürse sorun (her kanal).
+    assert_eq!(p["imzalar"][0]["kisi_rol"], "mudur");
+    let mut personel = p.clone();
+    personel["imzalar"][0]["kisi_rol"] = json!("personel");
+    personel["imzalar"][0]["kanal"] = json!("ekran");
+    let (s, _) = telefon_imzalarini_denetle(&personel, &MerkezKaydiYok);
+    assert_eq!(
+        s,
+        vec!["1. imza: imzalayan yönetici değil (personel)".to_string()]
+    );
     // Paketteki gün sonu tutarı sonradan değiştirilirse özet tutmaz.
     let mut bozuk = p.clone();
     bozuk["gun_sonu"]["nebim_toplam_kurus"] = json!(1);

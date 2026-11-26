@@ -1,5 +1,5 @@
 {
-  "_aciklama": "SENTETİK örnek: kasa açığı olan gün. 'nakit' sistem (Nebim) nakdidir; açık Excel'de NAKİT TL'den düşülüp MASRAFLAR'a yazılır, genel toplam değişmez.",
+  "_aciklama": "SENTETİK örnek: kasa açığı olan gün. 'nakit' sistem (Nebim) nakdidir; açık Excel'de NAKİT TL'den düşülüp MASRAFLAR'a yazılır, genel toplam değişmez. Z: kredi çeki Z'den düşülür (varsayılan).",
   "sentetik": true,
   "ciro": {
     "nakit": 80000,
@@ -11,5 +11,5 @@
   "doviz": [],
   "masraf_kurus": 0,
   "beklenen_genel_toplam_kurus": 110000,
-  "beklenen_z_toplam_kurus": 110000
+  "beklenen_z_toplam_kurus": 106000
 }

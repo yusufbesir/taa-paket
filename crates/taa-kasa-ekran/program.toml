@@ -6,7 +6,7 @@ gorunen_ad = "TAA Kasa"
 surum = "0.1.0"                 # crates/taa-kasa-ekran/Cargo.toml ile aynı
 arayuz = "1"
 gerektirir = { taa-kasa = "1", taa-dosya = "1", taa-hata = "1", taa-imza = "1" }
-sunar  = ["kasa.gunsonu@1", "kasa.masraf@1"]
+sunar  = ["kasa.gunsonu@1", "kasa.masraf@1", "kasa.tek-imza@1", "kasa.yedek@1"]
 ister  = []                     # ortak giriş (kimlik.yonetici@1, KM2) bağlanınca buraya eklenecek
 veri_sahibi = ["kasa-defteri", "kasa-gunsonu", "kasa-masraf"]
 veri_okur   = []

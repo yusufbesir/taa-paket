@@ -28,11 +28,28 @@ Fark varsa açıklama zorunlu; nakit ya da Z↔ciro tutmazsa "kasa ile ciro uyu�
 
 - Kayıt yalnız eklenir (JSONL). Silme yok; düzeltme = yönetici iptali (gerekçeli) + `duzeltir` izli yeni kayıt.
 - Masraf: eşik (varsayılan 2.000 TL) altını müdür, üstünü yönetici (merkez) onaylar; giren onaylayamaz.
+- **Masraf türleri** (Yusuf, 2026-11-26): varsayılan liste en sık üçüyle başlar: Personel Yemek Masrafı, Personel İçecek
+  Masrafı, Mağaza Gideri; ardından Temizlik, Kargo, Ulaşım, Bakım-Onarım, Kırtasiye, Müşteri İadesi, Diğer
+  (`gunsonu::MASRAF_TURLERI`). Liste `ayar.json` → `masraf_turleri` ile (ya da Mağaza ayarları ekranından) düzenlenir;
+  ekranda öneri listesidir, **listede olmayan tür serbest yazılabilir** (boş olamaz, en çok 60 karakter, tek satır).
+- **İmza ve onay yalnız yöneticilerin** (Yusuf, 2026-11-26): gün sonu imzası (ekran ve telefon) ve onay (ikinci kişi,
+  ertesi gün) yalnız rolü `mudur` (mağaza müdürü) ya da `yonetici` olan kişiye açık; personel reddedilir
+  (`Rol::imza_yetkili`). İmza kaydına imzalayanın rolü yazılır (`kisi_rol`). Merkez paket okuyucusu da denetler: pakette
+  yönetici olmayan rolle imza görünürse matriste sorun çıkar; TAA Merkez cihaz kaydı kişinin yönetici olmadığını bildirirse
+  (`CihazDurumu::YetkisizKisi`) telefon onayı geçersizdir. Ekranda imza için kişi seçiminde yalnız yöneticiler listelenir.
+  Rolü yazılmamış eski imzalar geçer. "Yönetici" = mağaza müdürü + yönetici olarak yorumlandı (ikinci imza mağaza
+  sorumlusunundur); yalnız `yonetici` rolü isteniyorsa tek satırlık değişiklik (`imza_yetkili`).
+- **Telefonla imza tüm şubelerde** (`TELEFON_IMZA_TUM_SUBELER`); şube bazlı kapatma yok. Köprü bağlanana kadar ekran yer tutucu.
 - İptal, düzeltme, ayarlar ve matris yalnız yönetici girişiyle; Excel giriş yapmış kişiye açık.
 - **İkinci imza gerekçesi** (karar 2026-11-26, gözetimsiz varsayılan): ikinci imza atılmadan gönderimde 5–300 karakter
   gerekçe zorunlu (`POST /api/gerekce`, defter kaydı `gerekce`, son kayıt geçerli). Gerekçe gün durumunda, pakette
   (`ikinci_imza_gerekcesi`, `imzalar[1].gerekce`), A4 tutanakta, kayıt Excel'inde ve merkez matrisinde görünür. İkinci imza
-  atılırsa gerekçe gösterilmez.
+  atılırsa gerekçe gösterilmez. **Hazır şablonlar** `KasaAyar.gerekce_sablonlari` (varsayılan: mağaza sorumlusu izinli,
+  tek personel vardiyası, erken çıktı, vekil atanmadı, raporlu, telefon/bağlantı sorunu) ekranda öneri listesidir; serbest
+  yazım her zaman açık.
+- **Tek imza Çatı'ya raporlanır** (Yusuf, 2026-11-26): ikinci imza gelmeden gönderilen gün `kasa.tek-imza@1` raporuyla
+  TAA Çatı kuyruğuna alınır (`<kasa>/cati/giden`, `taa_kasa::cati`). Kasa işlemi durmaz. Çatı rapor ucu yok: `CatiUcuYok`
+  yer tutucu, rapor kuyrukta bekler (silinmez). Raporda tutar yok.
 - **Sık tek imza uyarısı** (karar 2026-11-26): gerekçe kısa serbest not kalır. Aynı mağaza son `pencere_gun` günde en az
   `esik` gün ikinci imzasız gönderirse merkez matrisinde şube adının yanında "⚠ sık tek imza (n)" çıkar. Ayar
   `KasaAyar.tek_imza_uyarisi`, varsayılan 14 günde 3 gün; `esik: 0` kapatır. Aynı günün iki çekmecesi bir gün sayılır.
@@ -44,8 +61,14 @@ Fark varsa açıklama zorunlu; nakit ya da Z↔ciro tutmazsa "kasa ile ciro uyu�
   ve yeniden girişle.
 - **Z formülü ayarı** (`KasaAyar.z_formulu`): şablonun genel toplam formülü sabit; Z karşılaştırmasında `degisim_eklenir`,
   `internet_degisimi_dusulur` (25.11 ile doğrulandı), `iade_eklenir` (çıkarım), `kredi_ceki_dusulur`
-  (bilinmiyor, varsayılan kapalı) ayarlanır. Gün örnekleri: `crates/taa-kasa/testdata/gun-ornekleri/*.json` (bugün yalnız
-  sentetik); gerçek gün anonim tutarlarla eklenince test kendiliğinden doğrular.
+  (27.09 Z raporlarıyla koşullu doğrulandı, **varsayılan açık**) ayarlanır. Gün örnekleri:
+  `crates/taa-kasa/testdata/gun-ornekleri/*.json` (depoda yalnız sentetik); gerçek gün depo dışında `TAA_GUN_ORNEKLERI_EK`
+  ile doğrulanır.
+- **Sunucuya şifreli yedek** (Yusuf, 2026-11-26): veri `%APPDATA%\TAA\veri`de kalır; her gönderimden sonra (ve
+  `POST /api/yedek` ile) kasa klasörünün metin dosyaları (`yonetici-pin.json` hariç) bellekte şifrelenip
+  `<kasa>/yedek/giden/` kuyruğuna alınır: `.taay` (taa-yedek "TAAY1" biçimi, anahtar `cihaz/yedek.key`) + SHA-256'lı
+  manifest (`kasa.yedek@1`). Gönderimden önce bütünlük yeniden doğrulanır; teslim edilen `gonderilen`e taşınır, silinmez.
+  Sunucu ucu yok: `SunucuYok` yer tutucu, yedekler çevrimdışıyken de kuyrukta bekler. Durum `GET /api/yedek`.
 
 ## Neon görüşü (2026-11-26, anonim özetle; gerçek tutar/ad/firma gönderilmedi)
 
@@ -79,6 +102,8 @@ Gemini Neon'a akış, gerekçe/kilit ve telefon onayı soruldu. Değerlendirme:
 | Yönetici girişi | Geçici yerel PIN (tuzlu SHA-256 ×100.000, 5 hata → 5 dk kilit, oturum 10 dk) | KM1 `kimlik.yonetici@1` / Çatı PIN doğrulaması |
 | Mağaza imzası | Cihaz anahtarı (`cihaz/cihaz.key`) varsa onunla, yoksa imzasız | Mağaza anahtarı |
 | Merkeze teslim | Ayarlardaki `merkez_klasoru`na dosya kopyası | Sunucu kasa ucu (Ş3) |
+| Sunucu yedeği | `<kasa>/yedek/giden` kuyruğu, `SunucuYok` | Sunucu yedek ucu (`kasa.yedek@1`) |
+| Tek imza raporu | `<kasa>/cati/giden` kuyruğu, `CatiUcuYok` | Çatı rapor ucu (`kasa.tek-imza@1`) |
 | Fiş fotoğrafı | Yalnız dosya yolu | Dosya ekleme |
 | Çatı paneli | Ayrı pencere | Çatı sekmesi |
 
@@ -116,15 +141,21 @@ Dolu şablon (V2 ve 25.11), aylık şablon (30 gün) ve ödeme listesi yeniden t
   ekranda, WhatsApp'ta, tutanakta ve Z ayarında yok; yeni girişte reddedilir ("tutarı İYZİCO POS'a yazın"). Şablonda 9. satır
   boş kalır, formüller ve satır numaraları değişmez. Eski kayıtlarda tutar varsa okunur, genel toplama ve kredi kartına girer,
   Excel'de "(ESKİ KAYIT)" etiketiyle yazılır. QR ve tüm banka kartları → İYZİCO POS eşlemesi aynen.
-- **KREDİ ÇEKİ — toplamdaki yeri kanıtlandı (27.09.2026):** eksi olabilir; eksi tutar son genel toplamdan düşer (şablonda
+- **KREDİ ÇEKİ — toplamdaki yeri kanıtlandı (27.09.2026), Z'deki yeri koşullu kanıtlandı:** eksi olabilir; eksi tutar son genel toplamdan düşer (şablonda
   E31 = E28 + E29 + E30). 27.09'un iki mağaza toplamı ve mağaza genel toplamı bu formülle kuruşu kuruşuna tuttu (gerçek
   tutarlar depoya yazılmadı; depoda aynı yapıda sentetik örnek var). Kasa fazlası toplama girmedi, müşteriye para iadesi
-  masraf kalemi olarak toplama girdi. **Z'deki yeri hâlâ kanıtsız** (27.09 Z verisi yok): `z_formulu.kredi_ceki_dusulur`,
-  varsayılan kapalı. İade satırı 27.09'da da boş; `iade_eklenir` hâlâ çıkarım.
+  masraf kalemi olarak toplama girdi. **Z'deki yeri (27.09 Z raporları, tutarsız ilişki):** Z raporundaki "çek" satırı
+  = havale + değişim; Z nakit = nakit TL + döviz TL + masraf; Z kart toplamı = kredi kartı. Outlet'te (değişim ve kredi
+  çeki yok) Z toplamı = genel toplam, tuttu. Merkez'de iki Z toplamı ile genel toplam arasındaki fark = değişim + |eksi
+  kredi çeki|, kuruşu kuruşuna. Yani Z = genel toplam + değişim − kredi çeki: eksi kredi çeki Z'de yoktur (Z'ye geri
+  eklenir) → `kredi_ceki_dusulur` varsayılanı **açık** yapıldı. **Koşul:** o günün Merkez DEĞİŞİM tutarı verilmedi, Z "çek"
+  satırı − havale farkından çıkarıldı; kasadan teyit beklenir. İade satırı 27.09'da da boş; `iade_eklenir` hâlâ çıkarım,
+  kanıtlanamadı.
 - **İkinci imza gerekçesi — uygulandı (gözetimsiz varsayılan):** zorunlu kısa gerekçe ve ilk imzadan sonra tutanak kilidi
   (Kurallar). Yusuf onaylamazsa ilgili commit geri alınabilir.
 - Veri bilgisi: 25.11 Outlet yazarkasasında bir havale ödemesi nakit tipiyle girilmiş (Nebim ve Excel'de havale).
-- Masraf türü listesi, kasa limiti, fark toleransı, gönderim son saati; mağaza imza anahtarı; sunucu kasa ucu.
+- Kasa limiti, fark toleransı, gönderim son saati; mağaza imza anahtarı; sunucu kasa ucu; yedek sunucu ucu ve yedek
+  anahtarının emaneti (anahtar kaybolursa sunucudaki yedek çözülemez); Çatı tek imza rapor ucu.
 
 ## Telefonla imza (tasarım ve istemci)
 

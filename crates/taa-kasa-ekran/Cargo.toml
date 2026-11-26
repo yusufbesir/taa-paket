@@ -26,3 +26,6 @@ serde_json = "1"
 getrandom = "0.3"
 sha2 = "0.10"
 tiny_http = "0.12"
+# Sunucuya şifreli kasa yedeği (src/yedek.rs): taa-yedek ile aynı "TAAY1" biçimi. taa-yedek başka programın (taayedek)
+# crate'i olduğu için bağlanmaz (sözleşme denetimi); şifre kütüphanesi çalışma alanında zaten var (taa-yedek, taa-kuyruk).
+chacha20poly1305 = { version = "0.10", default-features = false, features = ["alloc", "stream"] }

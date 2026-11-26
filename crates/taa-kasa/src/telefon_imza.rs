@@ -222,6 +222,8 @@ pub enum CihazDurumu {
     BaskaKisi,
     /// Cihaz iptal edildi (kayıp, işten ayrılma).
     Iptal,
+    /// Cihaz bu kişiye bağlı ama kişi TAA Merkez'de yönetici değil (imza ve onay yetkisi yok).
+    YetkisizKisi,
     /// Merkez kaydı yok ya da ulaşılamıyor.
     Bilinmiyor,
 }
@@ -232,6 +234,7 @@ impl CihazDurumu {
             CihazDurumu::Gecerli => "gecerli",
             CihazDurumu::BaskaKisi => "baska_kisi",
             CihazDurumu::Iptal => "iptal",
+            CihazDurumu::YetkisizKisi => "yetkisiz_kisi",
             CihazDurumu::Bilinmiyor => "bilinmiyor",
         }
     }
@@ -361,7 +364,7 @@ impl TelefonImzaOturumu {
             .into_iter()
             .find(|s| s.id == gun_sonu_id)
             .ok_or_else(|| format!("geçerli gün sonu yok: {gun_sonu_id}"))?;
-        let sira = defter.imza_on_denetim(&gs, &kisi.ad)?;
+        let sira = defter.imza_on_denetim(&gs, kisi)?;
         let (rol, rol_adi) = IMZA_ROLLERI[sira as usize - 1];
         let istek = OnayIstegi {
             tur: ISTEK_TURU.into(),
@@ -493,6 +496,9 @@ impl TelefonImzaOturumu {
                     CihazDurumu::Iptal => return gecersiz("cihaz TAA Merkez'de iptal edilmiş"),
                     CihazDurumu::BaskaKisi => {
                         return gecersiz("cihaz TAA Merkez'de başka bir kişiye bağlı")
+                    }
+                    CihazDurumu::YetkisizKisi => {
+                        return gecersiz("kişi TAA Merkez'de yönetici değil; imza yetkisi yok")
                     }
                     CihazDurumu::Gecerli | CihazDurumu::Bilinmiyor => {}
                 }

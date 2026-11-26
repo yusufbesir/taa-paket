@@ -18,6 +18,13 @@ fn ayse() -> Kisi {
         dogrulandi: false,
     }
 }
+/// Aynı kişi (giren) mağaza müdürü rolüyle: imza yalnız yöneticilerin.
+fn ayse_mudur() -> Kisi {
+    Kisi {
+        rol: Rol::Mudur,
+        ..ayse()
+    }
+}
 fn mehmet_mudur() -> Kisi {
     Kisi {
         ad: "Mehmet".into(),
@@ -236,16 +243,31 @@ fn masraf_esigi_ve_giren_onaylayamaz() {
         OnayDuzeyi::Merkez,
         "2.000 TL ve üstü merkez"
     );
-    assert!(d
+    // Listede olmayan tür serbest yazılabilir; boş, çok uzun ya da çok satırlı tür reddedilir.
+    let serbest = d
         .masraf_ekle(
             &a,
             &MasrafGirdi {
-                tur: "Uydurma".into(),
+                tur: " Listede Olmayan Tür ".into(),
                 ..g.clone()
             },
-            &ayse()
+            &ayse(),
         )
-        .is_err());
+        .unwrap();
+    assert_eq!(serbest.tur, "Listede Olmayan Tür");
+    let uzun = "x".repeat(MASRAF_TURU_EN_UZUN + 1);
+    for kotu in ["  ", "a\nb", uzun.as_str()] {
+        assert!(d
+            .masraf_ekle(
+                &a,
+                &MasrafGirdi {
+                    tur: kotu.into(),
+                    ..g.clone()
+                },
+                &ayse()
+            )
+            .is_err());
+    }
     assert!(d
         .masraf_ekle(
             &a,
@@ -294,8 +316,8 @@ fn masraf_esigi_ve_giren_onaylayamaz() {
         l.iter().find(|x| x.kayit.id == buyuk.id).unwrap().durum,
         MasrafDurumu::Reddedildi
     );
-    // Reddedilen masraf gün sonu beklentisine girmez: 1.500 + 1.500 (bekleyen mm).
-    assert_eq!(d.masraf_toplami(T, "c1").unwrap(), 300_000);
+    // Reddedilen masraf gün sonu beklentisine girmez: 1.500 + 1.500 (serbest tür) + 1.500 (bekleyen mm).
+    assert_eq!(d.masraf_toplami(T, "c1").unwrap(), 450_000);
 }
 
 #[test]
@@ -374,7 +396,7 @@ fn onay_giren_olamaz_ve_gonderim_kosullari() {
     assert!(!du.imza_istegi, "liste eksikken imza isteği çıkmaz");
     // Liste eksik: imza da onay da alınmaz, gönderilmez.
     assert!(d
-        .imzala(&gs.id, ImzaKanali::Ekran, None, &ayse())
+        .imzala(&gs.id, ImzaKanali::Ekran, None, &ayse_mudur())
         .unwrap_err()
         .contains("kapanış"));
     assert!(d
@@ -414,17 +436,41 @@ fn imza_kurallari_en_az_tek_imza_ve_ikinci_imza_atmadi() {
         .gonderim_paketi(&a, &gs.id)
         .unwrap_err()
         .contains("en az bir imza"));
+    // Yalnız yöneticiler imzalar ve onaylar: personel rolüyle imza da onay da reddedilir.
+    assert_eq!(
+        d.imzala(&gs.id, ImzaKanali::Ekran, None, &ayse())
+            .unwrap_err(),
+        YETKISIZ_IMZA
+    );
+    assert_eq!(
+        d.onayla(
+            &gs.id,
+            OnayTuru::IkinciKisi,
+            &Kisi {
+                ad: "Can".into(),
+                ..ayse()
+            }
+        )
+        .unwrap_err(),
+        YETKISIZ_ONAY
+    );
     // Telefonla imzada cihaz kimliği zorunlu.
     assert!(d
-        .imzala(&gs.id, ImzaKanali::Telefon, None, &ayse())
+        .imzala(&gs.id, ImzaKanali::Telefon, None, &ayse_mudur())
         .is_err());
     // Giren birinci imzayı (kasa sorumlusu) atabilir.
     let i1 = d
-        .imzala(&gs.id, ImzaKanali::Telefon, Some("tel-1"), &ayse())
+        .imzala(&gs.id, ImzaKanali::Telefon, Some("tel-1"), &ayse_mudur())
         .unwrap();
     assert_eq!((i1.sira, i1.rol.as_str()), (1, "kasa_sorumlusu"));
+    assert_eq!(
+        i1.kisi_rol,
+        Some(Rol::Mudur),
+        "imzalayanın rolü kayda yazılır"
+    );
     assert!(
-        d.imzala(&gs.id, ImzaKanali::Ekran, None, &ayse()).is_err(),
+        d.imzala(&gs.id, ImzaKanali::Ekran, None, &ayse_mudur())
+            .is_err(),
         "aynı kişi iki kez imzalayamaz"
     );
     // Tek imzayla gönderim kısa gerekçe ister (karar 2026-11-26); ikinci imza "imza atmadı" yazar.
@@ -501,7 +547,8 @@ fn imza_tek_imzayla_gonderildiyse_sonradan_eklenmez() {
     let a = esenyurt();
     acilis(&d, &a);
     let gs = d.gun_sonu_ekle(&a, &gun_sonu_girdi(), &ayse()).unwrap();
-    d.imzala(&gs.id, ImzaKanali::Ekran, None, &ayse()).unwrap();
+    d.imzala(&gs.id, ImzaKanali::Ekran, None, &ayse_mudur())
+        .unwrap();
     d.gonderim_kaydet(&gs.id, "x.json", false).unwrap();
     assert!(d
         .imzala(&gs.id, ImzaKanali::Ekran, None, &mehmet_mudur())

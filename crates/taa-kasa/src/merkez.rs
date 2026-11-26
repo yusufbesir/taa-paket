@@ -7,7 +7,7 @@
 //! aynı `Tasiyici` arayüzüyle değiştirilir.
 
 use crate::gunsonu::{
-    GunSonuKaydi, ImzaKanali, ImzaKaydi, MasrafGorunum, SayimKaydi, IKINCI_IMZA_ATMADI,
+    GunSonuKaydi, ImzaKanali, ImzaKaydi, MasrafGorunum, Rol, SayimKaydi, IKINCI_IMZA_ATMADI,
     KAPANIS_LISTESI, ODEME_TURLERI,
 };
 use crate::telefon_imza::{ozet_sha256, CihazDurumu, CihazKaydi, MerkezKaydiYok};
@@ -181,10 +181,18 @@ pub fn telefon_imzalarini_denetle(p: &Value, kayit: &dyn CihazKaydi) -> (Vec<Str
     let mut bilinmiyor = 0;
     let gs: Option<GunSonuKaydi> = serde_json::from_value(p["gun_sonu"].clone()).ok();
     for i in p["imzalar"].as_array().into_iter().flatten() {
+        let sira = i["sira"].as_i64().unwrap_or(0);
+        // Rol denetimi her kanal için: imzayı yalnız yöneticiler atar (rolü yazılmamış eski kayıt geçer).
+        if i["durum"] == "imzaladi" {
+            if let Some(r) = i["kisi_rol"].as_str() {
+                if !Rol::coz(r).is_some_and(Rol::imza_yetkili) {
+                    sorun.push(format!("{sira}. imza: imzalayan yönetici değil ({r})"));
+                }
+            }
+        }
         if i["kanal"] != "telefon" {
             continue;
         }
-        let sira = i["sira"].as_i64().unwrap_or(0);
         let kisi = i["kisi"].as_str().unwrap_or("");
         let cihaz = i["cihaz"].as_str().unwrap_or("");
         match (i["ozet"].as_str(), &gs) {
@@ -201,6 +209,9 @@ pub fn telefon_imzalarini_denetle(p: &Value, kayit: &dyn CihazKaydi) -> (Vec<Str
             CihazDurumu::Bilinmiyor => bilinmiyor += 1,
             CihazDurumu::Iptal => sorun.push(format!("{sira}. imza: cihaz iptal edilmiş")),
             CihazDurumu::BaskaKisi => sorun.push(format!("{sira}. imza: cihaz başka kişiye bağlı")),
+            CihazDurumu::YetkisizKisi => {
+                sorun.push(format!("{sira}. imza: kişi TAA Merkez'de yönetici değil"))
+            }
         }
     }
     (sorun, bilinmiyor)

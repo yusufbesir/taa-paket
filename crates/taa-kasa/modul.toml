@@ -6,7 +6,7 @@ arayuz = "1"
 gerektirir = { "taa-ayar" = "1", "taa-dosya" = "1" }
 ozellikler = ["kasa-defteri", "kasa-gunsonu"]
 program = "taakasa"
-sunar = ["kasa.say@1", "kasa.kapat@1", "kasa.gunsonu@1", "kasa.masraf@1"]
+sunar = ["kasa.say@1", "kasa.kapat@1", "kasa.gunsonu@1", "kasa.masraf@1", "kasa.tek-imza@1"]
 ister = []
 veri_sahibi = ["kasa-defteri", "kasa-gunsonu", "kasa-masraf"]
 veri_okur = []

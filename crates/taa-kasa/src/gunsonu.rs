@@ -101,8 +101,9 @@ pub fn z_beklenen(ciro_toplam: i64, ciro: &BTreeMap<String, i64>) -> i64 {
 /// karşılaştırmada hangi bilgi/ödeme satırlarının eklenip düşüleceği ayardır. Kanıt durumu:
 /// - `degisim_eklenir`, `internet_degisimi_dusulur`: 25.11 dolu dosyalarıyla doğrulandı.
 /// - `iade_eklenir`: çıkarım (25.11'de iade satırı boş); iadeli gün örneğiyle doğrulanacak.
-/// - `kredi_ceki_dusulur`: bilinmiyor (27.09 örneğinde Z verisi yok). Varsayılan kapalı = genel toplamdaki
-///   tutar (eksi olabilir) Z'de de beklenir.
+/// - `kredi_ceki_dusulur`: 27.09 Z raporlarıyla (depo dışı gerçek örnek) koşullu doğrulandı: Z toplamı =
+///   genel toplam + değişim − kredi çeki (eksi kredi çeki Z'ye geri eklenir). Koşul: o günün DEĞİŞİM tutarı
+///   Z "çek" satırı − havale farkından çıkarıldı, kasadan teyit bekliyor. Varsayılan açık.
 ///
 /// Gün örneği gelince `testdata/gun-ornekleri/` altına anonim JSON eklenir; test kendiliğinden doğrular.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -120,7 +121,7 @@ impl Default for ZFormulu {
             degisim_eklenir: true,
             internet_degisimi_dusulur: true,
             iade_eklenir: true,
-            kredi_ceki_dusulur: false,
+            kredi_ceki_dusulur: true,
         }
     }
 }
@@ -173,6 +174,16 @@ pub const IKINCI_IMZA_ATMADI: &str = "ikinci imza atmadı";
 pub const GEREKCE_EN_AZ: usize = 5;
 pub const GEREKCE_EN_COK: usize = 300;
 
+/// Yetkisiz imza / onay hata metinleri (yalnız yöneticiler imzalar ve onaylar).
+pub const YETKISIZ_IMZA: &str =
+    "gün sonunu yalnız yöneticiler (mağaza müdürü ya da yönetici) imzalayabilir";
+pub const YETKISIZ_ONAY: &str =
+    "gün sonunu yalnız yöneticiler (mağaza müdürü ya da yönetici) onaylayabilir";
+
+/// Telefonla imza tüm şubelerde geçerlidir (Yusuf, 2026-11-26). Şube bazlı kapatma yoktur; Telefon Köprüsü
+/// bağlanana kadar ekrandan imza yer tutucudur.
+pub const TELEFON_IMZA_TUM_SUBELER: bool = true;
+
 // ---------------------------------------------------------------- kişi ve rol
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -184,6 +195,20 @@ pub enum Rol {
 }
 
 impl Rol {
+    /// Gün sonu imzası ve onayı yetkisi: yalnız yöneticiler (mağaza müdürü ve yönetici). Personel imzalayamaz,
+    /// onaylayamaz (Yusuf, 2026-11-26: "yalnız yöneticiler yetkili"). Kasada ve merkezde aynı kural.
+    pub fn imza_yetkili(self) -> bool {
+        matches!(self, Rol::Mudur | Rol::Yonetici)
+    }
+
+    pub fn ad(self) -> &'static str {
+        match self {
+            Rol::Personel => "personel",
+            Rol::Mudur => "mudur",
+            Rol::Yonetici => "yonetici",
+        }
+    }
+
     pub fn coz(s: &str) -> Option<Rol> {
         match s {
             "personel" => Some(Rol::Personel),
@@ -251,7 +276,10 @@ pub struct KasaAyar {
     pub masraf_merkez_esigi_kurus: i64,
     /// Fark toleransı (mağaza bazlı; varsayılan 0).
     pub fark_toleransi_kurus: i64,
+    /// Masraf türü önerileri (ayar dosyasından düzenlenir). Listede olmayan serbest tür de kabul edilir.
     pub masraf_turleri: Vec<String>,
+    /// İkinci imza atılmama gerekçesi için hazır şablonlar (ekranda öneri listesi); serbest metin de açık.
+    pub gerekce_sablonlari: Vec<String>,
     /// Gün sonu bu saatten sonra merkeze ulaşırsa "geç" sayılır (yerel saat, ertesi sabaha kadar).
     pub gonderim_son_saat: String,
     pub saat_farki_dk: i32,
@@ -270,6 +298,33 @@ pub struct KasaAyar {
     /// Merkez matrisi: sık tek imzalı gönderim uyarısı.
     pub tek_imza_uyarisi: TekImzaUyarisi,
 }
+
+/// Varsayılan masraf türleri (Yusuf, 2026-11-26): en sık üçü başta, ardından yaygın giderler.
+pub const MASRAF_TURLERI: [&str; 10] = [
+    "Personel Yemek Masrafı",
+    "Personel İçecek Masrafı",
+    "Mağaza Gideri",
+    "Temizlik",
+    "Kargo",
+    "Ulaşım",
+    "Bakım-Onarım",
+    "Kırtasiye",
+    "Müşteri İadesi",
+    "Diğer",
+];
+
+/// Serbest masraf türünün en çok uzunluğu (karakter).
+pub const MASRAF_TURU_EN_UZUN: usize = 60;
+
+/// Varsayılan ikinci imza gerekçe şablonları (iki nokta sonrası kısa açıklama beklenir).
+pub const GEREKCE_SABLONLARI: [&str; 6] = [
+    "Mağaza sorumlusu izinli: ",
+    "Tek personel vardiyası: ",
+    "Mağaza sorumlusu erken çıktı: ",
+    "Vekil atanmadı: ",
+    "Mağaza sorumlusu raporlu: ",
+    "Telefon/bağlantı sorunu: ",
+];
 
 /// Aynı mağaza son `pencere_gun` günde en az `esik` gün ikinci imzasız gönderirse merkez ekranında uyarı.
 /// Varsayılan: 14 günde 3 gün (haftada bir tek imza olağan sayılır, iki haftada üç tekrar dikkat ister).
@@ -318,14 +373,8 @@ impl Default for KasaAyar {
             kasa_limiti_kurus: None,
             masraf_merkez_esigi_kurus: 200_000,
             fark_toleransi_kurus: 0,
-            // Masraf türleri listesi Yusuf'tan beklenir (G6); yer tutucu.
-            masraf_turleri: vec![
-                "Kırtasiye".into(),
-                "Temizlik".into(),
-                "Kargo".into(),
-                "Yemek".into(),
-                "Diğer".into(),
-            ],
+            masraf_turleri: MASRAF_TURLERI.iter().map(|t| (*t).into()).collect(),
+            gerekce_sablonlari: GEREKCE_SABLONLARI.iter().map(|t| (*t).into()).collect(),
             gonderim_son_saat: "23:00".into(),
             saat_farki_dk: zaman::TURKIYE_DK,
             personel: vec![],
@@ -546,6 +595,10 @@ pub struct ImzaKaydi {
     /// Telefonla imzada cihaz-kişi bağının TAA Merkez denetim sonucu (`gecerli` | `bilinmiyor`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cihaz_dogrulama: Option<String>,
+    /// İmzalayanın imza anındaki rolü (`mudur` | `yonetici`). Eski kayıtlarda yok; merkez rolü bilinmeyen
+    /// imzayı "rol kaydı yok" diye işaretler.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kisi_rol: Option<Rol>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1095,8 +1148,15 @@ impl KasaDefteri {
         if g.tutar_kurus == 0 {
             return Err("masraf tutarı girin: tutarı olmayan kalem kaydedilmez (toplam kalemlerden hesaplanır)".into());
         }
-        if g.tur.trim().is_empty() || !ayar.masraf_turleri.iter().any(|t| t == g.tur.trim()) {
-            return Err("masraf türü listeden seçilmeli".into());
+        // Liste öneridir (ayar dosyasından düzenlenir); listede olmayan tür serbest yazılabilir.
+        let tur = g.tur.trim();
+        if tur.is_empty() {
+            return Err("masraf türü gerekli (listeden seçin ya da yazın)".into());
+        }
+        if tur.chars().count() > MASRAF_TURU_EN_UZUN || tur.chars().any(char::is_control) {
+            return Err(format!(
+                "masraf türü en çok {MASRAF_TURU_EN_UZUN} karakter, tek satır olmalı"
+            ));
         }
         if g.aciklama.trim().is_empty() {
             return Err("masraf açıklaması gerekli".into());
@@ -1393,13 +1453,13 @@ impl KasaDefteri {
         if ayni_kisi(&gs.kisi, &kisi.ad) {
             return Err("giren onaylayamaz: onayı ikinci bir kişi vermeli".into());
         }
+        if !kisi.rol.imza_yetkili() {
+            return Err(YETKISIZ_ONAY.into());
+        }
         if tur == OnayTuru::IkinciKisi {
             return self.imzala(id, ImzaKanali::Ekran, None, kisi).map(|_| ());
         }
         let k = self.gun_kayitlari()?;
-        if !matches!(kisi.rol, Rol::Mudur | Rol::Yonetici) {
-            return Err("ertesi gün gözden geçirmesini mağaza müdürü yapar".into());
-        }
         if k.iter()
             .any(|x| matches!(x, GunKaydi::Onay { id: i, onay, .. } if i == id && *onay == tur))
         {
@@ -1590,6 +1650,7 @@ impl KasaDefteri {
                     cihaz: None,
                     ozet: None,
                     cihaz_dogrulama: None,
+                    kisi_rol: None,
                 }),
                 _ => {}
             }
@@ -1604,8 +1665,12 @@ impl KasaDefteri {
 
     /// İmza kuralları (kapanış listesi, gönderim, en çok iki imza, aynı kişi, giren ikinci imzayı atamaz).
     /// Geçerse atılacak imzanın sırasını (1 ya da 2) döner. Telefon isteği açılmadan da çağrılır.
-    pub fn imza_on_denetim(&self, gs: &GunSonuKaydi, kisi_ad: &str) -> Result<u8, String> {
+    pub fn imza_on_denetim(&self, gs: &GunSonuKaydi, kisi: &Kisi) -> Result<u8, String> {
         ozellik_acik()?;
+        let kisi_ad = kisi.ad.as_str();
+        if !kisi.ad.trim().is_empty() && !kisi.rol.imza_yetkili() {
+            return Err(YETKISIZ_IMZA.into());
+        }
         if gs.kontrol.iter().filter(|x| **x).count() < KAPANIS_LISTESI.len() {
             return Err("imza isteği kapanış kontrol listesi tamamlanınca açılır".into());
         }
@@ -1659,7 +1724,7 @@ impl KasaDefteri {
             .into_iter()
             .find(|s| s.id == id)
             .ok_or_else(|| format!("geçerli gün sonu yok: {id}"))?;
-        let sira = self.imza_on_denetim(&gs, &kisi.ad)?;
+        let sira = self.imza_on_denetim(&gs, kisi)?;
         let cihaz = match kanal {
             ImzaKanali::Telefon => {
                 let c = cihaz.map(str::trim).unwrap_or("");
@@ -1681,6 +1746,7 @@ impl KasaDefteri {
             cihaz,
             ozet: ozet.map(str::to_string),
             cihaz_dogrulama: cihaz_dogrulama.map(str::to_string),
+            kisi_rol: Some(kisi.rol),
         };
         self.gun_ekle(&GunKaydi::Imza(i.clone()))?;
         Ok(i)
@@ -2005,7 +2071,7 @@ pub fn imza_listesi(imzalar: &[ImzaKaydi]) -> Vec<Value> {
             Some(i) => json!({
                 "sira": n + 1, "rol": rol, "rol_adi": ad, "kisi": i.kisi, "zaman": i.zaman,
                 "kanal": i.kanal, "cihaz": i.cihaz, "ozet": i.ozet, "cihaz_dogrulama": i.cihaz_dogrulama,
-                "durum": "imzaladi", "imzalamadi": false,
+                "kisi_rol": i.kisi_rol, "durum": "imzaladi", "imzalamadi": false,
             }),
             None => json!({
                 "sira": n + 1, "rol": rol, "rol_adi": ad, "kisi": null, "zaman": null,

@@ -5,6 +5,7 @@
 //! `merkez` (kuyruk, matris, Excel), `xlsx`, `zaman`. Eski `Defter` (kasa-defteri) aynen korunur.
 //! Özellik anahtarı: "kasa-defteri" (varsayılan açık). Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-04].
 
+pub mod cati;
 pub mod gunsonu;
 pub mod merkez;
 pub mod sablon;
