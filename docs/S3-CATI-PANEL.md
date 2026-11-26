@@ -22,7 +22,7 @@ doğrulama, silme yok). TAA Sunucu hizmetine dokunulmaz.
 | Şubeler | `kullanici.yonet` | liste, ekle |
 | Program yetkileri | `program.yonet` | program × şube anahtarları; soluk anahtar genel kuraldan gelir; role özel kurallar komut satırında |
 | Yönetici PIN'leri | `program.yonet` | program başına genel PIN ve şubeye özel PIN; belirle/değiştir/kaldır (taze parola). PIN yalnız buradan belirlenir; programlar (TerziTakip, Tutaa…) sunucuda yalnız doğrular |
-| Raporlar | `yonetici` rolü | tüm TAA uygulamalarından rapor (TerziTakip, TAA Kasa, Tutaa, TAA Etiket, TaaRkod, TaaDön, TAA Giydir, Video Yapıcı, paket): özet, yorumlar, bölümler; Excel (CSV) indir, Yazdır/PDF. Usta puanı ayrı program değil: TerziTakip raporunda, yalnız `usta-puan` açıksa (varsayılan kapalı, avukat görüşüne kadar gölge mod) |
+| Raporlar | `yonetici` rolü | tüm TAA uygulamalarından rapor (TerziTakip, TAA Kasa, Tutaa, TAA Etiket, TaaRkod, TaaDön, TAA Giydir, Video Yapıcı, paket): özet, yorumlar, bölümler; Excel (CSV) indir, Yazdır/PDF. Usta puanı ayrı program değil: TerziTakip raporunda (ham sayılar; puan hesabı TerziTakip yönetici ekranında), yalnız `usta-puan` açıksa (varsayılan kapalı, avukat görüşüne kadar gölge mod) |
 | Günlük | `gunluk.gor` | olaylar, işleme göre süzgeç, daha eski olaylar |
 | Ayarlar > Görünüm | — | 3 tema × açık/koyu (Temaya göre/Açık/Koyu/Sistem), temaya özel vurgu rengi, hareket (Sistem/Azalt/Normal), tanıtımı yeniden göster, varsayılana dön; çıkış, paneli kapat |
 

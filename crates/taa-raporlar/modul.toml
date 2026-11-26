@@ -4,9 +4,9 @@
 ad = "taa-raporlar"
 surum = "0.1.0"
 arayuz = "1"
-gerektirir = { "taa-ayar" = "1", "taa-dosya" = "1", "taa-hata" = "1", "taa-kimlik" = "1", "taa-rapor" = "1", "taa-takip" = "1" }
+gerektirir = { "taa-ayar" = "1", "taa-dosya" = "1", "taa-hata" = "1", "taa-kimlik" = "1", "taa-rapor" = "1" }
 ozellikler = ["raporlar", "yorum"]
-program = "taa-raporlar"
+program = "ortak"  # Çatı paneli de kullanır (ince çizgi: başka programın crate'i değil)
 sunar = ["rapor.yorumla@1"]
 ister = []
 veri_sahibi = ["raporlar"]

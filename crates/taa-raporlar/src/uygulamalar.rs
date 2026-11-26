@@ -262,64 +262,54 @@ pub fn usta_puani_bolumu(fis_klasoru: Option<&Path>, bugun: &str) -> Bolum {
         return b;
     };
     let bas = tarih::tarih_metni((gun - 30) * 86_400);
-    let girdi = (|| -> Result<_, String> {
-        let ayar = taa_takip::PuanAyari::dizinden(dizin)?;
-        let sure = taa_takip::SureTablosu::dizinden(dizin)?;
-        let kayitlar = taa_takip::PuanDefteri::dizinden(dizin).oku()?;
-        let mut teslimler = std::collections::BTreeMap::new();
-        if let Ok(s) = std::fs::read_to_string(dizin.join("fisler.jsonl")) {
-            for satir in s.lines().filter(|l| !l.trim().is_empty()) {
-                let Ok(k) = serde_json::from_str::<Value>(satir) else {
-                    continue;
-                };
-                let v = k.get("v").unwrap_or(&Value::Null);
-                let no = v.get("no").and_then(Value::as_str).unwrap_or("");
-                match k.get("tur").and_then(Value::as_str) {
-                    Some("fis") => {
-                        teslimler.insert(
-                            no.to_string(),
-                            v.get("teslim")
-                                .and_then(Value::as_str)
-                                .unwrap_or("")
-                                .to_string(),
-                        );
-                    }
-                    Some("teslim") => {
-                        if let Some(y) = v.pointer("/degisiklik/yeni").and_then(Value::as_str) {
-                            teslimler.insert(no.to_string(), y.to_string());
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-        Ok((ayar, sure, kayitlar, teslimler))
-    })();
-    let (ayar, sure, kayitlar, teslimler) = match girdi {
-        Ok(g) => g,
+    // Puan hesabı TerziTakip'in (taa-takip) işidir; ince çizgi kuralı gereği burada o crate'e bağlanılmaz.
+    // Rapor, `usta-puan.jsonl` defterinden yalnız ham sayıları okur (okutma, işaret, tutanak).
+    let metin = match std::fs::read_to_string(dizin.join("usta-puan.jsonl")) {
+        Ok(m) => m,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
         Err(e) => {
             b.durum = Durum::Hata;
-            b.uyarilar.push(e);
+            b.uyarilar.push(format!("usta puan defteri okunamadı: {e}"));
             return b;
         }
     };
-    match taa_takip::puan_hesapla(&ayar, &sure, &kayitlar, &teslimler, &bas, bugun) {
-        Ok(puanlar) => {
-            b.durum = Durum::Var;
-            b.satirlar
-                .push(("dönem".into(), format!("{bas} – {bugun}")));
-            for p in puanlar {
-                let deger = match p.puan {
-                    Some(x) => format!("{x:.1} / 10 · {} iş", p.is_adedi),
-                    None => format!("deneme dönemi · {} iş", p.is_adedi),
-                };
-                b.satirlar.push((p.usta, deger));
+    let mut okutma: std::collections::BTreeMap<String, u64> = Default::default();
+    let (mut isaret, mut tutanak, mut bozuk) = (0u64, 0u64, 0u64);
+    for satir in metin.lines().filter(|l| !l.trim().is_empty()) {
+        let Ok(k) = serde_json::from_str::<Value>(satir) else {
+            bozuk += 1;
+            continue;
+        };
+        let tarih_ok = k
+            .get("tarih")
+            .and_then(Value::as_str)
+            .is_some_and(|t| t >= bas.as_str() && t <= bugun);
+        match k.get("kayit").and_then(Value::as_str) {
+            Some("olay") if tarih_ok => {
+                let usta = k.get("usta").and_then(Value::as_str).unwrap_or("?");
+                *okutma.entry(usta.to_string()).or_default() += 1;
             }
+            Some("isaret") if tarih_ok => isaret += 1,
+            Some("tutanak") => tutanak += 1,
+            _ => {}
         }
-        Err(e) => {
-            b.durum = Durum::Hata;
-            b.uyarilar.push(e);
-        }
+    }
+    b.durum = Durum::Var;
+    b.satirlar
+        .push(("dönem".into(), format!("{bas} – {bugun}")));
+    for (usta, n) in okutma {
+        b.satirlar.push((usta, format!("{n} okutma")));
+    }
+    b.satirlar
+        .push(("yeniden iş / şikâyet işareti".into(), isaret.to_string()));
+    b.satirlar
+        .push(("tutanak (tüm zamanlar)".into(), tutanak.to_string()));
+    b.uyarilar.push(
+        "Puan hesabı ve yorumlar TerziTakip yönetici ekranındadır (/yonetim/puan); bu raporda ham sayılar vardır."
+            .into(),
+    );
+    if bozuk > 0 {
+        b.uyarilar.push(format!("{bozuk} bozuk satır atlandı"));
     }
     b
 }

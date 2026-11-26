@@ -1043,7 +1043,6 @@ dependencies = [
  "taa-hata",
  "taa-kimlik",
  "taa-rapor",
- "taa-takip",
 ]
 
 [[package]]

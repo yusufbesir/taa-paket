@@ -23,4 +23,3 @@ taa-ayar = { path = "../taa-ayar" }
 taa-dosya = { path = "../taa-dosya" }
 taa-kimlik = { path = "../taa-kimlik" }
 taa-rapor = { path = "../taa-rapor" }
-taa-takip = { path = "../taa-takip" }
