@@ -157,6 +157,31 @@ veri_okur   = []
 ayar_alani  = "programlar.taarehber"
 ```
 
+### taakasa (TAA Kasa, bu depoda)
+
+Gün sonu kasa programı (ana plan §15, mağaza işleyişi §4.1). Bu depoda yaşar: `crates/taa-kasa-ekran/program.toml`
+(ikili `taa-kasa`), çekirdek `crates/taa-kasa`. Fiyat Etiketi'ndeki "Kasa" satış ekranıyla karışmasın: bu program gün sonu kontrolüdür.
+
+```toml
+ad = "taakasa"
+gorunen_ad = "TAA Kasa"
+surum = "0.1.0"                 # crates/taa-kasa-ekran/Cargo.toml
+arayuz = "1"
+gerektirir = { taa-kasa = "1", taa-dosya = "1", taa-hata = "1", taa-imza = "1" }
+sunar  = ["kasa.gunsonu@1", "kasa.masraf@1"]   # tek yazar; Tutaa (T6b) ve Çatı yalnız okur
+ister  = []                     # kimlik.yonetici@1 / KM2 bağlanınca eklenecek
+veri_sahibi = ["kasa-defteri", "kasa-gunsonu", "kasa-masraf"]
+veri_okur   = []
+ayar_alani  = "programlar.taakasa"
+```
+
+### Aynı depoda yaşayan programlar
+
+Program kodu taa-paket içindeyse `program.toml` o programın ikilisini taşıyan crate'in klasörüne konur
+(`crates/<crate>/program.toml`). Paket denetimi (`python3 tools/sozlesme_denetle.py`) bu dosyayı kendiliğinden program
+modunda denetler: sürüm o crate'in `Cargo.toml`'u ile aynı, veri sahipliği `docs/veri-sahipleri.toml` ile tutarlı ve `ad`,
+crate'in `modul.toml` `program` alanıyla aynı olmalıdır.
+
 ## Notlar
 
 - `ad` biçimi `[a-z0-9-]`; veri alanı adları `[a-z0-9-]`, en çok 32 karakter. Program kimliği olarak `taarehber` kullanılır.

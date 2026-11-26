@@ -1,12 +1,13 @@
-# taa-kasa modül tanımı. Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-04]. güncelleme: [Claude#taa-paket-T0 2026-11-05]
+# taa-kasa modül tanımı. Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-04]. güncelleme: [Claude#taa-paket-T0 2026-11-05], [Claude#taa-kasa-KS2 2026-11-26]
+# TAA Kasa çekirdeği. Tek yazar: kasa.gunsonu@1 ve kasa.masraf@1 yalnız buradan yazılır; Tutaa (T6b) yalnız okur.
 ad = "taa-kasa"
-surum = "0.1.0"
+surum = "0.2.0"
 arayuz = "1"
 gerektirir = { "taa-ayar" = "1", "taa-dosya" = "1" }
-ozellikler = ["kasa-defteri"]
+ozellikler = ["kasa-defteri", "kasa-gunsonu"]
 program = "taakasa"
-sunar = ["kasa.say@1", "kasa.kapat@1"]
+sunar = ["kasa.say@1", "kasa.kapat@1", "kasa.gunsonu@1", "kasa.masraf@1"]
 ister = []
-veri_sahibi = ["kasa-defteri"]
+veri_sahibi = ["kasa-defteri", "kasa-gunsonu", "kasa-masraf"]
 veri_okur = []
 ayar_alani = "programlar.taakasa"

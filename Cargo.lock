@@ -909,12 +909,27 @@ dependencies = [
 
 [[package]]
 name = "taa-kasa"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
  "taa-ayar",
  "taa-dosya",
+]
+
+[[package]]
+name = "taa-kasa-ekran"
+version = "0.1.0"
+dependencies = [
+ "getrandom 0.3.4",
+ "serde",
+ "serde_json",
+ "sha2",
+ "taa-dosya",
+ "taa-hata",
+ "taa-imza",
+ "taa-kasa",
+ "tiny_http",
 ]
 
 [[package]]

@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TAA Kasa · Gün sonu</title>
+<link rel="icon" href="/simge.svg" type="image/svg+xml">
+<!-- Sahip: Yusuf. yazan: [Claude#taa-kasa-KS2 2026-11-26]. Dış kaynak yok (CSP default-src 'none').
+     Tasarım görüşü: Gemini 4 Neon'dan sırsız özetle alındı (durumla değişen tek ana düğme + 2 ikincil, 5 adımlı
+     gün sonu ve sağda yapışkan fark paneli, sayısal tuş takımıyla sayım ızgarası, zümrüt yeşili palet, fark için
+     renk + simge + işaret, amber odak halkası, bağlantı rozeti, "Sil" sözcüğü yok).
+     Ad karışıklığı: Fiyat Etiketi'ndeki "Kasa" satış ekranıdır; bu programda hiçbir ekran yalnız "Kasa" adını taşımaz. -->
+<style>
+:root{
+  --bg:#F3F6F4;--panel:#FFFFFF;--panel2:#EAF0EC;--line:#D3DCD6;--line-strong:#6B7A72;--fg:#16201B;--muted:#4F5C55;
+  --accent:#0F5132;--on-accent:#FFFFFF;--odak:#C98A00;
+  --tam:#1A7F37;--fazla:#0B6E99;--eksik:#B3401A;--uyari-bg:#FFF4D6;--uyari:#6B4500;
+  --r:10px;--rb:8px;--f:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;--f-bas:"Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;
+  --mono:"Cascadia Mono",Consolas,ui-monospace,monospace;--sure:160ms;color-scheme:light;
+}
+:root[data-tema="koyu"]{
+  --bg:#121417;--panel:#1B1F23;--panel2:#22282D;--line:#2D333A;--line-strong:#7D8790;--fg:#E6E8EB;--muted:#A3ADB6;
+  --accent:#2EA043;--on-accent:#08130B;--odak:#F2CC60;
+  --tam:#3FB950;--fazla:#58B6E5;--eksik:#F0883E;--uyari-bg:#3A2C08;--uyari:#F2CC60;color-scheme:dark;
+}
+@media (prefers-color-scheme:dark){:root:not([data-tema="acik"]){
+  --bg:#121417;--panel:#1B1F23;--panel2:#22282D;--line:#2D333A;--line-strong:#7D8790;--fg:#E6E8EB;--muted:#A3ADB6;
+  --accent:#2EA043;--on-accent:#08130B;--odak:#F2CC60;
+  --tam:#3FB950;--fazla:#58B6E5;--eksik:#F0883E;--uyari-bg:#3A2C08;--uyari:#F2CC60;color-scheme:dark;}}
+:root[data-hareket="azalt"]{--sure:0ms}
+@media (prefers-reduced-motion:reduce){:root:not([data-hareket="normal"]){--sure:0ms}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:16px/1.5 var(--f)}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+button:disabled{opacity:.5;cursor:not-allowed}
+:focus-visible{outline:3px solid var(--odak);outline-offset:2px}
+[hidden]{display:none!important}
+.mono,.tutar{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.mut{color:var(--muted)}
+.kucuk{font-size:14px}
+h1{font:600 28px/1.2 var(--f-bas);margin:0}
+h2{font:600 20px/1.3 var(--f-bas);margin:0 0 12px}
+
+/* Açılış animasyonu */
+#tanitim{position:fixed;inset:0;z-index:90;display:grid;place-items:center;background:var(--bg);transition:opacity calc(var(--sure)*2)}
+#tanitim.bitti{opacity:0;pointer-events:none}
+#tanitim .kutu{display:grid;justify-items:center;gap:16px}
+#tanitim svg{width:112px;height:112px}
+#tanitim .para{animation:dus calc(var(--sure)*4) ease-out both}
+#tanitim .para:nth-of-type(2){animation-delay:calc(var(--sure)*1.5)}
+#tanitim .para:nth-of-type(3){animation-delay:calc(var(--sure)*3)}
+#tanitim .ad{font:600 26px var(--f-bas);letter-spacing:.01em}
+@keyframes dus{from{transform:translateY(-26px);opacity:0}to{transform:none;opacity:1}}
+
+/* Giriş */
+.giris{min-height:100%;display:grid;place-items:center;padding:24px}
+.giris .kart{width:min(440px,100%);display:grid;gap:16px}
+.marka{display:flex;align-items:center;gap:12px}
+.marka img{width:40px;height:40px}
+.marka b{font:600 20px var(--f-bas);display:block}
+.marka small{color:var(--muted);font-size:14px}
+
+.kart{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:20px}
+.serit{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:var(--rb);background:var(--uyari-bg);color:var(--uyari);font-size:15px;border:1px solid color-mix(in srgb,var(--uyari) 35%,transparent)}
+.serit b{font-weight:600}
+label.alan{display:grid;gap:6px;font-weight:500;font-size:15px}
+.girdi{width:100%;min-height:48px;padding:10px 12px;border-radius:var(--rb);border:1px solid var(--line-strong);background:var(--panel);color:var(--fg)}
+textarea.girdi{min-height:96px;resize:vertical}
+.girdi.tutar{text-align:right}
+.dugme{min-height:48px;padding:0 18px;border-radius:var(--rb);border:1px solid var(--line-strong);background:var(--panel);font-weight:500;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.dugme:hover:not(:disabled){background:var(--panel2)}
+.dugme.ana{min-height:56px;padding:0 24px;background:var(--accent);color:var(--on-accent);border-color:var(--accent);font-weight:600;font-size:17px}
+.dugme.ana:hover:not(:disabled){filter:brightness(1.08);background:var(--accent)}
+.dugme.dolu-tehlike{border-color:var(--eksik);color:var(--eksik)}
+.hata{color:var(--eksik);min-height:22px;font-size:15px}
+.sira{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.yigin{display:grid;gap:16px}
+
+/* Uygulama iskeleti */
+.uyg{display:grid;grid-template-columns:248px 1fr;grid-template-rows:auto 1fr;height:100%}
+header.cubuk{grid-column:1/-1;display:flex;align-items:center;gap:14px;padding:10px 20px;background:var(--panel);border-bottom:1px solid var(--line);min-height:64px}
+header.cubuk .marka b{font-size:18px}
+header.cubuk .bosluk{flex:1}
+.rozet{display:inline-flex;align-items:center;gap:8px;min-height:40px;padding:0 12px;border-radius:999px;border:1px solid var(--line);font-size:15px;background:var(--panel)}
+.rozet i{width:10px;height:10px;border-radius:50%;background:var(--tam);display:inline-block}
+.rozet.uyar{background:var(--uyari-bg);color:var(--uyari);border-color:transparent}
+.rozet.uyar i{background:var(--uyari)}
+nav.menu{background:var(--panel);border-right:1px solid var(--line);padding:16px 12px;display:flex;flex-direction:column;gap:4px;overflow:auto}
+nav.menu .gez{min-height:48px;display:flex;align-items:center;gap:10px;padding:0 14px;border-radius:var(--rb);border:0;background:transparent;text-align:left;width:100%}
+nav.menu .gez:hover{background:var(--panel2)}
+nav.menu .gez[aria-current="page"]{background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--fg);font-weight:600;box-shadow:inset 3px 0 0 var(--accent)}
+nav.menu .baslik{font-size:13px;color:var(--muted);padding:12px 14px 4px;text-transform:uppercase;letter-spacing:.06em}
+.hesap{margin-top:auto;position:relative}
+.hesap>button{width:100%;min-height:56px;display:flex;align-items:center;gap:10px;padding:0 12px;border-radius:var(--rb);border:1px solid var(--line);background:var(--panel2);text-align:left}
+.avatar{width:34px;height:34px;border-radius:50%;background:var(--accent);color:var(--on-accent);display:grid;place-items:center;font-weight:700;flex:none}
+.hesap-menu{position:absolute;bottom:64px;left:0;right:0;background:var(--panel);border:1px solid var(--line-strong);border-radius:var(--r);padding:8px;box-shadow:0 10px 30px rgba(0,0,0,.25);display:grid;gap:4px;z-index:20}
+.hesap-menu hr{border:0;border-top:1px solid var(--line);margin:4px 0;width:100%}
+.hesap-menu button{min-height:48px;text-align:left;border:0;background:transparent;border-radius:var(--rb);padding:0 12px}
+.hesap-menu button:hover{background:var(--panel2)}
+.hesap-menu .kim{padding:8px 12px}
+.seg{display:inline-flex;border:1px solid var(--line-strong);border-radius:var(--rb);overflow:hidden}
+.seg button{min-height:44px;padding:0 12px;border:0;background:transparent}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
+main{overflow:auto;padding:24px 28px}
+.ekran{display:grid;gap:20px;max-width:1120px}
+.sayfa-bas{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+
+/* Bugün */
+.durum-serit{display:flex;gap:18px;flex-wrap:wrap;padding:12px 16px;border-radius:var(--rb);background:var(--panel2);font-size:15px}
+.eylemler{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:12px}
+.eylemler .dugme{min-height:72px;flex-direction:column;align-items:flex-start;justify-content:center;text-align:left;padding:10px 18px}
+.eylemler .dugme small{font-weight:400;opacity:.85;font-size:14px}
+.liste{display:grid;gap:0}
+.liste .satir{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.liste .satir:last-child{border-bottom:0}
+.liste .satir .ana{flex:1;min-width:0}
+.isaret{font-weight:700;width:28px;text-align:center}
+.isaret.tam{color:var(--tam)}.isaret.yok{color:var(--muted)}
+
+/* Fark dili: renk + simge + işaret */
+.fark{font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.fark.tam{color:var(--tam)}.fark.fazla{color:var(--fazla)}.fark.eksik{color:var(--eksik)}
+
+/* Sayım ızgarası */
+.izgara{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.izgara table{width:100%;border-collapse:collapse}
+.izgara th{text-align:left;font-size:14px;color:var(--muted);font-weight:500;padding:4px 6px}
+.izgara td{padding:4px 6px;border-top:1px solid var(--line)}
+.izgara td.d{width:90px;font-weight:600}
+.izgara input{width:100%;min-height:44px;text-align:right;font-family:var(--mono);font-size:18px;padding:6px 10px;border-radius:var(--rb);border:1px solid var(--line-strong);background:var(--panel)}
+.izgara td.t{text-align:right;font-family:var(--mono);width:130px}
+.toplam-kutu{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-radius:var(--rb);background:var(--panel2);font-size:18px}
+.toplam-kutu .tutar{font-size:24px;font-weight:700}
+
+/* Gün sonu sihirbazı */
+.gs{display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start}
+.adimlar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px}
+.adimlar button{min-height:44px;padding:0 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel);font-size:14px}
+.adimlar button[aria-current="step"]{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.adimlar button.bitti::before{content:"✓ "}
+.ozet-panel{position:sticky;top:0;display:grid;gap:12px}
+.ozet-panel .fs{display:grid;gap:2px;padding:10px 0;border-bottom:1px solid var(--line)}
+.ozet-panel .fs:last-child{border-bottom:0}
+.ozet-panel .fs span{font-size:14px;color:var(--muted)}
+.uyari-kutu{padding:12px 14px;border-radius:var(--rb);border:2px solid var(--eksik);color:var(--eksik);font-weight:600}
+.form-iki{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.form-uc{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.kontrol label{display:flex;align-items:center;gap:12px;min-height:48px;border-bottom:1px solid var(--line)}
+.kontrol input{width:22px;height:22px;accent-color:var(--accent)}
+table.tablo{width:100%;border-collapse:collapse;font-size:15px}
+table.tablo th{text-align:left;color:var(--muted);font-weight:500;padding:8px;border-bottom:1px solid var(--line-strong)}
+table.tablo td{padding:8px;border-bottom:1px solid var(--line);vertical-align:middle}
+table.tablo td.s{white-space:nowrap;text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.matris td{text-align:center;font-weight:700}
+.m-geldi{color:var(--tam)}.m-gec{color:var(--uyari)}.m-eksik{color:var(--eksik)}.m-bekleniyor{color:var(--muted)}
+dialog{border:1px solid var(--line-strong);border-radius:var(--r);background:var(--panel);color:var(--fg);padding:22px;width:min(460px,92vw)}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+#bildirim{position:fixed;bottom:20px;right:20px;max-width:440px;padding:14px 18px;border-radius:var(--rb);background:var(--fg);color:var(--bg);z-index:80;box-shadow:0 8px 24px rgba(0,0,0,.3)}
+@media (max-width:980px){.uyg{grid-template-columns:1fr}nav.menu{flex-direction:row;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line)}.hesap{margin-top:0;margin-left:auto;min-width:220px}.gs,.izgara,.eylemler,.form-iki,.form-uc{grid-template-columns:1fr}.ozet-panel{position:static}}
+</style>
+</head>
+<body>
+<div id="tanitim" aria-hidden="true">
+  <div class="kutu">
+    <svg viewBox="0 0 120 120" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="18" y="58" width="84" height="44" rx="6" stroke="var(--accent)" stroke-width="6"/>
+      <path d="M18 80H102M52 91H68" stroke="var(--accent)" stroke-width="5"/>
+      <ellipse class="para" cx="60" cy="46" rx="20" ry="6" stroke="var(--odak)" stroke-width="5"/>
+      <ellipse class="para" cx="60" cy="34" rx="20" ry="6" stroke="var(--odak)" stroke-width="5"/>
+      <ellipse class="para" cx="60" cy="22" rx="20" ry="6" stroke="var(--odak)" stroke-width="5"/>
+    </svg>
+    <div class="ad">TAA Kasa</div>
+    <div class="mut">Gün sonu · açılış · masraf</div>
+  </div>
+</div>
+
+<div class="giris" id="giris" hidden>
+  <div class="kart">
+    <div class="marka"><img src="/simge.svg" alt=""><div><b>TAA Kasa</b><small>Gün sonu kasa programı</small></div></div>
+    <div class="serit" role="note"><span>⚠</span><span><b>Ortak giriş henüz bağlı değil (KM1/KM2).</b> Şimdilik adınızı listeden seçersiniz; kişisel PIN sorulmaz. Ortak giriş bağlanınca bu ekran kişisel PIN ile çalışacak.</span></div>
+    <label class="alan" id="giris-ad-alan">Adınız
+      <select class="girdi" id="giris-ad"></select>
+    </label>
+    <label class="alan" id="giris-ad-serbest-alan" hidden>Adınız (personel listesi boş; yönetici Ayarlar'dan ekler)
+      <input class="girdi" id="giris-ad-serbest" autocomplete="off" maxlength="60">
+    </label>
+    <div class="hata" id="giris-hata" role="alert"></div>
+    <button class="dugme ana" id="giris-dugme">Giriş yap</button>
+  </div>
+</div>
+
+<div class="uyg" id="uyg" hidden>
+  <header class="cubuk">
+    <div class="marka"><img src="/simge.svg" alt="" style="width:32px;height:32px"><b>TAA Kasa</b></div>
+    <span class="mut" id="c-sube"></span>
+    <label class="sira kucuk"><span class="mut">Tarih</span><input type="date" class="girdi" id="c-tarih" style="min-height:40px;width:auto"></label>
+    <label class="sira kucuk" id="c-cekmece-alan"><span class="mut">Çekmece</span><select class="girdi" id="c-cekmece" style="min-height:40px;width:auto"></select></label>
+    <span class="bosluk"></span>
+    <button class="rozet" id="c-baglanti" title="Merkeze gönderim kuyruğu"><i></i><span></span></button>
+    <span class="rozet uyar" id="c-yonetici" hidden><span>Yönetici · <span class="mono" id="c-yon-sure">10:00</span></span></span>
+  </header>
+  <nav class="menu" aria-label="Ekranlar">
+    <button class="gez" data-git="bugun">Bugün</button>
+    <button class="gez" data-git="sayim">Sayım (açılış, ara, devir)</button>
+    <button class="gez" data-git="masraf">Masraf</button>
+    <button class="gez" data-git="gunsonu">Gün sonu</button>
+    <button class="gez" data-git="kayitlar">Kayıtlar ve Excel</button>
+    <div class="baslik yon">Yönetim</div>
+    <button class="gez yon" data-git="ayarlar">Mağaza ayarları</button>
+    <button class="gez yon" data-git="matris">Merkez matrisi</button>
+    <div class="hesap">
+      <div class="hesap-menu" id="hesap-menu" hidden role="menu">
+        <div class="kim"><b id="hm-ad"></b><div class="mut kucuk" id="hm-rol"></div></div>
+        <button role="menuitem" id="hm-degistir">Kişi değiştir</button>
+        <button role="menuitem" id="hm-cikis">Çıkış</button>
+        <hr>
+        <button role="menuitem" id="hm-yonetici">Yönetici girişi</button>
+        <hr>
+        <div class="kim"><div class="mut kucuk" style="margin-bottom:6px">Ayarlar · tema</div>
+          <div class="seg" id="hm-tema"><button data-tema="sistem">Sistem</button><button data-tema="acik">Açık</button><button data-tema="koyu">Koyu</button></div>
+          <div class="seg" id="hm-hareket" style="margin-top:8px"><button data-h="null">Hareket: sistem</button><button data-h="true">Azalt</button></div>
+        </div>
+      </div>
+      <button id="hesap-dugme" aria-haspopup="menu" aria-expanded="false"><span class="avatar" id="hesap-bas"></span><span><b id="hesap-ad"></b><br><small class="mut" id="hesap-rol"></small></span></button>
+    </div>
+  </nav>
+  <main id="ana" tabindex="-1">
+    <section class="ekran" data-ekran="bugun"></section>
+    <section class="ekran" data-ekran="sayim" hidden></section>
+    <section class="ekran" data-ekran="masraf" hidden></section>
+    <section class="ekran" data-ekran="gunsonu" hidden></section>
+    <section class="ekran" data-ekran="kayitlar" hidden></section>
+    <section class="ekran" data-ekran="ayarlar" hidden></section>
+    <section class="ekran" data-ekran="matris" hidden></section>
+  </main>
+</div>
+
+<dialog id="d-yonetici">
+  <div class="yigin">
+    <h2>Yönetici girişi</h2>
+    <div class="serit"><span>ⓘ</span><span>Merkezi yönetici girişi (kimlik.yonetici@1) henüz bağlı değil. Bu bilgisayara özgü <b>geçici yerel PIN</b> kullanılır; PIN düz metin olarak saklanmaz.</span></div>
+    <label class="alan" id="dy-ad-alan" hidden>Yönetici adı<input class="girdi" id="dy-ad" maxlength="60"></label>
+    <label class="alan"><span id="dy-pin-etiket">PIN</span><input class="girdi mono" id="dy-pin" type="password" inputmode="numeric" maxlength="12" autocomplete="off"></label>
+    <div class="hata" id="dy-hata" role="alert"></div>
+    <div class="sira"><button class="dugme" id="dy-vazgec">Vazgeç</button><button class="dugme ana" id="dy-tamam">Giriş</button></div>
+  </div>
+</dialog>
+<dialog id="d-kisi">
+  <div class="yigin">
+    <h2 id="dk-baslik">Kişi değiştir</h2>
+    <p class="mut" id="dk-aciklama" style="margin:0"></p>
+    <label class="alan">Kişi<select class="girdi" id="dk-ad"></select></label>
+    <div class="hata" id="dk-hata" role="alert"></div>
+    <div class="sira"><button class="dugme" id="dk-vazgec">Vazgeç</button><button class="dugme ana" id="dk-tamam">Devam</button></div>
+  </div>
+</dialog>
+<dialog id="d-neden">
+  <div class="yigin">
+    <h2 id="dn-baslik">İptal et</h2>
+    <p class="mut" id="dn-aciklama" style="margin:0">Kayıt silinmez; iptal kaydı ve gerekçe iz olarak kalır.</p>
+    <label class="alan">Gerekçe (zorunlu)<textarea class="girdi" id="dn-neden" maxlength="400"></textarea></label>
+    <div class="hata" id="dn-hata" role="alert"></div>
+    <div class="sira"><button class="dugme" id="dn-vazgec">Vazgeç</button><button class="dugme ana" id="dn-tamam">Onayla</button></div>
+  </div>
+</dialog>
+<div id="bildirim" role="status" hidden></div>
+
+<script>
+'use strict';
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let D=null,EKRAN='bugun',GOR={tema:'sistem',hareket_azalt:null,tanitim_goruldu:false},yonBitis=0;
+
+function tl(k){k=Number(k)||0;const n=k<0;k=Math.abs(k);const t=String(Math.floor(k/100)).replace(/\B(?=(\d{3})+(?!\d))/g,'.');return (n?'−':'')+t+','+String(k%100).padStart(2,'0')+' TL'}
+// Virgül ya da nokta: "1.234,56", "1234,56", "1234.56", "1234" → kuruş. Geçersizse null.
+function kurusCoz(s){s=String(s||'').trim().replace(/\s|TL/gi,'');if(!s)return 0;
+  if(s.includes(','))s=s.replace(/\./g,'').replace(',','.');else{const p=s.split('.');if(p.length>2||(p.length===2&&p[1].length===3))s=s.replace(/\./g,'')}
+  if(!/^\d+(\.\d{1,2})?$/.test(s))return null;const [a,b='']=s.split('.');return Number(a)*100+Number((b+'00').slice(0,2))}
+function kurCoz(s){s=String(s||'').trim().replace(',','.');if(!s)return 0;if(!/^\d+(\.\d{1,4})?$/.test(s))return null;const [a,b='']=s.split('.');return Number(a)*10000+Number((b+'0000').slice(0,4))}
+function farkHtml(f){if(!f)return '<span class="fark tam">✓ 0,00 TL</span>';return f>0?`<span class="fark fazla">▲ +${tl(f)}</span>`:`<span class="fark eksik">▼ ${tl(f)}</span>`}
+function bildir(m){const b=$('#bildirim');b.textContent=m;b.hidden=false;clearTimeout(bildir.t);bildir.t=setTimeout(()=>b.hidden=true,4200)}
+async function api(y,yol,g){const r=await fetch(yol,{method:y,headers:g?{'Content-Type':'application/json'}:{},body:g?JSON.stringify(g):undefined});
+  let v={};try{v=await r.json()}catch(e){}if(!r.ok)throw new Error(v.hata||('Hata '+r.status));return v}
+const sorgu=()=>`tarih=${encodeURIComponent($('#c-tarih').value||'')}&cekmece=${encodeURIComponent($('#c-cekmece').value||'')}`;
+
+// ---------------- görünüm
+function gorunumUygula(){const r=document.documentElement;if(GOR.tema==='sistem')r.removeAttribute('data-tema');else r.dataset.tema=GOR.tema;
+  if(GOR.hareket_azalt===true)r.dataset.hareket='azalt';else r.removeAttribute('data-hareket');
+  $$('#hm-tema button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tema===GOR.tema)));
+  $$('#hm-hareket button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.h===String(GOR.hareket_azalt))))}
+async function gorunumYaz(d){try{GOR=await api('POST','/api/gorunum',d);gorunumUygula()}catch(e){bildir(e.message)}}
+
+// ---------------- açılış
+async function basla(){
+  try{GOR=await api('GET','/api/gorunum')}catch(e){}
+  gorunumUygula();
+  const sure=getComputedStyle(document.documentElement).getPropertyValue('--sure').trim()==='0ms'?150:1400;
+  await yukle();
+  setTimeout(()=>{$('#tanitim').classList.add('bitti');D.kisi?uygulamaGoster():girisGoster();setTimeout(()=>$('#tanitim').hidden=true,500)},sure);
+}
+async function yukle(){D=await api('GET','/api/durum?'+(D?sorgu():''));}
+
+function personelSecenek(sel,haric){const l=(D.personel||[]).filter(p=>!haric||p.ad.toLowerCase()!==haric.toLowerCase());
+  sel.innerHTML=l.map(p=>`<option value="${esc(p.ad)}">${esc(p.ad)} · ${esc(rolAd(p.rol))}</option>`).join('');return l.length}
+const rolAd=r=>({personel:'Personel',mudur:'Mağaza müdürü',yonetici:'Yönetici'}[r]||r);
+
+function girisGoster(){$('#uyg').hidden=true;$('#giris').hidden=false;
+  const var_=personelSecenek($('#giris-ad'));$('#giris-ad-alan').hidden=!var_;$('#giris-ad-serbest-alan').hidden=!!var_;
+  (var_?$('#giris-ad'):$('#giris-ad-serbest')).focus()}
+$('#giris-dugme').onclick=async()=>{const ad=$('#giris-ad-alan').hidden?$('#giris-ad-serbest').value:$('#giris-ad').value;
+  try{await api('POST','/api/giris',{ad});await yukle();uygulamaGoster()}catch(e){$('#giris-hata').textContent=e.message}};
+$('#giris-ad-serbest').onkeydown=e=>{if(e.key==='Enter')$('#giris-dugme').click()};
+
+function uygulamaGoster(){$('#giris').hidden=true;$('#uyg').hidden=false;
+  $('#c-tarih').value=D.tarih;$('#c-cekmece').innerHTML=D.cekmeceler.map(c=>`<option value="${esc(c.id)}">${esc(c.ad)}</option>`).join('');$('#c-cekmece').value=D.cekmece;
+  $('#c-cekmece-alan').hidden=D.cekmeceler.length<2;git(EKRAN)}
+
+async function yenile(){try{await yukle()}catch(e){bildir(e.message);return}cubuk();ciz()}
+$('#c-tarih').onchange=yenile;$('#c-cekmece').onchange=yenile;
+
+function cubuk(){
+  $('#c-sube').textContent=D.sube?('Şube '+D.sube):'Şube tanımsız';
+  const k=D.kisi||{ad:'?',rol:'personel'},y=D.yonetici;
+  $('#hesap-bas').textContent=(k.ad||'?').slice(0,1).toLocaleUpperCase('tr');$('#hesap-ad').textContent=k.ad;$('#hesap-rol').textContent=rolAd(k.rol)+(k.dogrulandi?'':' · doğrulamasız');
+  $('#hm-ad').textContent=k.ad;$('#hm-rol').textContent=rolAd(k.rol)+' · ortak giriş bağlı değil (yer tutucu)';
+  $('#hm-yonetici').textContent=y?'Yönetici çıkışı ('+y.ad+')':'Yönetici girişi';
+  $('#c-yonetici').hidden=!y;if(y&&!yonBitis)yonBitis=Date.now()+600000;if(!y)yonBitis=0;
+  $$('.yon').forEach(e=>e.hidden=!y);
+  const b=D.kuyruk.bekleyen,r=$('#c-baglanti');r.classList.toggle('uyar',b>0||!D.kuyruk.merkez_klasoru);
+  r.querySelector('span').textContent=b>0?`Gönderilmedi · ${b} paket kuyrukta`:(D.kuyruk.merkez_klasoru?'Merkez bağlantısı hazır':'Merkez bağlantısı tanımsız')}
+setInterval(()=>{if(!yonBitis)return;const k=Math.max(0,yonBitis-Date.now());$('#c-yon-sure').textContent=String(Math.floor(k/60000)).padStart(2,'0')+':'+String(Math.floor(k%60000/1000)).padStart(2,'0');if(!k){yonBitis=0;yenile()}},1000);
+$('#c-baglanti').onclick=async()=>{try{const v=await api('POST','/api/kuyruk/bosalt',{});bildir(v.hata?('Gönderilemedi: '+v.hata):(v.teslim+' paket merkeze teslim edildi'));yenile()}catch(e){bildir(e.message)}};
+
+// ---------------- hesap menüsü
+$('#hesap-dugme').onclick=e=>{e.stopPropagation();const m=$('#hesap-menu');m.hidden=!m.hidden;$('#hesap-dugme').setAttribute('aria-expanded',String(!m.hidden))};
+document.addEventListener('click',e=>{if(!e.target.closest('.hesap'))$('#hesap-menu').hidden=true});
+$('#hm-tema').onclick=e=>{const b=e.target.closest('button');if(b)gorunumYaz({tema:b.dataset.tema})};
+$('#hm-hareket').onclick=e=>{const b=e.target.closest('button');if(b)gorunumYaz({hareket_azalt:b.dataset.h==='true'?true:null})};
+$('#hm-cikis').onclick=async()=>{await api('POST','/api/cikis',{});await yukle();girisGoster()};
+$('#hm-degistir').onclick=()=>kisiSec('Kişi değiştir','Vardiya değiştiyse kişiyi değiştirin; her kayıt seçilen kişiye yazılır.',null).then(async ad=>{if(!ad)return;await api('POST','/api/giris',{ad});yenile()});
+$('#hm-yonetici').onclick=async()=>{$('#hesap-menu').hidden=true;if(D.yonetici){await api('POST','/api/yonetici/kapat',{});yonBitis=0;yenile();return}
+  const kur=!D.yonetici_pin_kurulu;$('#dy-ad-alan').hidden=!kur;$('#dy-pin-etiket').textContent=kur?'Yeni PIN (6–12 rakam; ilk kurulum)':'PIN';$('#dy-pin').value='';$('#dy-hata').textContent='';$('#d-yonetici').showModal();(kur?$('#dy-ad'):$('#dy-pin')).focus()};
+$('#dy-vazgec').onclick=()=>$('#d-yonetici').close();
+$('#dy-tamam').onclick=async()=>{const kur=!D.yonetici_pin_kurulu,p=$('#dy-pin').value;
+  try{await api('POST','/api/yonetici',kur?{ad:$('#dy-ad').value,pin_yeni:p}:{pin:p});$('#dy-pin').value='';$('#d-yonetici').close();yonBitis=Date.now()+600000;await yenile();bildir('Yönetici girişi açık (10 dakika)')}catch(e){$('#dy-hata').textContent=e.message}};
+$('#dy-pin').onkeydown=e=>{if(e.key==='Enter')$('#dy-tamam').click()};
+
+function kisiSec(baslik,aciklama,haric){return new Promise(res=>{$('#dk-baslik').textContent=baslik;$('#dk-aciklama').textContent=aciklama;$('#dk-hata').textContent='';
+  const n=personelSecenek($('#dk-ad'),haric);if(!n){bildir('Personel listesi boş. Yönetici Mağaza ayarları ekranından ekler.');res(null);return}
+  const d=$('#d-kisi');d.showModal();$('#dk-tamam').onclick=()=>{d.close();res($('#dk-ad').value)};$('#dk-vazgec').onclick=()=>{d.close();res(null)}})}
+function nedenSor(baslik,aciklama){return new Promise(res=>{$('#dn-baslik').textContent=baslik;$('#dn-aciklama').textContent=aciklama;$('#dn-neden').value='';$('#dn-hata').textContent='';
+  const d=$('#d-neden');d.showModal();$('#dn-neden').focus();$('#dn-tamam').onclick=()=>{const n=$('#dn-neden').value.trim();if(!n){$('#dn-hata').textContent='Gerekçe yazın.';return}d.close();res(n)};$('#dn-vazgec').onclick=()=>{d.close();res(null)}})}
+
+// ---------------- gezinti
+function git(e){EKRAN=e;
+  $$('nav.menu .gez').forEach(b=>{if(b.dataset.git===e)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});
+  $$('.ekran').forEach(s=>s.hidden=s.dataset.ekran!==e);cubuk();ciz();$('#ana').focus({preventScroll:true})}
+$$('nav.menu .gez').forEach(b=>b.onclick=()=>git(b.dataset.git));
+function ciz(){({bugun:bugunCiz,sayim:sayimCiz,masraf:masrafCiz,gunsonu:gunSonuCiz,kayitlar:kayitlarCiz,ayarlar:ayarlarCiz,matris:matrisCiz})[EKRAN]()}
+const bolum=e=>$(`.ekran[data-ekran="${e}"]`);
+
+// ---------------- Bugün (ilk ekran: en çok 3 eylem, tek vurgulu ana düğme)
+function bugunCiz(){const g=D.gun,s=bolum('bugun');
+  const ANA={acilis:['sayim:acilis','Açılış sayımı','Bozukluğu say, önceki kapanışla karşılaştır'],gun_ici:['gunsonu','Gün sonu','Nakit, Z raporu, POS ve ciro'],
+    onay:['onay','İkinci onay ver','Giren: '+(g.gun_sonu?g.gun_sonu.kisi:'')+' · farklı kullanıcıyla'],gonder:['gonder','Merkeze gönder','Şube imzasıyla; çevrimdışıysa kuyruğa'],tamam:['kayitlar','Kayıtlar ve Excel','Gün tamamlandı']}[g.asama];
+  const acik=!!g.acilis||!!g.gun_sonu;
+  const masrafBek=g.masraflar.filter(m=>m.durum==='bekliyor').length;
+  s.innerHTML=`<div class="sayfa-bas"><div><h1>Bugün</h1><div class="mut">${esc(D.tarih)} · ${esc((D.cekmeceler.find(c=>c.id===D.cekmece)||{}).ad||'')}</div></div></div>
+  <div class="durum-serit"><span>${g.gun_sonu?'Gün kapandı':(g.acilis?'Çekmece açık':'Açılış bekleniyor')}</span>
+   ${g.acilis?`<span>Açılış: <b class="tutar">${tl(g.acilis.sayilan_kurus)}</b> (${esc(g.acilis.kisi)})</span>`:''}
+   <span>Masraf: <b class="tutar">${tl(g.masraflar.filter(m=>m.durum!=='reddedildi'&&m.durum!=='iptal').reduce((a,m)=>a+m.tutar_kurus,0))}</b>${masrafBek?` · ${masrafBek} onay bekliyor`:''}</span>
+   ${g.limit_asildi?'<span style="color:var(--eksik);font-weight:600">▲ Kasa limiti aşıldı: bankaya/kasa odasına aktarın</span>':''}</div>
+  ${g.asama==='onay'?`<div class="serit"><span>⏳</span><span><b>İkinci onay bekliyor.</b> Giren: ${esc(g.gun_sonu.kisi)}. Kaydı giren kişi onaylayamaz; ikinci yetkili kendi adıyla onaylar.</span></div>`:''}
+  <div class="eylemler">
+   <button class="dugme ana" id="b-ana"><span>${esc(ANA[1])}</span><small>${esc(ANA[2])}</small></button>
+   <button class="dugme" data-git2="masraf" ${acik?'':'disabled title="Önce açılış sayımı"'}><span>Masraf gir</span><small>Eşik altı müdür, üstü merkez onayı</small></button>
+   <button class="dugme" data-git2="sayim:ara" ${g.acilis&&!g.gun_sonu?'':'disabled title="Önce açılış sayımı"'}><span>Ara sayım / vardiya devri</span><small>İki kişiyle</small></button>
+  </div>
+  <div class="kart"><h2>Günlük kontrol formu</h2><p class="mut kucuk" style="margin-top:-6px">Yapılan işlemlerden kendiliğinden dolar; ayrıca form doldurulmaz.</p>
+   <div class="liste">${D.form.map(f=>`<div class="satir"><span class="isaret ${f.tamam?'tam':'yok'}" aria-hidden="true">${f.tamam?'✓':'○'}</span><span class="ana">${esc(f.ad)}</span><span class="mut kucuk">${esc(f.ayrinti)}</span><span class="sr" style="position:absolute;left:-9999px">${f.tamam?'tamam':'eksik'}</span></div>`).join('')}</div></div>`;
+  $('#b-ana').onclick=()=>anaEylem(ANA[0]);
+  s.querySelectorAll('[data-git2]').forEach(b=>b.onclick=()=>anaEylem(b.dataset.git2))}
+async function anaEylem(e){
+  if(e.startsWith('sayim:')){SAYIM.tur=e.split(':')[1];git('sayim');return}
+  if(e==='onay'){const ad=await kisiSec('İkinci onay','Kaydı giren kişi onaylayamaz. Onaylayacak kişiyi seçin; kayıt bu kişi adına yazılır.',D.gun.gun_sonu.kisi);if(!ad)return;
+    try{await api('POST','/api/giris',{ad});await api('POST','/api/onay',{id:D.gun.gun_sonu.id,tur:'ikinci_kisi'});bildir('Çift doğrulama kaydedildi');yenile()}catch(x){bildir(x.message);yenile()}return}
+  if(e==='gonder'){try{const v=await api('POST','/api/gonder',{id:D.gun.gun_sonu.id});bildir((v.imzali?'İmzalandı, ':'Cihaz anahtarı yok, imzasız; ')+(v.teslim?'merkeze teslim edildi.':'kuyruğa alındı. '+(v.hata||'')));yenile()}catch(x){bildir(x.message)}return}
+  git(e)}
+
+// ---------------- sayım ızgarası (sayısal tuş takımı: Enter/↓ sonraki, ↑ önceki; odakta seçili; boş = 0)
+const BANKNOT=[20000,10000,5000,2000,1000,500],MADENI=[100,50,25,10,5,1];
+const dAd=d=>d>=100?(d/100)+' TL':d+' kr';
+function izgaraHtml(on,adet){const tab=(baslik,l)=>`<table><thead><tr><th>${baslik}</th><th>Adet</th><th style="text-align:right">Tutar</th></tr></thead><tbody>${l.map(d=>`<tr><td class="d">${dAd(d)}</td><td><input inputmode="numeric" maxlength="6" data-d="${d}" data-on="${on}" value="${adet&&adet[d]?adet[d]:''}" aria-label="${dAd(d)} adet"></td><td class="t" data-t="${on}-${d}"></td></tr>`).join('')}</tbody></table>`;
+  return `<div class="izgara">${tab('Banknot',BANKNOT)}${tab('Madeni para',MADENI)}</div>`}
+function izgaraBagla(kok,on,degisti){const inp=[...kok.querySelectorAll(`input[data-on="${on}"]`)];
+  const hesap=()=>{let t=0;inp.forEach(i=>{const a=parseInt(i.value||'0',10)||0,d=+i.dataset.d;t+=a*d;kok.querySelector(`[data-t="${on}-${d}"]`).textContent=a?tl(a*d):''});degisti(t)};
+  inp.forEach((i,n)=>{i.onfocus=()=>i.select();i.oninput=()=>{i.value=i.value.replace(/\D/g,'');hesap()};
+    i.onkeydown=e=>{if(e.key==='Enter'||e.key==='ArrowDown'){e.preventDefault();(inp[n+1]||inp[0]).focus()}else if(e.key==='ArrowUp'){e.preventDefault();(inp[n-1]||inp[inp.length-1]).focus()}}});hesap()}
+function izgaraOku(kok,on){const o={};kok.querySelectorAll(`input[data-on="${on}"]`).forEach(i=>{const a=parseInt(i.value||'0',10)||0;if(a)o[i.dataset.d]=a});return o}
+
+// ---------------- Sayım ekranı
+const SAYIM={tur:'acilis'};
+function sayimCiz(){const g=D.gun,s=bolum('sayim');if(g.acilis&&SAYIM.tur==='acilis')SAYIM.tur='ara';
+  const TUR={acilis:'Açılış',ara:'Ara sayım',devir:'Vardiya devri'};
+  s.innerHTML=`<div class="sayfa-bas"><div><h1>Sayım</h1><div class="mut">Nakit sayımı çekmece başınadır.</div></div>
+   <div class="seg" id="s-tur">${Object.entries(TUR).map(([k,a])=>`<button data-t="${k}" aria-pressed="${k===SAYIM.tur}" ${k==='acilis'&&g.acilis?'disabled':''} ${k!=='acilis'&&!g.acilis?'disabled':''}>${a}</button>`).join('')}</div></div>
+  <div class="kart yigin">${izgaraHtml('s')}
+   <div class="toplam-kutu"><span>Sayılan</span><span class="tutar" id="s-toplam">0,00 TL</span></div>
+   <div class="form-iki">
+    ${SAYIM.tur==='acilis'?'<div class="mut">Beklenen: bir önceki kapanışta ertesi güne devreden nakit (kaydedince karşılaştırılır).</div>':`<label class="alan">${SAYIM.tur==='devir'?'Devralan kişi':'İkinci sayan kişi'}<select class="girdi" id="s-ikinci"></select></label>`}
+    <label class="alan">Not (fark varsa zorunlu)<input class="girdi" id="s-not" maxlength="300"></label></div>
+   <div class="hata" id="s-hata" role="alert"></div>
+   <div class="sira"><button class="dugme ana" id="s-kaydet">${TUR[SAYIM.tur]} kaydet</button><span class="mut kucuk">Kaydeden: ${esc((D.yonetici||D.kisi||{}).ad)}</span></div></div>
+  <div class="kart"><h2>Bugünkü sayımlar</h2>${g.sayimlar.length?`<table class="tablo"><thead><tr><th>Tür</th><th>Sayan</th><th>İkinci kişi</th><th style="text-align:right">Sayılan</th><th style="text-align:right">Fark</th><th></th></tr></thead><tbody>${g.sayimlar.map(x=>`<tr><td>${TUR[x.tur]}</td><td>${esc(x.kisi)}</td><td>${esc(x.ikinci_kisi||'')}</td><td class="s">${tl(x.sayilan_kurus)}</td><td class="s">${x.fark_kurus==null?'<span class="mut">—</span>':farkHtml(x.fark_kurus)}</td><td>${D.yonetici?`<button class="dugme" data-iptal="${esc(x.id)}">İptal et</button>`:''}</td></tr>`).join('')}</tbody></table>`:'<p class="mut">Henüz sayım yok.</p>'}</div>`;
+  s.querySelector('#s-tur').onclick=e=>{const b=e.target.closest('button');if(b&&!b.disabled){SAYIM.tur=b.dataset.t;sayimCiz()}};
+  if(s.querySelector('#s-ikinci'))personelSecenek(s.querySelector('#s-ikinci'),(D.yonetici||D.kisi||{}).ad);
+  izgaraBagla(s,'s',t=>s.querySelector('#s-toplam').textContent=tl(t));
+  s.querySelector('#s-kaydet').onclick=async()=>{const ik=s.querySelector('#s-ikinci');
+    try{const v=await api('POST','/api/sayim',{tur:SAYIM.tur,tarih:D.tarih,cekmece:D.cekmece,adetler:izgaraOku(s,'s'),ikinci_kisi:ik?ik.value:null,not:s.querySelector('#s-not').value});
+      bildir('Kaydedildi'+(v.fark_kurus?(' · fark '+tl(v.fark_kurus)):'')+(v.limit_asildi?' · kasa limiti aşıldı':''));await yenile()}catch(e){s.querySelector('#s-hata').textContent=e.message}};
+  iptalBagla(s);setTimeout(()=>{const i=s.querySelector('input[data-on="s"]');if(i)i.focus()},0)}
+function iptalBagla(s){s.querySelectorAll('[data-iptal]').forEach(b=>b.onclick=async()=>{const n=await nedenSor('İptal et',`${b.dataset.iptal} iptal edilecek. Kayıt silinmez; iptal kaydı ve gerekçe iz olarak kalır. Gerekirse sonra yeniden girin.`);if(!n)return;
+  try{await api('POST','/api/iptal',{id:b.dataset.iptal,neden:n});bildir('İptal kaydedildi');yenile()}catch(e){bildir(e.message)}})}
+
+// ---------------- Masraf
+function masrafCiz(){const g=D.gun,s=bolum('masraf'),ben=(D.yonetici||D.kisi||{});
+  const DUR={bekliyor:'⏳ Onay bekliyor',onaylandi:'✓ Onaylandı',reddedildi:'✕ Reddedildi',iptal:'— İptal'};
+  s.innerHTML=`<div class="sayfa-bas"><div><h1>Masraf ve kasa çıkışı</h1><div class="mut">${tl(D.masraf_merkez_esigi_kurus)} altı mağaza müdürü, ${tl(D.masraf_merkez_esigi_kurus)} ve üstü talep formu ve merkez onayı. Giren onaylayamaz.</div></div></div>
+  <div class="kart yigin"><div class="form-uc">
+    <label class="alan">Tür<select class="girdi" id="m-tur">${D.masraf_turleri.map(t=>`<option>${esc(t)}</option>`).join('')}</select></label>
+    <label class="alan">Tutar (TL)<input class="girdi tutar" id="m-tutar" inputmode="decimal" placeholder="0,00"></label>
+    <label class="alan">Açıklama<input class="girdi" id="m-aciklama" maxlength="300"></label></div>
+   <div class="mut kucuk">Fiş fotoğrafı: dosya ekleme bir sonraki adımda (KS6 ek) bağlanacak; şimdilik fişi masraf fişleri zarfına ayırın.</div>
+   <div class="hata" id="m-hata" role="alert"></div>
+   <div class="sira"><button class="dugme ana" id="m-kaydet">Masrafı kaydet</button></div></div>
+  <div class="kart"><h2>Bugünkü masraflar</h2>${g.masraflar.length?`<table class="tablo"><thead><tr><th>Tür</th><th>Açıklama</th><th>Giren</th><th style="text-align:right">Tutar</th><th>Onay</th><th>Durum</th><th></th></tr></thead><tbody>${g.masraflar.map(m=>{
+    const yetki=m.durum==='bekliyor'&&m.kisi.toLowerCase()!==String(ben.ad||'').toLowerCase()&&(m.onay_duzeyi==='mudur'?['mudur','yonetici'].includes(ben.rol):ben.rol==='yonetici');
+    return `<tr><td>${esc(m.tur)}</td><td>${esc(m.aciklama)}</td><td>${esc(m.kisi)}</td><td class="s">${tl(m.tutar_kurus)}</td><td>${m.onay_duzeyi==='merkez'?'Merkez':'Müdür'}</td><td>${DUR[m.durum]}${m.karar_veren?' · '+esc(m.karar_veren):''}</td>
+    <td class="sira">${yetki?`<button class="dugme" data-onay="${esc(m.id)}">Onayla</button><button class="dugme dolu-tehlike" data-ret="${esc(m.id)}">Reddet</button>`:''}${D.yonetici&&m.durum!=='iptal'?`<button class="dugme" data-iptal="${esc(m.id)}">İptal et</button>`:''}</td></tr>`}).join('')}</tbody></table>`:'<p class="mut">Bugün masraf yok.</p>'}</div>`;
+  const tt=s.querySelector('#m-tutar');tt.onblur=()=>{const k=kurusCoz(tt.value);if(k!=null&&tt.value)tt.value=tl(k).replace(' TL','')};
+  s.querySelector('#m-kaydet').onclick=async()=>{const k=kurusCoz(tt.value);if(k==null){s.querySelector('#m-hata').textContent='Tutar sayı olmalı (ör. 125,50).';return}
+    try{const v=await api('POST','/api/masraf',{tarih:D.tarih,cekmece:D.cekmece,tur:s.querySelector('#m-tur').value,tutar_kurus:k,aciklama:s.querySelector('#m-aciklama').value});bildir(v.onay_duzeyi==='merkez'?'Kaydedildi · merkez onayı bekliyor':'Kaydedildi · müdür onayı bekliyor');yenile()}catch(e){s.querySelector('#m-hata').textContent=e.message}};
+  s.querySelectorAll('[data-onay]').forEach(b=>b.onclick=async()=>{try{await api('POST','/api/masraf/karar',{id:b.dataset.onay,onay:true});yenile()}catch(e){bildir(e.message)}});
+  s.querySelectorAll('[data-ret]').forEach(b=>b.onclick=async()=>{const n=await nedenSor('Masrafı reddet','Ret nedeni kayda yazılır.');if(!n)return;try{await api('POST','/api/masraf/karar',{id:b.dataset.ret,onay:false,not:n});yenile()}catch(e){bildir(e.message)}});
+  iptalBagla(s)}
+
+// ---------------- Gün sonu (5 adımlı sihirbaz + sağda yapışkan fark paneli)
+let GS=null;
+function gsYeni(eski){const c=D.cekmeceler.find(x=>x.id===D.cekmece);
+  return {adim:0,duzelt:eski?eski.id:null,nakit_adetler:eski?{...eski.nakit_adetler}:{},
+    noktalar:c.noktalar.map(n=>{const e=eski&&eski.noktalar.find(x=>x.nokta===n.id);return {nokta:n.id,z_toplam_kurus:e?e.z_toplam_kurus:0,pos:Object.fromEntries(n.poslar.map(p=>[p.id,e&&e.pos[p.id]||0]))}}),
+    nebim_toplam_kurus:eski?eski.nebim_toplam_kurus:0,ciro:eski?{...eski.ciro}:{},
+    doviz:D.sabitler.dovizler.map(([k])=>{const e=eski&&eski.doviz.find(d=>d.kod===k);return {kod:k,tutar:e?e.tutar:0,kur_onbinde:e?e.kur_onbinde:0}}),
+    devreden_kurus:eski?eski.devreden_kurus:0,kontrol:eski?[...eski.kontrol]:Array(7).fill(false),not:eski?eski.not:'',k:null}}
+function gsGirdi(){return {tarih:D.tarih,cekmece:D.cekmece,nakit_adetler:GS.nakit_adetler,noktalar:GS.noktalar,nebim_toplam_kurus:GS.nebim_toplam_kurus,ciro:GS.ciro,doviz:GS.doviz,devreden_kurus:GS.devreden_kurus,kontrol:GS.kontrol,not:GS.not}}
+const ADIMLAR=['Nakit ve döviz','Z raporu ve POS','Satış sistemi ve ödeme türleri','Kapanış listesi ve not','Özet ve kayıt'];
+function gunSonuCiz(){const g=D.gun,s=bolum('gunsonu');
+  if(g.gun_sonu&&!(GS&&GS.duzelt===g.gun_sonu.id)){return gsKayitli(s,g)}
+  if(!GS||GS.tarih!==D.tarih||GS.cekmece!==D.cekmece){GS=gsYeni(null);GS.tarih=D.tarih;GS.cekmece=D.cekmece}
+  const c=D.cekmeceler.find(x=>x.id===D.cekmece);
+  let govde='';
+  if(GS.adim===0)govde=`<h2>Çekmece nakit sayımı</h2>${izgaraHtml('g',GS.nakit_adetler)}<div class="toplam-kutu"><span>Sayılan nakit</span><span class="tutar" id="g-nakit"></span></div>
+    <h2 style="margin-top:8px">Döviz</h2><table class="tablo"><thead><tr><th>Döviz</th><th>Tutar</th><th>Günlük kur (TL)</th><th style="text-align:right">TL karşılığı</th></tr></thead><tbody>${GS.doviz.map((d,i)=>`<tr><td>${esc(D.sabitler.dovizler[i][1])} (${d.kod})</td><td><input class="girdi tutar" data-dv="${i}" inputmode="decimal" value="${d.tutar?tl(d.tutar).replace(' TL',''):''}"></td><td><input class="girdi tutar" data-kur="${i}" inputmode="decimal" placeholder="0,0000" value="${d.kur_onbinde?(d.kur_onbinde/10000).toFixed(4).replace('.',','):''}"></td><td class="s" data-dvtl="${i}"></td></tr>`).join('')}</tbody></table>
+    <p class="mut kucuk">Kur elle girilir (günlük kur ve kaynağı mağaza düzenine göre); hiçbir dış hizmete bağlanılmaz.</p>`;
+  if(GS.adim===1)govde=`<h2>Kasa noktası başına Z raporu ve POS gün sonu</h2>${c.noktalar.map((n,i)=>`<div class="kart yigin" style="background:var(--panel2)"><b>${esc(n.ad)}</b><div class="form-uc">
+    <label class="alan">Z raporu toplamı<input class="girdi tutar" data-z="${i}" inputmode="decimal" value="${GS.noktalar[i].z_toplam_kurus?tl(GS.noktalar[i].z_toplam_kurus).replace(' TL',''):''}"></label>
+    ${n.poslar.map(p=>`<label class="alan">${esc(p.ad)} gün sonu<input class="girdi tutar" data-pos="${i}:${esc(p.id)}" inputmode="decimal" value="${GS.noktalar[i].pos[p.id]?tl(GS.noktalar[i].pos[p.id]).replace(' TL',''):''}"></label>`).join('')}</div></div>`).join('')}
+    <p class="mut kucuk">Z raporu ve POS gün sonu fişinin fotoğrafı: dosya ekleme bir sonraki adımda bağlanacak.</p>`;
+  if(GS.adim===2)govde=`<h2>Satış sistemi toplamı ve ödeme türleri</h2><label class="alan" style="max-width:320px">Nebim mağaza raporu toplamı<input class="girdi tutar" id="g-nebim" inputmode="decimal" value="${GS.nebim_toplam_kurus?tl(GS.nebim_toplam_kurus).replace(' TL',''):''}"></label>
+    <div class="form-iki">${D.sabitler.odeme_turleri.map(([k,a])=>`<label class="alan">${esc(a)}<input class="girdi tutar" data-ciro="${k}" inputmode="decimal" value="${GS.ciro[k]?tl(GS.ciro[k]).replace(' TL',''):''}"></label>`).join('')}</div>`;
+  if(GS.adim===3)govde=`<h2>Kapanış kontrol listesi</h2><div class="kontrol">${D.sabitler.kapanis_listesi.map((m,i)=>`<label><input type="checkbox" data-k="${i}" ${GS.kontrol[i]?'checked':''}>${esc(m)}</label>`).join('')}</div>
+    <div class="form-iki"><label class="alan">Ertesi güne devreden nakit (bozukluk)<input class="girdi tutar" id="g-devreden" inputmode="decimal" value="${GS.devreden_kurus?tl(GS.devreden_kurus).replace(' TL',''):''}"></label>
+    <label class="alan">Açıklama notu (fark varsa zorunlu)<textarea class="girdi" id="g-not" maxlength="600">${esc(GS.not)}</textarea></label></div>
+    <p class="mut kucuk">"Çift doğrulama" maddesi, kayıttan sonra ikinci kişinin onayıyla tamamlanır; gönderim için 7 madde de işaretli olmalı.</p>`;
+  if(GS.adim===4)govde=`<h2>Özet</h2><table class="tablo"><tbody>
+    <tr><td>Sayılan nakit</td><td class="s">${tl(topla(GS.nakit_adetler))}</td></tr>
+    <tr><td>Z raporu toplamı</td><td class="s">${tl(GS.noktalar.reduce((a,n)=>a+n.z_toplam_kurus,0))}</td></tr>
+    <tr><td>Ciro toplamı (döviz dahil)</td><td class="s">${GS.k?tl(GS.k.ciro_toplam_kurus):'—'}</td></tr>
+    <tr><td>Nebim toplamı</td><td class="s">${tl(GS.nebim_toplam_kurus)}</td></tr>
+    <tr><td>Kapanış listesi</td><td class="s">${GS.kontrol.filter(Boolean).length}/7</td></tr></tbody></table>
+    ${GS.duzelt?'<div class="serit"><span>⚠</span><span><b>Düzeltme kipi (yönetici).</b> Eski kayıt silinmez; iptal kaydı ve gerekçeyle birlikte yenisi yazılır.</span></div>':''}
+    <div class="hata" id="g-hata" role="alert"></div><button class="dugme ana" id="g-kaydet">${GS.duzelt?'İptal et ve yeniden gir':'Gün sonunu kaydet'}</button>`;
+  s.innerHTML=`<div class="sayfa-bas"><div><h1>Gün sonu</h1><div class="mut">${esc(c.ad)} · ${c.noktalar.length} kasa noktası · ${esc(D.tarih)}</div></div></div>
+   <div class="gs"><div class="yigin"><div class="adimlar" role="list">${ADIMLAR.map((a,i)=>`<button role="listitem" data-adim="${i}" ${i===GS.adim?'aria-current="step"':''} class="${i<GS.adim?'bitti':''}">${i+1}. ${a}</button>`).join('')}</div>
+    <div class="kart yigin" id="g-govde">${govde}</div>
+    <div class="sira"><button class="dugme" id="g-geri" ${GS.adim===0?'disabled':''}>Geri</button>${GS.adim<4?'<button class="dugme ana" id="g-ileri">İleri</button>':''}</div></div>
+    <aside class="kart ozet-panel" aria-live="polite" id="g-ozet"></aside></div>`;
+  const kok=s.querySelector('#g-govde');
+  if(GS.adim===0){izgaraBagla(kok,'g',t=>{GS.nakit_adetler=izgaraOku(kok,'g');kok.querySelector('#g-nakit').textContent=tl(t);onizle()});
+    const dvc=()=>GS.doviz.forEach((d,i)=>{kok.querySelector(`[data-dvtl="${i}"]`).textContent=d.tutar?tl(Math.round(d.tutar*d.kur_onbinde/10000)):''});
+    kok.querySelectorAll('[data-dv]').forEach(i=>i.oninput=()=>{const v=kurusCoz(i.value);i.style.borderColor=v==null?'var(--eksik)':'';GS.doviz[+i.dataset.dv].tutar=v||0;dvc();onizle()});
+    kok.querySelectorAll('[data-kur]').forEach(i=>i.oninput=()=>{const v=kurCoz(i.value);i.style.borderColor=v==null?'var(--eksik)':'';GS.doviz[+i.dataset.kur].kur_onbinde=v||0;dvc();onizle()});dvc()}
+  const para=(sel,f)=>kok.querySelectorAll(sel).forEach(i=>{i.oninput=()=>{const v=kurusCoz(i.value);i.style.borderColor=v==null?'var(--eksik)':'';f(i,v||0);onizle()};i.onblur=()=>{const v=kurusCoz(i.value);if(v!=null&&i.value)i.value=tl(v).replace(' TL','')}});
+  para('[data-z]',(i,v)=>GS.noktalar[+i.dataset.z].z_toplam_kurus=v);
+  para('[data-pos]',(i,v)=>{const [n,p]=i.dataset.pos.split(':');GS.noktalar[+n].pos[p]=v});
+  para('#g-nebim',(i,v)=>GS.nebim_toplam_kurus=v);para('[data-ciro]',(i,v)=>{GS.ciro[i.dataset.ciro]=v});para('#g-devreden',(i,v)=>GS.devreden_kurus=v);
+  kok.querySelectorAll('[data-k]').forEach(i=>i.onchange=()=>GS.kontrol[+i.dataset.k]=i.checked);
+  const nt=kok.querySelector('#g-not');if(nt)nt.oninput=()=>GS.not=nt.value;
+  s.querySelectorAll('[data-adim]').forEach(b=>b.onclick=()=>{GS.adim=+b.dataset.adim;gunSonuCiz()});
+  s.querySelector('#g-geri').onclick=()=>{GS.adim--;gunSonuCiz()};
+  const il=s.querySelector('#g-ileri');if(il)il.onclick=()=>{GS.adim++;gunSonuCiz()};
+  const kd=s.querySelector('#g-kaydet');if(kd)kd.onclick=gsKaydet;
+  ozetCiz();onizle();const ilk=kok.querySelector('input');if(ilk)ilk.focus()}
+const topla=a=>Object.entries(a).reduce((t,[d,n])=>t+d*n,0);
+function onizle(){clearTimeout(onizle.t);onizle.t=setTimeout(async()=>{try{GS.k=await api('POST','/api/gunsonu/onizle',gsGirdi());ozetCiz()}catch(e){}},250)}
+function ozetCiz(){const o=$('#g-ozet');if(!o)return;const k=GS.k;
+  o.innerHTML=`<h2>Canlı karşılaştırma</h2>${k?k.satirlar.map(r=>`<div class="fs"><span>${esc(r.ad)}</span><div class="sira" style="justify-content:space-between"><span class="tutar kucuk">${tl(r.bulunan_kurus)} / ${tl(r.beklenen_kurus)}</span>${farkHtml(r.fark_kurus)}</div></div>`).join(''):'<p class="mut">Tutar girdikçe güncellenir.</p>'}
+   ${k&&k.kasa_ciro_uyusmuyor?'<div class="uyari-kutu">▼▲ Kasa ile ciro uyuşmuyor. Açıklama notu zorunlu.</div>':''}
+   <div class="mut kucuk">✓ farksız · ▲ fazla · ▼ eksik. Fark varsa 4. adımda not yazın.</div>`}
+async function gsKaydet(){const h=$('#g-hata');h.textContent='';
+  try{if(GS.duzelt){const n=await nedenSor('İptal et ve yeniden gir','Eski gün sonu iptal kaydıyla kapanır (silinmez), yenisi yazılır. Gerekçe zorunlu.');if(!n)return;
+      await api('POST','/api/gunsonu/duzelt',{eski_id:GS.duzelt,neden:n,girdi:gsGirdi()})}
+    else await api('POST','/api/gunsonu',gsGirdi());
+    GS=null;bildir('Gün sonu kaydedildi. Sıradaki: ikinci kişi onayı.');await yenile()}catch(e){h.textContent=e.message}}
+function gsKayitli(s,g){const x=g.gun_sonu,k=x.karsilastirma;
+  s.innerHTML=`<div class="sayfa-bas"><div><h1>Gün sonu</h1><div class="mut">${esc(x.id)} · giren ${esc(x.kisi)}${x.duzeltir?' · '+esc(x.duzeltir)+' kaydının düzeltmesi':''}</div></div></div>
+  ${!g.ikinci_onay?`<div class="serit"><span>⏳</span><span><b>İkinci onay bekliyor — Giren: ${esc(x.kisi)}.</b> Kaydı giren kişi onaylayamaz.</span></div>`:''}
+  ${k.kasa_ciro_uyusmuyor?'<div class="uyari-kutu">▼▲ Kasa ile ciro uyuşmuyor.</div>':''}
+  <div class="gs"><div class="kart"><h2>Karşılaştırma</h2><table class="tablo"><thead><tr><th>Satır</th><th style="text-align:right">Beklenen</th><th style="text-align:right">Bulunan</th><th style="text-align:right">Fark</th></tr></thead><tbody>
+   ${k.satirlar.map(r=>`<tr><td>${esc(r.ad)}</td><td class="s">${tl(r.beklenen_kurus)}</td><td class="s">${tl(r.bulunan_kurus)}</td><td class="s">${farkHtml(r.fark_kurus)}</td></tr>`).join('')}</tbody></table>
+   ${x.not?`<p><b>Not:</b> ${esc(x.not)}</p>`:''}</div>
+   <aside class="kart yigin"><h2>Durum</h2>
+    <div>Çift doğrulama: <b>${esc(g.ikinci_onay||'bekliyor')}</b></div><div>Ertesi gün müdür: <b>${esc(g.ertesi_gun_onay||'bekliyor')}</b></div>
+    <div>Merkeze: <b>${g.gonderildi?'gönderildi (kuyrukta ya da teslim)':'gönderilmedi'}</b></div><div>Kapanış listesi: <b>${x.kontrol.filter(Boolean).length}/7</b></div>
+    ${!g.ikinci_onay?'<button class="dugme ana" data-e="onay">Farklı kullanıcıyla onayla</button>':(!g.gonderildi?'<button class="dugme ana" data-e="gonder">Merkeze gönder</button>':'')}
+    ${g.ikinci_onay&&!g.ertesi_gun_onay?'<button class="dugme" data-e="ertesi">Ertesi gün gözden geçirdim (müdür)</button>':''}
+    ${D.yonetici?'<button class="dugme" data-e="duzelt">İptal et ve yeniden gir</button>':''}</aside></div>`;
+  s.querySelectorAll('[data-e]').forEach(b=>b.onclick=async()=>{const e=b.dataset.e;
+    if(e==='onay'||e==='gonder')return anaEylem(e);
+    if(e==='ertesi'){try{await api('POST','/api/onay',{id:x.id,tur:'ertesi_gun'});bildir('Gözden geçirme kaydedildi');yenile()}catch(z){bildir(z.message)}return}
+    if(e==='duzelt'){GS=gsYeni(x);GS.tarih=D.tarih;GS.cekmece=D.cekmece;gunSonuCiz()}})}
+
+// ---------------- Kayıtlar ve Excel
+let KY={bas:'',bit:''};
+async function kayitlarCiz(){const s=bolum('kayitlar');if(!KY.bit){KY.bit=D.tarih;const t=new Date(D.tarih+'T00:00:00');t.setDate(t.getDate()-30);KY.bas=t.toISOString().slice(0,10)}
+  s.innerHTML=`<div class="sayfa-bas"><div><h1>Kayıtlar ve Excel</h1><div class="mut">Kayıtlar silinmez; iptal edilenler listede görünmez, Excel'de de yer almaz (iz defterde kalır).</div></div>
+   <div class="sira"><label class="sira kucuk">Başlangıç<input type="date" class="girdi" id="k-bas" value="${KY.bas}" style="width:auto"></label><label class="sira kucuk">Bitiş<input type="date" class="girdi" id="k-bit" value="${KY.bit}" style="width:auto"></label>
+   <a class="dugme ana" id="k-excel" href="/api/excel?bas=${KY.bas}&bit=${KY.bit}" download style="text-decoration:none">Excel'e aktar (.xlsx)</a></div></div><div id="k-govde" class="yigin"><p class="mut">Yükleniyor…</p></div>`;
+  const ch=()=>{KY.bas=s.querySelector('#k-bas').value;KY.bit=s.querySelector('#k-bit').value;kayitlarCiz()};s.querySelector('#k-bas').onchange=ch;s.querySelector('#k-bit').onchange=ch;
+  try{const v=await api('GET',`/api/kayitlar?bas=${KY.bas}&bit=${KY.bit}`);
+    s.querySelector('#k-govde').innerHTML=`<div class="kart"><h2>Mağaza toplamı (${esc(v.bit)})</h2><div class="durum-serit"><span>Çekmece: ${v.magaza.cekmece_sayisi}</span><span>Nakit: <b class="tutar">${tl(v.magaza.nakit_sayilan_kurus)}</b></span><span>Ciro: <b class="tutar">${tl(v.magaza.ciro_toplam_kurus)}</b></span><span>Z: <b class="tutar">${tl(v.magaza.z_toplam_kurus)}</b></span>${v.magaza.kasa_ciro_uyusmuyor?'<span style="color:var(--eksik);font-weight:600">▼▲ Kasa ile ciro uyuşmuyor</span>':''}</div></div>
+    <div class="kart"><h2>Gün sonları</h2>${v.gun_sonlari.length?`<table class="tablo"><thead><tr><th>Tarih</th><th>Çekmece</th><th>Giren</th><th style="text-align:right">Nakit</th><th style="text-align:right">Ciro</th><th>Fark</th><th></th></tr></thead><tbody>${v.gun_sonlari.slice().reverse().map(g=>`<tr><td>${esc(g.tarih)}</td><td>${esc(g.cekmece)}</td><td>${esc(g.kisi)}</td><td class="s">${tl(g.nakit_sayilan_kurus)}</td><td class="s">${tl(g.karsilastirma.ciro_toplam_kurus)}</td><td>${g.karsilastirma.kasa_ciro_uyusmuyor?'<span class="fark eksik">▼▲ uyuşmuyor</span>':(g.karsilastirma.fark_var?'<span class="fark fazla">▲ fark (not var)</span>':'<span class="fark tam">✓</span>')}</td><td>${D.yonetici?`<button class="dugme" data-iptal="${esc(g.id)}">İptal et</button>`:''}</td></tr>`).join('')}</tbody></table>`:'<p class="mut">Bu aralıkta gün sonu yok.</p>'}</div>`;
+    iptalBagla(s)}catch(e){s.querySelector('#k-govde').innerHTML=`<p class="hata">${esc(e.message)}</p>`}}
+
+// ---------------- Mağaza ayarları (yönetici)
+async function ayarlarCiz(){const s=bolum('ayarlar');if(!D.yonetici){s.innerHTML='<p class="mut">Yönetici girişi gerekli.</p>';return}
+  let a;try{a=await api('GET','/api/ayar')}catch(e){s.innerHTML=`<p class="hata">${esc(e.message)}</p>`;return}
+  s.innerHTML=`<div class="sayfa-bas"><div><h1>Mağaza ayarları</h1><div class="mut">İlk değerler plandan; kesin değerleri Yusuf verir. Kasa noktası = bilgisayar + yazarkasa + POS; çekmece = paranın durduğu yer.</div></div></div>
+  <div class="kart yigin"><div class="form-uc">
+   <label class="alan">Şube kodu<input class="girdi" id="a-sube" value="${esc(a.sube)}" maxlength="8"></label>
+   <label class="alan">Kasa limiti (TL, boş = yok)<input class="girdi tutar" id="a-limit" value="${a.kasa_limiti_kurus!=null?tl(a.kasa_limiti_kurus).replace(' TL',''):''}"></label>
+   <label class="alan">Masraf merkez onayı eşiği (TL)<input class="girdi tutar" id="a-esik" value="${tl(a.masraf_merkez_esigi_kurus).replace(' TL','')}"></label>
+   <label class="alan">Fark toleransı (TL)<input class="girdi tutar" id="a-tol" value="${tl(a.fark_toleransi_kurus).replace(' TL','')}"></label>
+   <label class="alan">Gün sonu son saati<input class="girdi mono" id="a-saat" value="${esc(a.gonderim_son_saat)}" maxlength="5"></label>
+   <label class="alan">Merkez klasörü (sunucu ucu gelene kadar)<input class="girdi mono" id="a-merkez" value="${esc(a.merkez_klasoru||'')}"></label></div>
+   <div class="form-iki"><label class="alan">Personel (her satır: Ad;rol — rol: personel, mudur, yonetici)<textarea class="girdi" id="a-personel">${esc(a.personel.map(p=>p.ad+';'+p.rol).join('\n'))}</textarea></label>
+   <label class="alan">Masraf türleri (her satır bir tür)<textarea class="girdi" id="a-turler">${esc(a.masraf_turleri.join('\n'))}</textarea></label></div>
+   <label class="alan">Çekmeceler ve kasa noktaları (gelişmiş, JSON)<textarea class="girdi mono" id="a-cekmece" style="min-height:180px">${esc(JSON.stringify(a.cekmeceler,null,2))}</textarea></label>
+   <div class="hata" id="a-hata" role="alert"></div><div class="sira"><button class="dugme ana" id="a-kaydet">Ayarları kaydet</button></div></div>`;
+  s.querySelector('#a-kaydet').onclick=async()=>{const h=s.querySelector('#a-hata');h.textContent='';
+    try{const lim=s.querySelector('#a-limit').value.trim(),es=kurusCoz(s.querySelector('#a-esik').value),to=kurusCoz(s.querySelector('#a-tol').value),li=lim?kurusCoz(lim):null;
+      if(es==null||to==null||(lim&&li==null))throw new Error('Tutar alanları sayı olmalı.');
+      const personel=s.querySelector('#a-personel').value.split('\n').map(x=>x.trim()).filter(Boolean).map(x=>{const [ad,rol='personel']=x.split(';').map(y=>y.trim());if(!['personel','mudur','yonetici'].includes(rol))throw new Error('Rol geçersiz: '+x);return {ad,rol}});
+      const y={...a,sube:s.querySelector('#a-sube').value.trim(),kasa_limiti_kurus:li,masraf_merkez_esigi_kurus:es,fark_toleransi_kurus:to,gonderim_son_saat:s.querySelector('#a-saat').value.trim(),
+        merkez_klasoru:s.querySelector('#a-merkez').value.trim()||null,personel,masraf_turleri:s.querySelector('#a-turler').value.split('\n').map(x=>x.trim()).filter(Boolean),cekmeceler:JSON.parse(s.querySelector('#a-cekmece').value)};
+      await api('POST','/api/ayar',y);bildir('Ayarlar kaydedildi');await yenile();uygulamaGoster()}catch(e){h.textContent=e.message}}}
+
+// ---------------- Merkez matrisi (yönetici)
+async function matrisCiz(){const s=bolum('matris');s.innerHTML='<h1>Merkez matrisi</h1><p class="mut">Yükleniyor…</p>';
+  try{const v=await api('GET','/api/matris?gun=14');const SY={geldi:['✓','Geldi'],gec:['⏱','Geç'],eksik:['✕','Eksik'],bekleniyor:['…','Bekleniyor']};
+    s.innerHTML=`<div class="sayfa-bas"><div><h1>Merkez matrisi</h1><div class="mut">Mağaza × gün: ✓ geldi · ⏱ geç · ✕ eksik · … bekleniyor · ⚠ kasa ile ciro uyuşmuyor. ${esc(v.not)}</div></div></div>
+    <div class="kart" style="overflow:auto"><table class="tablo matris"><thead><tr><th>Şube</th>${v.tarihler.map(t=>`<th>${esc(t.slice(5))}</th>`).join('')}</tr></thead><tbody>
+    ${v.satirlar.map(r=>`<tr><th>${esc(r.sube)}</th>${r.hucreler.map(h=>`<td class="m-${h.durum}" title="${SY[h.durum][1]}${h.kasa_ciro_uyusmuyor?' · kasa ile ciro uyuşmuyor':''}">${SY[h.durum][0]}${h.kasa_ciro_uyusmuyor?' ⚠':''}</td>`).join('')}</tr>`).join('')}</tbody></table>
+    ${v.okunamayan?`<p class="hata">${v.okunamayan} dosya okunamadı.</p>`:''}</div>`}catch(e){s.innerHTML=`<h1>Merkez matrisi</h1><p class="hata">${esc(e.message)}</p>`}}
+
+basla().catch(e=>{document.body.innerHTML='<p style="padding:24px">TAA Kasa açılamadı: '+esc(e.message)+'</p>'});
+</script>
+</body>
+</html>

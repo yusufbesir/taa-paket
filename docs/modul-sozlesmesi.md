@@ -74,6 +74,7 @@ Yetenek değişirse `@N+1` yayımlanır; eski `@N` en az bir sürüm daha sunulu
 6. `gerektirir` anahtarları Cargo.toml `[dependencies]` içindeki `taa-*` crate'lerle birebir (dev-bağımlılık hariç).
 7. İnce çizgi: `gerektirir` hedefi `program = "ortak"` ya da aynı programın crate'i olmalı; başka programın crate'ine zorunlu bağımlılık hata.
 8. `ad` klasör adı ve Cargo.toml `name` ile aynı.
+9. Klasörde `program.toml` varsa (programı bu depoda yaşayan crate) program modunda denetlenir ve `ad`'ı `modul.toml` `program` alanıyla aynıdır (`docs/program-sozlesmesi.md`, "Aynı depoda yaşayan programlar").
 
 Denetimin tam kapsamı betiğin kendisindedir (`tools/sozlesme_denetle.py`); fark olursa betik esastır.
 Ayrıntı: PLAN-TAA-PAKET §18.3.

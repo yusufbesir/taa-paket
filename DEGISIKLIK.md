@@ -6,6 +6,13 @@
 
 ## Yayınlanmamış
 
+### TAA Kasa gün sonu programı (yeni: taa-kasa-ekran, taa-kasa 0.2.0)
+
+- **Yeni program `taakasa` (exe `taa-kasa`):** gömülü pencereli tek exe; yerel güvenlik taa-cati panel kalıbı (127.0.0.1, rastgele kapı, tek seferlik açılış belirteci → HttpOnly/SameSite=Strict çerez, Host/Origin/içerik türü denetimi, sıkı CSP). Çekmece sayımı (açılış/ara/devir), ödeme türlerine göre ciro, döviz, Z/POS/Nebim karşılaştırması, masraf (2.000 TL altı müdür, üstü merkez onayı), "giren onaylayamaz", ikinci kişi onayı, kapanış listesi, imzalı paketle merkeze gönderim + çevrimdışı kuyruk, merkez matrisi (geldi/eksik/geç), Excel (xlsx) dışa aktarım.
+- **taa-kasa çekirdeği:** `gunsonu`, `merkez`, `xlsx`, `zaman` modülleri; eski `Defter` aynen duruyor. Kayıtlar yalnız eklenir; düzeltme = yönetici iptali + `duzeltir` izli yeni kayıt, silme yok.
+- **Sözleşmeler:** `kasa.gunsonu@1`, `kasa.masraf@1` (docs/sozlesmeler), veri sahibi `taakasa`; sözleşme denetleyicisi artık depodaki her `program.toml`'u program kipinde de denetliyor.
+- **Sınır / yer tutucu:** ortak giriş (KM1/KM2) bağlanmadı — personel adı listeden seçiliyor, yönetici girişi geçici yerel PIN; mağaza imzası cihaz anahtarıyla; sunucu kasa ucu yok (klasöre teslim); fiş fotoğrafı yalnız yol. Alanlar akşam Excel örneğiyle birebir eşleştirilecek. Ayrıntı: docs/TAA-KASA.md. Windows'ta denenmedi.
+
 ### Dinamik sunucu adresi (taa-yol otomatik güncelleme, taa-dns)
 
 - **Sorun:** sunucu dizüstü dolaşır; yol listesindeki `yerel` IP'si (192.168.1.19) eskiyince "hiçbir sunucu yoluna ulaşılamadı" oluşuyordu.

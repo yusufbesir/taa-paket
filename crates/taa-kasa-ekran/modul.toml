@@ -1,0 +1,13 @@
+# Sahip: Yusuf. yazan: [Claude#taa-kasa-KS2 2026-11-26]
+# taa-kasa-ekran modül tanımı. Program: TAA Kasa (gün sonu kasa programı). Çekirdek taa-kasa; veri sahipliği orada.
+ad = "taa-kasa-ekran"
+surum = "0.1.0"
+arayuz = "1"
+gerektirir = { "taa-dosya" = "1", "taa-hata" = "1", "taa-imza" = "1", "taa-kasa" = "1" }
+ozellikler = ["kasa-ekran"]
+program = "taakasa"
+sunar = []
+ister = []
+veri_sahibi = []
+veri_okur = []
+ayar_alani = "programlar.taakasa"

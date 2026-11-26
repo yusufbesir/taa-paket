@@ -1,7 +1,14 @@
 //! taa-kasa (TaaKasaDefteri): banknot/bozuk sayımı, beklenen toplamla fark, kapanış defteri.
 //! Defter yalnız eklemeli JSONL'dir: kayıt silinmez/değişmez, düzeltme "iptal" kaydıyla yapılır.
 //! Beklenen tutar (örn. Nebim toplamı) ELLE girilir; hiçbir sisteme bağlanmaz.
+//! Yeni (TAA Kasa programı, 2026-11-26): `gunsonu` (açılış, sayım, devir, masraf, gün sonu, onay, iptal),
+//! `merkez` (kuyruk, matris, Excel), `xlsx`, `zaman`. Eski `Defter` (kasa-defteri) aynen korunur.
 //! Özellik anahtarı: "kasa-defteri" (varsayılan açık). Sahip: Yusuf. yazan: [Claude#taa-paket-yeni 2026-11-04].
+
+pub mod gunsonu;
+pub mod merkez;
+pub mod xlsx;
+pub mod zaman;
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
