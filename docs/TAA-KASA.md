@@ -29,6 +29,40 @@ Fark varsa açıklama zorunlu; nakit ya da Z↔ciro tutmazsa "kasa ile ciro uyu�
 - Kayıt yalnız eklenir (JSONL). Silme yok; düzeltme = yönetici iptali (gerekçeli) + `duzeltir` izli yeni kayıt.
 - Masraf: eşik (varsayılan 2.000 TL) altını müdür, üstünü yönetici (merkez) onaylar; giren onaylayamaz.
 - İptal, düzeltme, ayarlar ve matris yalnız yönetici girişiyle; Excel giriş yapmış kişiye açık.
+- **İkinci imza gerekçesi** (karar 2026-11-26, gözetimsiz varsayılan): ikinci imza atılmadan gönderimde 5–300 karakter
+  gerekçe zorunlu (`POST /api/gerekce`, defter kaydı `gerekce`, son kayıt geçerli). Gerekçe gün durumunda, pakette
+  (`ikinci_imza_gerekcesi`, `imzalar[1].gerekce`), A4 tutanakta, kayıt Excel'inde ve merkez matrisinde görünür. İkinci imza
+  atılırsa gerekçe gösterilmez.
+- **Tutanak kilidi:** ilk imzadan sonra tutanak ekleri (ERP içe aktarma, yapılan işlem) değişmez; değişiklik yönetici iptali
+  ve yeniden girişle.
+- **Z formülü ayarı** (`KasaAyar.z_formulu`): şablonun genel toplam formülü sabit; Z karşılaştırmasında `degisim_eklenir`,
+  `internet_degisimi_dusulur` (25.11 ile doğrulandı), `iade_eklenir` (çıkarım), `kredi_ceki_dusulur`, `efatura_dusulur`
+  (bilinmiyor, varsayılan kapalı) ayarlanır. Gün örnekleri: `crates/taa-kasa/testdata/gun-ornekleri/*.json` (bugün yalnız
+  sentetik); gerçek gün anonim tutarlarla eklenince test kendiliğinden doğrular.
+
+## Neon görüşü (2026-11-26, anonim özetle; gerçek tutar/ad/firma gönderilmedi)
+
+Gemini Neon'a akış, gerekçe/kilit ve telefon onayı soruldu. Değerlendirme:
+- Mali alanların ilk imzadan sonra kilitlenmesi: zaten öyle (kayıt yalnız eklenir; düzeltme yönetici iptali + yeni kayıt,
+  eski imzalar yeni kayda geçmez).
+- Anlamsız kısa gerekçe riski: ekranda hazır gerekçe önerileri eklendi (serbest metin korunur). Tekrarlayan tek imzalı
+  gönderimlere merkez alarmı ve kategori zorunluluğu Yusuf'a soru.
+- Tek imzalı güne sonradan onay: ertesi gün müdür gözden geçirmesi (`ertesi_gun`) var.
+- Telefon onayı: telefon özeti kendisi hesaplamalı (tasarımda var); onay telefonun donanım anahtarıyla imzalı olmalı ve
+  merkez de doğrulamalı (köprü P-256 doğruluyor; merkezde doğrulama yok, açık); cihaz-kişi bağı ve iptali (TAA Merkez, planlı);
+  60 sn süre PC saatine dayanır (yerel saat geri alınırsa uzar; tek kullanımlık kimlik tekrar kullanımı önler).
+- Arayüz: nakit yalnız adetle girilir ve canlı fark paneli var; kapanış listesi maddelerini ilgili adımlara dağıtma
+  önerisi Yusuf'a soru.
+
+## Windows notları (denenmedi)
+
+- Çapraz derleme: `x86_64-pc-windows-gnu` için `cargo check` ve clippy temiz; CI push'ta windows-latest'te de koşar.
+- Pencere: Edge `--app` (ProgramFiles(x86), ProgramFiles, ProgramW6432, LOCALAPPDATA), yoksa varsayılan tarayıcı.
+- İndirme adları ASCII'ye sadeleştirilir, asıl ad `filename*` ile gider (Türkçe şube adı başlığı düşürmez).
+- Yazdırma: tutanak A4 (`@page`), "Yazdır / PDF" düğmesi Edge'de çalışmalı; ilk Windows denemesinde doğrulanmalı.
+- Açık risk: veri kökü `%APPDATA%\TAA\veri` (dolaşan profil olan etki alanlarında eşitleme çakışması olabilir;
+  gerekirse `TAA_VERI_KOK` ile yerel klasör verilir). Excel açıkken aynı dosyaya atomik yazma reddedilebilir (yalnız
+  indirmeler etkilenmez).
 
 ## Yer tutucular (henüz bağlanmadı)
 
@@ -72,11 +106,13 @@ Dolu şablon (V2 ve 25.11), aylık şablon (30 gün) ve ödeme listesi yeniden t
 - **İADE — kısmen:** şablonda hiçbir toplama girmeyen bilgi satırı (DEĞİŞİM gibi). Z formülündeki yeri (`z_beklenen`'e eklenir)
   çıkarımdır: 25.11'de iade satırı boş olduğu için iadeli gün örneğiyle doğrulanmadı.
 - **E-FATURA POS:2 — açık:** şablonda ödeme satırı ve ilk genel toplama girer (program `efatura_pos` ile aynı). Ne zaman dolu
-  olduğu dosyalardan çıkmıyor (25.11'de ve aylık şablonda hiç dolu değil). Yusuf/muhasebe yanıtlamalı.
+  olduğu dosyalardan çıkmıyor (25.11'de ve aylık şablonda hiç dolu değil). Z'ye girip girmediği `z_formulu.efatura_dusulur`
+  ile ayarlanır. Yusuf/muhasebe yanıtlamalı.
 - **KREDİ ÇEKİ — açık:** şablonda ilk genel toplam dışında, son genel toplama ve mağaza toplamlarına girer (program aynı).
-  Nebim kredi çeki DEĞİŞİM'e gidiyor; bu satıra hangi belgenin yazıldığı dosyalardan çıkmıyor.
-- **İkinci imza gerekçesi — karar bekliyor:** bugün ikinci imza yoksa yalnız "ikinci imza atmadı" yazılır; gerekçe zorunlu mu?
-  Öneri: zorunlu kısa gerekçe (tek kişi kapanışında denetim izi). Ayrıca ilk imzadan sonra tutanak eklerinin kilitlenmesi önerilir.
+  Nebim kredi çeki DEĞİŞİM'e gidiyor; bu satıra hangi belgenin yazıldığı dosyalardan çıkmıyor. Z'deki yeri
+  `z_formulu.kredi_ceki_dusulur` ile ayarlanır.
+- **İkinci imza gerekçesi — uygulandı (gözetimsiz varsayılan):** zorunlu kısa gerekçe ve ilk imzadan sonra tutanak kilidi
+  (Kurallar). Yusuf onaylamazsa ilgili commit geri alınabilir.
 - Veri bilgisi: 25.11 Outlet yazarkasasında bir havale ödemesi nakit tipiyle girilmiş (Nebim ve Excel'de havale).
 - Masraf türü listesi, kasa limiti, fark toleransı, gönderim son saati; mağaza imza anahtarı; sunucu kasa ucu.
 
