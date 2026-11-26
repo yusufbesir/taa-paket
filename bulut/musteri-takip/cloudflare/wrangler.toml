@@ -1,5 +1,5 @@
 # TAA müşteri takip (Cloudflare). Kurulum: bulut/musteri-takip/README.md
-name = "taa-takip"
+name = "terzitakip"
 main = "worker.mjs"
 compatibility_date = "2026-11-01"
 
@@ -10,4 +10,4 @@ id = "KV_KIMLIGI_KURULUMDA_YAZILIR"
 [vars]
 # Mağaza sunucusunun genel anahtarı: taa-fis-sunucu --veri KLASÖR --takip-genel-anahtar
 GENEL_ANAHTAR = ""
-YEDEK_SAYFA = "https://taa-takip.vercel.app"
+YEDEK_SAYFA = "https://terzitakip-terziademaltun.vercel.app"
