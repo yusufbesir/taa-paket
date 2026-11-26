@@ -225,3 +225,22 @@ test('Hesap menüsü: Tema çekmecesi (Yusuf 11-26)', { skip: !pw && 'playwright
     assert.ok(await p.evaluate(() => { const r = document.getElementById('taa-giris-menu').getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }));
   } finally { await b.close(); }
 });
+
+test('Hesap menüsü: ogeler işlev olabilir, her açılışta yeniden okunur', { skip: !pw && 'playwright yok' }, async () => {
+  const b = await pw.chromium.launch();
+  try {
+    const p = await kur(b);
+    await p.evaluate(() => {
+      window.yon = false;
+      TaaGirisEkrani.hesapMenusu({ api: { cikis: async () => ({}) }, oturum: { kullanici: 'ayse' },
+        ogeler: () => [{ ad: window.yon ? 'Yönetici kipinden çık' : 'Yönetici girişi', tikla() { window.yon = !window.yon; } }] });
+    });
+    await p.click('#taa-giris-hesap');
+    await p.click('#taa-giris-menu >> text=Yönetici girişi');
+    await p.click('#taa-giris-hesap');
+    assert.ok((await p.textContent('#taa-giris-menu')).includes('Yönetici kipinden çık'));
+    await p.evaluate(() => TaaGirisEkrani.hesapMenusu({ api: { cikis: async () => ({}) }, oturum: { kullanici: 'ayse' }, ogeler: () => { throw new Error('x'); } }));
+    await p.click('#taa-giris-hesap');
+    assert.ok((await p.textContent('#taa-giris-menu')).includes('Kullanıcı değiştir'), 'işlev hata verse de menü açılır');
+  } finally { await b.close(); }
+});
