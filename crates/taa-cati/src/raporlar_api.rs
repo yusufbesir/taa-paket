@@ -9,20 +9,21 @@
 
 use serde_json::{json, Value};
 use std::path::Path;
-use taa_raporlar::uygulamalar::{paket_raporu, UYGULAMALAR};
+use taa_raporlar::uygulamalar::{paket_raporu, Donem, UYGULAMALAR};
 use taa_raporlar::{Esikler, YONETICI_ROLU};
 
 /// (HTTP durum, içerik türü, gövde, indirme dosya adı).
-pub type Cevap = (u16, &'static str, String, Option<String>);
+pub type Cevap = (u16, &'static str, Vec<u8>, Option<String>);
 
 const JSON_TUR: &str = "application/json; charset=utf-8";
 const CSV_TUR: &str = "text/csv; charset=utf-8";
+const XLSX_TUR: &str = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 fn hata(durum: u16, m: &str, kod: u8) -> Cevap {
     (
         durum,
         JSON_TUR,
-        json!({"hata": m, "kod": kod}).to_string(),
+        json!({"hata": m, "kod": kod}).to_string().into_bytes(),
         None,
     )
 }
@@ -79,24 +80,43 @@ pub fn yanit(
                     "uygulamalar": liste,
                     "usta_puani_acik": taa_ayar::ozellik_acik("usta-puan", false),
                 })
-                .to_string(),
+                .to_string()
+                .into_bytes(),
                 None,
             )
         }
-        "/api/raporlar" | "/api/raporlar/csv" => {
+        "/api/raporlar" | "/api/raporlar/csv" | "/api/raporlar/xlsx" => {
+            let secim = sorgu_degeri(sorgu, "donem").unwrap_or("");
+            let donem = match Donem::coz(
+                secim,
+                sorgu_degeri(sorgu, "bas").unwrap_or(""),
+                sorgu_degeri(sorgu, "bit").unwrap_or(""),
+                tarih,
+            ) {
+                Ok(d) => d,
+                Err(m) => return hata(400, &m, 2),
+            };
             let esikler = match Esikler::kokten(kok) {
                 Ok(e) => e,
                 Err(m) => return hata(409, &m, 2),
             };
-            let r = match paket_raporu(kok, fis_klasoru, tarih, &esikler, uygulama) {
+            let r = match paket_raporu(kok, fis_klasoru, tarih, &esikler, uygulama, &donem) {
                 Ok(r) => r,
                 Err(m) => return hata(400, &m, 2),
             };
+            let ad = |uzanti: &str| {
+                format!(
+                    "taa-rapor-{}-{}.{uzanti}",
+                    uygulama.unwrap_or("hepsi"),
+                    tarih
+                )
+            };
             if yol.ends_with("/csv") {
-                let ad = format!("taa-rapor-{}-{}.csv", uygulama.unwrap_or("hepsi"), tarih);
-                (200, CSV_TUR, r.csv(), Some(ad))
+                (200, CSV_TUR, r.csv().into_bytes(), Some(ad("csv")))
+            } else if yol.ends_with("/xlsx") {
+                (200, XLSX_TUR, r.xlsx(), Some(ad("xlsx")))
             } else {
-                (200, JSON_TUR, r.json().to_string(), None)
+                (200, JSON_TUR, r.json().to_string().into_bytes(), None)
             }
         }
         _ => hata(404, "bilinmeyen rapor ucu", 2),
@@ -127,7 +147,10 @@ mod testler {
             for y in ["/api/raporlar", "/api/raporlar/csv", "/api/raporlar/liste"] {
                 let c = yanit(&d, None, Some(&rl), y, "", t);
                 assert_eq!(c.0, 403, "{r} {y}");
-                assert!(!c.2.contains("uygulamalar"), "veri sızmamalı");
+                assert!(
+                    !String::from_utf8_lossy(&c.2).contains("uygulamalar"),
+                    "veri sızmamalı"
+                );
             }
         }
         let y = rol(&["personel", "yonetici"]);
@@ -144,17 +167,17 @@ mod testler {
         let y = rol(&["yonetici"]);
         let t = "2026-11-26";
         let c = yanit(&d, None, Some(&y), "/api/raporlar", "", t);
-        let v: Value = serde_json::from_str(&c.2).unwrap();
+        let v: Value = serde_json::from_slice(&c.2).unwrap();
         assert_eq!(
             v["uygulamalar"].as_array().unwrap().len(),
             UYGULAMALAR.len()
         );
         assert!(
-            !c.2.contains("gizli-ad"),
+            !String::from_utf8_lossy(&c.2).contains("gizli-ad"),
             "kişisel veri içeriği raporda olmamalı"
         );
         let c = yanit(&d, None, Some(&y), "/api/raporlar", "uygulama=kasa", t);
-        let v: Value = serde_json::from_str(&c.2).unwrap();
+        let v: Value = serde_json::from_slice(&c.2).unwrap();
         assert_eq!(v["uygulamalar"].as_array().unwrap().len(), 1);
         assert_eq!(v["uygulamalar"][0]["kimlik"], "kasa");
         assert_eq!(
@@ -180,9 +203,60 @@ mod testler {
             "2026-11-26",
         );
         assert_eq!(c.0, 200);
-        assert!(c.2.starts_with('\u{feff}'));
-        assert!(c.2.contains("uygulama;bolum;durum;anahtar;deger"));
+        let m = String::from_utf8(c.2.clone()).unwrap();
+        assert!(m.starts_with('\u{feff}'));
+        assert!(m.contains("uygulama;bolum;durum;anahtar;deger"));
         assert_eq!(c.3.as_deref(), Some("taa-rapor-paket-2026-11-26.csv"));
-        assert!(!c.2.contains(d.to_str().unwrap()), "dosya yolu sızmamalı");
+        assert!(!m.contains(d.to_str().unwrap()), "dosya yolu sızmamalı");
+    }
+
+    #[test]
+    fn xlsx_donem_ve_kasa_kurali() {
+        let d = gecici("xlsx");
+        std::fs::create_dir_all(d.join("kasa-defteri")).unwrap();
+        std::fs::write(
+            d.join("kasa-defteri/kasa.jsonl"),
+            "{\"tur\":\"kapanis\",\"v\":{\"id\":\"a\",\"tarih\":\"2026-11-25\",\"sayilan_kurus\":100000,\"fark_kurus\":-500}}\n",
+        )
+        .unwrap();
+        let y = rol(&["yonetici"]);
+        let t = "2026-11-26";
+        let c = yanit(
+            &d,
+            None,
+            Some(&y),
+            "/api/raporlar/xlsx",
+            "uygulama=kasa&donem=7",
+            t,
+        );
+        assert_eq!(c.0, 200);
+        assert_eq!(&c.2[..2], b"PK");
+        assert_eq!(c.3.as_deref(), Some("taa-rapor-kasa-2026-11-26.xlsx"));
+        let c = yanit(
+            &d,
+            None,
+            Some(&y),
+            "/api/raporlar",
+            "uygulama=kasa&donem=7",
+            t,
+        );
+        let v: Value = serde_json::from_slice(&c.2).unwrap();
+        let u = &v["uygulamalar"][0];
+        assert!(u["yorumlar"]
+            .to_string()
+            .contains("5 günde kasa kapanışı girilmemiş"));
+        assert_eq!(u["grafikler"][0]["noktalar"][0]["deger"], 1000.0);
+        assert_eq!(v["donem"]["bas"], "2026-11-20");
+        for kotu in [
+            "donem=x",
+            "donem=ozel&bas=2026-01-01&bit=2027-12-31",
+            "donem=ozel&bas=2026-11-05&bit=2026-11-01",
+        ] {
+            assert_eq!(
+                yanit(&d, None, Some(&y), "/api/raporlar", kotu, t).0,
+                400,
+                "{kotu}"
+            );
+        }
     }
 }

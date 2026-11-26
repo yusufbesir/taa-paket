@@ -16,6 +16,7 @@
 mod testler;
 
 pub mod uygulamalar;
+pub mod xlsx;
 
 pub use taa_rapor::{Bolum, Durum, Rapor};
 
