@@ -1,0 +1,43 @@
+{
+  "_aciklama": "SENTETİK (uydurma tutarlar): 27.09.2026 gününün yalnız YAPISI: döviz, kasa fazlası (bilgi satırı, toplama girmez), iki POS, havale, masraf (müşteriye para iadesi masraf kalemi), EKSİ kredi çeki. Gerçek gün yerelde aynı formülle doğrulandı; gerçek tutar depoya yazılmaz. Z verisi yok.",
+  "sentetik": true,
+  "magaza": "ornek-eksi-kredi-ceki",
+  "ciro": {
+    "nakit": 3000000,
+    "kasa_fazlasi": 500,
+    "ziraat_pos": 10000000,
+    "iyzico_pos": 8000000,
+    "havale": 6000000,
+    "iyzico_odemesi": 0,
+    "kredi_ceki": -150000,
+    "internet_degisimi": 0
+  },
+  "doviz": [
+    {
+      "kod": "USD",
+      "tutar": 10000,
+      "kur_onbinde": 400000
+    }
+  ],
+  "masraf_kalemleri": [
+    [
+      "Ekmek",
+      3000
+    ],
+    [
+      "Ekmek",
+      4000
+    ],
+    [
+      "Su",
+      20000
+    ],
+    [
+      "Müşteriye para iadesi",
+      5000
+    ]
+  ],
+  "masraf_kurus": 32000,
+  "beklenen_genel_toplam_kurus": 27282000,
+  "beklenen_magaza_toplam_kurus": 32082000
+}

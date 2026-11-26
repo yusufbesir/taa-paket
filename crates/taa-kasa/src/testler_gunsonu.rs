@@ -762,3 +762,22 @@ fn eski_defter_uyumu_korunur() {
         .unwrap();
     assert_eq!(c.id, "K-20261126-1");
 }
+
+#[test]
+fn eksi_kredi_ceki_kabul_efatura_reddedilir() {
+    let d = defter("kredi-ceki");
+    let a = esenyurt();
+    acilis(&d, &a);
+    let mut g = gun_sonu_girdi();
+    g.ciro.insert(ESKI_EFATURA.into(), 1_000);
+    assert!(d
+        .gun_sonu_ekle(&a, &g, &ayse())
+        .unwrap_err()
+        .contains("İYZİCO"));
+    g.ciro.remove(ESKI_EFATURA);
+    g.ciro.insert("kredi_ceki".into(), -5_000);
+    g.not = "kredi çeki eksi".into();
+    let gs = d.gun_sonu_ekle(&a, &g, &ayse()).unwrap();
+    let onceki = ciro_toplami(&gun_sonu_girdi().ciro, &gun_sonu_girdi().doviz, 0);
+    assert_eq!(gs.karsilastirma.ciro_toplam_kurus, onceki - 5_000);
+}

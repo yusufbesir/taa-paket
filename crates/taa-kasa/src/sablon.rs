@@ -13,11 +13,13 @@
 //!   Şablon tüm masrafı (öteki mağazanın kasa açığı dahil) son mağazanın toplamına yazıyordu; iki mağaza
 //!   toplamının toplamı yine GENEL TOPLAM'a eşittir.
 //! - Formüller tablo adı (`Tablo…[[#This Row],…]`) yerine düz hücre başvurusuyla yazılır; sonuç aynıdır.
+//! - Satır 9 (eski E-FATURA POS:2) boş bırakılır: iki POS terminali var (Yusuf, 2026-11-26); eski kayıtta tutar
+//!   varsa "(ESKİ KAYIT)" etiketiyle yazılır. Satır numaraları ve formüller değişmez.
 //! - Veri doğrulama (−1.000.000.000 alt sınırı) yazılmaz; tutarları program zaten denetler.
 
 use crate::gunsonu::{
     DovizSatiri, GunSonuKaydi, KasaAyar, MasrafDurumu, MasrafGorunum, BILGI_ALANLARI, DOVIZLER,
-    KASA_ACIGI, ODEME_TURLERI,
+    ESKI_EFATURA, KASA_ACIGI, ODEME_TURLERI,
 };
 use crate::xlsx::{sutun, Hucre, Sayfa, Stil};
 use crate::zaman;
@@ -147,6 +149,7 @@ impl CiroGunu {
             .filter(|(k, _)| !ozel.contains(k))
             .map(|(k, _)| self.c(i, k))
             .sum::<i64>()
+            + self.c(i, ESKI_EFATURA)
             + DOVIZLER
                 .iter()
                 .map(|(k, _)| self.doviz_tl(i, k))
@@ -322,7 +325,19 @@ impl CiroGunu {
         }
         ciro_satiri(&mut koy, 7, ad("ziraat_pos"), "ziraat_pos");
         ciro_satiri(&mut koy, 8, ad("iyzico_pos"), "iyzico_pos");
-        ciro_satiri(&mut koy, 9, ad("efatura_pos"), "efatura_pos");
+        // 9: eski E-FATURA POS:2 satırı. Kaldırıldı; satır boş kalır, formüller (E28 = E2:E9) aynen durur.
+        // Eski kayıtta tutar varsa okunur ve "(eski kayıt)" etiketiyle yazılır.
+        let eski = (0..self.sutunlar.len()).any(|i| self.c(i, ESKI_EFATURA) != 0);
+        ciro_satiri(
+            &mut koy,
+            9,
+            if eski {
+                "E-FATURA POS:2 (ESKİ KAYIT)"
+            } else {
+                ""
+            },
+            ESKI_EFATURA,
+        );
         ciro_satiri(&mut koy, 10, ad("kredi_karti_fark"), "kredi_karti_fark");
         ciro_satiri(&mut koy, 11, ad("kasa_fazlasi"), "kasa_fazlasi");
         // 12: BANKAYA HAVALE bölümü
@@ -619,7 +634,7 @@ mod testler {
         let g = vec![
             gs(
                 "outlet",
-                json!({"nakit": 100_000, "ziraat_pos": 50_000, "iyzico_pos": 20_000, "efatura_pos": 5_000,
+                json!({"nakit": 100_000, "ziraat_pos": 50_000, "iyzico_pos": 25_000,
                        "kredi_karti_fark": -1_000, "havale": 30_000, "kasa_acigi": 500,
                        "kredi_ceki": 2_000, "iade": 1_500}),
                 json!([{"kod": "USD", "tutar": 1_000, "kur_onbinde": 400_000}]),
@@ -639,9 +654,27 @@ mod testler {
     }
 
     #[test]
+    fn eski_efatura_kaydi_okunur_ve_toplama_girer() {
+        let g = vec![gs(
+            "outlet",
+            json!({"nakit": 1_000, "efatura_pos": 500, "kredi_ceki": -200}),
+            json!([]),
+        )];
+        let c = ciro_gunu(&ayar(), "2026-11-26", &g, &[]);
+        assert_eq!(c.sutun_toplami(0), 1_000 + 500 - 200);
+        let b = crate::xlsx::xlsx_uret(&[c.sayfa()]);
+        let x = String::from_utf8_lossy(&b);
+        assert!(x.contains("E-FATURA POS:2 (ESKİ KAYIT)"));
+        assert!(
+            x.contains("<c r=\"B29\" s=\"6\"><v>-2.00</v></c>"),
+            "eksi kredi çeki yazılır"
+        );
+    }
+
+    #[test]
     fn toplamlar_sablon_formulune_uyar() {
         let g = ornek();
-        // Outlet: 1000 (sistem nakdi; 5 TL açık bunun içinde) +500+200+50+300 + 400 (10 USD) + 80 masraf
+        // Outlet: 1000 (sistem nakdi; 5 TL açık bunun içinde) +500+250 (iki POS)+300 + 400 (10 USD) + 80 masraf
         // + 20 kredi çeki = 2.550
         assert_eq!(g.sutun_toplami(0), 255_000);
         // Ana: 2000+100 + 227,50 (5 EUR × 45,5) + 150 masraf + 30 internet = 2.507,50
@@ -671,7 +704,6 @@ mod testler {
             "<c r=\"D3\" s=\"12\"><f>B3+C3</f><v>10.00</v></c>",
             "<c r=\"E3\" s=\"11\"><f>B36+B37</f><v>400.00</v></c>",
             ">ZİRAAT BANKASI POS:1<",
-            ">E-FATURA POS:2<",
             "<c r=\"B10\" s=\"6\"><v>-10.00</v></c>",
             ">FİRMA HESABINA HAVALE<",
             ">KASA AÇIĞI<",
@@ -698,6 +730,9 @@ mod testler {
             assert!(x.contains(parca), "eksik: {parca}");
         }
         assert!(!x.contains("<c r=\"A41\""), "şablon 40 satır");
+        // E-FATURA POS kaldırıldı: 9. satır etiketsiz, formül yerinde (satır numaraları değişmedi).
+        assert!(!x.contains("E-FATURA"), "E-FATURA POS satırı yazılmaz");
+        assert!(x.contains("<c r=\"E9\""), "9. satır formülü durur");
     }
 
     #[test]

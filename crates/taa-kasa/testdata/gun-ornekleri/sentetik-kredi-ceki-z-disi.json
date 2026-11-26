@@ -1,0 +1,16 @@
+{
+  "_aciklama": "SENTETİK örnek: kredi çeki Z'den düşülüyor varsayımı (ayar açık). Gerçek Z verisiyle doğrulanırsa varsayılan değişir.",
+  "sentetik": true,
+  "z_formulu": {
+    "kredi_ceki_dusulur": true
+  },
+  "ciro": {
+    "nakit": 80000,
+    "ziraat_pos": 20000,
+    "kredi_ceki": 4000
+  },
+  "doviz": [],
+  "masraf_kurus": 0,
+  "beklenen_genel_toplam_kurus": 104000,
+  "beklenen_z_toplam_kurus": 100000
+}

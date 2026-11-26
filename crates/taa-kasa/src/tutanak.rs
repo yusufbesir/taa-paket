@@ -10,7 +10,7 @@
 //! - Nakit (TL): ERP = NAKİT TL (masraf ve para üstü düşülmüş sistem nakdi); fiili = sayılan − açılış.
 //!   Fark = kasa fazlası (+) / açığı (−).
 //! - Ziraat Bankası POS: ERP = ZİRAAT BANKASI POS:1; fiili = Ziraat POS gün sonu.
-//! - İyzico Fiziksel POS: ERP = İYZİCO POS:2 + E-FATURA POS:2 (ikisi de İyzico cihazından); fiili = bu
+//! - İyzico Fiziksel POS: ERP = İYZİCO POS:2 (+ eski kayıtlarda E-FATURA POS:2; satır kaldırıldı); fiili = bu
 //!   cihazların gün sonu. QR ve İyzico cihazındaki tüm banka kartları buradadır.
 //! - İyzico Sanal POS: ERP = İYZİCO ÖDEMESİ (link / sanal ödeme). TAA Kasa'da ayrı sayım yok; fiili = ERP.
 //! - Havale / EFT: ERP = BANKAYA HAVALE (firma hesabı); fiili = havale + HAVALE +/-.

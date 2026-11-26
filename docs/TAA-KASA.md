@@ -36,7 +36,7 @@ Fark varsa açıklama zorunlu; nakit ya da Z↔ciro tutmazsa "kasa ile ciro uyu�
 - **Tutanak kilidi:** ilk imzadan sonra tutanak ekleri (ERP içe aktarma, yapılan işlem) değişmez; değişiklik yönetici iptali
   ve yeniden girişle.
 - **Z formülü ayarı** (`KasaAyar.z_formulu`): şablonun genel toplam formülü sabit; Z karşılaştırmasında `degisim_eklenir`,
-  `internet_degisimi_dusulur` (25.11 ile doğrulandı), `iade_eklenir` (çıkarım), `kredi_ceki_dusulur`, `efatura_dusulur`
+  `internet_degisimi_dusulur` (25.11 ile doğrulandı), `iade_eklenir` (çıkarım), `kredi_ceki_dusulur`
   (bilinmiyor, varsayılan kapalı) ayarlanır. Gün örnekleri: `crates/taa-kasa/testdata/gun-ornekleri/*.json` (bugün yalnız
   sentetik); gerçek gün anonim tutarlarla eklenince test kendiliğinden doğrular.
 
@@ -105,12 +105,15 @@ Dolu şablon (V2 ve 25.11), aylık şablon (30 gün) ve ödeme listesi yeniden t
   masraf olarak girer; KASA FAZLASI genel toplam dışında bilgi satırıdır. Program böyle hesaplıyor. Gerçek açıklı gün örneği yok.
 - **İADE — kısmen:** şablonda hiçbir toplama girmeyen bilgi satırı (DEĞİŞİM gibi). Z formülündeki yeri (`z_beklenen`'e eklenir)
   çıkarımdır: 25.11'de iade satırı boş olduğu için iadeli gün örneğiyle doğrulanmadı.
-- **E-FATURA POS:2 — açık:** şablonda ödeme satırı ve ilk genel toplama girer (program `efatura_pos` ile aynı). Ne zaman dolu
-  olduğu dosyalardan çıkmıyor (25.11'de ve aylık şablonda hiç dolu değil). Z'ye girip girmediği `z_formulu.efatura_dusulur`
-  ile ayarlanır. Yusuf/muhasebe yanıtlamalı.
-- **KREDİ ÇEKİ — açık:** şablonda ilk genel toplam dışında, son genel toplama ve mağaza toplamlarına girer (program aynı).
-  Nebim kredi çeki DEĞİŞİM'e gidiyor; bu satıra hangi belgenin yazıldığı dosyalardan çıkmıyor. Z'deki yeri
-  `z_formulu.kredi_ceki_dusulur` ile ayarlanır.
+- **E-FATURA POS:2 — kaldırıldı (Yusuf, 2026-11-26: "E-fatura POS yok artık, iki POS terminali var").** Programda,
+  ekranda, WhatsApp'ta, tutanakta ve Z ayarında yok; yeni girişte reddedilir ("tutarı İYZİCO POS'a yazın"). Şablonda 9. satır
+  boş kalır, formüller ve satır numaraları değişmez. Eski kayıtlarda tutar varsa okunur, genel toplama ve kredi kartına girer,
+  Excel'de "(ESKİ KAYIT)" etiketiyle yazılır. QR ve tüm banka kartları → İYZİCO POS eşlemesi aynen.
+- **KREDİ ÇEKİ — toplamdaki yeri kanıtlandı (27.09.2026):** eksi olabilir; eksi tutar son genel toplamdan düşer (şablonda
+  E31 = E28 + E29 + E30). 27.09'un iki mağaza toplamı ve mağaza genel toplamı bu formülle kuruşu kuruşuna tuttu (gerçek
+  tutarlar depoya yazılmadı; depoda aynı yapıda sentetik örnek var). Kasa fazlası toplama girmedi, müşteriye para iadesi
+  masraf kalemi olarak toplama girdi. **Z'deki yeri hâlâ kanıtsız** (27.09 Z verisi yok): `z_formulu.kredi_ceki_dusulur`,
+  varsayılan kapalı. İade satırı 27.09'da da boş; `iade_eklenir` hâlâ çıkarım.
 - **İkinci imza gerekçesi — uygulandı (gözetimsiz varsayılan):** zorunlu kısa gerekçe ve ilk imzadan sonra tutanak kilidi
   (Kurallar). Yusuf onaylamazsa ilgili commit geri alınabilir.
 - Veri bilgisi: 25.11 Outlet yazarkasasında bir havale ödemesi nakit tipiyle girilmiş (Nebim ve Excel'de havale).
@@ -166,7 +169,7 @@ toplam.
 |---|---|---|
 | 2 | NAKİT TL | E28 |
 | 3–6 | DOLAR, EURO, STERLİN, İSVİÇRE FRANGI (adet; D = toplam döviz, E = TL karşılığı) | E28 |
-| 7–9 | ZİRAAT BANKASI POS:1, İYZİCO POS:2, E-FATURA POS:2 | E28 |
+| 7–9 | ZİRAAT BANKASI POS:1, İYZİCO POS:2, (9: eski E-FATURA POS:2, boş) | E28 |
 | 10–11 | KREDİ KARTI +/-, KASA FAZLASI | bilgi |
 | 12–15 | BANKAYA HAVALE: firma hesabı, İYZİCO ÖDEMESİ (E28), HAVALE +/- (bilgi) | |
 | 16–27 | MASRAFLAR: KASA AÇIĞI (mağaza başına), 9 masraf satırı (açıklama A, tutar E), TOPLAM MASRAF = SUM(E17:E26) | E28 |
