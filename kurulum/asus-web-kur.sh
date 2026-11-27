@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # TAA Web kabuğunu Asus Linux sunucuya kurar (statik sunum + systemd + Tailscale HTTPS).
-# Kullanım (depo kökünden):  sudo bash kurulum/asus-web-kur.sh [--port 8791] [--hedef /opt/taa/web-kabuk]
+# Kullanım (depo kökünden):  sudo bash kurulum/asus-web-kur.sh [--port 8791] [--hedef /opt/taa/web-kabuk] [--sunucu http://127.0.0.1:<taa-sunucu-portu>]
 # Geri alma: sudo systemctl disable --now taa-web && sudo tailscale serve --https=8443 off
 # Not: taa-sunucu (axum) bu klasörü kendi içinden sunacak hale gelince bu betik gereksiz kalır;
 #      o zamana dek kabuk ayrı küçük bir statik sunucudan çıkar. Veri uçları (/v1/...) merkez sunucudadır.
 set -euo pipefail
-PORT=8791; HEDEF=/opt/taa/web-kabuk
+PORT=8791; HEDEF=/opt/taa/web-kabuk; SUNUCU=http://127.0.0.1:8080  # taa-sunucu (axum) yerel adresi; gerçek porta göre --sunucu ile ver
 while [ $# -gt 0 ]; do case "$1" in
-  --port) PORT="$2"; shift 2;; --hedef) HEDEF="$2"; shift 2;; *) echo "bilinmeyen: $1"; exit 2;; esac; done
+  --port) PORT="$2"; shift 2;; --hedef) HEDEF="$2"; shift 2;; --sunucu) SUNUCU="$2"; shift 2;; *) echo "bilinmeyen: $1"; exit 2;; esac; done
 KOK="$(cd "$(dirname "$0")/.." && pwd)"
 [ -d "$KOK/web/kabuk" ] || { echo "web/kabuk yok: $KOK"; exit 1; }
 command -v python3 >/dev/null || { echo "python3 gerekli"; exit 1; }
@@ -38,9 +38,14 @@ curl -fsS "http://127.0.0.1:$PORT/web/kabuk/index.html" >/dev/null && echo "yere
 
 # 3) HTTPS (service worker + WebCrypto güvenli bağlam ister; düz http://100.x çalışmaz)
 if command -v tailscale >/dev/null; then
+  # Kabuk "/v1/..." uçlarını kendi kökünden çağırır (uygulama.js: SUNUCU = location.origin).
+  # python http.server POST'a 501 döner; bu yüzden /v1 yolu taa-sunucu'ya yönlendirilir, geri kalanı statik sunulur.
   tailscale serve --bg --https=8443 "http://127.0.0.1:$PORT" || echo "UYARI: tailscale serve başarısız (HTTPS sertifikası tailnet ayarından açılmalı)"
+  tailscale serve --bg --https=8443 --set-path /v1 "${SUNUCU%/}/v1" || echo "UYARI: /v1 yönlendirmesi kurulamadı"
   tailscale serve status || true
   echo "Adres: https://<makine-adı>.<tailnet>.ts.net:8443/web/kabuk/index.html"
 else
   echo "UYARI: tailscale yok; HTTPS olmadan kabuk çevrimdışı çalışmaz."
 fi
+echo "Doğrulama: aşağıdaki istek 501 DEĞİL, taa-sunucu yanıtı (örn. 200/401/404 uc_yok) vermeli:"
+curl -ks -o /dev/null -w "POST /v1/giris -> HTTP %{http_code}\n" -X POST -H 'Content-Type: application/json' -d '{}' "https://$(tailscale status --json 2>/dev/null | python3 -c 'import json,sys;print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))' 2>/dev/null):8443/v1/giris" || true
