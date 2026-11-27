@@ -357,18 +357,18 @@ let bekleyenSw = null;
 function bantCiz() {
   const bant = $('bant');
   const dugme = $('bant-dugme');
-  if (durum.profil && !durum.oturum) {
+  if (bekleyenSw) {
+    $('bant-metin').textContent = 'TAA Web güncellendi. Yeni sürüme geçmek için yenileyin.';
+    dugme.textContent = 'Yenile';
+    dugme.dataset.is = 'yenile';
+    bant.hidden = false;
+  } else if (durum.profil && !durum.oturum) {
     $('bant-metin').textContent =
       durum.sayim.bekliyor > 0
         ? `Oturum kapalı. Gönderilmeyen ${durum.sayim.bekliyor} kayıt yeniden giriş yapınca gönderilecek.`
         : 'Oturum kapalı. Kayıt ekleyebilirsiniz; sunucuya göndermek için yeniden giriş yapın.';
     dugme.textContent = 'Giriş yap';
     dugme.dataset.is = 'giris';
-    bant.hidden = false;
-  } else if (bekleyenSw) {
-    $('bant-metin').textContent = 'TAA Web\'in yeni sürümü indirildi.';
-    dugme.textContent = 'Yenile';
-    dugme.dataset.is = 'yenile';
     bant.hidden = false;
   } else {
     bant.hidden = true;
@@ -697,29 +697,37 @@ async function modulleriYukle() {
 async function swKur() {
   if (!('serviceWorker' in navigator)) return;
   try {
-    const kayit = await navigator.serviceWorker.register('sw.js');
+    let ilkDenetleyici = Boolean(navigator.serviceWorker.controller);
+    const kayit = await navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' });
     durum.swKaydi = kayit;
-    const izle = (sw) => {
-      if (!sw) return;
-      const bak = () => {
-        if (sw.state === 'installed' && navigator.serviceWorker.controller) {
-          bekleyenSw = sw;
-          bantCiz();
-        }
-      };
-      sw.addEventListener('statechange', bak);
-      bak();
-    };
-    izle(kayit.waiting);
-    kayit.addEventListener('updatefound', () => izle(kayit.installing));
-    navigator.serviceWorker.addEventListener('message', (m) => {
-      if (m.data?.tur === 'gonder') gonder();
-    });
+    // Yeni sürüm: sw.js `skipWaiting` ile hemen devralır. Sayfa açık dosyalarla yeni önbellek karışmasın diye
+    // yenilenir: sayfa gizliyse ya da giriş penceresi açıkken (yazılmış veri yok) hemen, aksi halde bantla.
     let yenilendi = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (yenilendi || !bekleyenSw) return; // ilk kurulumda sayfayı yenileme
+    const yenile = () => {
+      if (yenilendi) return;
       yenilendi = true;
       location.reload();
+    };
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!ilkDenetleyici) {
+        ilkDenetleyici = true; // ilk kurulum: sayfayı yenileme
+        return;
+      }
+      if (document.hidden || $('giris').open) yenile();
+      else {
+        bekleyenSw = { postMessage: () => yenile() };
+        bantCiz();
+      }
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) return;
+      kayit.update().catch(() => {}); // sekmeye dönünce sürüm denetimi
+      if (bekleyenSw) yenile();
+    });
+    kayit.update().catch(() => {});
+    setInterval(() => kayit.update().catch(() => {}), 30 * 60 * 1000);
+    navigator.serviceWorker.addEventListener('message', (m) => {
+      if (m.data?.tur === 'gonder') gonder();
     });
   } catch (e) {
     console.error('[taa-web] service worker kurulamadı; çevrimdışı açılış çalışmaz', e);

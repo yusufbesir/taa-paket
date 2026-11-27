@@ -4,7 +4,7 @@
 // giden kutusundan gider, önbellekten yanıtlanmaz.
 // Kabuk dosyası eklenince/çıkınca KABUK listesini ve SURUM'u güncelleyin (web/test/kabuk.test.js denetler).
 
-const SURUM = 'taa-web-v4'; // v4 (2026-11-27): şubesiz (merkez) yönetici girişi kabul edilir
+const SURUM = 'taa-web-v5'; // v5 (2026-11-27): ağ önce (eski kabuk takılmaz), otomatik etkinleşme
 const KABUK = [
   './',
   './index.html',
@@ -21,6 +21,7 @@ const KABUK = [
   '../cekirdek/yol.js',
   '../cekirdek/cihaz.js',
 ];
+const AG_BEKLEME_MS = 4000; // ağ önce stratejisinde önbelleğe düşmeden önce bekleme
 const WEB_KOKU = new URL('../', self.location.href); // .../web/
 
 function dosyaYoluGecerli(yol) {
@@ -64,6 +65,9 @@ self.addEventListener('install', (olay) => {
       // Kabuk eksiksiz inmeden kurulum tamam sayılmaz (yarım kabuk çevrimdışı açılmaz).
       await onbellek.addAll(KABUK.map((yol) => new Request(yol, { cache: 'no-cache' })));
       await modulleriOnbellegeAl(onbellek);
+      // Yeni sürüm eskisinin bitmesini beklemez; sayfa `controllerchange` ile güvenli anda yenilenir (uygulama.js).
+      // Kullanıcı verisi (IndexedDB, cihaz anahtarı) önbellek değildir, bundan etkilenmez.
+      await self.skipWaiting();
     })(),
   );
 });
@@ -117,10 +121,17 @@ self.addEventListener('fetch', (olay) => {
     (async () => {
       const onbellek = await caches.open(SURUM);
       const kayitli = await onbellek.match(istek, { ignoreSearch: true });
+      // AĞ ÖNCE: çevrimiçiyken hep güncel dosya (eski kabuk önbellekten takılı kalmaz); ağ yoksa ya da
+      // AG_BEKLEME_MS içinde yanıt gelmezse önbellekten (çevrimdışı açılış).
       if (kayitli) {
-        // Önce önbellek (anında ve çevrimdışı açılır); arka planda tazele, bir sonraki açılışta yeni sürüm gelir.
-        olay.waitUntil(agdanAlVeSakla(istek).catch(() => {}));
-        return kayitli;
+        try {
+          return await Promise.race([
+            agdanAlVeSakla(istek),
+            new Promise((_, red) => setTimeout(() => red(new Error('zaman-asimi')), AG_BEKLEME_MS)),
+          ]);
+        } catch (e) {
+          return kayitli;
+        }
       }
       try {
         return await agdanAlVeSakla(istek);
