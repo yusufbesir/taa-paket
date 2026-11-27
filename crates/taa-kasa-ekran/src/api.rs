@@ -74,8 +74,8 @@ pub struct Uygulama {
 fn telefon_durum_json(o: &taa_kasa::telefon_imza::TelefonImzaOturumu) -> Value {
     let d = &o.durum;
     json!({"durum": d.kod(), "red_nedeni": d.red_nedeni(), "mesaj": d.mesaj(),
-        "imzasiz": d.imzasiz_bitti(), "bitti": d.bitti(), "nonce": o.istek.nonce,
-        "bitis": o.istek.bitis, "baslik": o.istek.baslik, "gun_sonu_id": o.istek.gun_sonu_id})
+        "imzasiz": d.imzasiz_bitti(), "bitti": d.bitti(), "nonce": o.nonce,
+        "bitis": o.bitis, "baslik": o.istek.baslik, "gun_sonu_id": o.gun_sonu_id})
 }
 
 impl Uygulama {
@@ -359,19 +359,9 @@ impl Uygulama {
             return hata(401, "Önce giriş yapın.");
         };
         let id = govde.get("id").and_then(Value::as_str).unwrap_or("");
-        let nonce = match rastgele_hex(16) {
-            Ok(n) => n,
-            Err(e) => return hata(500, e),
-        };
+        // Nonce'u kasa üretmez (TK Ek 3): hizmetin kabul cevabından gelir.
         let defter = self.defter();
-        match TelefonImzaOturumu::baslat(
-            &defter,
-            self.kopru.as_mut(),
-            id,
-            &k,
-            &nonce,
-            zaman::simdi_sn(),
-        ) {
+        match TelefonImzaOturumu::baslat(&defter, self.kopru.as_mut(), id, &k, zaman::simdi_sn()) {
             Err(e) => hata(422, e),
             Ok(o) => match &o.durum {
                 ImzaDurumu::KanalYok { neden } => hata(501, neden.clone()),
@@ -803,12 +793,10 @@ impl Uygulama {
             .filter_map(|i| zaman::gun_ekle(&bugun, -i))
             .collect();
         let (gelen, bozuk) = merkez::gelenleri_oku(std::path::Path::new(k));
-        let mut subeler: Vec<String> = gelen.iter().map(|g| g.sube.clone()).collect();
-        if !ayar.sube.is_empty() {
-            subeler.push(ayar.sube.clone());
-        }
-        subeler.sort();
-        subeler.dedup();
+        // Şube kodu büyük/küçük harf duyarsız (taa-sunucu küçük harf saklar); kendi şubenin yazımı önce gelir.
+        let subeler = merkez::subeleri_tekille(
+            std::iter::once(ayar.sube.clone()).chain(gelen.iter().map(|g| g.sube.clone())),
+        );
         let mut m = merkez::matris(
             &gelen,
             &subeler,
@@ -852,9 +840,11 @@ mod testler {
         fn gonder(
             &mut self,
             istek: &taa_kasa::telefon_imza::OnayIstegi,
-        ) -> Result<(), taa_kasa::telefon_imza::KanalHatasi> {
+        ) -> Result<Value, taa_kasa::telefon_imza::KanalHatasi> {
             self.giden.borrow_mut().push(istek.clone());
-            Ok(())
+            // TK hizmeti nonce ve bitişi üretir (her istekte farklı nonce).
+            let n = self.giden.borrow().len();
+            Ok(json!({"nonce": format!("{n:064x}"), "bitis": zaman::simdi_sn() + 60}))
         }
         fn yokla(
             &mut self,
@@ -912,8 +902,11 @@ mod testler {
             assert_eq!((d, v["durum"].as_str()), (200, Some("bekliyor")), "{v}");
             assert_eq!(v["baslik"], format!("Gün sonu · SB1 · {t}"));
             let ist = giden.borrow().last().unwrap().clone();
-            assert_eq!(v["nonce"], ist.nonce);
-            *cevap.borrow_mut() = Some(json!({"tur":"onay_red@1","nonce":ist.nonce,"neden":kod}));
+            assert_eq!(ist.kapsam, "taa_kasa_gun_sonu");
+            let nonce = format!("{:064x}", giden.borrow().len());
+            assert_eq!(v["nonce"], nonce, "hizmetin nonce'u");
+            *cevap.borrow_mut() =
+                Some(json!({"tur":"onay_red","surum":1,"nonce":nonce,"neden":kod}));
             let (d, v) = json_of(u.istek("GET", "/api/imza/telefon", "", &Value::Null));
             assert_eq!(d, 200);
             assert_eq!(v["durum"], "reddedildi");

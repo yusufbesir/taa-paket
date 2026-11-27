@@ -576,6 +576,17 @@ pub enum ImzaKanali {
     Ekran,
 }
 
+/// Telefonla imzanın TK kanıtı (Ek 3 `onay@1`): hizmetin nonce'u, telefonun kesin artan sayacı, onayın
+/// bitiş anı ve ASN.1 DER ECDSA P-256 imzası (küçük hex). `imza_dogrulama`: `dogrulandi` | `yapilmadi`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TelefonKaniti {
+    pub nonce: String,
+    pub sayac: u64,
+    pub bitis: i64,
+    pub imza: String,
+    pub imza_dogrulama: String,
+}
+
 /// Gün sonu imzası. `sira` 1: kasa sorumlusu, 2: mağaza sorumlusu / vekili.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ImzaKaydi {
@@ -586,9 +597,12 @@ pub struct ImzaKaydi {
     pub kisi: String,
     pub zaman: i64,
     pub kanal: ImzaKanali,
-    /// Telefonla imzada eşleşmiş cihazın kimliği.
+    /// Telefonla imzada eşleşmiş cihazın kimliği (kasanın eşleşme kaydından; kayıt yoksa boş).
     #[serde(default)]
     pub cihaz: Option<String>,
+    /// Telefonla imzanın TK kanıtı (nonce, sayaç, bitiş, imza).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub telefon: Option<TelefonKaniti>,
     /// Telefonla imzada onaylanan gün sonu özetinin SHA-256'sı (`telefon_imza::ozet_sha256`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ozet: Option<String>,
@@ -913,6 +927,37 @@ impl KasaDefteri {
 
     pub fn masraf_kayitlari(&self) -> Result<Vec<MasrafKayit>, String> {
         oku(&self.masraf_yolu())
+    }
+
+    fn telefon_sayac_yolu(&self) -> PathBuf {
+        self.kok.join("telefon-sayac.json")
+    }
+
+    /// TK onaylarında kabul edilen son sayaç (yeniden oynatma koruması). Dosya yoksa `None`.
+    pub fn telefon_sayaci(&self) -> Result<Option<u64>, String> {
+        match std::fs::read(self.telefon_sayac_yolu()) {
+            Ok(b) => {
+                let v: serde_json::Value = serde_json::from_slice(&b)
+                    .map_err(|e| format!("telefon-sayac.json bozuk: {e}"))?;
+                v.get("son_sayac")
+                    .and_then(serde_json::Value::as_u64)
+                    .map(Some)
+                    .ok_or_else(|| "telefon-sayac.json içinde son_sayac yok".into())
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    /// Son sayacı yazar (atomik). Geri gitmez: yeni değer eskiden büyük olmalı.
+    pub fn telefon_sayaci_yaz(&self, sayac: u64) -> Result<(), String> {
+        if self.telefon_sayaci()?.is_some_and(|s| sayac <= s) {
+            return Err("sayaç geri gidemez".into());
+        }
+        std::fs::create_dir_all(&self.kok).map_err(|e| e.to_string())?;
+        let b = serde_json::to_vec(&serde_json::json!({ "son_sayac": sayac }))
+            .map_err(|e| e.to_string())?;
+        taa_dosya::uzerine_yaz_atomik(&self.telefon_sayac_yolu(), &b).map_err(|e| e.to_string())
     }
 
     fn gun_ekle(&self, k: &GunKaydi) -> Result<(), String> {
@@ -1648,6 +1693,7 @@ impl KasaDefteri {
                     zaman: *zaman,
                     kanal: ImzaKanali::Ekran,
                     cihaz: None,
+                    telefon: None,
                     ozet: None,
                     cihaz_dogrulama: None,
                     kisi_rol: None,
@@ -1698,7 +1744,7 @@ impl KasaDefteri {
 
     /// Gün sonu imzası. Kurallar: imza isteği yalnız kapanış listesi tamamlanınca açılır; en çok iki imza;
     /// aynı kişi iki kez imzalayamaz; ikinci imzayı kaydı giren atamaz (giren onaylayamaz). Telefonla imzada
-    /// cihaz kimliği zorunludur. Gönderilmiş güne imza eklenmez.
+    /// TK kanıtı (nonce, imza) zorunludur ve yalnız `telefon_imza` akışından gelir. Gönderilmiş güne imza eklenmez.
     pub fn imzala(
         &self,
         id: &str,
@@ -1706,10 +1752,11 @@ impl KasaDefteri {
         cihaz: Option<&str>,
         kisi: &Kisi,
     ) -> Result<ImzaKaydi, String> {
-        self.imzala_ic(id, kanal, cihaz, None, None, kisi)
+        self.imzala_ic(id, kanal, cihaz, None, None, None, kisi)
     }
 
     /// `imzala` ile aynı kurallar; telefonla imzada onaylanan özet de deftere yazılır.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn imzala_ic(
         &self,
         id: &str,
@@ -1717,6 +1764,7 @@ impl KasaDefteri {
         cihaz: Option<&str>,
         ozet: Option<&str>,
         cihaz_dogrulama: Option<&str>,
+        telefon: Option<&TelefonKaniti>,
         kisi: &Kisi,
     ) -> Result<ImzaKaydi, String> {
         let gs = self
@@ -1725,15 +1773,18 @@ impl KasaDefteri {
             .find(|s| s.id == id)
             .ok_or_else(|| format!("geçerli gün sonu yok: {id}"))?;
         let sira = self.imza_on_denetim(&gs, kisi)?;
-        let cihaz = match kanal {
+        let (cihaz, telefon) = match kanal {
             ImzaKanali::Telefon => {
-                let c = cihaz.map(str::trim).unwrap_or("");
-                if c.is_empty() {
-                    return Err("telefonla imzada cihaz kimliği gerekli".into());
+                let t = telefon
+                    .filter(|t| !t.nonce.is_empty() && !t.imza.is_empty())
+                    .ok_or("telefonla imzada TK kanıtı (nonce, imza) gerekli")?;
+                if ozet.is_none_or(str::is_empty) {
+                    return Err("telefonla imzada özet gerekli".into());
                 }
-                Some(c.to_string())
+                let c = cihaz.map(str::trim).filter(|c| !c.is_empty());
+                (c.map(str::to_string), Some(t.clone()))
             }
-            ImzaKanali::Ekran => None,
+            ImzaKanali::Ekran => (None, None),
         };
         let n = sira as usize - 1;
         let i = ImzaKaydi {
@@ -1744,6 +1795,7 @@ impl KasaDefteri {
             zaman: zaman::simdi_sn(),
             kanal,
             cihaz,
+            telefon,
             ozet: ozet.map(str::to_string),
             cihaz_dogrulama: cihaz_dogrulama.map(str::to_string),
             kisi_rol: Some(kisi.rol),
@@ -2070,7 +2122,7 @@ pub fn imza_listesi(imzalar: &[ImzaKaydi]) -> Vec<Value> {
         .map(|(n, (rol, ad))| match imzalar.get(n) {
             Some(i) => json!({
                 "sira": n + 1, "rol": rol, "rol_adi": ad, "kisi": i.kisi, "zaman": i.zaman,
-                "kanal": i.kanal, "cihaz": i.cihaz, "ozet": i.ozet, "cihaz_dogrulama": i.cihaz_dogrulama,
+                "kanal": i.kanal, "cihaz": i.cihaz, "telefon": i.telefon, "ozet": i.ozet, "cihaz_dogrulama": i.cihaz_dogrulama,
                 "kisi_rol": i.kisi_rol, "durum": "imzaladi", "imzalamadi": false,
             }),
             None => json!({

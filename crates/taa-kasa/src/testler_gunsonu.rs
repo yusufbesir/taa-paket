@@ -454,13 +454,21 @@ fn imza_kurallari_en_az_tek_imza_ve_ikinci_imza_atmadi() {
         .unwrap_err(),
         YETKISIZ_ONAY
     );
-    // Telefonla imzada cihaz kimliği zorunlu.
+    // Telefonla imza TK kanıtı (nonce, imza) olmadan atılamaz.
     assert!(d
-        .imzala(&gs.id, ImzaKanali::Telefon, None, &ayse_mudur())
+        .imzala(&gs.id, ImzaKanali::Telefon, Some("tel-1"), &ayse_mudur())
         .is_err());
     // Giren birinci imzayı (kasa sorumlusu) atabilir.
     let i1 = d
-        .imzala(&gs.id, ImzaKanali::Telefon, Some("tel-1"), &ayse_mudur())
+        .imzala_ic(
+            &gs.id,
+            ImzaKanali::Telefon,
+            Some("tel-1"),
+            Some(&"ab".repeat(32)),
+            None,
+            Some(&tel_kanit()),
+            &ayse_mudur(),
+        )
         .unwrap();
     assert_eq!((i1.sira, i1.rol.as_str()), (1, "kasa_sorumlusu"));
     assert_eq!(
@@ -522,7 +530,15 @@ fn imza_kurallari_en_az_tek_imza_ve_ikinci_imza_atmadi() {
         )
         .is_err());
     let i2 = d
-        .imzala(&gs.id, ImzaKanali::Telefon, Some("tel-2"), &mehmet_mudur())
+        .imzala_ic(
+            &gs.id,
+            ImzaKanali::Telefon,
+            Some("tel-2"),
+            Some(&"ab".repeat(32)),
+            None,
+            Some(&tel_kanit()),
+            &mehmet_mudur(),
+        )
         .unwrap();
     assert_eq!((i2.sira, i2.rol.as_str()), (2, "magaza_sorumlusu"));
     let du = d.gun_durumu(&a, T, "c1").unwrap();
@@ -829,4 +845,15 @@ fn eksi_kredi_ceki_kabul_efatura_reddedilir() {
     let gs = d.gun_sonu_ekle(&a, &g, &ayse()).unwrap();
     let onceki = ciro_toplami(&gun_sonu_girdi().ciro, &gun_sonu_girdi().doviz, 0);
     assert_eq!(gs.karsilastirma.ciro_toplam_kurus, onceki - 5_000);
+}
+
+/// Telefonla imza testleri için TK kanıtı (anlamsız test değerleri).
+fn tel_kanit() -> TelefonKaniti {
+    TelefonKaniti {
+        nonce: "cd".repeat(32),
+        sayac: 1,
+        bitis: 0,
+        imza: "3006020101020101".into(),
+        imza_dogrulama: "yapilmadi".into(),
+    }
 }

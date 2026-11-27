@@ -1,5 +1,5 @@
 {
-  "_aciklama": "Telefonla imza özeti (onay_iste@1 ozet) çapraz test vektörleri. UYDURMA veri; gerçek tutar/ad yok. Biçim: docs/sozlesmeler/kasa.telefon-ozet.md. beklenen_sha256 = SHA-256(UTF-8 beklenen_metin), küçük harf hex; köprüdeki 32 bayt özet bu hex'in çözülmüş hâlidir.",
+  "_aciklama": "Telefonla imza özeti çapraz test vektörleri. UYDURMA veri; gerçek tutar/ad yok. Biçim: docs/sozlesmeler/kasa.telefon-ozet.md. beklenen_metin/beklenen_sha256 = biçim sürümü 1 (ayrıntı metni; sürüm 2'de ayrinti_sha256 olarak bağlanır, eski kayıtlar için korunur). beklenen_metin_v2/beklenen_sha256_v2 = biçim sürümü 2 (onay_iste@1 ozet_metni ve ozet). SHA-256 = UTF-8 metnin özeti, küçük harf hex.",
   "vektorler": [
     {
       "ad": "v1-sade",
@@ -50,7 +50,9 @@
         "duzeltir": null
       },
       "beklenen_metin": "cekmece=c1\nciro.nakit=20000\nciro.ziraat_pos=10000\nciro_toplam_kurus=30000\ndevreden_kurus=5000\nid=GS-20260115-c1-1\nkapsam=taa_kasa_gun_sonu\nnakit_sayilan_kurus=30000\nnebim_toplam_kurus=30000\nnokta.k1.pos.ziraat=10000\nnokta.k1.z_toplam_kurus=30000\nsube=SB1\nsurum=1\ntarih=2026-01-15\n",
-      "beklenen_sha256": "ab1b4529d01f2ba5430d6828e67ad3b7f1bd0b6c9b8029b0ca79f3ca16eae0e0"
+      "beklenen_sha256": "ab1b4529d01f2ba5430d6828e67ad3b7f1bd0b6c9b8029b0ca79f3ca16eae0e0",
+      "beklenen_metin_v2": "kapsam=taa_kasa_gun_sonu\nsurum=2\nsube=SB1\ntarih=2026-01-15\ncekmece=c1\nid=GS-20260115-c1-1\nnakit_sayilan_kurus=30000\ndevreden_kurus=5000\nnebim_toplam_kurus=30000\nciro_toplam_kurus=30000\nz_toplam_kurus=30000\npos_toplam_kurus=10000\nnokta_adet=1\ndoviz_adet=0\nayrinti_sha256=ab1b4529d01f2ba5430d6828e67ad3b7f1bd0b6c9b8029b0ca79f3ca16eae0e0\n",
+      "beklenen_sha256_v2": "325dc9c9f261080ef9082bb6691df90d4ac265065744f0403d2458ca7062d470"
     },
     {
       "ad": "v2-eksi-kredi-ceki-doviz-iki-nokta",
@@ -124,7 +126,9 @@
         "duzeltir": null
       },
       "beklenen_metin": "cekmece=c2\nciro.degisim=15000\nciro.havale=100000\nciro.iyzico_pos=500000\nciro.kasa_fazlasi=7\nciro.kredi_ceki=-32000\nciro.nakit=1200000\nciro.ziraat_pos=700000\nciro_toplam_kurus=2468000\ndevreden_kurus=0\ndoviz.EUR.kur_onbinde=455555\ndoviz.EUR.tutar=2550\ndoviz.USD.kur_onbinde=400000\ndoviz.USD.tutar=10000\nid=GS-20260115-c2-3\nkapsam=taa_kasa_gun_sonu\nnakit_sayilan_kurus=1234567\nnebim_toplam_kurus=2500000\nnokta.k1.pos.ziraat=700000\nnokta.k1.z_toplam_kurus=1500000\nnokta.k2.pos.iyzico=500000\nnokta.k2.z_toplam_kurus=983000\nsube=SB2\nsurum=1\ntarih=2026-01-15\n",
-      "beklenen_sha256": "ca0cd2b1f9485ce8cef96ae611cae598c61aca0d4ef090e3c09e202fc561836c"
+      "beklenen_sha256": "ca0cd2b1f9485ce8cef96ae611cae598c61aca0d4ef090e3c09e202fc561836c",
+      "beklenen_metin_v2": "kapsam=taa_kasa_gun_sonu\nsurum=2\nsube=SB2\ntarih=2026-01-15\ncekmece=c2\nid=GS-20260115-c2-3\nnakit_sayilan_kurus=1234567\ndevreden_kurus=0\nnebim_toplam_kurus=2500000\nciro_toplam_kurus=2468000\nz_toplam_kurus=2483000\npos_toplam_kurus=1200000\nnokta_adet=2\ndoviz_adet=2\nayrinti_sha256=ca0cd2b1f9485ce8cef96ae611cae598c61aca0d4ef090e3c09e202fc561836c\n",
+      "beklenen_sha256_v2": "b83c1b963620490bb840c05c08cc2ffff8c7d6b440f30bb1660216ad6e5123ac"
     },
     {
       "ad": "v3-bos-ciro",
@@ -164,7 +168,135 @@
         "duzeltir": null
       },
       "beklenen_metin": "cekmece=c1\nciro_toplam_kurus=0\ndevreden_kurus=0\nid=GS-20260115-c1-2\nkapsam=taa_kasa_gun_sonu\nnakit_sayilan_kurus=0\nnebim_toplam_kurus=0\nsube=SB1\nsurum=1\ntarih=2026-01-15\n",
-      "beklenen_sha256": "6a8dafdbc87927a91bc3f65b7c8da02142177da52cf64b8773c450e056dabbf5"
+      "beklenen_sha256": "6a8dafdbc87927a91bc3f65b7c8da02142177da52cf64b8773c450e056dabbf5",
+      "beklenen_metin_v2": "kapsam=taa_kasa_gun_sonu\nsurum=2\nsube=SB1\ntarih=2026-01-15\ncekmece=c1\nid=GS-20260115-c1-2\nnakit_sayilan_kurus=0\ndevreden_kurus=0\nnebim_toplam_kurus=0\nciro_toplam_kurus=0\nz_toplam_kurus=0\npos_toplam_kurus=0\nnokta_adet=0\ndoviz_adet=0\nayrinti_sha256=6a8dafdbc87927a91bc3f65b7c8da02142177da52cf64b8773c450e056dabbf5\n",
+      "beklenen_sha256_v2": "5b82b61b13e849474c3bd037c59a8defbcc050ed3d32fdf4e12e674c809f9fb1"
+    },
+    {
+      "ad": "v4-cok-nokta-cok-doviz-1kib-ustu",
+      "gun_sonu": {
+        "id": "GS-20260115-c9-1",
+        "tarih": "2026-01-15",
+        "sube": "SB9",
+        "cekmece": "c9",
+        "kisi": "Deneme Kişi",
+        "nakit_adetler": {
+          "10000": 1
+        },
+        "nakit_sayilan_kurus": 1234567,
+        "noktalar": [
+          {
+            "nokta": "k1",
+            "z_toplam_kurus": 1234568,
+            "pos": {
+              "ziraat": 345679,
+              "iyzico": 456790,
+              "banka1": 11111
+            }
+          },
+          {
+            "nokta": "k2",
+            "z_toplam_kurus": 1234569,
+            "pos": {
+              "ziraat": 345680,
+              "iyzico": 456791,
+              "banka2": 11111
+            }
+          },
+          {
+            "nokta": "k3",
+            "z_toplam_kurus": 1234570,
+            "pos": {
+              "ziraat": 345681,
+              "iyzico": 456792,
+              "banka3": 11111
+            }
+          },
+          {
+            "nokta": "k4",
+            "z_toplam_kurus": 1234571,
+            "pos": {
+              "ziraat": 345682,
+              "iyzico": 456793,
+              "banka4": 11111
+            }
+          },
+          {
+            "nokta": "k5",
+            "z_toplam_kurus": 1234572,
+            "pos": {
+              "ziraat": 345683,
+              "iyzico": 456794,
+              "banka5": 11111
+            }
+          },
+          {
+            "nokta": "k6",
+            "z_toplam_kurus": 1234573,
+            "pos": {
+              "ziraat": 345684,
+              "iyzico": 456795,
+              "banka6": 11111
+            }
+          }
+        ],
+        "nebim_toplam_kurus": 2500000,
+        "ciro": {
+          "nakit": 1200000,
+          "ziraat_pos": 700000,
+          "iyzico_pos": 500000,
+          "havale": 100000,
+          "kredi_ceki": -32000,
+          "degisim": 15000,
+          "kasa_fazlasi": 7
+        },
+        "doviz": [
+          {
+            "kod": "USD",
+            "tutar": 10000,
+            "kur_onbinde": 400000
+          },
+          {
+            "kod": "EUR",
+            "tutar": 10001,
+            "kur_onbinde": 401000
+          },
+          {
+            "kod": "GBP",
+            "tutar": 10002,
+            "kur_onbinde": 402000
+          },
+          {
+            "kod": "CHF",
+            "tutar": 10003,
+            "kur_onbinde": 403000
+          }
+        ],
+        "devreden_kurus": 0,
+        "kontrol": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "not": "özete girmez",
+        "aciklamalar": {},
+        "karsilastirma": {
+          "satirlar": [],
+          "ciro_toplam_kurus": 2468000,
+          "fark_var": false,
+          "kasa_ciro_uyusmuyor": false
+        },
+        "zaman": 1768478400,
+        "duzeltir": null
+      },
+      "beklenen_metin": "cekmece=c9\nciro.degisim=15000\nciro.havale=100000\nciro.iyzico_pos=500000\nciro.kasa_fazlasi=7\nciro.kredi_ceki=-32000\nciro.nakit=1200000\nciro.ziraat_pos=700000\nciro_toplam_kurus=2468000\ndevreden_kurus=0\ndoviz.CHF.kur_onbinde=403000\ndoviz.CHF.tutar=10003\ndoviz.EUR.kur_onbinde=401000\ndoviz.EUR.tutar=10001\ndoviz.GBP.kur_onbinde=402000\ndoviz.GBP.tutar=10002\ndoviz.USD.kur_onbinde=400000\ndoviz.USD.tutar=10000\nid=GS-20260115-c9-1\nkapsam=taa_kasa_gun_sonu\nnakit_sayilan_kurus=1234567\nnebim_toplam_kurus=2500000\nnokta.k1.pos.banka1=11111\nnokta.k1.pos.iyzico=456790\nnokta.k1.pos.ziraat=345679\nnokta.k1.z_toplam_kurus=1234568\nnokta.k2.pos.banka2=11111\nnokta.k2.pos.iyzico=456791\nnokta.k2.pos.ziraat=345680\nnokta.k2.z_toplam_kurus=1234569\nnokta.k3.pos.banka3=11111\nnokta.k3.pos.iyzico=456792\nnokta.k3.pos.ziraat=345681\nnokta.k3.z_toplam_kurus=1234570\nnokta.k4.pos.banka4=11111\nnokta.k4.pos.iyzico=456793\nnokta.k4.pos.ziraat=345682\nnokta.k4.z_toplam_kurus=1234571\nnokta.k5.pos.banka5=11111\nnokta.k5.pos.iyzico=456794\nnokta.k5.pos.ziraat=345683\nnokta.k5.z_toplam_kurus=1234572\nnokta.k6.pos.banka6=11111\nnokta.k6.pos.iyzico=456795\nnokta.k6.pos.ziraat=345684\nnokta.k6.z_toplam_kurus=1234573\nsube=SB9\nsurum=1\ntarih=2026-01-15\n",
+      "beklenen_sha256": "224090f2eed105c64ce62beb5b9c25bb45c38ca227b70d036862c325f1da22d3",
+      "beklenen_metin_v2": "kapsam=taa_kasa_gun_sonu\nsurum=2\nsube=SB9\ntarih=2026-01-15\ncekmece=c9\nid=GS-20260115-c9-1\nnakit_sayilan_kurus=1234567\ndevreden_kurus=0\nnebim_toplam_kurus=2500000\nciro_toplam_kurus=2468000\nz_toplam_kurus=7407423\npos_toplam_kurus=4881510\nnokta_adet=6\ndoviz_adet=4\nayrinti_sha256=224090f2eed105c64ce62beb5b9c25bb45c38ca227b70d036862c325f1da22d3\n",
+      "beklenen_sha256_v2": "13e6b35ca54570606d7acfdedb824e98ffd1030e183daf920ecb21b30047a64a"
     }
   ]
 }

@@ -758,6 +758,7 @@ mod testler {
             cihaz: Some("tel-1".into()),
             ozet: None,
             cihaz_dogrulama: None,
+            telefon: None,
             kisi_rol: None,
         };
         let v = cift_dogrulama(&a, &gs, 20_000, &[imza], None);
@@ -819,6 +820,7 @@ mod testler {
             cihaz: Some("tel-1".into()),
             ozet: None,
             cihaz_dogrulama: None,
+            telefon: None,
             kisi_rol: None,
         };
         let h = tutanak_html(
