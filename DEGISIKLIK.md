@@ -8,6 +8,8 @@
 
 ### Personel rehberi (Yusuf 2026-11-27)
 
+- **TAA Çatı > Personel:** şube seçip listeyi görme, "Ad Soyad; Görev" satırlarını yapıştırarak içe aktarma, görev/şube değiştirme, listeden çıkarma (silme yok), başka şubeden süreli ekleme ve bitirme, "Kim ne yapabilir" tablosuyla rollere personel izinleri verme (`/v1/rol-izin`).
+
 - **taa-kimlik `personel` komutu:** `personel [liste] [--sube N]` şubenin personel listesini (sunucu `/v1/personel/liste`), `personel ara --ara <metin>` tüm şubelerde arama, `personel gecici --kisi --gun 1-31 [--neden]` başka şubeden kişiyi süreli ekleme (şifre stdin'den, önce `/v1/yeniden-dogrula`). Aynı saniyede 409 "tekrar" alınırsa bir kez yinelenir.
 - **taa-giris.js v2:** `personel({tur: liste|ara|gecici})` ve `window.taaGiris.personel`; son başarılı liste veri klasöründe (`taa-personel.json`), yalnız ağ sorununda kullanılır (yetki yoksa verilmez).
 
