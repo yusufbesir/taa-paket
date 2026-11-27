@@ -209,3 +209,54 @@ fn pub_olmayan_dosyalar_yok_sayilir() {
     let kur = Kur::yeni(o.kok()).unwrap();
     kur.kur(&o.paket("a", None), true).unwrap();
 }
+
+/// TK boru kabulü için sözleşme: kurulumdan sonra `depo/<ad>/<sürüm>/paket.json` (imza İÇİNDE) kaynakla bayt bayt aynı
+/// kalır; `dosyalar[]` içindeki `bin/<exe>` sha256'sı kurulu exe ile, imza da güvenilir anahtarla doğrulanır.
+/// [Claude#taa-kasa-tk-sozlesme 2026-11-27]
+#[test]
+fn kurulu_surum_klasorunde_imzali_paket_json_kalir() {
+    let o = Ort::yeni();
+    let oz = o.anahtar("yayinci", true);
+    let k = paket_yap(
+        &o.taban,
+        "taa-kasa-ekran",
+        "1.0.0",
+        "1",
+        "ortak",
+        &[],
+        &[("bin/taa-kasa.exe", "ornek-exe")],
+    );
+    imzala(&k, &oz);
+    let kaynak = fs::read(k.join("paket.json")).unwrap();
+    let kur = Kur::yeni(o.kok()).unwrap();
+    kur.kur(&k, true).unwrap();
+    let surum = o.kok().join("depo").join("taa-kasa-ekran").join("1.0.0");
+    let kurulu = fs::read(surum.join("paket.json")).unwrap();
+    assert_eq!(kurulu, kaynak, "paket.json bayt bayt korunmalı");
+    let v: serde_json::Value = serde_json::from_slice(&kurulu).unwrap();
+    let kayit = v["dosyalar"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|d| d["yol"] == "bin/taa-kasa.exe")
+        .expect("exe kaydı");
+    let exe = fs::read(surum.join("bin").join("taa-kasa.exe")).unwrap();
+    assert_eq!(
+        kayit["sha256"].as_str().unwrap(),
+        crate::paket::sha256_bayt(&exe)
+    );
+    let im = taa_imza::imza_oku(&v).unwrap();
+    assert_eq!(im.alg, "ed25519");
+    let pub_metin = fs::read_to_string(o.kok().join("anahtarlar").join("yayinci.pub")).unwrap();
+    let g = taa_imza::GenelAnahtar::coz(pub_metin.trim()).unwrap();
+    assert_eq!(im.anahtar_kimlik, g.kimlik());
+    g.dogrula(v["icerik_sha256"].as_str().unwrap().as_bytes(), &im)
+        .unwrap();
+    // Ayrı imza dosyası yok: imza paket.json'un içinde.
+    let mut adlar: Vec<String> = fs::read_dir(&surum)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    adlar.sort();
+    assert_eq!(adlar, ["bin", "paket.json"]);
+}

@@ -8,7 +8,7 @@
   `ozet_bicimi_sabit_capraz_test_vektorleri` ve bağımsız bir Python uygulaması aynı sonucu verir.
 
 ## Özetlenen baytlar
-`ozet = SHA-256(UTF-8(özet metni))`, 32 bayt. Kasa isteğinde (`ozet_sha256`) 64 haneli **küçük harf onaltılık** yazılır;
+`ozet = SHA-256(UTF-8(özet metni))`, 32 bayt. Kasa isteğinde (`ozet`, TK sözleşmesi Ek 2) 64 haneli **küçük harf onaltılık** yazılır ve `ozet_metni` ile birlikte gider;
 köprü/telefon tarafındaki 32 bayt bu hex'in çözülmüş hâlidir.
 
 Özet metni JSON **değildir**; satır satır `anahtar=değer\n` düz metindir:
