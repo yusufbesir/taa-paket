@@ -63,3 +63,7 @@ Koşular arası "küçük" için öneri: ortanca hızlarda en çok %10 sapma; bu
 ## 9. Koşu düzeni (DG1b için hatırlatma)
 Aynı anda tek ağır iş. Önce işçi kapalıyken taban, sonra küçük basamaklarda kontrollü deneme, sonra seçilen payda uzun gözlem
 (öneri: 10 iş günü). Ölçülmemiş bilgisayara iş verilmez.
+
+## 10. Kapı 1 kazanç eşiği (Yusuf kararı 2026-11-27, ölçümden önce kilitli)
+Dağıtık işlem sistemi (Kapı 2) yalnız şu koşulda kurulur: seçilen iş türünde, ölçümde "ön planı etkilemeyen en yüksek pay" ile
+çalışan işçilerle toplam iş süresi, yalnız sunucuyla yapılan süreye göre **en az %40 kısalır**. Bu eşik sonuca bakılarak değiştirilmez.
