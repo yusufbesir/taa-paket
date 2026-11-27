@@ -591,3 +591,6 @@ Bu bölüm denetimin B-1..B-6 ve B-8 bulgularını bağlayıcı kural olarak yaz
 
 ### D-9 Kriptografi kütüphaneleri (koordinatör kararı 2026-11-27, Yusuf değiştirebilir)
 HPKE (RFC 9180) ve Argon2id için yerleşik, bakımı süren hazır kütüphaneler kullanılır; kripto el ile yazılmaz. Somut paketler uygulama aşamasında sürüm ve lisans denetimiyle seçilir.
+
+### D-10 Dış tanık (Yusuf kararı 2026-11-27)
+Zincir mührü özetleri iki bağımsız yerde tutulur: Yusuf'un telefonu ve ikinci bir bilgisayar. İkisi de sunucu yöneticisinin denetimi dışındadır. Biri sunucudakiyle uyuşmazsa uyarı verilir.
