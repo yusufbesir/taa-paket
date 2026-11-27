@@ -588,3 +588,6 @@ Bu bölüm denetimin B-1..B-6 ve B-8 bulgularını bağlayıcı kural olarak yaz
 - **D-8 (B-8, §9.3, §12.1) işaret koşulları dürüst sınırı:** disk şifresi, güncel Windows ve hesap türü işçinin kendi beyanıdır; işçi güvenilmeyen sınıftadır. Beyan hijyen denetimidir, güvenlik kanıtı değildir; işareti veren yöneticinin yerinde doğrulaması şarttır (Çatı'da onay kutusu + defter kaydı).
 
 **Açık kalanlar (Yusuf kararı gerekir):** B-7 (Kapı 1 kazanç eşiğinin sayısı ve "5 geçerse pay yok" kuralı; `YONTEM.md` kilit özetiyle birlikte güncellenecek), Y-1 yeni bağımlılık (HPKE, Argon2id), Y-2 dış tanık, Y-3 merkez anahtarı kurtarma, Y-8 önbellek silmenin "kalıcı silme yok" kuralına girmediği, `ocr.genel` akış listesi. Ayrıntı ve Fable önerileri denetim raporunda.
+
+### D-9 Kriptografi kütüphaneleri (koordinatör kararı 2026-11-27, Yusuf değiştirebilir)
+HPKE (RFC 9180) ve Argon2id için yerleşik, bakımı süren hazır kütüphaneler kullanılır; kripto el ile yazılmaz. Somut paketler uygulama aşamasında sürüm ve lisans denetimiyle seçilir.
