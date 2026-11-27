@@ -602,4 +602,4 @@ Zincir mührü özetleri iki bağımsız yerde tutulur: Yusuf'un telefonu ve iki
 İşçi bilgisayardaki geçici, yeniden üretilebilir önbelleğin program tarafından temizlenmesi "kalıcı silme yok" kuralına girmez. Kullanıcı dosyalarına, kayıtlara ve zincir verisine bu kural dışında dokunulmaz.
 
 ### D-13 ocr.genel kapsamı (Yusuf kararı 2026-11-27)
-Tüm belge türleri `ocr.genel` havuzuna girebilir. Kişisel veri içeren belgeler yine yalnız HPKE ile şifreli paketlenir ve işçiye kısa süreli kirayla gider; işçi çözülmüş içeriği diske yazmaz, iş bitince bellekten siler (§17 D-3, D-4 ile birlikte okunur).
+Tüm belge türleri `ocr.genel` havuzuna girebilir. Ancak 15.11 kararı korunur: ilk sürüm ve pilot kişisel verisiz belgelerle çalışır; kişisel veri aşaması Fable denetimi (R1–R9) ve karışma/izolasyon testinden sonra açılır. Kişisel veri içeren belgeler yine yalnız HPKE ile şifreli paketlenir ve işçiye kısa süreli kirayla gider; işçi çözülmüş içeriği diske yazmaz, iş bitince bellekten siler (§17 D-3, D-4 ile birlikte okunur).
