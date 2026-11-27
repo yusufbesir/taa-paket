@@ -161,6 +161,7 @@ async function giris(istek, secenek) {
   // Çıkış yapılmaz: ortak oturum başka programlarda sürer, yalnız bu program reddedilir.
   if (!programAcik(oturum, s.program)) return red('program_kapali');
   kilitSil(s); // başarılı giriş (kilit açma dahil) bu programın kilit işaretini kaldırır
+  if (KULLANICI_RE.test(String(oturum.kullanici || ''))) sonKullanici.set(kilitDosyasi(s) || '', oturum.kullanici); // Fable koşul 1
   return { tamam: true, oturum };
 }
 

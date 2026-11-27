@@ -199,6 +199,10 @@ test('ekran kilidi: oturum kapanmaz, işaret yeniden açılışta kilitli başla
   assert.strictEqual(JSON.parse(fs.readFileSync(kilitDosyasi, 'utf8')).kullanici, 'ali', 'durum okunamasa da kilit yazılır');
   await g.cikis(s);
   assert.deepStrictEqual(await g.kilitle({ ...s, env: ortam('cihaz').env }), { tamam: false }, 'çıkıştan sonra eski kullanıcıyla kilitlenmez');
+  // Çıkıştan sonra giriş yapan kullanıcı, araya durum girmeden Ctrl+L'de durum okunamasa da kilitlenir.
+  assert.strictEqual((await g.giris({ kullanici: 'ali', parola: 'p' }, s)).tamam, true);
+  assert.deepStrictEqual(await g.kilitle({ ...s, env: ortam('cihaz').env }), { tamam: true, kullanici: 'ali' }, 'girişten hemen sonra kilit yazılır');
+  await g.cikis(s);
   // Açılışta oturum okunamazsa (geçici hata) kilit düşmez: işaret korunur, ekran kilitli açılır (kapalı yönde).
   await g.kilitle(s);
   assert.deepStrictEqual(await g.baslangic({ ...s, env: ortam('cihaz').env }), { arac: true, oturum: null, kilitli: { kullanici: 'ali' } });
