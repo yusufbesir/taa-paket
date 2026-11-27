@@ -17,8 +17,18 @@ pub mod yedek;
 
 use sha2::{Digest, Sha256};
 
-/// Gömülü ekran (tek dosya, dış kaynak yok).
+/// Gömülü ekran şablonu (tek dosya, dış kaynak yok). Sunulan sayfa `arayuz_html()`: ortak hesap menüsü bileşeni
+/// (`araclar/js/taa-giris-ekrani.js`, kopya değil) derlemede gömülür.
 pub const ARAYUZ_HTML: &str = include_str!("arayuz.html");
+/// TAA ortak giriş/hesap menüsü bileşeni (v3: alt menüler yan panelde). Tek kaynak; kopyalanmaz.
+pub const GIRIS_EKRANI_JS: &str = include_str!("../../../araclar/js/taa-giris-ekrani.js");
+const GIRIS_EKRANI_YERI: &str = "/*@GIRIS-EKRANI@*/";
+
+/// Sunulan ekran: şablondaki yer tutucuya ortak bileşen yerleştirilir (bir kez hesaplanır).
+pub fn arayuz_html() -> &'static str {
+    static H: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    H.get_or_init(|| ARAYUZ_HTML.replacen(GIRIS_EKRANI_YERI, GIRIS_EKRANI_JS, 1))
+}
 /// Uygulama simgesi.
 pub const SIMGE_SVG: &str = include_str!("simge.svg");
 
@@ -240,6 +250,21 @@ pub fn pin_gecerli(pin: &str) -> bool {
 #[cfg(test)]
 mod testler {
     use super::*;
+
+    #[test]
+    fn ortak_hesap_menusu_v3_gomulu() {
+        let h = arayuz_html();
+        assert!(!h.contains(GIRIS_EKRANI_YERI), "yer tutucu kalmamalı");
+        assert!(
+            h.contains("taa-giris-ekrani.js v3"),
+            "ortak bileşen v3 gömülü"
+        );
+        assert!(h.contains("TaaGirisEkrani.hesapMenusu"));
+        // Bileşen satır içine gömülebilir olmalı: kapanan script etiketi yok.
+        assert!(!GIRIS_EKRANI_JS.to_lowercase().contains("</script"));
+        // Programın eski kendi menüsü kalmadı.
+        assert!(!h.contains("id=\"hesap-menu\""));
+    }
 
     #[test]
     fn indirme_basligi_ascii_ve_guvenli() {

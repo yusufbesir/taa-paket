@@ -1,5 +1,5 @@
 // Sahip: Yusuf. yazan: [Claude#KM2-hesap-giris 2026-11-25]
-// taa-giris.js v1 — kaynak: yusufbesir/taa-paket/araclar/js/taa-giris.js; programlar kopyalar, elle düzenlemez.
+// taa-giris.js v2 (personel rehberi) — kaynak: yusufbesir/taa-paket/araclar/js/taa-giris.js; programlar kopyalar, elle düzenlemez.
 'use strict';
 // TAA ortak giriş köprüsü, Electron ana süreç (Node) tarafı. Plan KM1: "Electron programları için küçük JS köprüsü".
 // Ağa kendisi çıkmaz: `taa-kimlik` aracını çalıştırır (cihaz imzası, yedekli yollar, sunucu imzası doğrulaması, Windows
@@ -102,6 +102,8 @@ const ILETI = {
   sube_cihazi: 'Başvuru yalnız mağaza bilgisayarından yapılır.',
   girdi: 'Kullanıcı adını ve şifreyi doğru yazın.',
   oturum_yok: 'Oturum yok. Giriş yapın.',
+  yetki_yok: 'Bu işlem için yetkiniz yok. Yöneticinize ya da şube müdürünüze başvurun.',
+  personel_yok: 'Personel listesi alınamadı ve bu bilgisayarda kayıtlı liste yok. Sunucu bağlantısını denetleyin.',
   bilinmiyor: 'Giriş yapılamadı. Yeniden deneyin; sürerse yöneticinize haber verin.',
 };
 
@@ -257,8 +259,79 @@ async function kilitle(secenek) {
   return { tamam: true, kullanici: oturum.kullanici };
 }
 
+// ---- Personel rehberi (Yusuf 11-27) ----
+// Adlar sunucudaki ortak listeden gelir; şube bilgisayarında yalnız o şubenin kişileri (+ süreli eklenenler).
+// Son başarılı liste veri klasörüne yazılır; sunucuya ulaşılamazsa o liste döner (kaynak: 'onbellek').
+function personelDosyasi(s) {
+  if (s && s.personelDosyasi) return String(s.personelDosyasi);
+  const k = kilitDosyasi(s);
+  return k ? path.join(path.dirname(k), 'taa-personel.json') : null;
+}
+function kisiTemiz(k) {
+  if (!k || typeof k.ad_soyad !== 'string') return null;
+  return {
+    id: Number(k.id) || 0, ad_soyad: k.ad_soyad.slice(0, 100), gorev: typeof k.gorev === 'string' ? k.gorev.slice(0, 60) : '',
+    sube_id: Number(k.sube_id) || 0, gecici: k.gecici === true, bitis: typeof k.bitis === 'string' ? k.bitis : null,
+    sube_ad: typeof k.sube_ad === 'string' ? k.sube_ad.slice(0, 100) : undefined,
+  };
+}
+const kisiler = (v) => (Array.isArray(v && v.kisiler) ? v.kisiler.map(kisiTemiz).filter(Boolean) : []);
+function personelRed(r) {
+  const h = r.hata || {};
+  if (Number(h.http) === 403 || r.kod === 7) return red('yetki_yok');
+  if (Number(h.http) === 400) {
+    const g = sunucuGovdesi(String(h.hata || ''));
+    if (g && typeof g.ileti === 'string') return { tamam: false, durum: 'girdi', ileti: g.ileti.slice(0, 200) };
+  }
+  const d = durumBul(r);
+  if (d === 'hatali') return { tamam: false, durum: 'hatali', ileti: 'Şifre hatalı. Yeniden yazın.' };
+  return red(d);
+}
+
+// istek: {tur: 'liste'} | {tur: 'ara', metin} | {tur: 'gecici', kisi, gun, neden, parola}
+async function personel(istek, secenek) {
+  const s = secenek || {};
+  const i = istek || {};
+  const tur = i.tur || 'liste';
+  if (tur === 'liste') {
+    const r = await calistir(['personel', 'liste', ...sunucuArg(s)], null, s);
+    const y = personelDosyasi(s);
+    if (r.kod === 0 && r.cikti) {
+      const v = { sube_id: Number(r.cikti.sube_id) || null, kisiler: kisiler(r.cikti) };
+      if (y) { try { fs.mkdirSync(path.dirname(y), { recursive: true }); fs.writeFileSync(y, JSON.stringify(Object.assign({ zaman: Date.now() }, v)), { mode: 0o600 }); } catch (_) { /* önbellek yazılamazsa sorun değil */ } }
+      return Object.assign({ tamam: true, kaynak: 'sunucu' }, v);
+    }
+    // Yetki yoksa (403) eski liste gösterilmez; ağ sorunu ise son liste kullanılır.
+    if (r.kod !== 7 && Number((r.hata || {}).http) !== 403 && y) {
+      try {
+        const o = JSON.parse(fs.readFileSync(y, 'utf8'));
+        if (o && Array.isArray(o.kisiler)) return { tamam: true, kaynak: 'onbellek', zaman: Number(o.zaman) || 0, sube_id: Number(o.sube_id) || null, kisiler: kisiler(o) };
+      } catch (_) { /* önbellek yok */ }
+    }
+    const k = personelRed(r);
+    return k.durum === 'baglanti' || k.durum === 'arac_yok' ? Object.assign(k, { ileti: ILETI.personel_yok }) : k;
+  }
+  if (tur === 'ara') {
+    const q = String(i.metin || '').trim();
+    if (q.length < 2 || q.length > 60 || /[\r\n]/.test(q)) return { tamam: false, durum: 'girdi', ileti: 'Aramak için en az 2 harf yazın.' };
+    const r = await calistir(['personel', 'ara', '--ara', q, ...sunucuArg(s)], null, s);
+    return r.kod === 0 && r.cikti ? { tamam: true, kisiler: kisiler(r.cikti) } : personelRed(r);
+  }
+  if (tur === 'gecici') {
+    const kisi = Number(i.kisi);
+    const gun = Number(i.gun);
+    const neden = String(i.neden || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+    const parola = String(i.parola || '');
+    if (!Number.isInteger(kisi) || kisi <= 0 || !Number.isInteger(gun) || gun < 1 || gun > 31) return { tamam: false, durum: 'girdi', ileti: 'Kişiyi seçin ve süreyi 1-31 gün yazın.' };
+    if (!parola || /[\r\n]/.test(parola)) return { tamam: false, durum: 'girdi', ileti: 'Onay için şifrenizi yazın.' };
+    const r = await calistir(['personel', 'gecici', '--kisi', String(kisi), '--gun', String(gun), '--neden', neden, ...sunucuArg(s)], parola, s);
+    return r.kod === 0 && r.cikti ? { tamam: true, bitis: typeof r.cikti.bitis === 'string' ? r.cikti.bitis : null } : personelRed(r);
+  }
+  return { tamam: false, durum: 'girdi', ileti: ILETI.bilinmiyor };
+}
+
 // ---- Electron bağlantısı ----
-const KANAL = { baslangic: 'taa-giris:baslangic', giris: 'taa-giris:giris', basvur: 'taa-giris:basvur', durum: 'taa-giris:durum', yetki: 'taa-giris:yetki', cikis: 'taa-giris:cikis', kilitle: 'taa-giris:kilitle' };
+const KANAL = { baslangic: 'taa-giris:baslangic', giris: 'taa-giris:giris', basvur: 'taa-giris:basvur', durum: 'taa-giris:durum', yetki: 'taa-giris:yetki', cikis: 'taa-giris:cikis', kilitle: 'taa-giris:kilitle', personel: 'taa-giris:personel' };
 
 // Açılış kararı: araç kurulu mu, bu programa açık süren oturum var mı. Araç yoksa program eski davranışını sürdürür.
 async function baslangic(secenek) {
@@ -291,6 +364,7 @@ function ipcKur(ipcMain, secenek) {
   kur(KANAL.yetki, (i) => yetki(i, s));
   kur(KANAL.cikis, () => cikis(s));
   kur(KANAL.kilitle, () => kilitle(s));
+  kur(KANAL.personel, (i) => personel(i, s));
 }
 
 function preloadKur(contextBridge, ipcRenderer) {
@@ -302,7 +376,8 @@ function preloadKur(contextBridge, ipcRenderer) {
     yetki: (izin) => ipcRenderer.invoke(KANAL.yetki, { izin }),
     cikis: () => ipcRenderer.invoke(KANAL.cikis),
     kilitle: () => ipcRenderer.invoke(KANAL.kilitle),
+    personel: (istek) => ipcRenderer.invoke(KANAL.personel, istek),
   });
 }
 
-module.exports = { kimlikYolu, calistir, baslangic, giris, basvur, durum, yetki, cikis, kilitle, ipcKur, preloadKur, KANAL, ILETI, _durumBul: durumBul };
+module.exports = { kimlikYolu, calistir, baslangic, giris, basvur, durum, yetki, cikis, kilitle, personel, ipcKur, preloadKur, KANAL, ILETI, _durumBul: durumBul };

@@ -27,6 +27,10 @@ Kullanım:
                kuyruktaki tüm kayıtlar (hata raporları dahil) oturumla otomatik gider; pencere açılmaz.
   taa-kimlik yetki  --sunucu <https://adres> [--program <ad>] [--izin <program.islem>] [--kok] [--json]
                Saklı yetki belgesine göre (internet gerekmez): çıkış 0 izinli, 7 yetkisiz, 5 belge yok/süresi geçmiş.
+  taa-kimlik personel [liste] [--sube N] [--json]   Şubenin personel listesi (cihazın şubesi; merkezde --sube).
+  taa-kimlik personel ara --ara <metin> [--json]   Süreli ekleme için tüm şubelerde ad arama (personel.gecici).
+  taa-kimlik personel gecici --kisi <id> --gun <1-31> [--neden <metin>] [--sube N]   (parola stdin'den; taze doğrulama)
+               Başka şubedeki kişiyi bu şubede süreli gösterir. Yanıt sunucunun JSON'udur.
   Sunucu genel anahtarı <kök>\\anahtarlar\\sunucu.pub varsa giriş yanıtı ve yetki belgesi imzası doğrulanır.
   --sunucu     Verilmezse TAA_SUNUCU ortam değişkeni.   --kok  Verilmezse TAA_VERI_KOK, yoksa %APPDATA%\\TAA\\veri.
   giris: parola standart girdiden okunur (örnek: echo parola | taa-kimlik giris ...  ya da yazıp Enter).
@@ -154,6 +158,11 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
     let mut sertifika: Option<PathBuf> = None;
     let mut kok: Option<PathBuf> = None;
     let mut en_cok = 0usize;
+    let mut ara: Option<String> = None;
+    let mut kisi: Option<i64> = None;
+    let mut gun: Option<i32> = None;
+    let mut neden: Option<String> = None;
+    let mut sube_no: Option<i32> = None;
     let mut json = false;
     let mut komut: Option<String> = None;
     let mut alt: Option<String> = None;
@@ -183,6 +192,29 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
                     .map_err(|_| (2, format!("--en-cok sayı olmalı: {d}")))?;
             }
             "--json" => json = true,
+            "--ara" => ara = Some(deger(&mut i, "--ara")?),
+            "--neden" => neden = Some(deger(&mut i, "--neden")?),
+            "--kisi" => {
+                let d = deger(&mut i, "--kisi")?;
+                kisi = Some(
+                    d.parse()
+                        .map_err(|_| (2, format!("--kisi sayı olmalı: {d}")))?,
+                );
+            }
+            "--gun" => {
+                let d = deger(&mut i, "--gun")?;
+                gun = Some(
+                    d.parse()
+                        .map_err(|_| (2, format!("--gun sayı olmalı: {d}")))?,
+                );
+            }
+            "--sube" => {
+                let d = deger(&mut i, "--sube")?;
+                sube_no = Some(
+                    d.parse()
+                        .map_err(|_| (2, format!("--sube sayı olmalı: {d}")))?,
+                );
+            }
             "--parola" => {
                 return Err((
                     2,
@@ -196,7 +228,11 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
                 ))
             }
             a if komut.is_none() => komut = Some(a.to_string()),
-            a if komut.as_deref() == Some("zamanla") && alt.is_none() => alt = Some(a.to_string()),
+            a if matches!(komut.as_deref(), Some("zamanla") | Some("personel"))
+                && alt.is_none() =>
+            {
+                alt = Some(a.to_string())
+            }
             a => return Err((2, format!("fazla argüman: {a}. Öneri: taa-kimlik --yardim"))),
         }
         i += 1;
@@ -414,6 +450,85 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
             }
             Ok(if red.is_empty() { 0 } else { 7 })
         }
+        Some("personel") => {
+            let o = depo.oku(&sunucu).map_err(kh)?;
+            let ag = Ag::yeni(&kok, &sunucu, sunucu_acik, sertifika.as_deref());
+            let g = ag.gonderici(&o).map_err(kh)?;
+            // Aynı saniyede aynı imzalı istek sunucuda 409 "tekrar" alır (yeniden oynatma koruması): bir kez 1 sn bekleyip yinele.
+            let tekrarla =
+                |f: &dyn Fn() -> Result<serde_json::Value, taa_kuyruk::GonderHata>| match f() {
+                    Err(e) if e.to_string().contains("\"tekrar\"") => {
+                        std::thread::sleep(std::time::Duration::from_millis(1100));
+                        f()
+                    }
+                    r => r,
+                };
+            let gh = |e: taa_kuyruk::GonderHata| match e {
+                taa_kuyruk::GonderHata::Reddedildi { kod, mesaj } => {
+                    SON_HTTP.store(kod, Ordering::Relaxed);
+                    (
+                        if kod == 401 {
+                            5
+                        } else if kod == 403 {
+                            7
+                        } else {
+                            4
+                        },
+                        mesaj,
+                    )
+                }
+                e => (3, e.to_string()),
+            };
+            let sube_sorgu = sube_no.map(|s| format!("?sube={s}")).unwrap_or_default();
+            let v = match alt.as_deref().unwrap_or("liste") {
+                "liste" => {
+                    let uc = format!("/v1/personel/liste{sube_sorgu}");
+                    tekrarla(&|| g.al(&uc)).map_err(gh)?
+                }
+                "ara" => {
+                    let q =
+                        ara.ok_or_else(|| (2, "ara için --ara <metin> gerekli.".to_string()))?;
+                    let uc = format!("/v1/personel/ara?q={}", yuzde_kodla(q.trim()));
+                    tekrarla(&|| g.al(&uc)).map_err(gh)?
+                }
+                "gecici" => {
+                    let k = kisi.ok_or_else(|| (2, "gecici için --kisi gerekli.".to_string()))?;
+                    let n = gun.ok_or_else(|| (2, "gecici için --gun gerekli.".to_string()))?;
+                    let mut parola = String::new();
+                    let stdin = std::io::stdin();
+                    if stdin.lock().read_line(&mut parola).is_err() || parola.trim().is_empty() {
+                        return Err((2, "parola standart girdiden okunamadı (boş).".into()));
+                    }
+                    let _ = stdin.lock().read_to_end(&mut Vec::new());
+                    let parola = parola.trim_end_matches(['\n', '\r']);
+                    // K10: yönetim işlemi 15 dk içinde parola doğrulaması ister.
+                    g.gonder(
+                        "/v1/yeniden-dogrula",
+                        &serde_json::json!({ "parola": parola }),
+                    )
+                    .map_err(gh)?;
+                    let mut govde = serde_json::json!({ "personel_id": k, "gun": n, "neden": neden.unwrap_or_default() });
+                    if let Some(s) = sube_no {
+                        govde["sube_id"] = serde_json::json!(s);
+                    }
+                    g.gonder("/v1/personel/gecici", &govde).map_err(gh)?
+                }
+                a => {
+                    return Err((
+                        2,
+                        format!("bilinmeyen personel komutu: {a} (liste, ara, gecici)"),
+                    ))
+                }
+            };
+            // JS köprüsü yalnız `{` ile başlayan satırı okur: dizi yanıtı sarılır.
+            let v = if v.is_array() {
+                serde_json::json!({ "kisiler": v })
+            } else {
+                v
+            };
+            println!("{v}");
+            Ok(0)
+        }
         Some("cikis") => {
             // Sunucudaki oturum da kapatılır (POST /v1/cikis, kısa süre sınırı); ulaşılamazsa yerel kayıt yine silinir
             // ve sunucudaki oturum kendi süresinde (12 saat) biter.
@@ -615,4 +730,17 @@ fn zamanla(alt: Option<&str>, kok: &Path, json: bool) -> Result<u8, (u8, String)
             "zamanla kur|kaldir|durum olmalı. Öneri: taa-kimlik --yardim".into(),
         )),
     }
+}
+
+/// Sorgu değeri için yüzde kodlama (UTF-8 baytları; yalnız harf/rakam ve `-_.` açık kalır).
+fn yuzde_kodla(s: &str) -> String {
+    s.bytes()
+        .map(|b| {
+            if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.') {
+                (b as char).to_string()
+            } else {
+                format!("%{b:02X}")
+            }
+        })
+        .collect()
 }
