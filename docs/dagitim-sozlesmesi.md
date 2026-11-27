@@ -597,3 +597,6 @@ Zincir mührü özetleri iki bağımsız yerde tutulur: Yusuf'un telefonu ve iki
 
 ### D-11 Merkez anahtarı çalınırsa (Yusuf kararı 2026-11-27)
 Çevrimdışı saklanan yedek anahtarla yeni merkez anahtarı üretilir. Eski kayıtlar dış tanıkların (telefon, ikinci bilgisayar) özetleriyle doğrulanır ve yeni anahtarla yeniden mühürlenir. Yedek anahtar şifreli ve sunucu dışında tutulur; kayıt silinmez.
+
+### D-12 İşçi önbelleği (Yusuf kararı 2026-11-27)
+İşçi bilgisayardaki geçici, yeniden üretilebilir önbelleğin program tarafından temizlenmesi "kalıcı silme yok" kuralına girmez. Kullanıcı dosyalarına, kayıtlara ve zincir verisine bu kural dışında dokunulmaz.
