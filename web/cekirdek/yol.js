@@ -68,7 +68,7 @@ export function yollariCoz(ham, secenek = {}) {
     bulunan[y.ad] = { ad: y.ad, url };
     if (y.ad === 'sube' && y.sube !== undefined && y.sube !== null && String(y.sube).trim() !== '') {
       const kod = String(y.sube).trim();
-      if (/^[A-Za-z0-9._-]{1,48}$/.test(kod)) bulunan.sube.sube = kod;
+      if (/^[A-Za-z0-9._-]{1,48}$/.test(kod)) bulunan.sube.sube = kod.toLowerCase();
       else hatalar.push('Şube kodu yalnız harf, rakam, nokta, alt çizgi ve tire içerebilir (1-48).');
     }
   }
@@ -257,7 +257,7 @@ async function yolla(giden, secenek) {
   }
 
   if (subeyeGec && subeYolu && ozet.kalan > 0) {
-    const kod = subeYolu.sube ?? (sube === undefined || sube === null ? '' : String(sube));
+    const kod = (subeYolu.sube ?? (sube === undefined || sube === null ? '' : String(sube))).toLowerCase();
     if (kod === '' || /[\r\n]/.test(kod)) {
       const d = { yol: 'sube', gonderilen: 0, reddedilen: 0, durmaNedeni: 'Şube kodu bilinmiyor; şube bilgisayarına gönderilemez.', durmaTuru: 'ayar' };
       ozet.denemeler.push(d);
@@ -348,7 +348,7 @@ export async function gunlukKopyala(giden, gunluk, { merkez, oturum, sube, fetch
       const son = satirlar[satirlar.length - 1].sira;
       const no = `GNLC-${cihaz}-${ilk}-${son}`;
       const govde = { no, cihaz, ilk, son, satirlar };
-      if (sube !== undefined && sube !== null && String(sube) !== '') govde.sube = String(sube);
+      if (sube !== undefined && sube !== null && String(sube) !== '') govde.sube = String(sube).toLowerCase();
       const denetci = new AbortController();
       const sayac = setTimeout(() => denetci.abort(), 20_000);
       let yanit;

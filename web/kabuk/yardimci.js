@@ -78,12 +78,17 @@ export function girisYanitiCoz(yanit, kullanici, simdi = Date.now()) {
     oturum: yanit.oturum,
     profil: {
       kullanici: String(kullanici),
-      sube: String(sube),
+      sube: subeKodu(sube),
       roller: metinler(yanit.roller),
       izinler: metinler(yanit.izinler),
       zaman: simdi,
     },
   };
+}
+
+/** Şube kodu büyük/küçük harf duyarsızdır; sunucu küçük harf saklar ('MRK01' ile 'mrk01' aynı şube). */
+export function subeKodu(deger) {
+  return String(deger).trim().toLowerCase();
 }
 
 /** Yerel veritabanı adına girecek parçayı güvenli hale getirir (çekirdek tire kabul etmez). */

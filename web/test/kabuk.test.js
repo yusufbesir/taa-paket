@@ -212,3 +212,10 @@ test('kabuk kodu innerHTML ve silme çağrısı kullanmaz', () => {
   }
   assert.doesNotMatch(readFileSync(path.join(WEB, 'cekirdek', 'taa-cekirdek.js'), 'utf8'), /deleteDatabase|\.delete\(|\.clear\(/);
 });
+
+test('subeKodu: büyük/küçük harf duyarsız (sunucu küçük harf saklar)', async () => {
+  const { subeKodu, girisYanitiCoz } = await import('../kabuk/yardimci.js');
+  assert.equal(subeKodu(' MRK01 '), 'mrk01');
+  const r = girisYanitiCoz({ oturum: 'x', kullanici: 'u', sube_id: 'MRK01' });
+  assert.equal(r.profil.sube, 'mrk01');
+});

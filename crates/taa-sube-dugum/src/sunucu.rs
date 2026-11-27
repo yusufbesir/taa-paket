@@ -177,7 +177,7 @@ const SUBE_MESAJ: &str = "Bu istek bu şube bilgisayarına ait değil.";
 /// `X-TAA-Sube` düğümün şubesiyle aynı olmalı; değilse ret ve günlüğe `dugum.red`.
 fn sube_denetle(d: &Dugum, i: &Istek, kaynak: &str) -> Result<(), Yanit> {
     match i.baslik("x-taa-sube") {
-        Some(s) if s == d.sube() => Ok(()),
+        Some(s) if s.eq_ignore_ascii_case(d.sube()) => Ok(()),
         Some(_) => {
             d.gunluk(
                 "dugum.red",

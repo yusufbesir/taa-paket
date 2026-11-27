@@ -50,7 +50,7 @@ test('adresDuzelt ve yollariCoz: sıra her zaman merkez → sube → yerel; bozu
     assert.equal(adresDuzelt(k), null, String(k));
   }
   const ters = yollariCoz([{ ad: 'yerel' }, { ad: 'sube', url: SUBE, sube: 'MRK01' }, { ad: 'merkez', url: `${MERKEZ}/` }]);
-  assert.deepEqual(ters.yollar, [{ ad: 'merkez', url: MERKEZ }, { ad: 'sube', url: SUBE, sube: 'MRK01' }, { ad: 'yerel' }]);
+  assert.deepEqual(ters.yollar, [{ ad: 'merkez', url: MERKEZ }, { ad: 'sube', url: SUBE, sube: 'mrk01' }, { ad: 'yerel' }]);
   assert.deepEqual(ters.hatalar, []);
 
   const eksik = yollariCoz(undefined, { merkez: MERKEZ });
@@ -96,7 +96,7 @@ test('merkeze ulaşılamıyor: şube bilgisayarına gider; oturum anahtarı şub
   assert.equal(subeIstekleri.length, 2);
   for (const c of subeIstekleri) {
     assert.equal(c.basliklar.Authorization, undefined, 'oturum anahtarı şube ağına çıkmamalı');
-    assert.equal(c.basliklar['X-TAA-Sube'], 'MRK01');
+    assert.equal(c.basliklar['X-TAA-Sube'], 'mrk01');
     assert.equal(c.basliklar['X-TAA-No'], c.govde.no, 'aynı no (idempotent)');
     assert.equal(JSON.stringify(c).includes('gizli'), false);
   }
@@ -247,7 +247,7 @@ test('şube kodu: yol ayarındaki kod oturumdaki şubenin önüne geçer; kod yo
   const ag = sahteAg((c) => (c.koken === MERKEZ ? agYok() : 200));
   const yollar = [{ ad: 'merkez', url: MERKEZ }, { ad: 'sube', url: SUBE, sube: 'IZM01' }];
   await db.giden.gonder({ yollar, oturum: 'o', sube: '3', fetch: ag.getir });
-  assert.equal(ag.cagrilar.find((c) => c.koken === SUBE).basliklar['X-TAA-Sube'], 'IZM01');
+  assert.equal(ag.cagrilar.find((c) => c.koken === SUBE).basliklar['X-TAA-Sube'], 'izm01');
 
   const db2 = yeniDB();
   await db2.giden.ekle(kayit(1));
@@ -337,7 +337,7 @@ test('günlük merkeze ulaşınca kopyalanır; satırlar cihazda kalır; ret son
   assert.equal(kopya.length, 1);
   assert.equal(kopya[0].koken, MERKEZ, 'günlük yalnız merkeze kopyalanır');
   assert.equal(kopya[0].govde.cihaz, 'test');
-  assert.equal(kopya[0].govde.sube, 'MRK01');
+  assert.equal(kopya[0].govde.sube, 'mrk01');
   assert.equal(kopya[0].govde.no, `GNLC-test-1-${kopya[0].govde.son}`);
   assert.equal(kopya[0].basliklar['X-TAA-No'], kopya[0].govde.no);
   assert.deepEqual(kopya[0].govde.satirlar.map((s) => s.olay).slice(0, 3), ['yol.basarisiz', 'yol.basarisiz', 'yol.yerel']);
@@ -380,12 +380,12 @@ test('kabuk yol ayarı: okuma, form denetimi, gösterim', () => {
   assert.deepEqual(yolAyariOku('{bozuk', KOKEN).yollar, [{ ad: 'merkez', url: KOKEN }, { ad: 'yerel' }]);
   // Saklanan merkez adresi ne olursa olsun merkez kabuğun kökenidir.
   const sakli = JSON.stringify([{ ad: 'merkez', url: 'https://baska.test' }, { ad: 'sube', url: SUBE, sube: 'MRK01' }, { ad: 'yerel' }]);
-  assert.deepEqual(yolAyariOku(sakli, KOKEN).yollar, [{ ad: 'merkez', url: KOKEN }, { ad: 'sube', url: SUBE, sube: 'MRK01' }, { ad: 'yerel' }]);
+  assert.deepEqual(yolAyariOku(sakli, KOKEN).yollar, [{ ad: 'merkez', url: KOKEN }, { ad: 'sube', url: SUBE, sube: 'mrk01' }, { ad: 'yerel' }]);
 
   assert.deepEqual(yolAyariKur({}, KOKEN), { ayar: [{ ad: 'merkez', url: KOKEN }, { ad: 'yerel' }], hatalar: [] });
   assert.deepEqual(yolAyariKur({ subeAdresi: ' 192.168.1.20 ', subeKodu: 'MRK01' }, KOKEN).ayar, [
     { ad: 'merkez', url: KOKEN },
-    { ad: 'sube', url: SUBE, sube: 'MRK01' },
+    { ad: 'sube', url: SUBE, sube: 'mrk01' },
     { ad: 'yerel' },
   ]);
   assert.equal(yolAyariKur({ subeAdresi: 'https://kasa-pc.sube.test' }, KOKEN).ayar[1].url, 'https://kasa-pc.sube.test:8788');
@@ -401,7 +401,7 @@ test('kabuk yol ayarı: okuma, form denetimi, gösterim', () => {
   assert.deepEqual(yolAyariOku(JSON.stringify(kur), KOKEN).yollar, kur);
 
   assert.deepEqual(yolSatirlari(kur).map((s) => [s.ad, s.var]), [['merkez', true], ['sube', true], ['yerel', true]]);
-  assert.match(yolSatirlari(kur)[1].metin, /^Şube bilgisayarı: http:\/\/192\.168\.1\.20:8788 \(şube MRK01\)$/);
+  assert.match(yolSatirlari(kur)[1].metin, /^Şube bilgisayarı: http:\/\/192\.168\.1\.20:8788 \(şube mrk01\)$/);
   assert.deepEqual(yolSatirlari([{ ad: 'merkez', url: KOKEN }, { ad: 'yerel' }])[1], { ad: 'sube', metin: 'Şube bilgisayarı: tanımlı değil', var: false });
   assert.equal(yolNotu({}), '');
   assert.match(yolNotu({ sonYol: 'sube', subeyeTeslim: 3 }), /şube bilgisayarı üzerinden.*teslim edilen 3 kayıt/);
