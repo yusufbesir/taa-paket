@@ -1,11 +1,16 @@
 // Sahip: Yusuf. yazan: [Claude#taa-kasa-KS2 2026-11-26]
 //! Telefonla gün sonu imzası: Telefon Köprüsü onay akışının taa-kasa istemcisi.
 //!
-//! Akış (önerilen sözleşme `onay_iste@1` / `onay@1` / `onay_red@1`, kapsam `taa_kasa_gun_sonu`):
-//! 1. Kasa programı gün sonu kaydından kanonik bir **özet metni** üretir ve SHA-256'sını alır.
-//! 2. `onay_iste@1` isteği (tek kullanımlık istek kimliği, 60 sn geçerlilik) köprü kanalına verilir.
+//! Akış (TK sözleşmesi "Ek 2", TK deposu taa-kasa-onay 29f8a69: `onay_iste@1` / `onay@1` / `onay_red@1`,
+//! kapsam `taa_kasa_gun_sonu`):
+//! 1. Kasa programı gün sonu kaydından kanonik bir **özet metni** üretir; `ozet` = SHA-256, 64 hane küçük hex.
+//! 2. `onay_iste@1` isteği (`nonce` tek kullanımlık, `bitis` = oluşturma + 60 sn, `baslik` en çok 80 karakter
+//!    "Gün sonu · <şube> · <tarih>", `ozet` + `ozet_metni` birlikte) köprü kanalına verilir. `pc_adi`'nı TK
+//!    hizmeti doldurur; kasa göndermez.
 //! 3. Telefon özeti gösterir; kişi biyometrik doğrulamayla onaylar ya da reddeder.
-//! 4. `onay@1` gelince istek kimliği, kapsam, süre ve özet **yeniden hesaplanarak** denetlenir; tutarlar
+//! 4. `onay_red@1` (nedenler: kullanici, biyometri, zaman_asimi, kip_kapali, kapsam_yok, ozet_uyusmaz) gelirse
+//!    gün sonu İMZASIZ kalır ve neden ekranda Türkçe gösterilir; bilinmeyen neden de red sayılır.
+//! 5. `onay@1` gelince nonce, kapsam, süre ve özet **yeniden hesaplanarak** denetlenir; tutarlar
 //!    istek gönderildikten sonra değiştiyse imza atılmaz. Geçerliyse `KasaDefteri::imzala` kuralları
 //!    (kapanış listesi, giren ikinci imzayı atamaz, en çok iki imza, gönderim sonrası imza yok) aynen
 //!    uygulanır ve imza `kanal: telefon`, `cihaz: <eşleşme_kimliği>:<pc_pin>`, `ozet` ile deftere yazılır.
@@ -14,9 +19,8 @@
 //! `\\.\pipe\TelefonKoprusuHizmet` olacaktır; borunun erişim listesinde taa-kasa.exe izni ve köprü tarafındaki
 //! onay akışı (u2b-tls-kip2 dalı) birleşene kadar `BoruKanali` her istekte `KanalYok` döner ve ekran
 //! 501 + yer tutucu mesajını göstermeye devam eder. Telefon imzasının (P-256) doğrulanması köprünün işidir;
-//! bu istemci köprünün doğruladığı cevabı özet ve istek kimliğiyle bağlar.
-//! Sözleşme taslağı kesinleşmediği için cevap çözümü esnektir: bilinmeyen alanlar yok sayılır, alan adlarının
-//! bilinen eş anlamlıları kabul edilir.
+//! bu istemci köprünün doğruladığı cevabı özet ve nonce ile bağlar.
+//! Cevap çözümünde bilinmeyen alanlar yok sayılır (ileri uyumluluk).
 
 use crate::gunsonu::{GunSonuKaydi, ImzaKanali, ImzaKaydi, KasaDefteri, Kisi, IMZA_ROLLERI};
 use serde::{Deserialize, Serialize};
@@ -31,6 +35,8 @@ pub const KAPSAM: &str = "taa_kasa_gun_sonu";
 pub const OZET_SURUMU: u32 = 1;
 /// İsteğin geçerlilik süresi (sn); köprünün PC isteği nonce süresiyle aynı.
 pub const GECERLILIK_SN: i64 = 60;
+/// `baslik` alanının en çok karakter sayısı (TK sözleşmesi).
+pub const BASLIK_EN_COK: usize = 80;
 /// Telefon köprüsünün yerel hizmet borusu.
 pub const BORU_ADI: &str = r"\\.\pipe\TelefonKoprusuHizmet";
 /// Köprü bağlı değilken ekranın ve API'nin gösterdiği mesaj (HTTP 501).
@@ -99,6 +105,19 @@ pub fn ozet_sha256(gs: &GunSonuKaydi) -> String {
     hex(&Sha256::digest(ozet_metni(gs).as_bytes()))
 }
 
+/// Telefonda bildirim başlığı: "Gün sonu · <şube> · <tarih>", en çok 80 karakter (Unicode karakter sayısı).
+/// Aşarsa 79 karakter + "…" olur. Satır sonları boşluğa çevrilir.
+pub fn baslik(gs: &GunSonuKaydi) -> String {
+    let b =
+        format!("Gün sonu · {} · {}", gs.sube.trim(), gs.tarih.trim()).replace(['\n', '\r'], " ");
+    if b.chars().count() <= BASLIK_EN_COK {
+        return b;
+    }
+    let mut k: String = b.chars().take(BASLIK_EN_COK - 1).collect();
+    k.push('…');
+    k
+}
+
 fn hex(b: &[u8]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
 }
@@ -108,8 +127,8 @@ fn hex(b: &[u8]) -> String {
 pub struct OnayIstegi {
     pub tur: String,
     pub kapsam: String,
-    /// Tek kullanımlık istek kimliği (nonce); cevap bununla eşleşir.
-    pub istek_kimligi: String,
+    /// Tek kullanımlık rastgele değer (128 bit, onaltılık); cevap bununla eşleşir.
+    pub nonce: String,
     pub gun_sonu_id: String,
     /// 1: kasa sorumlusu, 2: mağaza sorumlusu / vekili.
     pub sira: u8,
@@ -117,11 +136,73 @@ pub struct OnayIstegi {
     pub rol_adi: String,
     /// Ekranda imzalayacak olarak seçilen kişi (cihaz-kişi bağı TAA Merkez'e gelene kadar).
     pub istenen_kisi: String,
-    pub ozet_sha256: String,
-    /// Telefonda gösterilecek metin; telefon hash'ini kendisi hesaplayıp `ozet_sha256` ile karşılaştırır.
+    /// Telefon bildirim başlığı (en çok 80 karakter).
+    pub baslik: String,
+    /// `ozet_metni`'nin SHA-256'sı, 64 hane küçük harf onaltılık.
+    pub ozet: String,
+    /// Telefonda gösterilecek metin; telefon hash'ini kendisi hesaplayıp `ozet` ile karşılaştırır.
     pub ozet_metni: String,
+    /// Unix saniye.
     pub olusturma: i64,
-    pub son_gecerlilik: i64,
+    /// Unix saniye; `olusturma + 60`. Sonra gelen onay kabul edilmez.
+    pub bitis: i64,
+}
+
+/// `onay_red@1` nedenleri (TK sözleşmesi). Hepsinde gün sonu imzasız kalır.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RedNedeni {
+    /// Kişi telefonda "Reddet" dedi.
+    Kullanici,
+    /// Biyometrik/PIN doğrulaması başarısız ya da iptal.
+    Biyometri,
+    /// Telefonda süre doldu.
+    ZamanAsimi,
+    /// Köprüde onay kipi kapalı.
+    KipKapali,
+    /// Eşleşmede bu kapsam (`taa_kasa_gun_sonu`) izinli değil.
+    KapsamYok,
+    /// Telefonun hesapladığı özet istekteki `ozet` ile uyuşmadı.
+    OzetUyusmaz,
+    /// Sözleşmede olmayan neden; yine red sayılır.
+    Bilinmeyen(String),
+}
+
+impl RedNedeni {
+    pub fn coz(kod: &str) -> RedNedeni {
+        match kod.trim() {
+            "kullanici" => RedNedeni::Kullanici,
+            "biyometri" => RedNedeni::Biyometri,
+            "zaman_asimi" => RedNedeni::ZamanAsimi,
+            "kip_kapali" => RedNedeni::KipKapali,
+            "kapsam_yok" => RedNedeni::KapsamYok,
+            "ozet_uyusmaz" => RedNedeni::OzetUyusmaz,
+            k => RedNedeni::Bilinmeyen(k.chars().take(80).collect()),
+        }
+    }
+    pub fn kod(&self) -> &str {
+        match self {
+            RedNedeni::Kullanici => "kullanici",
+            RedNedeni::Biyometri => "biyometri",
+            RedNedeni::ZamanAsimi => "zaman_asimi",
+            RedNedeni::KipKapali => "kip_kapali",
+            RedNedeni::KapsamYok => "kapsam_yok",
+            RedNedeni::OzetUyusmaz => "ozet_uyusmaz",
+            RedNedeni::Bilinmeyen(k) => k,
+        }
+    }
+    /// İmza ekranında gösterilen Türkçe açıklama (ne oldu + ne yapılmalı).
+    pub fn mesaj(&self) -> String {
+        match self {
+            RedNedeni::Kullanici => "İmza telefonda reddedildi. Gün sonu imzasız kaldı; tutarları kontrol edip yeniden imza isteyin.".into(),
+            RedNedeni::Biyometri => "Telefonda parmak izi / yüz / PIN doğrulaması geçmedi. Gün sonu imzasız kaldı; yeniden deneyin.".into(),
+            RedNedeni::ZamanAsimi => "Telefonda 60 saniye içinde onay verilmedi. Gün sonu imzasız kaldı; yeniden imza isteyin.".into(),
+            RedNedeni::KipKapali => "Telefon Köprüsü'nde onay kipi kapalı. Gün sonu imzasız kaldı; köprüde onay kipini açıp yeniden deneyin.".into(),
+            RedNedeni::KapsamYok => "Bu telefona gün sonu imzası izni verilmemiş (kapsam yok). Gün sonu imzasız kaldı; eşleştirmede TAA Kasa gün sonu iznini açın.".into(),
+            RedNedeni::OzetUyusmaz => "Telefondaki özet kasadaki özetle uyuşmadı. Gün sonu imzasız kaldı; ekranı yenileyip yeniden imza isteyin.".into(),
+            RedNedeni::Bilinmeyen(k) if k.is_empty() => "Telefon imzayı reddetti (neden bildirilmedi). Gün sonu imzasız kaldı.".into(),
+            RedNedeni::Bilinmeyen(k) => format!("Telefon imzayı reddetti (neden: {k}). Gün sonu imzasız kaldı."),
+        }
+    }
 }
 
 /// Köprünün bildirdiği cihaz kimliği: eşleşme kimliği + telefon sertifikasının SHA-256 sabitlemesi.
@@ -143,9 +224,9 @@ impl CihazKimligi {
 pub enum KopruCevabi {
     /// `onay@1`
     Onay {
-        istek_kimligi: String,
+        nonce: String,
         kapsam: String,
-        ozet_sha256: String,
+        ozet: String,
         cihaz: CihazKimligi,
         /// Telefonun bildirdiği kişi (boşsa istenen kişi kabul edilir).
         kisi: String,
@@ -154,10 +235,7 @@ pub enum KopruCevabi {
         zaman: i64,
     },
     /// `onay_red@1`
-    Red {
-        istek_kimligi: String,
-        neden: String,
-    },
+    Red { nonce: String, neden: RedNedeni },
 }
 
 fn alan<'a>(v: &'a Value, adlar: &[&str]) -> Option<&'a Value> {
@@ -176,9 +254,9 @@ impl KopruCevabi {
     /// Cihaz kimliği düz (`eslesme_kimligi`, `pc_pin`) ya da `cihaz` nesnesi içinde gelebilir.
     pub fn jsondan(v: &Value) -> Result<KopruCevabi, String> {
         let tur = metin(v, &["tur", "type"]);
-        let istek_kimligi = metin(v, &["istek_kimligi", "nonce", "istek"]);
-        if istek_kimligi.is_empty() {
-            return Err("cevapta istek kimliği yok".into());
+        let nonce = metin(v, &["nonce"]);
+        if nonce.is_empty() {
+            return Err("cevapta nonce yok".into());
         }
         let ana = tur.split('@').next().unwrap_or("");
         match ana {
@@ -192,9 +270,9 @@ impl KopruCevabi {
                     return Err("onay cevabında cihaz kimliği eksik".into());
                 }
                 Ok(KopruCevabi::Onay {
-                    istek_kimligi,
+                    nonce,
                     kapsam: metin(v, &["kapsam"]),
-                    ozet_sha256: metin(v, &["ozet_sha256", "ozet"]).to_lowercase(),
+                    ozet: metin(v, &["ozet"]).to_lowercase(),
                     cihaz,
                     kisi: metin(v, &["kisi", "onaylayan"]),
                     kisi_dogrulandi: alan(v, &["kisi_dogrulandi", "biyometrik"])
@@ -204,8 +282,8 @@ impl KopruCevabi {
                 })
             }
             "onay_red" | "red" | "uk_onay_red" => Ok(KopruCevabi::Red {
-                istek_kimligi,
-                neden: metin(v, &["neden", "aciklama"]),
+                nonce,
+                neden: RedNedeni::coz(&metin(v, &["neden"])),
             }),
             _ => Err(format!("bilinmeyen cevap türü: {tur}")),
         }
@@ -268,7 +346,7 @@ pub trait KopruKanali {
     /// İsteği köprüye iletir.
     fn gonder(&mut self, istek: &OnayIstegi) -> Result<(), KanalHatasi>;
     /// Cevap geldiyse döner; gelmediyse `None`.
-    fn yokla(&mut self, istek_kimligi: &str) -> Result<Option<Value>, KanalHatasi>;
+    fn yokla(&mut self, nonce: &str) -> Result<Option<Value>, KanalHatasi>;
 }
 
 /// Yer tutucu boru kanalı: köprü onay akışı birleşip borunun erişim listesine taa-kasa.exe eklenene kadar
@@ -290,7 +368,7 @@ impl KopruKanali for BoruKanali {
     fn gonder(&mut self, _istek: &OnayIstegi) -> Result<(), KanalHatasi> {
         Err(KanalHatasi::Yok(KOPRU_YOK_MESAJI.into()))
     }
-    fn yokla(&mut self, _istek_kimligi: &str) -> Result<Option<Value>, KanalHatasi> {
+    fn yokla(&mut self, _nonce: &str) -> Result<Option<Value>, KanalHatasi> {
         Err(KanalHatasi::Yok(KOPRU_YOK_MESAJI.into()))
     }
 }
@@ -302,23 +380,43 @@ pub enum ImzaDurumu {
     Bekliyor,
     /// Onaylandı ve deftere yazıldı.
     Onaylandi(ImzaKaydi),
-    Reddedildi {
-        neden: String,
-    },
+    /// Telefon `onay_red@1` gönderdi; gün sonu imzasız kaldı.
+    Reddedildi { neden: RedNedeni },
+    /// 60 sn içinde cevap gelmedi (kasa tarafı süre); gün sonu imzasız kaldı.
     ZamanAsimi,
     /// Köprü bağlı değil (API 501 döner).
-    KanalYok {
-        neden: String,
-    },
+    KanalYok { neden: String },
     /// Cevap geldi ama geçersiz (özet değişti, istek kimliği tutmuyor, defter kuralı vb.); imza atılmadı.
-    Gecersiz {
-        neden: String,
-    },
+    Gecersiz { neden: String },
 }
 
 impl ImzaDurumu {
     pub fn bitti(&self) -> bool {
         !matches!(self, ImzaDurumu::Bekliyor)
+    }
+    /// Bitti ama imza atılmadı mı (her red, zaman aşımı, geçersiz cevap, kanal yok).
+    pub fn imzasiz_bitti(&self) -> bool {
+        self.bitti() && !matches!(self, ImzaDurumu::Onaylandi(_))
+    }
+    /// Red nedeni kodu (yalnız `Reddedildi`).
+    pub fn red_nedeni(&self) -> Option<&str> {
+        match self {
+            ImzaDurumu::Reddedildi { neden } => Some(neden.kod()),
+            _ => None,
+        }
+    }
+    /// İmza ekranında gösterilen Türkçe mesaj.
+    pub fn mesaj(&self) -> String {
+        match self {
+            ImzaDurumu::Bekliyor => "Telefonda onay bekleniyor (60 saniye).".into(),
+            ImzaDurumu::Onaylandi(i) => format!("{} telefonla imzaladı.", i.kisi),
+            ImzaDurumu::Reddedildi { neden } => neden.mesaj(),
+            ImzaDurumu::ZamanAsimi => RedNedeni::ZamanAsimi.mesaj(),
+            ImzaDurumu::KanalYok { neden } => neden.clone(),
+            ImzaDurumu::Gecersiz { neden } => {
+                format!("Telefon onayı kabul edilmedi: {neden}. Gün sonu imzasız kaldı.")
+            }
+        }
     }
     /// Ekran/API için kısa kod.
     pub fn kod(&self) -> &'static str {
@@ -342,7 +440,7 @@ pub struct TelefonImzaOturumu {
 }
 
 impl TelefonImzaOturumu {
-    /// İsteği hazırlar ve kanala verir. `istek_kimligi` çağıran tarafından güvenli rastgele üretilir
+    /// İsteği hazırlar ve kanala verir. `nonce` çağıran tarafından güvenli rastgele üretilir
     /// (örn. taa-kasa-ekran `rastgele_hex`). Kapanış listesi ve imza kuralları istek açılmadan denetlenir;
     /// kural ihlalinde telefon hiç rahatsız edilmez.
     pub fn baslat(
@@ -350,11 +448,11 @@ impl TelefonImzaOturumu {
         kanal: &mut dyn KopruKanali,
         gun_sonu_id: &str,
         kisi: &Kisi,
-        istek_kimligi: &str,
+        nonce: &str,
         simdi: i64,
     ) -> Result<TelefonImzaOturumu, String> {
-        if istek_kimligi.trim().len() < 16 {
-            return Err("istek kimliği en az 16 karakter olmalı".into());
+        if nonce.trim().len() < 16 {
+            return Err("nonce en az 16 karakter olmalı".into());
         }
         if kisi.ad.trim().is_empty() {
             return Err("imzalayan kişiyi seçin".into());
@@ -369,16 +467,17 @@ impl TelefonImzaOturumu {
         let istek = OnayIstegi {
             tur: ISTEK_TURU.into(),
             kapsam: KAPSAM.into(),
-            istek_kimligi: istek_kimligi.trim().into(),
+            nonce: nonce.trim().into(),
             gun_sonu_id: gs.id.clone(),
             sira,
             rol: rol.into(),
             rol_adi: rol_adi.into(),
             istenen_kisi: kisi.ad.trim().into(),
-            ozet_sha256: ozet_sha256(&gs),
+            baslik: baslik(&gs),
+            ozet: ozet_sha256(&gs),
             ozet_metni: ozet_metni(&gs),
             olusturma: simdi,
-            son_gecerlilik: simdi + GECERLILIK_SN,
+            bitis: simdi + GECERLILIK_SN,
         };
         let durum = match kanal.gonder(&istek) {
             Ok(()) => ImzaDurumu::Bekliyor,
@@ -415,7 +514,7 @@ impl TelefonImzaOturumu {
         if self.durum.bitti() {
             return &self.durum;
         }
-        let cevap = match kanal.yokla(&self.istek.istek_kimligi) {
+        let cevap = match kanal.yokla(&self.istek.nonce) {
             Ok(c) => c,
             Err(KanalHatasi::Yok(n)) => {
                 self.durum = ImzaDurumu::KanalYok { neden: n };
@@ -424,8 +523,8 @@ impl TelefonImzaOturumu {
             // Geçici hata: süre dolana kadar beklemeye devam.
             Err(KanalHatasi::Hata(_)) => None,
         };
-        // Süre isteğin son geçerlilik anına göre denetlenir; geç gelen onay kabul edilmez.
-        if simdi > self.istek.son_gecerlilik {
+        // Süre isteğin bitiş anına göre denetlenir; geç gelen onay kabul edilmez.
+        if simdi > self.istek.bitis {
             self.durum = ImzaDurumu::ZamanAsimi;
             return &self.durum;
         }
@@ -442,36 +541,27 @@ impl TelefonImzaOturumu {
             Err(e) => return gecersiz(&e),
         };
         match c {
-            KopruCevabi::Red {
-                istek_kimligi,
-                neden,
-            } => {
-                if istek_kimligi != self.istek.istek_kimligi {
+            KopruCevabi::Red { nonce, neden } => {
+                if nonce != self.istek.nonce {
                     return gecersiz("cevap başka bir isteğe ait");
                 }
-                ImzaDurumu::Reddedildi {
-                    neden: if neden.is_empty() {
-                        "telefonda reddedildi".into()
-                    } else {
-                        neden
-                    },
-                }
+                ImzaDurumu::Reddedildi { neden }
             }
             KopruCevabi::Onay {
-                istek_kimligi,
+                nonce,
                 kapsam,
-                ozet_sha256: ozet,
+                ozet,
                 cihaz,
                 kisi,
                 ..
             } => {
-                if istek_kimligi != self.istek.istek_kimligi {
+                if nonce != self.istek.nonce {
                     return gecersiz("cevap başka bir isteğe ait");
                 }
                 if !kapsam.is_empty() && kapsam != KAPSAM {
                     return gecersiz("cevabın kapsamı gün sonu değil");
                 }
-                if ozet != self.istek.ozet_sha256 {
+                if ozet != self.istek.ozet {
                     return gecersiz("telefonda onaylanan özet istenen özetle aynı değil");
                 }
                 if !kisi.is_empty() && kisi.to_lowercase() != self.istek.istenen_kisi.to_lowercase()
@@ -487,7 +577,7 @@ impl TelefonImzaOturumu {
                     Some(g) => g,
                     None => return gecersiz("gün sonu artık geçerli değil (iptal ya da düzeltme)"),
                 };
-                if ozet_sha256(&guncel) != self.istek.ozet_sha256 {
+                if ozet_sha256(&guncel) != self.istek.ozet {
                     return gecersiz("gün sonu tutarları istek gönderildikten sonra değişti");
                 }
                 let cihaz_metni = cihaz.defter_metni();
@@ -506,7 +596,7 @@ impl TelefonImzaOturumu {
                     &self.istek.gun_sonu_id,
                     ImzaKanali::Telefon,
                     Some(&cihaz_metni),
-                    Some(&self.istek.ozet_sha256),
+                    Some(&self.istek.ozet),
                     Some(dd.kod()),
                     &self.kisi,
                 ) {

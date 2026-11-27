@@ -264,6 +264,8 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 'use strict';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// TEL: son telefon imza durumu (bekliyor / red nedeni); Bugün ekranında kalıcı gösterilir, yeni imza denemesine kadar.
+let TEL=null;
 let D=null,EKRAN='bugun',GOR={tema:'sistem',hareket_azalt:null,tanitim_goruldu:false},yonBitis=0;
 
 function tl(k){k=Number(k)||0;const n=k<0;k=Math.abs(k);const t=String(Math.floor(k/100)).replace(/\B(?=(\d{3})+(?!\d))/g,'.');return (n?'−':'')+t+','+String(k%100).padStart(2,'0')+' TL'}
@@ -276,7 +278,7 @@ function kurCoz(s){s=String(s||'').trim().replace(',','.');if(!s)return 0;if(!/^
 function farkHtml(f){if(!f)return '<span class="fark tam">✓ 0,00 TL</span>';return f>0?`<span class="fark fazla">▲ +${tl(f)}</span>`:`<span class="fark eksik">▼ ${tl(f)}</span>`}
 function bildir(m){const b=$('#bildirim');b.textContent=m;b.hidden=false;clearTimeout(bildir.t);bildir.t=setTimeout(()=>b.hidden=true,4200)}
 async function api(y,yol,g){const r=await fetch(yol,{method:y,headers:g?{'Content-Type':'application/json'}:{},body:g?JSON.stringify(g):undefined});
-  let v={};try{v=await r.json()}catch(e){}if(!r.ok)throw new Error(v.hata||('Hata '+r.status));return v}
+  let v={};try{v=await r.json()}catch(e){}if(!r.ok){const x=new Error(v.hata||('Hata '+r.status));x.durum=r.status;throw x}return v}
 const sorgu=()=>`tarih=${encodeURIComponent($('#c-tarih').value||'')}&cekmece=${encodeURIComponent($('#c-cekmece').value||'')}`;
 
 // ---------------- görünüm
@@ -375,6 +377,7 @@ function bugunCiz(){const g=D.gun,s=bolum('bugun');
    <span>Masraf: <b class="tutar">${tl(g.masraflar.filter(m=>m.durum!=='reddedildi'&&m.durum!=='iptal').reduce((a,m)=>a+m.tutar_kurus,0))}</b>${masrafBek?` · ${masrafBek} onay bekliyor`:''}</span>
    ${g.limit_asildi?'<span style="color:var(--eksik);font-weight:600">▲ Kasa limiti aşıldı: bankaya/kasa odasına aktarın</span>':''}</div>
   ${g.imza_istegi?`<div class="serit"><span>✍</span><span><b>İmza isteği: ${g.imzalar.length}/2.</b> ${g.imzalar.map(i=>esc(i.kisi)).join(', ')||'Henüz imza yok.'} İkinci imza: <b>${esc(g.ikinci_imza_durumu)}</b>. Yalnız yöneticiler imzalar; kaydı giren ikinci imzayı atamaz. Telefon köprüsü bağlanana kadar imza bu ekrandan atılır.</span></div>`:''}
+  ${TEL?(TEL.imzasiz?`<div class="uyari-kutu" role="alert" id="tel-durum"><b>Telefon imzası atılmadı.</b> ${esc(TEL.mesaj)}</div>`:`<div class="serit" role="status" id="tel-durum"><span>📱</span><span>${esc(TEL.mesaj)}</span></div>`):''}
   <div class="eylemler">
    <button class="dugme ana" id="b-ana"><span>${esc(ANA[1])}</span><small>${esc(ANA[2])}</small></button>
    <button class="dugme" data-git2="masraf" ${acik?'':'disabled title="Önce açılış sayımı"'}><span>Masraf gir</span><small>Eşik altı müdür, üstü merkez onayı</small></button>
@@ -385,12 +388,24 @@ function bugunCiz(){const g=D.gun,s=bolum('bugun');
    <div class="liste">${D.form.map(f=>`<div class="satir"><span class="isaret ${f.tamam?'tam':'yok'}" aria-hidden="true">${f.tamam?'✓':'○'}</span><span class="ana">${esc(f.ad)}</span><span class="mut kucuk">${esc(f.ayrinti)}</span><span class="sr" style="position:absolute;left:-9999px">${f.tamam?'tamam':'eksik'}</span></div>`).join('')}</div></div>`;
   $('#b-ana').onclick=()=>anaEylem(ANA[0]);
   s.querySelectorAll('[data-git2]').forEach(b=>b.onclick=()=>anaEylem(b.dataset.git2))}
+// Telefon imzası: bitene kadar yoklar. Her red (kullanici, biyometri, zaman_asimi, kip_kapali, kapsam_yok,
+// ozet_uyusmaz), zaman aşımı ya da geçersiz cevapta gün sonu imzasız kalır ve neden ekranda kalıcı gösterilir.
+async function telefonBekle(v){TEL=v;yenile();
+  while(v&&!v.bitti){await new Promise(z=>setTimeout(z,1500));
+    try{v=await api('GET','/api/imza/telefon')}catch(x){v={bitti:true,imzasiz:true,mesaj:x.message+' Gün sonu imzasız kaldı.'}}
+    TEL=v;if(EKRAN==='bugun')bugunCiz()}
+  if(v.imzasiz)bildir('Telefon imzası atılmadı: '+v.mesaj);else{TEL=null;bildir(v.mesaj)}
+  yenile()}
 async function anaEylem(e){
   if(e.startsWith('sayim:')){SAYIM.tur=e.split(':')[1];git('sayim');return}
   if(e==='whatsapp'){waAc(null);return}
   if(e==='imza'){const ikinci=D.gun.imzalar.length===1;
     const ad=await kisiSec(ikinci?'İkinci imza (Mağaza Sorumlusu / Vekili)':'Birinci imza (Kasa Sorumlusu)',ikinci?'Kaydı giren kişi ikinci imzayı atamaz. İmzalayacak kişiyi seçin.':'İmzalayacak yöneticiyi seçin (yalnız mağaza müdürü ya da yönetici imzalar). Telefonla imza tüm şubelerde geçerli; Telefon Köprüsü bağlanana kadar imza bu ekrandan atılır (yer tutucu).',ikinci?D.gun.gun_sonu.kisi:null,true);if(!ad)return;
-    try{await api('POST','/api/giris',{ad});await api('POST','/api/imza',{id:D.gun.gun_sonu.id,kanal:'ekran'});bildir(ikinci?'İkinci imza kaydedildi':'İmza kaydedildi. İkinci kişi yoksa gün "ikinci imza atmadı" ile gönderilebilir.');yenile()}catch(x){bildir(x.message);yenile()}return}
+    try{await api('POST','/api/giris',{ad});TEL=null;
+      // Önce telefon (Telefon Köprüsü). Köprü yoksa (501) imza bu ekrandan atılır (yer tutucu).
+      let tel=null;try{tel=await api('POST','/api/imza',{id:D.gun.gun_sonu.id,kanal:'telefon'})}catch(x){if(x.durum!==501)throw x}
+      if(tel){await telefonBekle(tel);return}
+      await api('POST','/api/imza',{id:D.gun.gun_sonu.id,kanal:'ekran'});bildir(ikinci?'İkinci imza kaydedildi':'İmza kaydedildi. İkinci kişi yoksa gün "ikinci imza atmadı" ile gönderilebilir.');yenile()}catch(x){bildir(x.message);yenile()}return}
   if(e==='gonder'){if(D.gun.imzalar.length===1&&!D.gun.ikinci_imza_gerekcesi){bildir('İkinci imza atılmadı: önce kısa gerekçe yazın (Gün sonu ekranı → Gerekçe).');return}try{const v=await api('POST','/api/gonder',{id:D.gun.gun_sonu.id});bildir((v.imzali?'İmzalandı, ':'Cihaz anahtarı yok, imzasız; ')+(v.teslim?'merkeze teslim edildi.':'kuyruğa alındı. '+(v.hata||''))+(v.cati&&v.cati.rapor?' Tek imza TAA Çatı\'ya raporlanacak.':'')+(v.yedek?` Şifreli yedek: ${v.yedek.bekleyen} kuyrukta.`:''));yenile()}catch(x){bildir(x.message)}return}
   git(e)}
 

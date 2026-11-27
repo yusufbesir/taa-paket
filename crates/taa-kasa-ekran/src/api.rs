@@ -63,6 +63,19 @@ pub struct Uygulama {
     yonetici: Option<(Kisi, Instant)>,
     pin_hata: u32,
     pin_kilit: Option<Instant>,
+    /// Telefon Köprüsü kanalı; köprü bağlanana kadar yer tutucu `BoruKanali` (her istekte "kanal yok").
+    pub kopru: Box<dyn taa_kasa::telefon_imza::KopruKanali>,
+    /// Süren telefon imza oturumu (en çok bir); ekran `GET /api/imza/telefon` ile yoklar.
+    telefon: Option<taa_kasa::telefon_imza::TelefonImzaOturumu>,
+}
+
+/// Telefon imza durumunun ekran/API biçimi: her red, zaman aşımı ve geçersiz cevapta `imzasiz: true` ve
+/// Türkçe `mesaj` döner (sessizce geçmez).
+fn telefon_durum_json(o: &taa_kasa::telefon_imza::TelefonImzaOturumu) -> Value {
+    let d = &o.durum;
+    json!({"durum": d.kod(), "red_nedeni": d.red_nedeni(), "mesaj": d.mesaj(),
+        "imzasiz": d.imzasiz_bitti(), "bitti": d.bitti(), "nonce": o.istek.nonce,
+        "bitis": o.istek.bitis, "baslik": o.istek.baslik, "gun_sonu_id": o.istek.gun_sonu_id})
 }
 
 impl Uygulama {
@@ -73,6 +86,8 @@ impl Uygulama {
             yonetici: None,
             pin_hata: 0,
             pin_kilit: None,
+            kopru: Box::new(taa_kasa::telefon_imza::BoruKanali::default()),
+            telefon: None,
         }
     }
 
@@ -130,6 +145,7 @@ impl Uygulama {
         };
         match (yontem, yol) {
             ("GET", "/api/durum") => self.durum(&ayar, sorgu),
+            ("GET", "/api/imza/telefon") => self.telefon_yokla(),
             ("POST", "/api/giris") => self.giris(&ayar, &s("ad")),
             ("POST", "/api/cikis") => {
                 self.kisi = None;
@@ -338,7 +354,7 @@ impl Uygulama {
     }
 
     fn telefon_imza(&mut self, govde: &Value) -> Cevap {
-        use taa_kasa::telefon_imza::{BoruKanali, ImzaDurumu, TelefonImzaOturumu};
+        use taa_kasa::telefon_imza::{ImzaDurumu, TelefonImzaOturumu};
         let Some(k) = self.islem_kisisi() else {
             return hata(401, "Önce giriş yapın.");
         };
@@ -347,25 +363,40 @@ impl Uygulama {
             Ok(n) => n,
             Err(e) => return hata(500, e),
         };
-        let mut kanal = BoruKanali::default();
+        let defter = self.defter();
         match TelefonImzaOturumu::baslat(
-            &self.defter(),
-            &mut kanal,
+            &defter,
+            self.kopru.as_mut(),
             id,
             &k,
             &nonce,
             zaman::simdi_sn(),
         ) {
             Err(e) => hata(422, e),
-            Ok(o) => match o.durum {
-                ImzaDurumu::KanalYok { neden } => hata(501, neden),
-                // Gerçek kanal bağlandığında: istek telefonda, ekran istek kimliğiyle durumu yoklar.
-                d => tamam(
-                    json!({"durum": d.kod(), "istek_kimligi": o.istek.istek_kimligi,
-                    "son_gecerlilik": o.istek.son_gecerlilik}),
-                ),
+            Ok(o) => match &o.durum {
+                ImzaDurumu::KanalYok { neden } => hata(501, neden.clone()),
+                // İstek telefonda: ekran `GET /api/imza/telefon` ile bitene kadar yoklar.
+                _ => {
+                    let v = telefon_durum_json(&o);
+                    self.telefon = Some(o);
+                    tamam(v)
+                }
             },
         }
+    }
+
+    /// Süren telefon imzasını ilerletir. Red/zaman aşımı/geçersizde gün sonu imzasız kalır; yanıt nedeni taşır.
+    fn telefon_yokla(&mut self) -> Cevap {
+        let defter = self.defter();
+        let Some(o) = self.telefon.as_mut() else {
+            return hata(404, "Süren telefon imza isteği yok.");
+        };
+        o.ilerle(&defter, self.kopru.as_mut(), zaman::simdi_sn());
+        let v = telefon_durum_json(o);
+        if o.durum.bitti() {
+            self.telefon = None;
+        }
+        tamam(v)
     }
 
     fn sayim(&mut self, ayar: &KasaAyar, govde: &Value) -> Cevap {
@@ -812,6 +843,93 @@ mod testler {
     fn uyg() -> Uygulama {
         Uygulama::yeni(taa_dosya::gecici_klasor().unwrap())
     }
+    /// Sahte köprü: istekleri ortak listeye yazar, yoklamada sıradaki cevabı verir.
+    struct SahteKopru {
+        giden: std::rc::Rc<std::cell::RefCell<Vec<taa_kasa::telefon_imza::OnayIstegi>>>,
+        cevap: std::rc::Rc<std::cell::RefCell<Option<Value>>>,
+    }
+    impl taa_kasa::telefon_imza::KopruKanali for SahteKopru {
+        fn gonder(
+            &mut self,
+            istek: &taa_kasa::telefon_imza::OnayIstegi,
+        ) -> Result<(), taa_kasa::telefon_imza::KanalHatasi> {
+            self.giden.borrow_mut().push(istek.clone());
+            Ok(())
+        }
+        fn yokla(
+            &mut self,
+            _nonce: &str,
+        ) -> Result<Option<Value>, taa_kasa::telefon_imza::KanalHatasi> {
+            Ok(self.cevap.borrow_mut().take())
+        }
+    }
+
+    #[test]
+    fn telefon_reddi_imzasiz_birakir_ve_nedeni_dondurur() {
+        use std::{cell::RefCell, rc::Rc};
+        let mut u = uyg();
+        let mut a = u.ayar().unwrap();
+        a.sube = "SB1".into();
+        a.personel = vec![taa_kasa::gunsonu::PersonelKaydi {
+            ad: "Ayşe".into(),
+            rol: Rol::Mudur,
+        }];
+        a.kaydet(&u.ayar_yolu()).unwrap();
+        u.istek("POST", "/api/giris", "", &json!({"ad":"Ayşe"}));
+        let t = "2026-11-25";
+        u.istek(
+            "POST",
+            "/api/sayim",
+            "",
+            &json!({"tur":"acilis","tarih":t,"cekmece":"c1","adetler":{"10000":1}}),
+        );
+        let g = json!({"tarih":t,"cekmece":"c1","nakit_adetler":{"10000":3},"ciro":{"nakit":20000},
+            "nebim_toplam_kurus":20000,"noktalar":[],"not":"Z ayrı girilecek","kontrol":[true,true,true,true,true,true,true]});
+        let (d, gs) = json_of(u.istek("POST", "/api/gunsonu", "", &g));
+        assert_eq!(d, 200, "{gs}");
+        let id = gs["id"].as_str().unwrap().to_string();
+        // Süren istek yokken yoklama 404.
+        assert_eq!(
+            json_of(u.istek("GET", "/api/imza/telefon", "", &Value::Null)).0,
+            404
+        );
+        let giden = Rc::new(RefCell::new(vec![]));
+        let cevap = Rc::new(RefCell::new(None));
+        u.kopru = Box::new(SahteKopru {
+            giden: giden.clone(),
+            cevap: cevap.clone(),
+        });
+        for (kod, parca) in [
+            ("kullanici", "reddedildi"),
+            ("biyometri", "doğrulaması"),
+            ("zaman_asimi", "60 saniye"),
+            ("kip_kapali", "onay kipi"),
+            ("kapsam_yok", "izni"),
+            ("ozet_uyusmaz", "uyuşmadı"),
+        ] {
+            let (d, v) =
+                json_of(u.istek("POST", "/api/imza", "", &json!({"id":id,"kanal":"telefon"})));
+            assert_eq!((d, v["durum"].as_str()), (200, Some("bekliyor")), "{v}");
+            assert_eq!(v["baslik"], format!("Gün sonu · SB1 · {t}"));
+            let ist = giden.borrow().last().unwrap().clone();
+            assert_eq!(v["nonce"], ist.nonce);
+            *cevap.borrow_mut() = Some(json!({"tur":"onay_red@1","nonce":ist.nonce,"neden":kod}));
+            let (d, v) = json_of(u.istek("GET", "/api/imza/telefon", "", &Value::Null));
+            assert_eq!(d, 200);
+            assert_eq!(v["durum"], "reddedildi");
+            assert_eq!(v["red_nedeni"], kod);
+            assert_eq!(v["imzasiz"], true);
+            assert!(v["mesaj"].as_str().unwrap().contains(parca), "{v}");
+            // Gün sonu imzasız kaldı; oturum kapandı.
+            let (_, dv) = json_of(u.istek("GET", "/api/durum", "tarih=2026-11-25", &Value::Null));
+            assert_eq!(dv["gun"]["imzalar"].as_array().unwrap().len(), 0, "{kod}");
+            assert_eq!(
+                json_of(u.istek("GET", "/api/imza/telefon", "", &Value::Null)).0,
+                404
+            );
+        }
+    }
+
     fn json_of(c: Cevap) -> (u16, Value) {
         match c {
             Cevap::Json(d, v) => (d, v),

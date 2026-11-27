@@ -16,6 +16,9 @@ mod ekran;
 #[cfg_attr(not(windows), allow(dead_code))]
 mod ilerleme;
 mod is_nesnesi;
+// Makine geneli kök kaydı (HKLM + ProgramData ipucu); TK hizmeti TAA_KOK'u yok sayar. [Claude#taa-kasa-tk-sozlesme 2026-11-27]
+#[cfg_attr(not(windows), allow(dead_code))]
+mod makine_kok;
 #[cfg_attr(not(windows), allow(dead_code))]
 mod kartlar;
 #[cfg(windows)]
@@ -128,6 +131,34 @@ fn kok_ortami(hedef: &Path) {
 }
 #[cfg(not(windows))]
 fn kok_ortami(_: &Path) {}
+
+/// Makine geneli kök kaydı: HKLM (güvenilir, yönetici ister) + %ProgramData%\TAA\kur-kok.json (ipucu).
+/// HKLM yazıldıysa true döner. Kurulumu durdurmaz.
+#[cfg(windows)]
+fn makine_kok_yaz(hedef: &Path) -> bool {
+    let m = makine_kok::hesapla(hedef);
+    if let Ok(pd) = std::env::var("ProgramData") {
+        let y = makine_kok::IPUCU_GORELI.iter().fold(PathBuf::from(pd), |p, x| p.join(x));
+        let _ = yaz(&y, makine_kok::ipucu_json(&m, SURUM).as_bytes());
+    }
+    makine_kok::reg_komutlari(&m).iter().all(|k| reg(&k.iter().map(String::as_str).collect::<Vec<_>>()))
+}
+#[cfg(not(windows))]
+fn makine_kok_yaz(_: &Path) -> bool { true }
+
+#[cfg(windows)]
+fn makine_kok_sil(hedef: &Path) {
+    use std::os::windows::process::CommandExt;
+    let kayitli = Command::new("reg").args(["query", makine_kok::ANAHTAR, "/v", "Kok"]).creation_flags(0x0800_0000).output().ok()
+        .and_then(|o| makine_kok::reg_sorgu_degeri(&String::from_utf8_lossy(&o.stdout), "Kok"));
+    if makine_kok::silinmeli_mi(kayitli.as_deref(), hedef) { reg(&["delete", makine_kok::ANAHTAR, "/f"]); }
+    if let Ok(pd) = std::env::var("ProgramData") {
+        let y = makine_kok::IPUCU_GORELI.iter().fold(PathBuf::from(pd), |p, x| p.join(x));
+        if makine_kok::ipucu_bu_kokun_mu(&fs::read_to_string(&y).unwrap_or_default(), hedef) { let _ = fs::remove_file(&y); }
+    }
+}
+#[cfg(not(windows))]
+fn makine_kok_sil(_: &Path) {}
 
 fn yaz(yol: &Path, veri: &[u8]) -> Result<(), String> {
     if let Some(k) = yol.parent() { fs::create_dir_all(k).map_err(|e| format!("{}: {e}", k.display()))?; }
@@ -453,6 +484,12 @@ fn kur(a: &[String], hedef: &Path, ekran: &Ekran) -> i32 {
     let kisayolsuz = a.iter().any(|x| x == "--kisayolsuz");
     let kisayollar = if kisayolsuz { vec![] } else { kisayol_olustur(hedef) };
     if !kisayolsuz { kayit_yaz(hedef); kok_ortami(hedef); }
+    // Makine geneli kök kaydı --kisayolsuz iken de yazılır: TK hizmeti kökü yalnız buradan bulur.
+    if !makine_kok_yaz(hedef) {
+        let u = format!("Makine geneli kök kaydı ({}) yazılamadı: Telefon Köprüsü bu kökü bulamaz. Kurulumu bir kez sağ tık → \"Yönetici olarak çalıştır\" ile yeniden çalıştırın.", makine_kok::ANAHTAR);
+        eprintln!("UYARI: {u}");
+        ekran.g(|d| d.asama(Asama::Cekirdek, &u));
+    }
     let mut m = liste.join("\n");
     for k in &kisayollar { m.push_str(&format!("\n@{k}")); }
     m.push('\n');
@@ -560,6 +597,7 @@ fn kaldir(a: &[String]) -> i32 {
     }
     let _ = fs::remove_file(hedef.join(MANIFEST));
     kayit_sil();
+    makine_kok_sil(&hedef);
     if hata { eprintln!("Bazı dosyalar silinemedi; programı kapatıp kaldırmayı yeniden çalıştırın."); bekle(sessiz); return 1; }
     println!("Kaldırma tamam.");
     #[cfg(windows)]

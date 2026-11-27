@@ -105,7 +105,7 @@ impl KopruKanali for SahteKanal {
         self.giden.push(istek.clone());
         Ok(())
     }
-    fn yokla(&mut self, _istek_kimligi: &str) -> Result<Option<Value>, KanalHatasi> {
+    fn yokla(&mut self, _nonce: &str) -> Result<Option<Value>, KanalHatasi> {
         if let Some(h) = &self.hata {
             return Err(h.clone());
         }
@@ -116,9 +116,9 @@ impl KopruKanali for SahteKanal {
 fn onay(istek: &OnayIstegi) -> Value {
     json!({
         "tur": ONAY_TURU,
-        "istek_kimligi": istek.istek_kimligi,
+        "nonce": istek.nonce,
         "kapsam": KAPSAM,
-        "ozet_sha256": istek.ozet_sha256,
+        "ozet": istek.ozet,
         "cihaz": {"eslesme_kimligi": "es-1", "pc_pin": "ab12"},
         "kisi_dogrulandi": true,
         "zaman": SIMDI + 5,
@@ -170,7 +170,41 @@ fn onay_gelince_telefon_imzasi_deftere_yazilir() {
         ),
         (ISTEK_TURU, KAPSAM, 1, "kasa_sorumlusu")
     );
-    assert_eq!(ist.son_gecerlilik - ist.olusturma, GECERLILIK_SN);
+    assert_eq!(ist.bitis - ist.olusturma, GECERLILIK_SN);
+    assert_eq!(ist.nonce, NONCE);
+    assert_eq!(ist.baslik, format!("Gün sonu · SB1 · {T}"));
+    assert_eq!(ist.ozet.len(), 64);
+    assert!(ist
+        .ozet
+        .chars()
+        .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c)));
+    assert_eq!(
+        ist.ozet,
+        hex(&Sha256::digest(ist.ozet_metni.as_bytes())),
+        "ozet = sha256(ozet_metni)"
+    );
+    // Tel üstü biçim: TK sözleşmesi alan adları; pc_adi kasa tarafından gönderilmez.
+    let v = serde_json::to_value(&ist).unwrap();
+    let mut adlar: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
+    adlar.sort();
+    assert_eq!(
+        adlar,
+        [
+            "baslik",
+            "bitis",
+            "gun_sonu_id",
+            "istenen_kisi",
+            "kapsam",
+            "nonce",
+            "olusturma",
+            "ozet",
+            "ozet_metni",
+            "rol",
+            "rol_adi",
+            "sira",
+            "tur"
+        ]
+    );
     // Henüz cevap yok: bekler.
     k.cevaplar.push_back(None);
     assert_eq!(o.ilerle(&d, &mut k, SIMDI + 10), &ImzaDurumu::Bekliyor);
@@ -180,7 +214,7 @@ fn onay_gelince_telefon_imzasi_deftere_yazilir() {
     };
     assert_eq!(i.kanal, ImzaKanali::Telefon);
     assert_eq!(i.cihaz.as_deref(), Some("es-1:ab12"));
-    assert_eq!(i.ozet.as_deref(), Some(ist.ozet_sha256.as_str()));
+    assert_eq!(i.ozet.as_deref(), Some(ist.ozet.as_str()));
     assert_eq!((i.sira, i.kisi.as_str()), (1, "Kasiyer A"));
     // Bitmiş oturum yeniden ilerletilince ikinci imza atılmaz.
     k.cevaplar.push_back(Some(onay(&ist)));
@@ -195,12 +229,12 @@ fn red_ve_zaman_asimi_imza_atmaz() {
     let mut o =
         TelefonImzaOturumu::baslat(&d, &mut k, &id, &kisi("Kasiyer A"), NONCE, SIMDI).unwrap();
     k.cevaplar.push_back(Some(
-        json!({"tur": RED_TURU, "istek_kimligi": NONCE, "neden": "tutar yanlış"}),
+        json!({"tur": RED_TURU, "nonce": NONCE, "neden": "kullanici"}),
     ));
     assert_eq!(
         o.ilerle(&d, &mut k, SIMDI + 5),
         &ImzaDurumu::Reddedildi {
-            neden: "tutar yanlış".into()
+            neden: RedNedeni::Kullanici
         }
     );
     // Zaman aşımı: süre dolduktan sonra gelen onay kabul edilmez.
@@ -217,20 +251,20 @@ fn red_ve_zaman_asimi_imza_atmaz() {
 }
 
 #[test]
-fn ozet_istek_kimligi_veya_tutar_tutmazsa_gecersiz() {
+fn ozet_nonce_veya_tutar_tutmazsa_gecersiz() {
     let (d, a, id) = hazir("gecersiz");
     let mut k = SahteKanal::default();
     let ki = kisi("Kasiyer A");
     // Başka özet.
     let mut o = TelefonImzaOturumu::baslat(&d, &mut k, &id, &ki, NONCE, SIMDI).unwrap();
     let mut c = onay(&o.istek);
-    c["ozet_sha256"] = json!("00".repeat(32));
+    c["ozet"] = json!("00".repeat(32));
     k.cevaplar.push_back(Some(c));
     assert_eq!(o.ilerle(&d, &mut k, SIMDI + 1).kod(), "gecersiz");
-    // Başka istek kimliği.
+    // Başka nonce.
     let mut o = TelefonImzaOturumu::baslat(&d, &mut k, &id, &ki, NONCE, SIMDI).unwrap();
     let mut c = onay(&o.istek);
-    c["istek_kimligi"] = json!("baska-istek-kimligi-0000");
+    c["nonce"] = json!("baska-nonce-0000000000000");
     k.cevaplar.push_back(Some(c));
     assert_eq!(o.ilerle(&d, &mut k, SIMDI + 1).kod(), "gecersiz");
     // Cihaz kimliği eksik.
@@ -294,7 +328,7 @@ fn gorev_ayriligi_istekten_once_denetlenir() {
             .unwrap_err()
             .contains("iki imza")
     );
-    // Kısa istek kimliği reddedilir.
+    // Kısa nonce reddedilir.
     assert!(TelefonImzaOturumu::baslat(&d, &mut k, &id, &kisi("Biri C"), "kisa", SIMDI).is_err());
 }
 
@@ -323,18 +357,109 @@ fn kopru_yokken_kanal_yok_ve_501_mesaji() {
 }
 
 #[test]
-fn cevap_cozumu_esnek() {
-    // Düz alanlar ve eski uzak köprü adı.
+fn cevap_cozumu() {
+    // Düz cihaz alanları ve eski uzak köprü adı; özet küçük harfe çevrilir.
     let c = KopruCevabi::jsondan(&json!({"tur":"uk_onay","nonce":"n1","ozet":"ABC",
         "eslesme_kimligi":"e","pc_pin":"p"}))
     .unwrap();
-    assert!(matches!(c, KopruCevabi::Onay { ref ozet_sha256, .. } if ozet_sha256 == "abc"));
+    assert!(matches!(c, KopruCevabi::Onay { ref ozet, .. } if ozet == "abc"));
     assert!(matches!(
-        KopruCevabi::jsondan(&json!({"tur":"onay_red@1","istek_kimligi":"n1"})).unwrap(),
-        KopruCevabi::Red { .. }
+        KopruCevabi::jsondan(&json!({"tur":"onay_red@1","nonce":"n1","neden":"biyometri"}))
+            .unwrap(),
+        KopruCevabi::Red {
+            neden: RedNedeni::Biyometri,
+            ..
+        }
     ));
-    assert!(KopruCevabi::jsondan(&json!({"tur":"baska","istek_kimligi":"n1"})).is_err());
+    assert!(KopruCevabi::jsondan(&json!({"tur":"baska","nonce":"n1"})).is_err());
     assert!(KopruCevabi::jsondan(&json!({"tur":"onay@1"})).is_err());
+    // Eski alan adı artık tanınmaz (sözleşme kesin; geriye uyumluluk yok).
+    assert!(KopruCevabi::jsondan(&json!({"tur":"onay_red@1","istek_kimligi":"n1"})).is_err());
+}
+
+#[test]
+fn alti_red_nedeni_taninir_her_biri_imzasiz_birakir_ve_turkce_mesaj_verir() {
+    let nedenler = [
+        ("kullanici", RedNedeni::Kullanici, "reddedildi"),
+        ("biyometri", RedNedeni::Biyometri, "doğrulaması"),
+        ("zaman_asimi", RedNedeni::ZamanAsimi, "60 saniye"),
+        ("kip_kapali", RedNedeni::KipKapali, "onay kipi"),
+        ("kapsam_yok", RedNedeni::KapsamYok, "izni"),
+        ("ozet_uyusmaz", RedNedeni::OzetUyusmaz, "uyuşmadı"),
+        (
+            "yeni_bir_neden",
+            RedNedeni::Bilinmeyen("yeni_bir_neden".into()),
+            "yeni_bir_neden",
+        ),
+        ("", RedNedeni::Bilinmeyen(String::new()), "bildirilmedi"),
+    ];
+    for (i, (kod, beklenen, parca)) in nedenler.into_iter().enumerate() {
+        let (d, _, id) = hazir(&format!("red-{i}"));
+        let mut k = SahteKanal::default();
+        let mut o =
+            TelefonImzaOturumu::baslat(&d, &mut k, &id, &kisi("Kasiyer A"), NONCE, SIMDI).unwrap();
+        k.cevaplar
+            .push_back(Some(json!({"tur": RED_TURU, "nonce": NONCE, "neden": kod})));
+        let s = o.ilerle(&d, &mut k, SIMDI + 2).clone();
+        assert_eq!(
+            s,
+            ImzaDurumu::Reddedildi {
+                neden: beklenen.clone()
+            },
+            "{kod}"
+        );
+        assert_eq!(s.kod(), "reddedildi");
+        assert!(s.imzasiz_bitti(), "{kod}: sessizce geçmez, imzasız biter");
+        assert_eq!(s.red_nedeni(), Some(kod));
+        let m = s.mesaj();
+        assert!(m.contains(parca), "{kod}: {m}");
+        assert!(
+            m.contains("imzasız"),
+            "{kod}: mesaj gün sonunun imzasız kaldığını söyler: {m}"
+        );
+        assert_eq!(beklenen.kod(), kod);
+        // Hiçbir redde defterde imza yok; red sonrası gelen onay da yok sayılır.
+        k.cevaplar.push_back(Some(onay(&o.istek)));
+        o.ilerle(&d, &mut k, SIMDI + 3);
+        assert_eq!(
+            d.imza_haritasi().unwrap().get(&id).map_or(0, Vec::len),
+            0,
+            "{kod}"
+        );
+    }
+    // Başka isteğe ait red geçersizdir (yine imzasız).
+    let (d, _, id) = hazir("red-baska");
+    let mut k = SahteKanal::default();
+    let mut o =
+        TelefonImzaOturumu::baslat(&d, &mut k, &id, &kisi("Kasiyer A"), NONCE, SIMDI).unwrap();
+    k.cevaplar.push_back(Some(
+        json!({"tur": RED_TURU, "nonce": "baska-nonce-0000000000000", "neden": "kullanici"}),
+    ));
+    let s = o.ilerle(&d, &mut k, SIMDI + 1).clone();
+    assert_eq!(s.kod(), "gecersiz");
+    assert!(s.imzasiz_bitti() && s.mesaj().contains("imzasız"));
+    // Kasa tarafı zaman aşımı ve kanal yok da imzasız biter.
+    assert!(ImzaDurumu::ZamanAsimi.imzasiz_bitti());
+    assert!(ImzaDurumu::ZamanAsimi.mesaj().contains("60 saniye"));
+    assert!(!ImzaDurumu::Bekliyor.imzasiz_bitti());
+}
+
+#[test]
+fn baslik_en_cok_80_karakter() {
+    let (d, _, id) = hazir("baslik");
+    let mut gs = d
+        .gun_sonlari()
+        .unwrap()
+        .into_iter()
+        .find(|s| s.id == id)
+        .unwrap();
+    assert_eq!(baslik(&gs), "Gün sonu · SB1 · 2026-11-26");
+    gs.sube = "Ş".repeat(100);
+    let b = baslik(&gs);
+    assert_eq!(b.chars().count(), BASLIK_EN_COK);
+    assert!(b.starts_with("Gün sonu · ŞŞ") && b.ends_with('…'));
+    gs.sube = "A\nB".into();
+    assert!(!baslik(&gs).contains('\n'));
 }
 
 /// Sahte TAA Merkez cihaz kaydı.
@@ -390,7 +515,7 @@ fn merkez_paketteki_telefon_imzasini_ozet_ve_cihazla_denetler() {
     d.ikinci_imza_gerekcesi(&id, "ikinci kişi yok", &kisi("Kasiyer A"))
         .unwrap();
     let p = d.gonderim_paketi(&a, &id).unwrap();
-    assert_eq!(p["imzalar"][0]["ozet"], o.istek.ozet_sha256);
+    assert_eq!(p["imzalar"][0]["ozet"], o.istek.ozet);
     // Yer tutucu kayıt: sorun yok, bir imza doğrulanamadı.
     assert_eq!(telefon_imzalarini_denetle(&p, &MerkezKaydiYok), (vec![], 1));
     assert_eq!(
