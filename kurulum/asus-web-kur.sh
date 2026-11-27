@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # TAA Web kabuğunu Asus Linux sunucuya kurar (statik sunum + systemd + Tailscale HTTPS).
-# Kullanım (depo kökünden):  sudo bash kurulum/asus-web-kur.sh [--port 8791] [--hedef /opt/taa/web-kabuk] [--https-port 8444] [--sunucu http://127.0.0.1:<taa-sunucu-portu>]
-# Geri alma: sudo systemctl disable --now taa-web && sudo tailscale serve --https=8444 off
+# Kullanım (depo kökünden):  sudo bash kurulum/asus-web-kur.sh [--port 8791] [--hedef /opt/taa/web-kabuk] [--https-port 8443] [--sunucu http://127.0.0.1:<taa-sunucu-portu>]
+# Geri alma: sudo systemctl disable --now taa-web && sudo tailscale serve --https=8443 off
 # Not: taa-sunucu (axum) bu klasörü kendi içinden sunacak hale gelince bu betik gereksiz kalır;
 #      o zamana dek kabuk ayrı küçük bir statik sunucudan çıkar. Veri uçları (/v1/...) merkez sunucudadır.
 set -euo pipefail
-PORT=8791; HTTPSPORT=8444; HEDEF=/opt/taa/web-kabuk; SUNUCU=http://127.0.0.1:8080  # taa-sunucu (axum) yerel adresi; gerçek porta göre --sunucu ile ver
+PORT=8791; HTTPSPORT=8443; HEDEF=/opt/taa/web-kabuk; SUNUCU=http://127.0.0.1:8080  # taa-sunucu (axum) yerel adresi; gerçek porta göre --sunucu ile ver
 while [ $# -gt 0 ]; do case "$1" in
   --port) PORT="$2"; shift 2;; --hedef) HEDEF="$2"; shift 2;; --sunucu) SUNUCU="$2"; shift 2;; --https-port) HTTPSPORT="$2"; shift 2;; *) echo "bilinmeyen: $1"; exit 2;; esac; done
 KOK="$(cd "$(dirname "$0")/.." && pwd)"
