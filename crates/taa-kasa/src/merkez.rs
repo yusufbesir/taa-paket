@@ -10,7 +10,7 @@ use crate::gunsonu::{
     GunSonuKaydi, ImzaKanali, ImzaKaydi, MasrafGorunum, Rol, SayimKaydi, IKINCI_IMZA_ATMADI,
     KAPANIS_LISTESI, ODEME_TURLERI,
 };
-use crate::telefon_imza::{ozet_sha256, CihazDurumu, CihazKaydi, MerkezKaydiYok};
+use crate::telefon_imza::{ozet_eslesir, CihazDurumu, CihazKaydi, MerkezKaydiYok};
 use crate::xlsx::{Hucre, Sayfa};
 use crate::zaman;
 use serde::Serialize;
@@ -196,12 +196,20 @@ pub fn telefon_imzalarini_denetle(p: &Value, kayit: &dyn CihazKaydi) -> (Vec<Str
         let kisi = i["kisi"].as_str().unwrap_or("");
         let cihaz = i["cihaz"].as_str().unwrap_or("");
         match (i["ozet"].as_str(), &gs) {
-            (Some(o), Some(g)) if o == ozet_sha256(g) => {}
+            (Some(o), Some(g)) if ozet_eslesir(o, g) => {}
             (Some(_), Some(_)) => sorun.push(format!("{sira}. imza: özet gün sonuyla tutmuyor")),
             _ => sorun.push(format!("{sira}. imza: özet yok")),
         }
+        // TK Ek 3: telefonla imzada nonce + imza kanıtı bulunur (eski ön-sürüm kayıtlarında yok: sorun).
+        let t = &i["telefon"];
+        if t["nonce"].as_str().is_none_or(str::is_empty)
+            || t["imza"].as_str().is_none_or(str::is_empty)
+        {
+            sorun.push(format!("{sira}. imza: telefon kanıtı (nonce/imza) yok"));
+        }
+        // Cihaz kimliği kasanın eşleşme kaydından gelir; kayıt yokken boştur: doğrulanamadı sayılır.
         if cihaz.is_empty() {
-            sorun.push(format!("{sira}. imza: cihaz kimliği yok"));
+            bilinmiyor += 1;
             continue;
         }
         match kayit.denetle(cihaz, kisi) {
@@ -270,6 +278,35 @@ pub fn gelenleri_oku_denetle(klasor: &Path, kayit: &dyn CihazKaydi) -> (Vec<Gele
     (v, bozuk)
 }
 
+/// Şube kodunun eşleştirme anahtarı: kenar boşluğu atılır, büyük/küçük harf duyarsız (taa-sunucu kodları küçük
+/// harf saklar: `mrk01`; paket kendi biçimiyle `MRK01` gelebilir). Türkçe `İ` → `i`.
+pub fn sube_anahtari(s: &str) -> String {
+    s.trim()
+        .chars()
+        .flat_map(|c| match c {
+            'İ' => vec!['i'],
+            c => c.to_lowercase().collect(),
+        })
+        .collect()
+}
+
+/// İki şube kodu aynı şube mi (büyük/küçük harf duyarsız).
+pub fn sube_esit(a: &str, b: &str) -> bool {
+    sube_anahtari(a) == sube_anahtari(b)
+}
+
+/// Şube listesini büyük/küçük harf duyarsız tekilleştirir; her şube için ilk görülen yazım kalır. Sıra anahtara göre.
+pub fn subeleri_tekille(subeler: impl IntoIterator<Item = String>) -> Vec<String> {
+    let mut m: BTreeMap<String, String> = BTreeMap::new();
+    for s in subeler {
+        if s.trim().is_empty() {
+            continue;
+        }
+        m.entry(sube_anahtari(&s)).or_insert(s);
+    }
+    m.into_values().collect()
+}
+
 /// Mağaza × gün matrisi. Gün sonu `tarih`'in ertesi günü değil, aynı günün `son_saat`'ine kadar beklenir;
 /// sonra gelen "geç", hiç gelmeyen "eksik" sayılır. `simdi_sn` süre dolmadıysa "bekleniyor" der.
 pub fn matris(
@@ -291,7 +328,7 @@ pub fn matris(
                 .map(|t| {
                     let p: Vec<&GelenPaket> = gelenler
                         .iter()
-                        .filter(|g| &g.sube == s && &g.tarih == t)
+                        .filter(|g| sube_esit(&g.sube, s) && &g.tarih == t)
                         .collect();
                     let son = zaman::yerel_an(t, son_saat, fark_dk).unwrap_or(i64::MAX);
                     let durum = if p.is_empty() {
@@ -345,7 +382,7 @@ pub fn tek_imza_uyarisi_uygula(
     for s in satirlar.iter_mut() {
         let mut gunler: Vec<&str> = gelenler
             .iter()
-            .filter(|g| g.sube == s.sube && g.ikinci_imza_atmadi)
+            .filter(|g| sube_esit(&g.sube, &s.sube) && g.ikinci_imza_atmadi)
             .filter(|g| g.tarih.as_str() >= bas.as_str() && g.tarih.as_str() <= bitis)
             .map(|g| g.tarih.as_str())
             .collect();

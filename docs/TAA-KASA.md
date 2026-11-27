@@ -178,38 +178,51 @@ Durum: istemci `crates/taa-kasa/src/telefon_imza.rs` hazır ve testli (sahte kan
 - **Uç:** yeni HTTP ucu yok. Kasa ekranı `POST /api/imza {"id", "kanal":"telefon"}` aldığında `TelefonImzaOturumu::baslat`
   çağrılır; istek Telefon Köprüsü yerel hizmet borusuna (`\\.\pipe\TelefonKoprusuHizmet`) JSON satırı olarak gider. Köprü
   isteği TK2 TLS kanalıyla eşleşmiş telefona taşır (Uzak Köprü onay akışı; PC isteği P-256 imzalı, nonce 60 sn).
-- **Sözleşme (kesin; TK deposu `taa-kasa-onay` 29f8a69, `docs/TAA-KASA-ONAY-SOZLESMESI-TASARIMI-2026-11-27.md` "Ek 2"; kasa
-  tarafı koordinatörün aktardığı alan listesine göre uyarlandı, 2026-11-27):** `onay_iste@1` → `onay@1` | `onay_red@1`,
-  `kapsam: taa_kasa_gun_sonu`. İstek: `tur`, `kapsam`, `nonce` (128 bit rastgele, hex), `gun_sonu_id`, `sira`, `rol`, `rol_adi`,
-  `istenen_kisi`, `baslik` (en çok 80 karakter, `Gün sonu · <şube> · <tarih>`; aşarsa 79 + `…`), `ozet` (64 hane küçük hex) +
-  `ozet_metni` (birlikte), `olusturma`, `bitis` (+60 sn, Unix sn). `pc_adi` alanını TK hizmeti doldurur; kasa göndermez.
-  Onay: `nonce`, `kapsam`, `ozet`, `cihaz{eslesme_kimligi, pc_pin}`, `kisi`, `kisi_dogrulandi`, `zaman`. Red: `nonce`, `neden`.
-  Eski adlar (`istek_kimligi`, `son_gecerlilik`, `ozet_sha256`) kaldırıldı (yayın öncesi; geriye uyumluluk yok).
+- **Sözleşme (TK deposu `taa-kasa-onay` 5c9b06d, "Ek 3"; kasa tarafı koordinatörün aktardığı alan listesine göre uyarlandı,
+  2026-11-27; Ek 3 belgesi bu depodan okunmadı):** `onay_iste@1` → `onay@1` | `onay_red@1`, `kapsam: taa_kasa_gun_sonu`.
+  - **İstek (boruya):** YALNIZ `kapsam`, `baslik` (en çok 80 karakter, `Gün sonu · <şube> · <tarih>`), `ozet` (64 küçük hex),
+    `ozet_metni` (en çok 1 KiB). İstek en çok 2048 bayt; aşarsa istek açılmaz. `nonce`, `bitis`, `pc_adi`, `pc_imza`'yı TK
+    hizmeti ekler; **kasa nonce üretmez**. Hizmetin kabul cevabı `{nonce (64 küçük hex), bitis}` döner; `şimdi < bitis ≤
+    şimdi + 60 + 5 sn` değilse istek geçersiz sayılır. Red/onay bu nonce ile eşlenir.
+  - **Onay (katı):** yalnız `tur:"onay"`, `surum:1`, `kapsam` (istekle bayt bayt aynı), `ozet` (aynı), `nonce` (aynı),
+    `bitis` (`şimdi < bitis ≤ istenen bitis`), `sayac` (kesin artan; kasa son sayacı `telefon-sayac.json`'da saklar,
+    küçük/eşit olanı reddeder), `imza` (küçük hex, ASN.1 DER ECDSA P-256). **Başka alan yok:** bilinmeyen ya da eksik alan
+    → red (geçersiz, imzasız). `cihaz`, `kisi`, `zaman` kaldırıldı.
+  - **Red:** `tur:"onay_red"`, `surum:1`, `nonce`, `neden`; red imzasızdır (fazladan alan → geçersiz, yine imzasız).
+  - **Defter:** telefon imzasında `telefon{nonce, sayac, bitis, imza, imza_dogrulama}` ve `ozet` yazılır; merkez paket
+    okurken kanıtsız telefon imzasını sorun sayar.
+  - **İmza doğrulaması:** kasa bugün imzayı yalnız DER biçimi olarak denetler (`imza_dogrulama: "yapilmadi"`). Kriptografik
+    doğrulama için Ek 3'teki imzalanan bayt tanımı, eşleşmiş telefonun P-256 açık anahtarı (kasanın eşleşme kaydı,
+    `telefon_imza::EslesmeKaydi`) ve bir P-256 kitaplığı gerekir; üçü de henüz yok.
 - **Red nedenleri** (`telefon_imza::RedNedeni`): `kullanici`, `biyometri`, `zaman_asimi`, `kip_kapali`, `kapsam_yok`,
   `ozet_uyusmaz`; sözleşmede olmayan neden de red sayılır. **Her redde gün sonu imzasız kalır**, sessizce geçmez: API
   `GET /api/imza/telefon` → `{"durum":"reddedildi","red_nedeni","mesaj","imzasiz":true}`; Bugün ekranı nedeni Türkçe, kalıcı
   kırmızı kutuda gösterir (yeni imza denemesine kadar). Mesajlar: reddedildi / parmak izi-yüz-PIN geçmedi / 60 sn içinde onay
   yok / köprüde onay kipi kapalı / telefona gün sonu izni (kapsam) yok / özet uyuşmadı; her biri "gün sonu imzasız kaldı" der.
-- **Özet:** gün sonu tutarlarının kanonik `anahtar=değer` satırları (sözlük sırası, kuruş tam sayı; kişi adı ve not yok) ve
-  SHA-256'sı. Telefon metni gösterir, hash'i kendisi hesaplar. Onay gelince kasa özeti kayıttan **yeniden** hesaplar; istekten
+- **Özet (biçim sürümü 2, `docs/sozlesmeler/kasa.telefon-ozet.md`):** kısa, okunur toplamlar + tüm ayrıntının (sürüm 1
+  metni) SHA-256'sı `ayrinti_sha256`; en çok ~600 bayt. Sürüm 1 metni gerçek bir günde (4 kasa noktası, 3 döviz) ~1,1 KiB'a
+  çıkıp 1 KiB sınırını aşabildiği için değiştirildi. Telefon metni gösterir, hash'i kendisi hesaplar. Onay gelince kasa özeti kayıttan **yeniden** hesaplar; istekten
   sonra düzeltme/iptal olduysa imza atılmaz.
-- **Cihaz kimliği:** `eslesme_kimligi:pc_pin` (pc_pin = telefon sertifikasının SHA-256'sı); imza kaydında `cihaz`, onaylanan
-  özet `ozet` alanına yazılır. Telefon imzasının (P-256) doğrulanması köprünün işidir.
+- **Cihaz kimliği:** onay cevabında cihaz/kişi yok; cihaz kasanın kendi eşleşme kaydından gelir (`EslesmeKaydi::cihaz`).
+  Kayıt bugün yok (`EslesmeKaydiYok`): imza kaydında `cihaz` boş, merkezde "doğrulanamadı" sayılır.
 - **Merkez doğrulaması** (karar 2026-11-26): cihaz-kişi bağı ve iptal TAA Merkez'de tutulur; kasa tarafı yalnız sonucu
   kullanır (`telefon_imza::CihazKaydi` → `gecerli` | `baska_kisi` | `iptal` | `bilinmiyor`). Kasada iptal edilmiş ya da
   başka kişiye bağlı cihazın onayı geçersizdir; sonuç imza kaydına `cihaz_dogrulama` olarak yazılır. Merkezde paket okunurken
   (`merkez::telefon_imzalarini_denetle`) imzanın `ozet`i paketteki gün sonundan yeniden hesaplanır ve cihaz yeniden
   denetlenir; sorun ve "doğrulanamadı" matris hücresinde görünür. TAA Merkez kaydı gelene kadar yer tutucu `MerkezKaydiYok`
   her cihaz için `bilinmiyor` döner (imza engellenmez).
-- **Kişi doğrulama:** bugün yok; kişi ekranda seçilir, telefondaki kişi farklı bildirilirse onay geçersizdir. Planlı: telefonda
-  Keystore + BiometricPrompt (`kisi_dogrulandi: true`), cihaz↔kişi bağı TAA Merkez'de.
-- **Durumlar:** `bekliyor`, `onaylandi`, `reddedildi` (+ `red_nedeni`), `zaman_asimi` (60 sn), `kanal_yok` (→ 501), `gecersiz` (özet/nonce/kişi
-  tutmuyor ya da imza kuralı). İmza kuralları (kapanış listesi, giren ikinci imzayı atamaz, en çok iki, gönderimden sonra yok)
+- **Kişi doğrulama:** kişi ekranda seçilir; telefon biyometriyi kendisi yapar (başarısızsa `biyometri` reddi). Cihaz↔kişi
+  bağı kasanın eşleşme kaydı ve TAA Merkez'de.
+- **Durumlar:** `bekliyor`, `onaylandi`, `reddedildi` (+ `red_nedeni`), `zaman_asimi` (60 sn), `kanal_yok` (→ 501), `gecersiz` (özet/nonce/kapsam
+  tutmuyor, bilinmeyen alan, sayaç tekrarı, bitiş dışı ya da imza kuralı). İmza kuralları (kapanış listesi, giren ikinci imzayı atamaz, en çok iki, gönderimden sonra yok)
   istek açılmadan denetlenir; ihlalde telefona istek gitmez (422).
 - **501 yerine gerçek akış için gerekenler:** (1) köprüde u2b-tls-kip2 onay akışının birleşmesi ve `onay_iste@1` kapsamı;
   (2) borunun erişim listesine taa-kasa.exe izni; (3) `BoruKanali` içine boru okuma/yazma (Windows). Ekran tarafı hazır:
   imza düğmesi önce `kanal:"telefon"` dener, 501'de ekrandan imzaya düşer; `bekliyor` gelirse `GET /api/imza/telefon` ile
   1,5 sn arayla yoklar (sahte kanalla API testi `telefon_reddi_imzasiz_birakir_ve_nedeni_dondurur`).
+
+**Şube kodu:** taa-sunucu kodları küçük harf saklar (`mrk01`). Kasa paketi kendi yazımıyla gönderir (`MRK01`); eşleştirmede
+(merkez matrisi, tek imza uyarısı, şube listesi) büyük/küçük harf duyarsızdır (`merkez::sube_esit`, `subeleri_tekille`).
 
 ## Tutaa'dan taşınanlar (çift doğrulama)
 

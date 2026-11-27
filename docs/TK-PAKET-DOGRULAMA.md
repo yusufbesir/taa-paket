@@ -81,6 +81,12 @@ Davranış:
   clippy temiz.
 - Varsayılan kök dışındaysa kullanıcı ortamına `TAA_KOK` yazılmaya devam eder. Bu taa-kur içindir, TK onu kullanmaz.
 
+## Bekleyen maddeler
+
+- [ ] **Üretim ed25519 anahtarı:** anahtar oluşturulunca genel anahtar TK'ya `ed25519:<64 hex>` metni olarak bildirilecek
+  (TK hizmetine sabitlenecek). Özel anahtar hiçbir yere yazılmaz/gönderilmez. Bugün üretim anahtarı yok.
+- [ ] Authenticode kod imzalama sertifikası (yok).
+
 ## Kısa yanıt metni (TK'ya)
 
 > (a) Bildirim, sürüm klasöründeki `paket.json` dosyasıdır. Exe özeti `dosyalar[]` içinde `yol: "bin/taa-kasa.exe"` kaydının
