@@ -194,8 +194,13 @@ async function durum(secenek) {
     roller: Array.isArray(o.roller) ? o.roller : [], izinler: Array.isArray(o.izinler) ? o.izinler : [],
     programlar: Array.isArray(o.programlar) ? o.programlar : [],
   };
-  return programAcik(oturum, s.program) ? oturum : null;
+  if (!programAcik(oturum, s.program)) return null;
+  if (KULLANICI_RE.test(String(oturum.kullanici || ''))) sonKullanici.set(kilitDosyasi(s) || '', oturum.kullanici);
+  return oturum;
 }
+// Bu süreçte en son doğrulanan oturum kullanıcısı (kilit işareti yolu başına). Ctrl+L anında durum geçici
+// okunamazsa kilit yine yazılır (kapalı yönde); renderer'dan gelen ad kullanılmaz.
+const sonKullanici = new Map();
 
 // Program adı yoksa (ör. Çatı'nın genel denetimi) denetim yapılmaz; varsa listede olmalı. Liste yoksa ya da boşsa kapalı.
 function programAcik(oturum, program) {
@@ -220,6 +225,7 @@ async function cikis(secenek) {
   const s = secenek || {};
   const r = await calistir(['cikis', ...sunucuArg(s)], null, s);
   kilitSil(s);
+  sonKullanici.delete(kilitDosyasi(s) || '');
   return { tamam: r.kod === 0 };
 }
 
@@ -255,14 +261,15 @@ function kilitliMi(secenek) {
 async function kilitle(secenek) {
   const s = secenek || {};
   const oturum = await durum(s);
-  if (!oturum || !KULLANICI_RE.test(String(oturum.kullanici || ''))) return { tamam: false };
+  const kullanici = oturum && KULLANICI_RE.test(String(oturum.kullanici || '')) ? oturum.kullanici : sonKullanici.get(kilitDosyasi(s) || '');
+  if (!kullanici) return { tamam: false };
   const y = kilitDosyasi(s);
-  if (!y) return { tamam: false, kullanici: oturum.kullanici };
+  if (!y) return { tamam: false, kullanici };
   try {
     fs.mkdirSync(path.dirname(y), { recursive: true });
-    fs.writeFileSync(y, JSON.stringify({ kullanici: oturum.kullanici, zaman: Date.now() }), { mode: 0o600 });
-  } catch (_) { return { tamam: false, kullanici: oturum.kullanici }; }
-  return { tamam: true, kullanici: oturum.kullanici };
+    fs.writeFileSync(y, JSON.stringify({ kullanici, zaman: Date.now() }), { mode: 0o600 });
+  } catch (_) { return { tamam: false, kullanici }; }
+  return { tamam: true, kullanici };
 }
 
 // ---- Personel rehberi (Yusuf 11-27) ----
