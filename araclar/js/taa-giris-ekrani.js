@@ -1,5 +1,5 @@
 // Sahip: Yusuf. yazan: [Claude#KM2-hesap-giris 2026-11-25]
-// taa-giris-ekrani.js v2 — kaynak: yusufbesir/taa-paket/araclar/js/taa-giris-ekrani.js; programlar kopyalar, elle düzenlemez.
+// taa-giris-ekrani.js v3 (alt menüler sağda açılan yan panel, Yusuf 11-27) — kaynak: yusufbesir/taa-paket/araclar/js/taa-giris-ekrani.js; programlar kopyalar, elle düzenlemez.
 // TAA ortak giriş ekranı (renderer, tarayıcı tarafı; Node yok). window.taaGiris (taa-giris.js preloadKur) üzerinden çalışır.
 // Sınıf adları tg- önekli: programın kendi .ana/.kart gibi kurallarıyla çakışmaz.
 // Görünüm programın temasına uyar: renkler CSS değişkenlerinden okunur (--taa-arka, --taa-panel, --taa-yazi, --taa-soluk,
@@ -76,11 +76,12 @@
 .tg-menu [role=menuitem]:hover,.tg-menu [role=menuitem]:focus,.tg-menu [role=menuitemradio]:hover,.tg-menu [role=menuitemradio]:focus{background:var(--taa-arka,#0f1420);outline:none}
 .tg-menu kbd{margin-left:auto;font:12px ui-monospace,Consolas,monospace;color:var(--taa-soluk,#9aa5b8)}
 .tg-menu .tg-tehlike{color:var(--taa-hata,#f06a5f)}
-.tg-menu .tg-alt-menu{padding-left:16px}
+.tg-menu .tg-alt-menu{position:fixed;z-index:2147482501;min-width:200px;max-width:min(300px,calc(100vw - 16px));max-height:calc(100vh - 16px);overflow:auto;
+  padding:6px;background:var(--taa-panel,#171e2c);border:1px solid var(--taa-cizgi,#2a3346);border-radius:calc(var(--taa-r,14px) - 2px);box-shadow:0 18px 50px rgba(0,0,0,.3)}
 .tg-menu .tg-alt-menu[hidden]{display:none}
+.tg-menu .tg-cekmece[aria-expanded="true"]{background:var(--taa-arka,#0f1420)}
 .tg-menu .tg-cekmece .tg-secili{margin-left:auto;color:var(--taa-soluk,#9aa5b8);font-size:13px}
 .tg-menu .tg-cekmece .tg-ok2{display:inline-block;margin-left:8px;color:var(--taa-soluk,#9aa5b8);transition:transform .15s ease}
-.tg-menu .tg-cekmece[aria-expanded="true"] .tg-ok2{transform:rotate(90deg)}
 .tg-menu [aria-checked="true"]::after{content:"✓";margin-left:auto;color:var(--taa-vurgu,#f3a83b)}
 .tg-menu .tg-surum{padding:6px 10px 4px;font-size:11px;color:var(--taa-soluk,#9aa5b8)}
 @media print{.tg-hesap,.tg-menu{display:none}}`;
@@ -347,7 +348,7 @@
         if (!o) return;
         if (o.ayrac) { html += '<hr>'; return; }
         if (Array.isArray(o.alt)) {
-          // Çekmece (Yusuf 11-26): kapalıyken tek satır "Tema · Çivit ›"; Enter/tık/sağ ok açar, sol ok/Esc kapatır.
+          // Alt menü (Yusuf 11-27): satır "Tema · Çivit ›"; Enter/tık/sağ ok menünün sağında yan panel açar (menü boyu ve düğme yerleri değişmez), sol ok/Esc kapatır.
           const secili = o.alt.find((a) => a && a.secili);
           html += `<div class="tg-grup"><button type="button" role="menuitem" tabindex="-1" class="tg-cekmece" aria-haspopup="true" aria-expanded="false">${esc(o.ad)}<span class="tg-secili">${secili ? esc(secili.ad) : ''}</span><span class="tg-ok2" aria-hidden="true">›</span></button><div class="tg-alt-menu" role="group" aria-label="${esc(o.ad)}" hidden>`;
           o.alt.forEach((a) => { if (!a) return; islem.push(a.tikla); html += `<button type="button" role="menuitemradio" tabindex="-1" aria-checked="${a.secili ? 'true' : 'false'}" data-i="${islem.length - 1}">${esc(a.ad)}</button>`; });
@@ -364,7 +365,7 @@
       if (alt) html += `<div class="tg-surum">${esc(alt)}</div>`;
       m.innerHTML = html;
       belge.body.appendChild(m);
-      // Düğmenin üstüne aç; yer yoksa altına. Sola yasla, ekrandan taşma. Çekmece açılıp kapanınca yeniden yerleşir.
+      // Düğmenin üstüne aç; yer yoksa altına. Sola yasla, ekrandan taşma. Alt menüler yan panelde açıldığı için menü boyu sabit kalır.
       const yerlestir = () => {
         const r = d.getBoundingClientRect();
         const g = belge.documentElement.clientWidth, y = belge.documentElement.clientHeight;
@@ -373,11 +374,20 @@
         m.style.top = Math.max(8, r.top - mr.height - 6 >= 8 ? r.top - mr.height - 6 : Math.min(r.bottom + 6, y - mr.height - 8)) + 'px';
       };
       yerlestir();
+      // Yan panel: menünün sağına, kendi satırının hizasına; sağda yer yoksa soluna. Aynı anda tek panel açık.
+      const panelYerlestir = (c, l) => {
+        const g = belge.documentElement.clientWidth, y = belge.documentElement.clientHeight;
+        const mr = m.getBoundingClientRect(), cr = c.getBoundingClientRect(), lr = l.getBoundingClientRect();
+        let sol = mr.right + 6; if (sol + lr.width > g - 8) sol = Math.max(8, mr.left - lr.width - 6);
+        l.style.left = sol + 'px';
+        l.style.top = Math.max(8, Math.min(cr.top - 6, y - lr.height - 8)) + 'px';
+      };
       const cekmece = (c, ac) => {
         const l = c.nextElementSibling;
+        if (ac) m.querySelectorAll('.tg-cekmece[aria-expanded="true"]').forEach((x) => { if (x !== c) { x.setAttribute('aria-expanded', 'false'); x.nextElementSibling.hidden = true; } });
         c.setAttribute('aria-expanded', ac ? 'true' : 'false');
         l.hidden = !ac;
-        yerlestir();
+        if (ac) panelYerlestir(c, l);
         if (ac) { const sec = l.querySelector('[aria-checked="true"]') || l.querySelector('[role=menuitemradio]'); if (sec) sec.focus(); } else c.focus();
       };
       d.setAttribute('aria-expanded', 'true');

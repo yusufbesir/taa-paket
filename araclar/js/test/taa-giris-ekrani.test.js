@@ -230,7 +230,7 @@ test('gizli açılış: ekran görünmez ama arka kilitli; goster() açar ve oda
   } finally { await b.close(); }
 });
 
-test('Hesap menüsü: Tema çekmecesi (Yusuf 11-26)', { skip: !pw && 'playwright yok' }, async () => {
+test('Hesap menüsü: Tema alt menüsü yan panelde (Yusuf 11-26, 11-27)', { skip: !pw && 'playwright yok' }, async () => {
   const b = await pw.chromium.launch();
   try {
     const p = await kur(b);
@@ -254,9 +254,13 @@ test('Hesap menüsü: Tema çekmecesi (Yusuf 11-26)', { skip: !pw && 'playwright
     await p.keyboard.press('Enter'); await p.keyboard.press('ArrowDown'); await p.keyboard.press('Enter');
     assert.deepStrictEqual(await durum(), ['false', true, 'Koyu', 'TemaKoyu›']);
     assert.deepStrictEqual(await p.evaluate(() => [window.tiklanan, document.querySelector('#taa-giris-menu [role=menuitemradio][aria-checked=true]').textContent, !!document.getElementById('taa-giris-menu')]), [['koyu'], 'Koyu', true]);
-    // Menü ekranda kalır (çekmece açılınca yeniden yerleşir).
+    // v3 (Yusuf 11-27): alt menü menünün yanında panel olarak açılır; menü boyu ve yeri değişmez, panel ekranda kalır.
+    const menuKutu = () => p.evaluate(() => { const r = document.getElementById('taa-giris-menu').getBoundingClientRect(); return [r.top, r.height]; });
+    const once = await menuKutu();
     await p.click(c);
-    assert.ok(await p.evaluate(() => { const r = document.getElementById('taa-giris-menu').getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }));
+    assert.deepStrictEqual(await menuKutu(), once, 'menü boyu ve yeri sabit');
+    assert.ok(await p.evaluate(() => { const m = document.getElementById('taa-giris-menu').getBoundingClientRect(), l = document.querySelector('#taa-giris-menu .tg-alt-menu:not([hidden])').getBoundingClientRect();
+      return (l.left >= m.right || l.right <= m.left) && l.top >= 0 && l.bottom <= innerHeight; }), 'panel menünün yanında ve ekranda');
   } finally { await b.close(); }
 });
 
