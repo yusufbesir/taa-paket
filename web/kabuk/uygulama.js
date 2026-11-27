@@ -8,6 +8,7 @@
 // yol ayarı hesap panelindedir. Kurallar: ../cekirdek/yol.js.
 
 import { acDB, OLAY_GIDEN_DEGISTI } from '../cekirdek/taa-cekirdek.js';
+import { TarayiciCihaz, idbDepo, destekVar, CihazHata } from '../cekirdek/cihaz.js';
 import {
   rotaCoz,
   modulListesi,
@@ -49,7 +50,45 @@ const durum = {
   acikCekmece: null, // {oge, dugme}
   sonDuyuru: '',
   swKaydi: null,
+  cihaz: null, // TarayiciCihaz (Ed25519, çıkarılamaz anahtar); sunucu her istekte imza ister
 };
+
+// ------------------------------------------------------------ cihaz kimliği (sunucu her /v1 isteğinde imza ister)
+
+/** Cihaz anahtarını yükler/üretir; sunucuya ulaşılabiliyorsa kaydı bildirir (idempotent). Fallback yok: destek yoksa hata. */
+async function cihazHazirla() {
+  if (!durum.cihaz) {
+    if (!(await destekVar())) {
+      throw new CihazHata('destek-yok', 'Bu tarayıcı cihaz anahtarını desteklemiyor. Güncel Chrome, Edge, Firefox ya da Safari 17+ kullanın.');
+    }
+    const c = new TarayiciCihaz({ depo: idbDepo() });
+    const var_ = await c.yukle();
+    if (!var_) await c.uret(`Tarayici-${Math.random().toString(16).slice(2, 6)}`);
+    durum.cihaz = c;
+  }
+  const k = durum.cihaz.kayit;
+  if (navigator.onLine && (k.durum === 'kayitsiz' || k.durum === 'bekliyor')) {
+    try {
+      await durum.cihaz.kaydet(SUNUCU, (a, o) => fetch(a, o));
+    } catch {
+      /* ulaşılamadı: sonra yeniden denenir; mevcut durum korunur */
+    }
+  }
+  return durum.cihaz.kayit;
+}
+
+/** Cihaz anahtarı varsa imzalayan, yoksa düz fetch. */
+function imzaliGetir() {
+  const temel = (a, o) => fetch(a, o);
+  return durum.cihaz ? durum.cihaz.imzaliFetch(temel, SUNUCU) : temel;
+}
+
+function cihazNotu() {
+  const k = durum.cihaz?.kayit;
+  if (!k || k.durum === 'kayitsiz') return '';
+  if (k.durum === 'bekliyor') return `Bu tarayıcı yönetici onayı bekliyor (cihaz kimliği ${k.kimlik}). Çatı'dan onaylanınca giriş yapılabilir.`;
+  return '';
+}
 
 // ------------------------------------------------------------ küçük yardımcılar
 
@@ -238,7 +277,7 @@ async function gonder() {
       oturum: durum.oturum ?? '',
       sube: durum.profil?.sube,
       cevrimici: navigator.onLine,
-      fetch: (adres, secenek) => fetch(adres, secenek),
+      fetch: imzaliGetir(),
     });
     durum.sonDurma = ozet.durmaNedeni;
     if (ozet.yol) durum.sonYol = ozet.yol;
@@ -359,6 +398,15 @@ function girisPenceresi({ zorunlu }) {
   }
   if (!pencere.open) pencere.showModal();
   (kullanici.readOnly ? $('giris-parola') : kullanici).focus();
+  cihazHazirla()
+    .then(() => {
+      const n = cihazNotu();
+      if (n) $('giris-aciklama').textContent = n;
+    })
+    .catch((e) => {
+      $('giris-hata').textContent = e.message;
+      $('giris-hata').hidden = false;
+    });
 }
 
 async function girisGonder(olay) {
@@ -380,9 +428,15 @@ async function girisGonder(olay) {
   dugme.disabled = true;
   dugme.textContent = 'Giriş yapılıyor…';
   try {
+    try {
+      await cihazHazirla();
+    } catch (e) {
+      hataYaz(e.message);
+      return;
+    }
     let yanit;
     try {
-      yanit = await fetch(`${SUNUCU}/v1/giris`, {
+      yanit = await imzaliGetir()(`${SUNUCU}/v1/giris`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(kod ? { kullanici, parola, kod } : { kullanici, parola }),
@@ -395,7 +449,7 @@ async function girisGonder(olay) {
       return;
     }
     if (yanit.status === 401 || yanit.status === 403) {
-      hataYaz('Kullanıcı adı, parola ya da doğrulama kodu yanlış.');
+      hataYaz(cihazNotu() || 'Kullanıcı adı, parola ya da doğrulama kodu yanlış. Bu tarayıcı yönetici tarafından onaylanmamış da olabilir.');
       return;
     }
     if (!yanit.ok) {
@@ -802,6 +856,7 @@ async function baslat() {
     );
     return;
   }
+  cihazHazirla().catch(() => {}); // anahtar yoksa üretilir; sunucuya ulaşılamıyorsa sonra denenir
   navigator.storage?.persist?.().catch(() => {}); // tarayıcı yerel kayıtları kendiliğinden silmesin
   $('surum-notu').textContent =
     `Çevrimdışı kullanım son girişten sonra ${YETKI_CEVRIMDISI_GUN} gün geçerlidir. Son giriş: ${saatYaz(durum.profil.zaman)}.`;

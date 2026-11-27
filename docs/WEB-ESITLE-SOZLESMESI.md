@@ -189,10 +189,7 @@ Uçtan uca (plan §6): ağı kes -> işlem yap -> ağı aç -> sunucuda tek kay�
 Playwright yoktur (yeni dış bağımlılık olurdu).
 
 ## 10. Açık noktalar
-1. **Tarayıcıda cihaz imzası.** Ş0 her istekte cihaz imzası ister; tarayıcı çekirdeği bugün göndermiyor ve `taa-cihaz` dosya
-   anahtarına erişemez. Seçenekler: (a) tarayıcı kendi çıkarılamaz anahtarını üretir (WebCrypto), Çatı'dan cihaz olarak
-   onaylanır; (b) tarayıcı istemcisi ayrı bir cihaz türü sayılır ve kısıtlı izin alır. Karar verilmeden Ş0'a uyan bir sunucu
-   tarayıcı isteklerini reddeder. WebCrypto'da Ed25519 desteği hedef tarayıcılarda (özellikle iPhone Safari) doğrulanmalı.
+1. **Tarayıcıda cihaz imzası — UYGULANDI (seçenek a).** `web/cekirdek/cihaz.js`: Ed25519 anahtar çifti WebCrypto'da çıkarılamaz üretilir, IndexedDB'de `CryptoKey` olarak saklanır; her `/v1` isteği `X-TAA-Cihaz/Zaman/Imza` taşır (S2-CIHAZ ile aynı bayt dizisi; JS imzası Rust `taa_cihaz::dogrula` ile `crates/taa-cihaz/tests/web_imza_uyumu.rs`'te doğrulanır). Kayıt `POST /v1/cihaz/kayit {acik_anahtar, ad}` (imzasız, idempotent), yönetici Çatı'dan onaylar; onaya kadar giriş ekranı "yönetici onayı bekliyor" der. Ed25519 desteği yoksa fallback yoktur, açık hata verilir. **Denenmedi:** gerçek tarayıcı (Safari 17+/Chrome/Firefox), gerçek taa-sunucu. Ayrı "tek kullanımlık eşleştirme kodu" yazılmadı: onay Çatı'daki mevcut cihaz onayıdır.
 2. **taa-sunucu'daki gerçek durum bilinmiyor:** `no` tablosu, hata kodları, sürüm sayacı, RLS, `POST /v1/yetki` yanıt biçimi.
 3. **Sürüm sayacının kapsamı:** tek genel sayaç mı, şube başına mı. İstemci için fark etmez (yalnız artan olması yeter); şube
    başına sayaç başka şubedeki hareketin sıklığını sızdırmaz, tercih edilir.
