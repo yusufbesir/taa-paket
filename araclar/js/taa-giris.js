@@ -345,8 +345,11 @@ async function baslangic(secenek) {
   if (!kimlikYolu(s.env || process.env, s.paketli === true)) return { arac: false, oturum: null };
   const oturum = await durum(s);
   const k = kilitOku(s);
-  if (oturum && k && k.kullanici === oturum.kullanici) return { arac: true, oturum: null, kilitli: { kullanici: k.kullanici } };
-  if (k) kilitSil(s); // oturum yok ya da başka kullanıcı: eski işaret geçersiz
+  // Kilit kapalı yönde: oturum okunamazsa (açılışta geçici hata, süre dolmuş) işaret korunur ve ekran kilitli açılır.
+  // Kilitleyen şifresiyle açar; "Başka kullanıcıyla gir" cikis ile işareti boşaltır. İşaret yalnız oturum
+  // başka bir kullanıcıya geçmişse geçersizdir (o kullanıcı başka programda giriş yapmıştır).
+  if (k && (!oturum || k.kullanici === oturum.kullanici)) return { arac: true, oturum: null, kilitli: { kullanici: k.kullanici } };
+  if (k) kilitSil(s);
   return { arac: true, oturum };
 }
 

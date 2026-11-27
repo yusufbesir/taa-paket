@@ -192,6 +192,11 @@ test('ekran kilidi: oturum kapanmaz, işaret yeniden açılışta kilitli başla
   assert.strictEqual(fs.readFileSync(kilitDosyasi, 'utf8'), '{}', 'çıkış kilidi boşaltır');
   // Oturum yoksa kilitlenmez; başka kullanıcıya ait eski işaret geçersizdir ve silinir.
   assert.deepStrictEqual(await g.kilitle({ ...s, env: ortam('cihaz').env }), { tamam: false });
+  // Açılışta oturum okunamazsa (geçici hata) kilit düşmez: işaret korunur, ekran kilitli açılır (kapalı yönde).
+  await g.kilitle(s);
+  assert.deepStrictEqual(await g.baslangic({ ...s, env: ortam('cihaz').env }), { arac: true, oturum: null, kilitli: { kullanici: 'ali' } });
+  assert.strictEqual(JSON.parse(fs.readFileSync(kilitDosyasi, 'utf8')).kullanici, 'ali', 'oturum okunamayınca işaret korunur');
+  await g.cikis(s);
   fs.mkdirSync(path.dirname(kilitDosyasi), { recursive: true });
   fs.writeFileSync(kilitDosyasi, JSON.stringify({ kullanici: 'veli' }));
   assert.strictEqual((await g.baslangic(s)).oturum.kullanici, 'ali');
