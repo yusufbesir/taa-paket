@@ -196,15 +196,24 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
             "--neden" => neden = Some(deger(&mut i, "--neden")?),
             "--kisi" => {
                 let d = deger(&mut i, "--kisi")?;
-                kisi = Some(d.parse().map_err(|_| (2, format!("--kisi sayı olmalı: {d}")))?);
+                kisi = Some(
+                    d.parse()
+                        .map_err(|_| (2, format!("--kisi sayı olmalı: {d}")))?,
+                );
             }
             "--gun" => {
                 let d = deger(&mut i, "--gun")?;
-                gun = Some(d.parse().map_err(|_| (2, format!("--gun sayı olmalı: {d}")))?);
+                gun = Some(
+                    d.parse()
+                        .map_err(|_| (2, format!("--gun sayı olmalı: {d}")))?,
+                );
             }
             "--sube" => {
                 let d = deger(&mut i, "--sube")?;
-                sube_no = Some(d.parse().map_err(|_| (2, format!("--sube sayı olmalı: {d}")))?);
+                sube_no = Some(
+                    d.parse()
+                        .map_err(|_| (2, format!("--sube sayı olmalı: {d}")))?,
+                );
             }
             "--parola" => {
                 return Err((
@@ -219,7 +228,9 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
                 ))
             }
             a if komut.is_none() => komut = Some(a.to_string()),
-            a if matches!(komut.as_deref(), Some("zamanla") | Some("personel")) && alt.is_none() => {
+            a if matches!(komut.as_deref(), Some("zamanla") | Some("personel"))
+                && alt.is_none() =>
+            {
                 alt = Some(a.to_string())
             }
             a => return Err((2, format!("fazla argüman: {a}. Öneri: taa-kimlik --yardim"))),
@@ -444,17 +455,27 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
             let ag = Ag::yeni(&kok, &sunucu, sunucu_acik, sertifika.as_deref());
             let g = ag.gonderici(&o).map_err(kh)?;
             // Aynı saniyede aynı imzalı istek sunucuda 409 "tekrar" alır (yeniden oynatma koruması): bir kez 1 sn bekleyip yinele.
-            let tekrarla = |f: &dyn Fn() -> Result<serde_json::Value, taa_kuyruk::GonderHata>| match f() {
-                Err(e) if e.to_string().contains("\"tekrar\"") => {
-                    std::thread::sleep(std::time::Duration::from_millis(1100));
-                    f()
-                }
-                r => r,
-            };
+            let tekrarla =
+                |f: &dyn Fn() -> Result<serde_json::Value, taa_kuyruk::GonderHata>| match f() {
+                    Err(e) if e.to_string().contains("\"tekrar\"") => {
+                        std::thread::sleep(std::time::Duration::from_millis(1100));
+                        f()
+                    }
+                    r => r,
+                };
             let gh = |e: taa_kuyruk::GonderHata| match e {
                 taa_kuyruk::GonderHata::Reddedildi { kod, mesaj } => {
                     SON_HTTP.store(kod, Ordering::Relaxed);
-                    (if kod == 401 { 5 } else if kod == 403 { 7 } else { 4 }, mesaj)
+                    (
+                        if kod == 401 {
+                            5
+                        } else if kod == 403 {
+                            7
+                        } else {
+                            4
+                        },
+                        mesaj,
+                    )
                 }
                 e => (3, e.to_string()),
             };
@@ -463,9 +484,10 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
                 "liste" => {
                     let uc = format!("/v1/personel/liste{sube_sorgu}");
                     tekrarla(&|| g.al(&uc)).map_err(gh)?
-                },
+                }
                 "ara" => {
-                    let q = ara.ok_or_else(|| (2, "ara için --ara <metin> gerekli.".to_string()))?;
+                    let q =
+                        ara.ok_or_else(|| (2, "ara için --ara <metin> gerekli.".to_string()))?;
                     let uc = format!("/v1/personel/ara?q={}", yuzde_kodla(q.trim()));
                     tekrarla(&|| g.al(&uc)).map_err(gh)?
                 }
@@ -480,17 +502,30 @@ fn calistir(args: &[String]) -> Result<u8, (u8, String)> {
                     let _ = stdin.lock().read_to_end(&mut Vec::new());
                     let parola = parola.trim_end_matches(['\n', '\r']);
                     // K10: yönetim işlemi 15 dk içinde parola doğrulaması ister.
-                    g.gonder("/v1/yeniden-dogrula", &serde_json::json!({ "parola": parola })).map_err(gh)?;
+                    g.gonder(
+                        "/v1/yeniden-dogrula",
+                        &serde_json::json!({ "parola": parola }),
+                    )
+                    .map_err(gh)?;
                     let mut govde = serde_json::json!({ "personel_id": k, "gun": n, "neden": neden.unwrap_or_default() });
                     if let Some(s) = sube_no {
                         govde["sube_id"] = serde_json::json!(s);
                     }
                     g.gonder("/v1/personel/gecici", &govde).map_err(gh)?
                 }
-                a => return Err((2, format!("bilinmeyen personel komutu: {a} (liste, ara, gecici)"))),
+                a => {
+                    return Err((
+                        2,
+                        format!("bilinmeyen personel komutu: {a} (liste, ara, gecici)"),
+                    ))
+                }
             };
             // JS köprüsü yalnız `{` ile başlayan satırı okur: dizi yanıtı sarılır.
-            let v = if v.is_array() { serde_json::json!({ "kisiler": v }) } else { v };
+            let v = if v.is_array() {
+                serde_json::json!({ "kisiler": v })
+            } else {
+                v
+            };
             println!("{v}");
             Ok(0)
         }
