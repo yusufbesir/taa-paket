@@ -61,15 +61,18 @@ export function yetkiVar(profil, izin) {
   );
 }
 
+/** Şubesi olmayan (merkez) kullanıcının yerel kapsam adı. */
+export const MERKEZ_KAPSAMI = 'merkez';
+
 /** `POST /v1/giris` yanıtını (T7: `{oturum, sube_id, roller[]}`) profile çevirir. Anahtar profile GİRMEZ. */
 export function girisYanitiCoz(yanit, kullanici, simdi = Date.now()) {
   if (!yanit || typeof yanit.oturum !== 'string' || yanit.oturum === '') {
     throw new Error('Sunucu yanıtında oturum yok.');
   }
-  const sube = yanit.sube_id ?? yanit.sube;
-  if (sube === undefined || sube === null || String(sube) === '') {
-    throw new Error('Sunucu yanıtında şube yok.');
-  }
+  // Şubesiz (merkez) yönetici: sunucu şube vermez ya da null verir. Yerel veritabanı "merkez" kapsamında tutulur;
+  // şube kimliği yine sunucuda belirlenir, bu ad yalnız yerel kutunun adıdır.
+  const ham = yanit.sube_id ?? yanit.sube;
+  const sube = ham === undefined || ham === null || String(ham).trim() === '' ? MERKEZ_KAPSAMI : ham;
   const metinler = (d) => (Array.isArray(d) ? d.filter((x) => typeof x === 'string') : []);
   return {
     oturum: yanit.oturum,

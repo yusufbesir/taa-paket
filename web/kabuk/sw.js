@@ -4,7 +4,7 @@
 // giden kutusundan gider, önbellekten yanıtlanmaz.
 // Kabuk dosyası eklenince/çıkınca KABUK listesini ve SURUM'u güncelleyin (web/test/kabuk.test.js denetler).
 
-const SURUM = 'taa-web-v3'; // v3 (2026-11-27): cekirdek/cihaz.js eklendi (cihaz anahtarı)
+const SURUM = 'taa-web-v4'; // v4 (2026-11-27): şubesiz (merkez) yönetici girişi kabul edilir
 const KABUK = [
   './',
   './index.html',

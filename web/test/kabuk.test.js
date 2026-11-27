@@ -92,7 +92,9 @@ test('girisYanitiCoz: T7 yanıtı profile çevrilir, anahtar profile girmez', ()
   assert.deepEqual(s.profil, { kullanici: 'ayse', sube: '3', roller: ['kasiyer'], izinler: [], zaman: 1000 });
   assert.equal(JSON.stringify(s.profil).includes('gizli'), false);
   assert.throws(() => girisYanitiCoz({ sube_id: 3 }, 'ayse'));
-  assert.throws(() => girisYanitiCoz({ oturum: 'x' }, 'ayse'));
+  for (const y of [{ oturum: 'x' }, { oturum: 'x', sube_id: null }, { oturum: 'x', sube_id: '' }, { oturum: 'x', sube_id: '  ' }]) {
+    assert.equal(girisYanitiCoz(y, 'yusuf').profil.sube, 'merkez', 'şubesiz (merkez) yönetici kabul edilir');
+  }
   assert.throws(() => girisYanitiCoz(null, 'ayse'));
 });
 
