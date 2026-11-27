@@ -32,6 +32,14 @@ let girdi = ''; process.stdin.on('data', (b) => girdi += b).on('end', () => {
   else if (komut === 'durum') yaz({ kullanici: 'ali', sube_id: 2, roller: ['kasa'], programlar: s === 'kapali' ? ['taarkod'] : s === 'bos' ? [] : ['tutaa'] });
   else if (komut === 'yetki') { if (s === 'yetkisiz') { yaz({ sonuc: 'yetkisiz', neden: ['izin yok'] }); process.exit(7); } yaz({ sonuc: 'izinli' }); }
   else if (komut === 'cikis') yaz({ durum: 'cikis' });
+  else if (komut === 'personel') {
+    const alt = process.argv[3];
+    if (s === 'p_yetkisiz') hata(7, { hata: '{"hata":"yetki_yok","ileti":"Bu işlem için yetkiniz yok"}', kod: 7, http: 403 });
+    if (s === 'p_baglanti') hata(3, { hata: 'ulaşılamadı', kod: 3 });
+    if (alt === 'liste') yaz({ sube_id: 1, kisiler: [{ id: 1, ad_soyad: 'Ali Kaya', gorev: 'Kasiyer', sube_id: 1, gecici: false, bitis: null }, { id: 9, ad_soyad: 'Zeynep Ak', gorev: '', sube_id: 2, gecici: true, bitis: '2026-12-01T00:00:00Z', fazla: 'x' }, { bozuk: 1 }] });
+    else if (alt === 'ara') yaz({ kisiler: [{ id: 9, ad_soyad: 'Zeynep Ak', gorev: '', sube_id: 2, sube_ad: 'Kartal' }] });
+    else if (alt === 'gecici') yaz({ id: 4, bitis: '2026-11-30T10:00:00Z' });
+  }
 });
 `);
   fs.chmodSync(exe, 0o755);
@@ -161,7 +169,7 @@ test('ipcKur kanalları, gönderen denetimi ve program adı', async () => {
   assert.throws(() => g.ipcKur({ handle: () => {} }, { program: 'Tutaa!' }));
   let acik;
   g.preloadKur({ exposeInMainWorld: (ad, api) => { acik = [ad, Object.keys(api).sort()]; } }, { invoke: () => {} });
-  assert.deepStrictEqual(acik, ['taaGiris', ['baslangic', 'basvur', 'cikis', 'durum', 'giris', 'kilitle', 'yetki']]);
+  assert.deepStrictEqual(acik, ['taaGiris', ['baslangic', 'basvur', 'cikis', 'durum', 'giris', 'kilitle', 'personel', 'yetki']]);
 });
 
 test('ekran kilidi: oturum kapanmaz, işaret yeniden açılışta kilitli başlatır; giriş ve çıkış kaldırır (Yusuf 11-26)', { skip: !posix }, async () => {
@@ -190,4 +198,39 @@ test('ekran kilidi: oturum kapanmaz, işaret yeniden açılışta kilitli başla
   assert.strictEqual(fs.readFileSync(kilitDosyasi, 'utf8'), '{}', 'eski işaret boşaltılır');
   fs.writeFileSync(kilitDosyasi, JSON.stringify({ kullanici: 'bozuk ad' }));
   assert.strictEqual((await g.baslangic(s)).oturum.kullanici, 'ali', 'bozuk işaret yok sayılır');
+});
+
+test('personel: şube listesi, önbellek (yalnız ağ sorununda), arama, süreli ekleme şifresi stdin ile (Yusuf 11-27)', { skip: !posix }, async () => {
+  const o = ortam('tamam');
+  const s = { env: o.env, veriKlasoru: o.kok };
+  const l = await g.personel({ tur: 'liste' }, s);
+  assert.strictEqual(l.tamam, true);
+  assert.strictEqual(l.kaynak, 'sunucu');
+  assert.deepStrictEqual(l.kisiler.map((k) => [k.ad_soyad, k.gecici]), [['Ali Kaya', false], ['Zeynep Ak', true]], 'bozuk satır atılır');
+  assert.strictEqual(l.kisiler[1].fazla, undefined, 'bilinmeyen alan geçmez');
+  // ağ yoksa son liste
+  const b = await g.personel({ tur: 'liste' }, { env: { ...o.env, SAHTE: 'p_baglanti' }, veriKlasoru: o.kok });
+  assert.strictEqual(b.kaynak, 'onbellek');
+  assert.strictEqual(b.kisiler.length, 2);
+  // yetki yoksa eski liste verilmez
+  const y = await g.personel({ tur: 'liste' }, { env: { ...o.env, SAHTE: 'p_yetkisiz' }, veriKlasoru: o.kok });
+  assert.deepStrictEqual([y.tamam, y.durum], [false, 'yetki_yok']);
+  // önbellek hiç yoksa anlaşılır ileti
+  const bos = fs.mkdtempSync(path.join(os.tmpdir(), 'taa-personel-'));
+  const n = await g.personel({ tur: 'liste' }, { env: { ...o.env, SAHTE: 'p_baglanti' }, veriKlasoru: bos });
+  assert.deepStrictEqual([n.tamam, n.ileti], [false, g.ILETI.personel_yok]);
+  // arama
+  const a = await g.personel({ tur: 'ara', metin: 'zey' }, s);
+  assert.strictEqual(a.kisiler[0].sube_ad, 'Kartal');
+  assert.deepStrictEqual(o.cagri().args.slice(0, 4), ['personel', 'ara', '--ara', 'zey']);
+  assert.strictEqual((await g.personel({ tur: 'ara', metin: 'z' }, s)).durum, 'girdi');
+  // süreli ekleme: şifre yalnız stdin
+  const e = await g.personel({ tur: 'gecici', kisi: 9, gun: 3, neden: 'izin  yerine', parola: 'gizli-sifre-1' }, s);
+  assert.deepStrictEqual(e, { tamam: true, bitis: '2026-11-30T10:00:00Z' });
+  const c = o.cagri();
+  assert.deepStrictEqual(c.args.slice(0, 8), ['personel', 'gecici', '--kisi', '9', '--gun', '3', '--neden', 'izin yerine']);
+  assert.ok(!c.args.join(' ').includes('gizli-sifre-1'));
+  assert.strictEqual(c.girdi, 'gizli-sifre-1\n');
+  assert.strictEqual((await g.personel({ tur: 'gecici', kisi: 9, gun: 32, parola: 'x' }, s)).durum, 'girdi');
+  assert.strictEqual((await g.personel({ tur: 'gecici', kisi: 9, gun: 3, parola: '' }, s)).durum, 'girdi');
 });

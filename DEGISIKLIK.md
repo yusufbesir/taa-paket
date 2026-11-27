@@ -6,6 +6,11 @@
 
 ## Yayınlanmamış
 
+### Personel rehberi (Yusuf 2026-11-27)
+
+- **taa-kimlik `personel` komutu:** `personel [liste] [--sube N]` şubenin personel listesini (sunucu `/v1/personel/liste`), `personel ara --ara <metin>` tüm şubelerde arama, `personel gecici --kisi --gun 1-31 [--neden]` başka şubeden kişiyi süreli ekleme (şifre stdin'den, önce `/v1/yeniden-dogrula`). Aynı saniyede 409 "tekrar" alınırsa bir kez yinelenir.
+- **taa-giris.js v2:** `personel({tur: liste|ara|gecici})` ve `window.taaGiris.personel`; son başarılı liste veri klasöründe (`taa-personel.json`), yalnız ağ sorununda kullanılır (yetki yoksa verilmez).
+
 ### TAA Kasa gün sonu programı (yeni: taa-kasa-ekran, taa-kasa 0.2.0)
 
 - **Ortak hesap menüsü v3:** TAA Kasa kendi menüsü yerine ortak `taa-giris-ekrani.js` bileşenini gömer (tek kaynak); Tema ve Hareket alt menüleri sağda yan panel, menü boyu ve düğme yerleri sabit.
