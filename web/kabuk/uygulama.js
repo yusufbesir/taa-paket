@@ -4,6 +4,8 @@
 // Modül sözleşmesi: web/moduller/<ad>/index.js -> {ad, baslik, ac(kok, baglam)};
 // baglam = {giden, onbellek, yetki(izin), tema}. Modüller veriye yalnız baglam üstünden erişir.
 // Sunucudan/önbellekten gelen her metin textContent ile yazılır; hiçbir metin HTML olarak yorumlanmaz.
+// [Claude Fable 5.2 #taa-web-W2-yol 2026-11-27] Gönderim yol listesiyle yapılır (merkez → şube bilgisayarı → bu cihaz);
+// yol ayarı hesap panelindedir. Kurallar: ../cekirdek/yol.js.
 
 import { acDB, OLAY_GIDEN_DEGISTI } from '../cekirdek/taa-cekirdek.js';
 import {
@@ -15,6 +17,10 @@ import {
   profilGecerli,
   gostergeMetni,
   cikisUyarisi,
+  yolAyariOku,
+  yolAyariKur,
+  yolSatirlari,
+  yolNotu,
   YETKI_CEVRIMDISI_GUN,
 } from './yardimci.js';
 
@@ -22,6 +28,7 @@ const SUNUCU = location.origin; // uçlar "/v1/..." ile başlar; kabuk ile aynı
 const A_PROFIL = 'taa-web-profil'; // localStorage: {kullanici, sube, roller, izinler, zaman} (anahtar YOK)
 const A_OTURUM = 'taa-web-oturum'; // sessionStorage: oturum anahtarı; sekme kapanınca gider
 const A_TEMA = 'taa-web-tema';
+const A_YOLLAR = 'taa-web-yollar'; // localStorage: [{ad:'merkez',url},{ad:'sube',url[,sube]},{ad:'yerel'}] (bu cihaza özel)
 const GONDERIM_ARALIGI_MS = 60_000;
 const LISTE_EN_COK = 50;
 
@@ -37,6 +44,8 @@ const durum = {
   rotaSirasi: 0,
   sayim: { bekliyor: 0, gonderildi: 0, reddedildi: 0 },
   sonDurma: null,
+  yollar: [], // gönderim yolları, sırayla (yolAyariOku)
+  sonYol: null, // son gönderimde kayıt kabul eden yol: 'merkez' | 'sube' | 'yerel'
   acikCekmece: null, // {oge, dugme}
   sonDuyuru: '',
   swKaydi: null,
@@ -185,10 +194,15 @@ function kayitSatiri(k, modulBasliklari) {
 async function gidenKutusuCiz() {
   if (!durum.db) return;
   const basliklar = new Map(durum.moduller.map((m) => [m.ad, m.baslik]));
-  const [bekleyen, reddedilen] = await Promise.all([
+  const [bekleyen, reddedilen, gonderilen] = await Promise.all([
     durum.db.giden.liste('bekliyor'),
     durum.db.giden.liste('reddedildi'),
+    durum.db.giden.liste('gonderildi'),
   ]);
+  $('giden-yol').textContent = yolNotu({
+    sonYol: durum.sonYol,
+    subeyeTeslim: gonderilen.filter((k) => k.gonderim?.yol === 'sube').length,
+  });
   $('giden-ozet').textContent =
     `Gönderilmeyen ${bekleyen.length} · Reddedilen ${reddedilen.length} · Gönderilen ${durum.sayim.gonderildi}`;
   const durma = $('giden-durma');
@@ -211,22 +225,23 @@ async function gidenKutusuCiz() {
 
 // ------------------------------------------------------------ gönderim
 
-/** Bekleyenleri gönderir. Çevrimdışıyken ağa çıkmaz. Hiçbir zaman hata fırlatmaz; özeti döndürür. */
+/**
+ * Bekleyenleri yol sırasıyla gönderir: merkez → şube bilgisayarı → bu cihaz (kayıt bekler).
+ * Çevrimdışıyken ağa çıkmaz. Hiçbir zaman hata fırlatmaz; özeti döndürür.
+ */
 async function gonder() {
   if (!durum.db) return null;
-  if (!navigator.onLine) {
-    durum.sonDurma = 'Çevrimdışı; bağlantı gelince kendiliğinden gönderilecek.';
-    await sayimYenile();
-    return null;
-  }
   let ozet = null;
   try {
     ozet = await durum.db.giden.gonder({
-      sunucu: SUNUCU,
+      yollar: durum.yollar,
       oturum: durum.oturum ?? '',
+      sube: durum.profil?.sube,
+      cevrimici: navigator.onLine,
       fetch: (adres, secenek) => fetch(adres, secenek),
     });
     durum.sonDurma = ozet.durmaNedeni;
+    if (ozet.yol) durum.sonYol = ozet.yol;
     if (ozet.durmaKodu === 401 && durum.oturum) {
       // Sunucu oturumu tanımıyor: anahtarı bırak, kayıtlar bekliyor kalır.
       durum.oturum = null;
@@ -247,6 +262,53 @@ function eklemeSonrasiGonder() {
     // Sekme arka plana geçerse tarayıcı (destekliyorsa) kabuğu uyandırsın.
     durum.swKaydi?.sync?.register('taa-giden').catch(() => {});
   }, 400);
+}
+
+// ------------------------------------------------------------ bağlantı yolları ayarı
+
+function yollariYukle() {
+  durum.yollar = yolAyariOku(depoOku('localStorage', A_YOLLAR), SUNUCU).yollar;
+}
+
+async function yolAyariCiz(not) {
+  const ol = $('yol-sirasi');
+  ol.replaceChildren();
+  for (const s of yolSatirlari(durum.yollar)) ol.append(oge('li', { class: s.var ? null : 'yol-yok', metin: s.metin }));
+  const sube = durum.yollar.find((y) => y.ad === 'sube');
+  $('yol-sube').value = sube?.url ?? '';
+  $('yol-sube-kodu').value = sube?.sube ?? '';
+  let gunluk = '';
+  try {
+    const g = await durum.db?.gunluk.say();
+    if (g) gunluk = `Cihaz günlüğü: ${g.toplam} satır, merkeze kopyalanmayan ${g.kopyalanmamis}. Günlük silinmez.`;
+  } catch {
+    gunluk = 'Cihaz günlüğü okunamadı.';
+  }
+  $('yol-durum').textContent = [not, gunluk].filter(Boolean).join(' ');
+}
+
+async function yolAyariKaydet() {
+  const hata = $('yol-hata');
+  const { ayar, hatalar } = yolAyariKur({ subeAdresi: $('yol-sube').value, subeKodu: $('yol-sube-kodu').value }, SUNUCU);
+  if (!ayar) {
+    hata.textContent = hatalar.join(' ');
+    hata.hidden = false;
+    return;
+  }
+  hata.hidden = true;
+  if (!depoYaz('localStorage', A_YOLLAR, JSON.stringify(ayar))) {
+    hata.textContent = 'Tarayıcı depolaması kapalı; yol ayarı saklanamadı.';
+    hata.hidden = false;
+    return;
+  }
+  yollariYukle();
+  try {
+    await durum.db?.gunluk.yaz({ olay: 'yol.ayar', ayrinti: { sube: durum.yollar.some((y) => y.ad === 'sube') } });
+  } catch {
+    /* günlük yazılamadı diye ayar geri alınmaz */
+  }
+  await yolAyariCiz('Kaydedildi.');
+  gonder();
 }
 
 // ------------------------------------------------------------ bant (oturum / yeni sürüm)
@@ -618,7 +680,14 @@ function olaylariBagla() {
     cekmeceAc($('sag-cekmece'), $('gosterge'));
     if (durum.acikCekmece) gidenKutusuCiz();
   });
-  $('hesap-dugme').addEventListener('click', () => cekmeceAc($('hesap-paneli'), $('hesap-dugme')));
+  $('hesap-dugme').addEventListener('click', () => {
+    cekmeceAc($('hesap-paneli'), $('hesap-dugme'));
+    if (durum.acikCekmece) {
+      $('yol-hata').hidden = true;
+      yolAyariCiz('');
+    }
+  });
+  $('yol-kaydet').addEventListener('click', yolAyariKaydet);
   $('perde').addEventListener('click', () => cekmeceKapat());
   for (const d of document.querySelectorAll('[data-kapat]')) d.addEventListener('click', () => cekmeceKapat());
   document.addEventListener('keydown', (o) => {
@@ -721,6 +790,7 @@ async function baslat() {
     return;
   }
   durum.oturum = depoOku('sessionStorage', A_OTURUM) || null;
+  yollariYukle();
   try {
     durum.db = acDB(dbParcasi(durum.profil.sube), dbParcasi(durum.profil.kullanici));
     await durum.db.giden.say(); // veritabanı gerçekten açılıyor mu

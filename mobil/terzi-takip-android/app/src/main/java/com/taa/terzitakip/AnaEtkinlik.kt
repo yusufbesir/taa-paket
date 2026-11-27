@@ -1,4 +1,5 @@
 // Sahip: Yusuf. yazan: [Claude#terzi-takip-android 2026-11-17]
+// değiştiren: [Claude Fable 5.2 #taa-web-W2-kurulum 2026-11-27] (yol listesi, TAA Web kabuğu, cihaz günlüğü)
 package com.taa.terzitakip
 
 import android.Manifest
@@ -43,8 +44,11 @@ import androidx.core.content.FileProvider
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.webkit.JavaScriptReplyProxy
 import androidx.webkit.ScriptHandler
+import androidx.webkit.ServiceWorkerClientCompat
+import androidx.webkit.ServiceWorkerControllerCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
@@ -52,13 +56,19 @@ import java.io.File
 import java.io.IOException
 
 /**
- * TAA Terzi Takip ana ekranı: mağaza sunucusundaki telefon sitesini (`<kök>/telefon`) WebView'da açar.
+ * TAA Terzi Takip ana ekranı: TAA Web kabuğunu (`<kök>/kabuk/#/terzitakip`) WebView'da açar.
  *
- * - Gezinti yalnız kayıtlı sunucu kökünde; dış bağlantılar dış tarayıcıda açılır.
- * - Düz http yalnız yerel ağ IP'lerine (bkz. res/xml/ag_guvenligi.xml ve [SunucuAdresi.yerelIpMi]).
- * - Açılışta sunucuya ulaşılamazsa markalı "Mağaza sunucusuna ulaşılamıyor" ekranı; sayfa yüklendikten sonra ağ
- *   giderse telefon.html kendi çevrimdışı kuyruğunu kullanır.
- * - JS köprüsü window.TaaAndroid: karekodOku() (yerel okuyucu; sonuç `taa-karekod` olayıyla döner), ayarlar(), surum().
+ * - Yol listesi (sıra sabit): merkez → şube bilgisayarı → yerel (cihazın kendi kutusu). Kabuk önce merkezden açılır;
+ *   merkez yüklenemezse (ve sayfa telefonda saklı değilse) şube bilgisayarı denenir; o da olmazsa hata ekranı çıkar.
+ *   Kabuk bir kez açıldıktan sonra service worker onu telefonda saklar; ağ yokken de açılır ve kayıtlar telefonun
+ *   kendi giden kutusunda bekler ("yerel").
+ * - Liste kabuğa `TaaAndroid.yollar()` ile verilir; kayıtları hangi yola göndereceğine kabuk çekirdeği bu sırayla
+ *   karar verir. Merkez kabuğu (https) şube bilgisayarına (http, yerel ağ) yazabilsin diye karışık içerik yalnız
+ *   kayıtlı şube adresi için açılır ([YolListesi.httpIzinli]); başka her http isteği 403 ile kesilir.
+ * - Gezinti yalnız listedeki kökenlerde; dış bağlantılar dış tarayıcıda açılır.
+ * - Günlük cihazda tutulur, silinmez ([Gunluk]): uygulama olayları ve kabuğun `TaaAndroid.gunlukYaz` ile yazdıkları.
+ * - JS köprüsü window.TaaAndroid: karekodOku() (sonuç `taa-karekod` olayı), ayarlar(), surum(), yollar(),
+ *   gunlukYaz(olay, ayrıntı), gunlukOku(gün) (sonuç `taa-gunluk` olayı).
  * - Gizli yönetici menüsü: sayfa başlığının sol tarafına (ya da hata ekranındaki başlığa) uzun basma → Sunucu ayarı.
  */
 class AnaEtkinlik : ComponentActivity() {
@@ -72,13 +82,24 @@ class AnaEtkinlik : ComponentActivity() {
 
     private val isleyici = Handler(Looper.getMainLooper())
 
-    /** Kayıtlı sunucu kökü, örn. `http://192.168.1.20:8787` ya da `https://magaza-pc.ornek.ts.net`. */
+    private lateinit var gunluk: Gunluk
+
+    /** Yol listesi (merkez → şube → yerel) ve ondan türeyenler. */
+    private var yollar: List<YolListesi.Yol> = emptyList()
+    private var adaylar: List<String> = emptyList()
+    private var izinliKokler: Set<String> = emptySet()
+    private var adayIndeks = 0
+    private var hataIslenenIndeks = -1
+    private var bekleyenKod: String? = null
+
+    /** Kabuğun şu an açıldığı (ya da denendiği) kök: adaylardan biri, örn. `https://sunucu.ornek.com`. */
     private var kok: String? = null
     private var hedefAdres: String? = null
     private var acilisHazir = false
     private var webKuruldu = false
     private var webOldu = false
     private var yuklemeHatasi = false
+    private var acildiYazildi = false
     private var gecmisiTemizle = false
     private var sonDokunusX = 0f
     private var sonDokunusY = 0f
@@ -98,9 +119,9 @@ class AnaEtkinlik : ComponentActivity() {
 
     private val kurulumBaslatici =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { s ->
-            val yeniKok = ayarlar.sunucuKoku
-            if (s.resultCode == RESULT_OK && yeniKok != null) {
-                sunucuyuAc(yeniKok, s.data?.getStringExtra(KurulumEtkinligi.EK_KOD))
+            if (s.resultCode == RESULT_OK && YolListesi.kabukKokleri(ayarlar.yollar()).isNotEmpty()) {
+                gunluk.yaz("ayar.degisti", YolListesi.json(ayarlar.yollar()))
+                yollariAc(s.data?.getStringExtra(KurulumEtkinligi.EK_KOD))
             } else if (kok == null) {
                 finish()
             }
@@ -167,6 +188,7 @@ class AnaEtkinlik : ComponentActivity() {
         hataAyrinti = findViewById(R.id.hata_ayrinti)
         yenidenDene = findViewById(R.id.yeniden_dene)
         ayarlar = Ayarlar(this)
+        gunluk = Gunluk(File(filesDir, "gunluk"))
 
         yenidenDene.setOnClickListener { yenidenYukle() }
         findViewById<View>(R.id.hata_baslik_satiri).setOnLongClickListener {
@@ -185,21 +207,27 @@ class AnaEtkinlik : ComponentActivity() {
             }
         })
 
-        val kayitliKok = ayarlar.sunucuKoku
-        if (kayitliKok == null) {
+        yollar = ayarlar.yollar()
+        adaylar = YolListesi.kabukKokleri(yollar)
+        izinliKokler = YolListesi.izinliKokler(yollar)
+        gunluk.yaz("uygulama.acildi", YolListesi.json(yollar))
+        if (adaylar.isEmpty()) {
             acilisHazir = true
             // Etkinlik yeniden kurulduysa kurulum ekranı zaten açıktır; sonucu yine buraya gelir.
             if (savedInstanceState == null) kurulumAc(ilk = true)
             return
         }
         webKur()
-        kok = kayitliKok
-        kopruKur(kayitliKok)
+        karisikIcerikAyarla()
+        kopruKur()
         val geri = savedInstanceState?.getBundle(DURUM_WEB)
-        if (geri != null && savedInstanceState?.getString(DURUM_KOK) == kayitliKok && web.restoreState(geri) != null) {
+        val geriKok = savedInstanceState?.getString(DURUM_KOK)
+        if (geri != null && geriKok != null && geriKok in adaylar && web.restoreState(geri) != null) {
+            adayIndeks = adaylar.indexOf(geriKok)
+            kok = geriKok
             hedefAdres = web.url
         } else {
-            yukle(baslangicAdresi(kayitliKok, intent.getStringExtra(KurulumEtkinligi.EK_KOD)))
+            adayiYukle(0, intent.getStringExtra(KurulumEtkinligi.EK_KOD))
         }
     }
 
@@ -216,6 +244,7 @@ class AnaEtkinlik : ComponentActivity() {
             // Yerel dosya erişimi kapalı; content:// açık kalır çünkü dosya seçiciden gelen fotoğraflar böyle gelir.
             allowFileAccess = false
             allowContentAccess = true
+            // Karışık içerik varsayılan kapalı; şube bilgisayarı (http) kayıtlıysa karisikIcerikAyarla açar.
             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
             setGeolocationEnabled(false)
             setSupportMultipleWindows(false)
@@ -224,6 +253,7 @@ class AnaEtkinlik : ComponentActivity() {
         }
         web.webViewClient = Istemci()
         web.webChromeClient = KromIstemci()
+        servisIsciKur()
 
         // Gizli yönetici menüsü: sayfanın yapışkan başlığında (üst 56dp, sol %60: marka) uzun basma.
         web.setOnTouchListener { _, e ->
@@ -244,29 +274,105 @@ class AnaEtkinlik : ComponentActivity() {
         }
     }
 
-    private fun baslangicAdresi(kok: String, kod: String?): String =
-        if (kod != null && kod.length == 6 && kod.all { it in '0'..'9' }) "$kok/telefon?kod=$kod" else "$kok/telefon"
+    /**
+     * Merkez kabuğu (https) şube bilgisayarına (http, yerel ağ) yazabilsin diye karışık içerik yalnız ikisi birlikte
+     * kayıtlıyken açılır. Açıkken de [Istemci.shouldInterceptRequest] kayıtlı şube adresi dışındaki her http isteğini keser.
+     */
+    private fun karisikIcerikAyarla() {
+        web.settings.mixedContentMode = if (YolListesi.karisikIcerikGerekli(yollar)) {
+            WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+        } else {
+            WebSettings.MIXED_CONTENT_NEVER_ALLOW
+        }
+    }
+
+    /** Düz http yalnız yol listesindeki yerel ağ adresine (şube bilgisayarı) gider; gerisi 403 ile kesilir. */
+    private fun httpKes(u: Uri): WebResourceResponse? {
+        if (u.scheme.equals("http", ignoreCase = true) && !YolListesi.httpIzinli(u.toString(), yollar)) {
+            return WebResourceResponse(
+                "text/plain", "utf-8", 403, "Forbidden", emptyMap(),
+                ByteArrayInputStream(ByteArray(0)),
+            )
+        }
+        return null
+    }
+
+    /** Service worker'ın kendi istekleri WebViewClient'tan geçmez; aynı http kuralı orada da uygulanır. */
+    private fun servisIsciKur() {
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.SERVICE_WORKER_BASIC_USAGE) ||
+            !WebViewFeature.isFeatureSupported(WebViewFeature.SERVICE_WORKER_SHOULD_INTERCEPT_REQUEST)
+        ) {
+            return
+        }
+        ServiceWorkerControllerCompat.getInstance().setServiceWorkerClient(object : ServiceWorkerClientCompat() {
+            override fun shouldInterceptRequest(request: WebResourceRequest): WebResourceResponse? = httpKes(request.url)
+        })
+    }
+
+    private fun izinliMi(adres: String?): Boolean {
+        val k = SunucuAdresi.koken(adres) ?: return false
+        return k in izinliKokler
+    }
+
+    /** Yol listesi (JSON metni); köprüden kabuğa verilir. */
+    fun yollarJson(): String = YolListesi.json(yollar)
 
     private fun yukle(adres: String) {
         hedefAdres = adres
         web.loadUrl(adres)
     }
 
-    private fun yenidenYukle() {
-        val adres = hedefAdres ?: kok?.let { baslangicAdresi(it, null) } ?: return
-        yenidenDene.isEnabled = false
-        yenidenDene.setText(R.string.yeniden_dene)
-        yukle(adres)
+    /** Kabuğu sıradaki yoldan açar: 0 = ilk adresli yol (merkez varsa merkez). */
+    private fun adayiYukle(indeks: Int, kod: String?) {
+        val aday = adaylar.getOrNull(indeks) ?: return
+        adayIndeks = indeks
+        hataIslenenIndeks = -1
+        kok = aday
+        bekleyenKod = kod
+        gunluk.yaz("yol.deneniyor", "{\"yol\":${YolListesi.tirnakla(yollar.firstOrNull { it.url == aday }?.ad ?: "?")}}")
+        yukle(YolListesi.kabukAdresi(aday, kod))
     }
 
-    /** Yeni ya da değişen sunucu kökünü açar (ilk kurulumdan ve Sunucu ayarından sonra). */
-    private fun sunucuyuAc(yeniKok: String, kod: String?) {
+    /**
+     * Ana sayfa yüklenemedi: sıradaki yol denenir (merkez → şube bilgisayarı). Sıradaki yoksa false döner ve çağıran
+     * hata ekranını gösterir; "yerel" o noktada telefonda saklı sayfa demektir ve o da yoktur.
+     */
+    private fun sonrakiYol(neden: String): Boolean {
+        // Aynı yükleme için birden çok hata bildirimi gelebilir (sertifika + genel hata): yalnız ilki işlenir.
+        if (hataIslenenIndeks == adayIndeks) return adayIndeks + 1 < adaylar.size
+        hataIslenenIndeks = adayIndeks
+        gunluk.yaz("yol.ulasilamadi", "{\"kok\":${YolListesi.tirnakla(kok.orEmpty())},\"neden\":${YolListesi.tirnakla(neden.take(200))}}")
+        val sonraki = adayIndeks + 1
+        if (sonraki >= adaylar.size) return false
+        yuklemeHatasi = true
+        val kod = bekleyenKod
+        // WebViewClient geri çağrısının içinden yeni yükleme başlatılmaz; sıraya konur.
+        isleyici.post { if (!isFinishing && !webOldu) adayiYukle(sonraki, kod) }
+        return true
+    }
+
+    private fun anaSayfaHatasi(ayrinti: String) {
+        if (!sonrakiYol(ayrinti)) hataGoster(ayrinti)
+    }
+
+    private fun yenidenYukle() {
+        if (adaylar.isEmpty()) return
+        yenidenDene.isEnabled = false
+        yenidenDene.setText(R.string.yeniden_dene)
+        // Her yeniden denemede sıra baştan: önce merkez.
+        adayiYukle(0, null)
+    }
+
+    /** Yeni ya da değişen yol listesini uygular (ilk kurulumdan ve Sunucu ayarından sonra). */
+    private fun yollariAc(kod: String?) {
         webKur()
-        val degisti = yeniKok != kok
-        kok = yeniKok
-        if (degisti || betikTutamagi == null && !dinleyiciVar && !eskiKopru) kopruKur(yeniKok)
+        yollar = ayarlar.yollar()
+        adaylar = YolListesi.kabukKokleri(yollar)
+        izinliKokler = YolListesi.izinliKokler(yollar)
+        karisikIcerikAyarla()
+        kopruKur()
         gecmisiTemizle = true
-        yukle(baslangicAdresi(yeniKok, kod))
+        adayiYukle(0, kod)
     }
 
     private fun hataGoster(ayrinti: String) {
@@ -297,32 +403,36 @@ class AnaEtkinlik : ComponentActivity() {
     private inner class Istemci : WebViewClient() {
 
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-            if (SunucuAdresi.kokIcindeMi(request.url.toString(), kok)) return false
-            // Kök dışı: ana çerçevedeyse dış tarayıcıda aç, alt çerçevedeyse engelle.
+            if (izinliMi(request.url.toString())) return false
+            // Yol listesi dışı: ana çerçevedeyse dış tarayıcıda aç, alt çerçevedeyse engelle.
             if (request.isForMainFrame) disAc(request.url)
             return true
         }
 
         override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
-            val u = request.url
-            if (u.scheme.equals("http", ignoreCase = true) && !SunucuAdresi.yerelIpMi(u.host)) {
-                return WebResourceResponse(
-                    "text/plain", "utf-8", 403, "Forbidden", emptyMap(),
-                    ByteArrayInputStream(ByteArray(0)),
-                )
-            }
-            return null
+            return httpKes(request.url)
         }
 
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+            if (!SunucuAdresi.kokIcindeMi(url, kok)) return
             yuklemeHatasi = false
             yanitci = null
-            if (SunucuAdresi.kokIcindeMi(url, kok)) hedefAdres = url
+            hedefAdres = url
         }
 
         override fun onPageFinished(view: WebView, url: String) {
+            // Yüklenemeyen yolun sayfası bittiğinde sıradaki yol çoktan denenmeye başlamış olabilir: yalnız o anki
+            // kökün sayfası gösterilir.
+            if (!SunucuAdresi.kokIcindeMi(url, kok)) return
             acilisHazir = true
-            if (!yuklemeHatasi) sayfaGoster()
+            if (!yuklemeHatasi) {
+                sayfaGoster()
+                if (bekleyenKod != null || !acildiYazildi) {
+                    acildiYazildi = true
+                    gunluk.yaz("yol.acildi", "{\"kok\":${YolListesi.tirnakla(kok.orEmpty())}}")
+                }
+                bekleyenKod = null
+            }
             if (gecmisiTemizle) {
                 gecmisiTemizle = false
                 view.clearHistory()
@@ -330,12 +440,16 @@ class AnaEtkinlik : ComponentActivity() {
         }
 
         override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
-            if (request.isForMainFrame) hataGoster(error.description?.toString().orEmpty())
+            if (request.isForMainFrame && SunucuAdresi.kokIcindeMi(request.url.toString(), kok)) {
+                anaSayfaHatasi(error.description?.toString().orEmpty())
+            }
         }
 
         override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, errorResponse: WebResourceResponse) {
-            if (request.isForMainFrame && errorResponse.statusCode >= 400) {
-                hataGoster(getString(R.string.hata_http, errorResponse.statusCode))
+            if (request.isForMainFrame && errorResponse.statusCode >= 400 &&
+                SunucuAdresi.kokIcindeMi(request.url.toString(), kok)
+            ) {
+                anaSayfaHatasi(getString(R.string.hata_http, errorResponse.statusCode))
             }
         }
 
@@ -343,8 +457,11 @@ class AnaEtkinlik : ComponentActivity() {
         override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
             // Sertifika hatası asla geçilmez. Kendi imzalı sertifika yalnız debug derlemede (kullanıcı CA'sı) çalışır.
             handler.cancel()
-            if (SunucuAdresi.kokIcindeMi(error.url, kok) || SunucuAdresi.kokIcindeMi(view.url, kok)) {
-                hataGoster(getString(R.string.hata_sertifika))
+            // Ana sayfanın sertifikası bozuksa o yol kullanılamaz: sıradaki yol denenir (yoksa hata ekranı).
+            if (SunucuAdresi.kokIcindeMi(error.url, kok) &&
+                error.url.substringBefore('#') == hedefAdres?.substringBefore('#')
+            ) {
+                anaSayfaHatasi(getString(R.string.hata_sertifika))
             }
         }
 
@@ -379,9 +496,9 @@ class AnaEtkinlik : ComponentActivity() {
         }
 
         override fun onPermissionRequest(request: PermissionRequest) {
-            // Sayfanın getUserMedia yolu (köprü yokken): yalnız kayıtlı kök ve yalnız kamera.
+            // Sayfanın getUserMedia yolu (köprü yokken): yalnız yol listesindeki köken ve yalnız kamera.
             val kamera = PermissionRequest.RESOURCE_VIDEO_CAPTURE
-            if (!SunucuAdresi.kokIcindeMi(request.origin.toString(), kok) || kamera !in request.resources) {
+            if (!izinliMi(request.origin.toString()) || kamera !in request.resources) {
                 request.deny()
                 return
             }
@@ -446,14 +563,16 @@ class AnaEtkinlik : ComponentActivity() {
 
     // ---------------------------------------------------------------- JS köprüsü
 
-    private fun kopruKur(kok: String) {
+    /** Köprüyü yol listesindeki kökenler için kurar (liste değişince yeniden çağrılır). */
+    private fun kopruKur() {
         kopruKaldir()
+        if (izinliKokler.isEmpty()) return
         val yeniYol = WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) &&
             WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
         if (yeniYol) {
-            val kurallar = setOf(kok)
+            val kurallar = izinliKokler
             WebViewCompat.addWebMessageListener(web, YEREL_NESNE, kurallar) { _, ileti, kaynak, anaCerceve, yanit ->
-                if (anaCerceve && SunucuAdresi.kokIcindeMi(kaynak.toString(), this.kok)) {
+                if (anaCerceve && izinliMi(kaynak.toString())) {
                     yanitci = yanit
                     istekIsle(ileti.data)
                 }
@@ -482,24 +601,55 @@ class AnaEtkinlik : ComponentActivity() {
 
     private fun istekIsle(veri: String?) {
         if (veri == null) return
-        val istek = try {
-            JSONObject(veri).optString("istek")
+        val nesne = try {
+            JSONObject(veri)
         } catch (e: JSONException) {
             return
         }
-        when (istek) {
-            ISTEK_KAREKOD -> karekodBaslat()
-            ISTEK_AYARLAR -> ayarMenusu()
-        }
+        istegiYap(
+            nesne.optString("istek"),
+            if (nesne.isNull("a")) null else nesne.optString("a"),
+            if (nesne.isNull("b")) null else nesne.optString("b"),
+        )
     }
 
     /** Yedek köprüden (TaaKoprusu) gelen istek; ana iş parçacığında çağrılır. */
-    fun koprudenIstek(istek: String) {
-        if (!webKuruldu || !SunucuAdresi.kokIcindeMi(web.url, kok)) return
+    fun koprudenIstek(istek: String, a: String? = null, b: String? = null) {
+        if (!webKuruldu || !izinliMi(web.url)) return
+        istegiYap(istek, a, b)
+    }
+
+    private fun istegiYap(istek: String, a: String?, b: String?) {
         when (istek) {
             ISTEK_KAREKOD -> karekodBaslat()
             ISTEK_AYARLAR -> ayarMenusu()
+            ISTEK_GUNLUK_YAZ -> sayfaGunlugu(a, b)
+            ISTEK_GUNLUK_OKU -> gunlukGonder(a)
         }
+    }
+
+    /** Kabuğun günlük satırı: olay adı ve isteğe bağlı JSON nesnesi. Uymayan girdi yazılmaz. */
+    private fun sayfaGunlugu(olay: String?, ayrinti: String?) {
+        if (olay == null || !Gunluk.olayGecerli(olay)) return
+        val temiz = if (ayrinti.isNullOrBlank()) {
+            null
+        } else {
+            try {
+                // Yeniden yazım: tek satır ve geçerli JSON olduğu kesinleşir.
+                JSONObject(ayrinti).toString()
+            } catch (e: JSONException) {
+                return
+            }
+        }
+        gunluk.yaz(olay, temiz, Gunluk.KAYNAK_SAYFA)
+    }
+
+    /** Bir günün günlük satırlarını `taa-gunluk` olayıyla kabuğa verir (merkeze kopyalamayı kabuk yapar). */
+    private fun gunlukGonder(gun: String?) {
+        val g = gun?.takeIf { Gunluk.gunGecerli(it) } ?: Gunluk.gun(System.currentTimeMillis())
+        val detay = JSONObject().put("gun", g).put("gunler", JSONArray(gunluk.gunler()))
+        detay.put("satirlar", JSONArray(gunluk.oku(g)))
+        sayfayaGonder("taa-gunluk", detay)
     }
 
     private fun karekodBaslat() {
@@ -515,7 +665,7 @@ class AnaEtkinlik : ComponentActivity() {
             y.postMessage(JSONObject().put("olay", olay).put("detay", detay).toString())
             return
         }
-        if (eskiKopru && webKuruldu && SunucuAdresi.kokIcindeMi(web.url, kok)) {
+        if (eskiKopru && webKuruldu && izinliMi(web.url)) {
             web.evaluateJavascript(
                 "window.dispatchEvent(new CustomEvent(${JSONObject.quote(olay)},{detail:$detay}));",
                 null,
@@ -523,7 +673,7 @@ class AnaEtkinlik : ComponentActivity() {
         }
     }
 
-    /** Belge başında çalışan, yalnız kayıtlı kökte etkin küçük betik: window.TaaAndroid'i tanımlar. */
+    /** Belge başında çalışan, yalnız yol listesindeki kökenlerde etkin küçük betik: window.TaaAndroid'i tanımlar. */
     private fun kopruBetigi(): String = """
         (function(){
           if (window.TaaAndroid) return;
@@ -532,11 +682,14 @@ class AnaEtkinlik : ComponentActivity() {
             var d; try { d = JSON.parse(e.data); } catch (x) { return; }
             if (d && typeof d.olay === 'string') window.dispatchEvent(new CustomEvent(d.olay, {detail: d.detay}));
           };
-          function gonder(istek){ y.postMessage(JSON.stringify({istek: istek})); }
+          function gonder(istek, a, b){ y.postMessage(JSON.stringify({istek: istek, a: a == null ? null : String(a), b: b == null ? null : String(b)})); }
           window.TaaAndroid = Object.freeze({
             karekodOku: function(){ gonder('$ISTEK_KAREKOD'); return true; },
             ayarlar: function(){ gonder('$ISTEK_AYARLAR'); },
-            surum: function(){ return '${BuildConfig.VERSION_NAME}'; }
+            surum: function(){ return '${BuildConfig.VERSION_NAME}'; },
+            yollar: function(){ return ${YolListesi.tirnakla(YolListesi.json(yollar))}; },
+            gunlukYaz: function(olay, ayrinti){ gonder('$ISTEK_GUNLUK_YAZ', olay, ayrinti); },
+            gunlukOku: function(gun){ gonder('$ISTEK_GUNLUK_OKU', gun); }
           });
         })();
     """.trimIndent()
@@ -547,7 +700,7 @@ class AnaEtkinlik : ComponentActivity() {
         if (isFinishing) return
         AlertDialog.Builder(this)
             .setTitle(R.string.ayarlar_baslik)
-            .setMessage("Yönetici içindir: mağaza sunucusunun adresini değiştirir.")
+            .setMessage("Yönetici içindir: merkez sunucu ve şube bilgisayarı adreslerini değiştirir.")
             .setPositiveButton("Aç") { _, _ -> kurulumAc(ilk = false) }
             .setNegativeButton(R.string.vazgec, null)
             .show()
@@ -595,6 +748,8 @@ class AnaEtkinlik : ComponentActivity() {
     companion object {
         const val ISTEK_KAREKOD = "karekod"
         const val ISTEK_AYARLAR = "ayarlar"
+        const val ISTEK_GUNLUK_YAZ = "gunluk-yaz"
+        const val ISTEK_GUNLUK_OKU = "gunluk-oku"
         private const val YEREL_NESNE = "TaaYerel"
         private const val DURUM_WEB = "web"
         private const val DURUM_KOK = "kok"

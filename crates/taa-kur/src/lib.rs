@@ -13,6 +13,9 @@ pub mod kayit;
 pub mod paket;
 pub mod pencere_model;
 pub mod pencere_tema;
+// Şube bilgisayarı kurulum profili: taa-yazdir + taa-sube-dugum, yol listesi, günlük klasörü, açılış görevi.
+// [Claude Fable 5.2 #taa-web-W2-kurulum 2026-11-27]
+pub mod sube_pc;
 mod veri;
 #[cfg(windows)]
 pub mod win;
@@ -25,6 +28,8 @@ pub mod zipac;
 mod testler;
 #[cfg(test)]
 mod testler_imza;
+#[cfg(test)]
+mod testler_sube_pc;
 #[cfg(test)]
 mod testler_zip;
 

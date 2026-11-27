@@ -6,6 +6,9 @@
 //! Etkileşimli kurulum Windows'ta kendi yerel penceresinde yürür (Win32 + GDI; tarayıcı ya da HTTP YOK):
 //! aşamalar, program adımları, bekleme kartları ve şube için adım adım ayar direktifleri (docs/KURULUM-EKRANI.md).
 //! `--sessiz` ve `--arayuzsuz` iken pencere açılmaz; seçimler konsolda sorulur (sessizde hiç sorulmaz).
+//! Şube rolünde bu PC şube bilgisayarı yapılır (`--sube-pc evet|hayir`; sessizde evet): `taa-kur sube-pc kur` taa-yazdir ve
+//! taa-sube-dugum için yol listesini, günlük klasörünü ve açılış görevini kurar (`--merkez`, `--sube-adres`, `--dugum-port`;
+//! `--sube-lan evet` düğümü telefonlara açar, varsayılan kapalı). Çatı şubeye kurulmaz.
 mod direktif;
 // Ekran modellerinin bir kısmını yalnız yerel pencere (Windows) kullanır; Linux'ta testli saf mantık olarak derlenir.
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -24,6 +27,8 @@ mod pencere;
 #[cfg_attr(not(windows), allow(dead_code))]
 mod secim;
 mod subeler;
+// Şube bilgisayarı profili: taa-yazdir + taa-sube-dugum (taa-kur sube-pc). [Claude Fable 5.2 #taa-web-W2-kurulum 2026-11-27]
+mod sube_pc;
 // Pencerenin saf yerleşim / durum hesapları (tema, cetvel, yükleme, tanıtım); Linux'ta birim testli.
 #[cfg_attr(not(windows), allow(dead_code))]
 mod yerlesim;
@@ -265,13 +270,15 @@ fn sube_sec(a: &[String], hedef: &Path, sessiz: bool, ekran: &Ekran) {
 /// rol-özeldir: yalnız o rollerde (kendiliğinden) kurulur, başka rolde listede görünmez.
 fn programlari_sec(a: &[String], hedef: &Path, rol: &str, sessiz: bool, ekran: &Ekran) {
     let Some(k) = katalog(hedef) else {
-        if let Some(l) = arg(a, "--programlar") { programlari_kur(hedef, &l.split(',').map(str::trim).filter(|s| !s.is_empty()).map(str::to_string).collect::<Vec<_>>(), ekran); }
+        if let Some(l) = arg(a, "--programlar") { programlari_kur(hedef, &l.split(',').map(str::trim).filter(|s| !s.is_empty()).filter(|s| !(rol == "sube" && sube_pc::cati_paketi(s))).map(str::to_string).collect::<Vec<_>>(), ekran); }
         else if !sessiz {
             println!("\nProgram listesi şimdi alınamadı (internet ya da yayın kaynağı). Sonra TAA Kur penceresinden kurabilirsiniz.");
             ekran.g(|d| d.asama(Asama::Secim, "Program listesi alınamadı; programları sonra TAA Kur'dan kurabilirsiniz"));
         }
         return;
     };
+    // Çatı şubeye kurulmaz (Yusuf 2026-11-27): şube rolünde Çatı paketleri listeden çıkar, zorunlu da sayılmaz.
+    let k: Vec<Satir> = k.into_iter().filter(|s| !(rol == "sube" && sube_pc::cati_paketi(&s.ad))).collect();
     let zorunlu: Vec<&Satir> = k.iter().filter(|s| s.zorunlu.iter().any(|z| z == rol)).collect();
     if !zorunlu.is_empty() {
         println!("\nBu PC ({rol}) için zorunlu paketler kurulacak:");
@@ -281,7 +288,8 @@ fn programlari_sec(a: &[String], hedef: &Path, rol: &str, sessiz: bool, ekran: &
     if a.iter().any(|x| x == "--programsiz") { return; }
     if let Some(l) = arg(a, "--programlar") {
         let mut plan = vec![];
-        for ad in l.split(',').map(str::trim).filter(|s| !s.is_empty()) { if !zorunlu.iter().any(|z| z.ad == ad) { if k.iter().any(|s| s.ad == ad && !s.zorunlu.is_empty()) { eprintln!("UYARI: {ad} yalnız {} rolünde kurulur; atlandı.", k.iter().find(|s| s.ad == ad).map(|s| s.zorunlu.join("/")).unwrap_or_default()); } else { plan.push(ad.to_string()); } } }
+        for ad in l.split(',').map(str::trim).filter(|s| !s.is_empty()) { if rol == "sube" && sube_pc::cati_paketi(ad) { eprintln!("UYARI: {ad} şube bilgisayarına kurulmaz (Çatı yalnız yönetici içindir; mağaza müdürü tarayıcıdan girer); atlandı."); continue; }
+            if !zorunlu.iter().any(|z| z.ad == ad) { if k.iter().any(|s| s.ad == ad && !s.zorunlu.is_empty()) { eprintln!("UYARI: {ad} yalnız {} rolünde kurulur; atlandı.", k.iter().find(|s| s.ad == ad).map(|s| s.zorunlu.join("/")).unwrap_or_default()); } else { plan.push(ad.to_string()); } } }
         programlari_kur(hedef, &plan, ekran);
         return;
     }
@@ -315,7 +323,7 @@ fn tailscale_kurulu(ekran: &Ekran) -> bool {
 }
 
 /// Bilinenleri (rol.txt, sube.txt, kur.toml, kopyalanan yan dosyalar, kurulanlar) toplayıp adımları ekrana yazar.
-fn direktifleri_guncelle(hedef: &Path, oto: &direktif::Otomatik, ekran: &Ekran) {
+fn direktifleri_guncelle(hedef: &Path, oto: &direktif::Otomatik, sube_pc: &sube_pc::SubePc, ekran: &Ekran) {
     let sube = satir_oku(&hedef.join("sube.txt")).map(|k| {
         let ad = subeler::bul(&subeler::gomulu(), &k).map(|s| s.ad.clone()).unwrap_or_else(|| k.clone());
         (k, ad)
@@ -330,6 +338,7 @@ fn direktifleri_guncelle(hedef: &Path, oto: &direktif::Otomatik, ekran: &Ekran) 
         tailscale_kurulu: tailscale_kurulu(ekran),
         hatali: ekran.g(|d| d.hatalilar()).unwrap_or_default(),
         kuruluyor: ekran.g(|d| d.asama != Asama::Bitti).unwrap_or(false),
+        sube_pc: sube_pc.clone(),
     };
     let v = direktif::uret(&g);
     ekran.p(|d| d.direktifler = v);
@@ -343,6 +352,46 @@ fn direktifleri_yaz(ekran: &Ekran) {
         let d = match x.durum { direktif::Durum::Yapildi => "tamam", direktif::Durum::Yapilacak => "yapılacak", direktif::Durum::Bilgi => "bilgi" };
         println!("  {}. [{d}] {}: {}", i + 1, x.baslik, x.ayrinti);
     }
+}
+
+/// Şube bilgisayarı profili: şube rolünde bu PC şubenin sunucusu gibi çalışsın mı? `--sube-pc evet|hayir`, kayıtlı
+/// sube-pc.txt, yoksa seçim (sessizde evet). Evetse kurulan `taa-kur sube-pc kur` çalıştırılır: taa-yazdir ve
+/// taa-sube-dugum için yol listesi (merkez → şube → yerel), günlük klasörü, açılış görevi; hizmetler başlatılır.
+fn sube_pc_kur(a: &[String], hedef: &Path, sessiz: bool, ekran: &Ekran) -> sube_pc::SubePc {
+    let kayit = hedef.join(sube_pc::SECIM_DOSYASI);
+    let istenen = match arg(a, "--sube-pc") {
+        Some(d) => match sube_pc::secim_coz(&d) {
+            Some(s) => s,
+            None => { eprintln!("UYARI: --sube-pc evet ya da hayir olmalı ('{d}'); evet sayıldı."); true }
+        },
+        None => match (satir_oku(&kayit).and_then(|k| sube_pc::secim_coz(&k)), sessiz) {
+            (Some(s), _) => s,
+            (None, true) => true,
+            (None, false) => {
+                let s = Secim::tek("Bu PC şube bilgisayarı olsun mu?", "Şube bilgisayarı şubenin sunucusu gibi çalışır: cihazlar merkeze ulaşamayınca ona yazar, o da her kaydı merkeze gönderir. \
+                    Yazdırma köprüsü (taa-yazdir) ve şube düğümü (taa-sube-dugum) kurulur, Windows açılışında kendiliğinden başlar. Şubede tek bir PC seçilir.", vec![
+                    Secenek::yeni("Evet, şube bilgisayarı", "Yazdırma köprüsü ve şube düğümü bu PC'de çalışır (çoğu şubede tek PC budur)."),
+                    Secenek::yeni("Hayır", "Bu PC yalnız program kullanır; şubede başka bir PC şube bilgisayarıdır."),
+                ], 0).dugmeler("Devam", "Hayır");
+                ekran.sec(s) == Some(vec![0])
+            }
+        },
+    };
+    if !kayit.exists() { let _ = fs::write(&kayit, if istenen { "evet\n" } else { "hayir\n" }); }
+    if !istenen { println!("Bu PC şube bilgisayarı yapılmadı (sonra: taa-kur sube-pc kur)."); return sube_pc::SubePc::Istenmedi; }
+    ekran.g(|d| d.asama(Asama::Programlar, "Şube bilgisayarı: yazdırma köprüsü ve şube düğümü kuruluyor"));
+    let argumanlar = sube_pc::komut_argumanlari(arg(a, "--merkez").as_deref(), arg(a, "--sube-adres").as_deref(), arg(a, "--dugum-port").as_deref(),
+        arg(a, "--sube-lan").and_then(|d| sube_pc::secim_coz(&d)).unwrap_or(false));
+    let sonuc = sube_pc::kur(hedef, &veri_koku(hedef), &argumanlar);
+    match &sonuc {
+        sube_pc::SubePc::Kuruldu { yol_sirasi, uyarilar } => {
+            println!("Şube bilgisayarı kuruldu. Yol sırası: {yol_sirasi}");
+            for u in uyarilar { println!("UYARI: {u}"); }
+        }
+        sube_pc::SubePc::Olmadi(m) => eprintln!("UYARI: şube bilgisayarı profili kurulamadı: {m} Sonra: taa-kur sube-pc kur"),
+        _ => {}
+    }
+    sonuc
 }
 
 /// Kurulumu durduran hata: konsola yazar; pencerede hata kutusu gösterilir ve Bitir beklenir.
@@ -416,15 +465,18 @@ fn kur(a: &[String], hedef: &Path, ekran: &Ekran) -> i32 {
     // Otomatik ayarlar: kurulum programının yanındaki yardımcı dosyalar (var olan ezilmez).
     let veri = veri_koku(hedef);
     let oto = direktif::yan_dosyalari_kopyala(yan_klasor().as_deref(), hedef, &veri);
-    direktifleri_guncelle(hedef, &oto, ekran);
+    let mut sp = sube_pc::SubePc::Sorulmadi;
+    direktifleri_guncelle(hedef, &oto, &sp, ekran);
     ekran.g(|d| d.asama(Asama::Secim, if onceki { "Önceki kurulum bulundu: eksikler tamamlanıyor" } else { "Rol ve şube seçimi" }));
     let rol = rol_sec(a, hedef, sessiz, ekran);
-    direktifleri_guncelle(hedef, &oto, ekran);
+    direktifleri_guncelle(hedef, &oto, &sp, ekran);
     if rol == "sube" { sube_sec(a, hedef, sessiz, ekran); }
-    direktifleri_guncelle(hedef, &oto, ekran);
+    direktifleri_guncelle(hedef, &oto, &sp, ekran);
     programlari_sec(a, hedef, &rol, sessiz, ekran);
+    // Şube bilgisayarı profili programlardan sonra: ikililer paketle (taa-guncelle) gelmiş de olabilir.
+    if rol == "sube" { sp = sube_pc_kur(a, hedef, sessiz, ekran); }
     ekran.g(|d| d.asama(Asama::Bitti, "Kurulum bitti"));
-    direktifleri_guncelle(hedef, &oto, ekran);
+    direktifleri_guncelle(hedef, &oto, &sp, ekran);
     direktifleri_yaz(ekran);
     if ekran.pencere {
         // Bitti ekranı: hata varsa Yeniden dene; Bitir ya da "TAA Kur'u aç" ile kapanır.
@@ -435,7 +487,7 @@ fn kur(a: &[String], hedef: &Path, ekran: &Ekran) -> i32 {
                     if ekran.g(|d| { let t = d.yeniden_dene(&ad); if t { d.komut_bekleniyor = false; d.asama(Asama::Programlar, "Yeniden deneniyor"); } t }).unwrap_or(false) {
                         program_kur(hedef, &ad, ekran);
                         ekran.g(|d| d.asama(Asama::Bitti, "Kurulum bitti"));
-                        direktifleri_guncelle(hedef, &oto, ekran);
+                        direktifleri_guncelle(hedef, &oto, &sp, ekran);
                     }
                 }
                 Komut::TaaKurAc => { taa_kur_ac(hedef); break; }
@@ -490,6 +542,8 @@ fn kaldir(a: &[String]) -> i32 {
     println!("{AD} kaldırılacak: {}", hedef.display());
     println!("Kurulu TAA programlarına (depo\\), verilerine, kur.toml ve anahtarlara dokunulmaz; yalnız kurucu dosyaları silinir.");
     if !sor("Kaldırılsın mı?", sessiz) { println!("Vazgeçildi."); return 0; }
+    // Şube bilgisayarı açılış kaydı önce kaldırılır (taa-kur silinmeden); ayar, günlük ve veriler yerinde kalır.
+    sube_pc::acilis_kaydini_kaldir(&hedef);
     let kendi = std::env::current_exe().ok().and_then(|e| e.file_name().map(|n| n.to_string_lossy().to_lowercase()));
     let mut hata = false;
     let mut kisayollar = vec![];

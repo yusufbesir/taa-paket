@@ -1,0 +1,8 @@
+/* Sahip: Yusuf. yazan: [Claude Fable 5.2 #taa-web-W3-tutanak 2026-11-27] */
+/* Tutaa modülüne özel biçem; ortak biçem ../ortak/modul.css. Renkler kabuğun --tk-* değişkenlerinden gelir. */
+.tutanak-imza-tuvali{display:block;width:100%;max-width:600px;aspect-ratio:3/1;border:var(--tk-kenar,1px) dashed var(--tk-line,#777);border-radius:var(--tk-r,8px);background:#fff;touch-action:none;cursor:crosshair}
+.tutanak-tablo-sarmal{overflow-x:auto}
+.tutanak-tablo-sarmal input,.tutanak-tablo-sarmal select{min-height:var(--tk-hedef,44px);min-width:90px;width:100%;padding:6px 8px;border:var(--tk-kenar,1px) solid var(--tk-line,#777);border-radius:var(--tk-r,8px);background:var(--tk-bg,#fff);color:inherit;font:inherit}
+.tutanak-secenekler{display:grid;gap:4px;border:0;margin:0;padding:0}
+.tutanak-secenekler label{display:flex;gap:8px;align-items:center;min-height:var(--tk-hedef,44px)}
+.tutanak-secenekler input{width:20px;height:20px}

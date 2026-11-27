@@ -185,6 +185,31 @@ mobil/terzi-takip-android/
   app/src/main/res/       Koçan teması, Yaka vektörleri, ağ güvenliği, dosya yolları
 ```
 
+## Yol listesi, TAA Web kabuğu ve cihaz günlüğü (2026-11-27)
+
+Yusuf'un 11-27 kuralı: çevrimiçi cihaz **doğrudan merkeze** gönderir; yol sırası merkez → şube bilgisayarı → cihazın
+kendi kutusu. Uygulama bu tasarıma taşındı (kurulum exe'siyle aynı yol listesi; bkz. `docs/TAA-KUR-KURULUM.md`).
+
+- **Ayar:** tek "sunucu adresi" yerine iki alan: **Merkez adresi** ve **Şube bilgisayarı adresi** (en az biri gerekir).
+  Eski sürümden kalan tek adres silinmez; yalnız şube alanını önceden doldurur. Karekod okutma eskisi gibi çalışır.
+- **Yol listesi** (`YolListesi.kt`): `[{ad:'merkez',url},{ad:'sube',url},{ad:'yerel'}]`. Sayfa `TaaAndroid.yollar()` ile
+  JSON olarak okur.
+- **Kabuk:** WebView artık `telefon.html` yerine TAA Web kabuğunu açar: `<merkez>/kabuk/#/terzitakip`. Ana çerçeve
+  yüklenemezse sıradaki yola (şube bilgisayarı) geçilir; o da olmazsa "ulaşılamıyor" ekranı gelir.
+- **HTTP:** merkez `https`, şube bilgisayarı yerel ağda `http` ise karışık içerik yalnız bu durumda açılır ve istekler
+  kesilerek denetlenir: `http` yalnız kayıtlı şube köküne ve yerel/özel IP'ye gider; başka her `http` isteği reddedilir.
+- **Cihaz günlüğü** (`Gunluk.kt`): `files/gunluk/YYYY-AA-GG.jsonl`, yalnız ekleme; uygulama **hiç silmez**. Köprü:
+  `TaaAndroid.gunlukYaz(tur, veriJson)`, `TaaAndroid.gunlukOku(gun)` (yanıt `taa-gunluk` olayıyla gelir). Uygulama kendi
+  olaylarını da (açılış, yol değişimi, yükleme hatası) yazar. Merkeze kopyalama kabuğun işidir; uygulama yalnız saklar ve okutur.
+
+**Sınama:** `sinama/calistir.sh` (Gradle'a bağlı değil; Gradle'ın gömülü Kotlin derleyicisiyle JVM'de koşar) `YolListesi`
+ve günlük satırı için 10 sınama içerir; bu ortamda 10/10 geçti. **APK derlemesi ve telefonda deneme yapılmadı** (Android SDK yok);
+Android'e bağlı dosyalar (`AnaEtkinlik`, `KurulumEtkinligi`, `Gunluk` dosya G/Ç) yalnız okunarak ve sözdizimi denetimiyle doğrulandı.
+
+Açık noktalar: şube düğümü `/kabuk/` sunmadığı için merkez yokken kabuk şube bilgisayarından açılamaz (yalnız önbellekteki
+kabuk çalışır); kabuk çekirdeği `TaaAndroid.yollar()` ve `gunlukOku`'yu henüz kullanmıyor; düğüm düz `http` ve kimlik
+doğrulamasız olduğundan şube yolu gerçek şubede henüz açılmamalı.
+
 ## Riskler ve denenmemiş noktalar
 
 Bu proje Android SDK'sı indirilemeyen bir ortamda yazıldı; **henüz hiç derlenmedi ve telefonda denenmedi.**

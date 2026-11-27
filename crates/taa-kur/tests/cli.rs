@@ -383,3 +383,152 @@ fn dogrula_kurulmamis_paket_klasor_ve_zip() {
     // var olmayan yol: kurulu paket adı sayılır -> 4
     assert_eq!(kod(&o.calistir(&["dogrula", "taa-yok"])), 4);
 }
+
+// ---- Şube bilgisayarı profili (`taa-kur sube-pc`). [Claude Fable 5.2 #taa-web-W2-kurulum 2026-11-27]
+
+fn ikili_adi(ad: &str) -> String {
+    if cfg!(windows) {
+        format!("{ad}.exe")
+    } else {
+        ad.to_string()
+    }
+}
+
+#[test]
+fn sube_pc_komutu() {
+    let o = Ortam::yeni();
+    let veri = o.taban.join("veri");
+    fs::create_dir_all(&o.kok).unwrap();
+    let calistir = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_taa-kur"))
+            .args(args)
+            .env("TAA_KOK", &o.kok)
+            .env("TAA_VERI_KOK", &veri)
+            .output()
+            .unwrap()
+    };
+    // İkililer yokken: çıkış 4, hiçbir şey yazılmaz.
+    let c = calistir(&["sube-pc", "kur", "--baslatma", "--gorevsiz", "--duvarsiz"]);
+    assert_eq!(kod(&c), 4, "{}", hata(&c));
+    assert!(hata(&c).contains("taa-sube-dugum"));
+    assert!(!veri.join("sube-pc").exists());
+    // Alt komut ve seçenek hataları: çıkış 2.
+    assert_eq!(kod(&calistir(&["sube-pc"])), 2);
+    assert_eq!(kod(&calistir(&["sube-pc", "sil"])), 2);
+    assert_eq!(kod(&calistir(&["sube-pc", "kur", "--port", "abc"])), 2);
+    assert_eq!(
+        kod(&calistir(&["sube-pc", "durum"])),
+        4,
+        "profil yokken durum"
+    );
+
+    for ad in ["taa-yazdir", "taa-sube-dugum"] {
+        fs::write(o.kok.join(ikili_adi(ad)), b"").unwrap();
+    }
+    let c = calistir(&[
+        "sube-pc",
+        "kur",
+        "--merkez",
+        "https://merkez.ornek.com",
+        "--sube-adres",
+        "http://192.168.1.20:8788",
+        "--baslatma",
+        "--gorevsiz",
+        "--duvarsiz",
+        "--json",
+    ]);
+    assert_eq!(kod(&c), 0, "{}", hata(&c));
+    let v: serde_json::Value = serde_json::from_str(&cikti(&c)).unwrap();
+    assert_eq!(v["yollar"][0]["ad"], "merkez");
+    assert_eq!(v["yollar"][1]["url"], "http://192.168.1.20:8788");
+    assert_eq!(v["yollar"][2]["ad"], "yerel");
+    assert_eq!(v["gorev"]["durum"], "atlandi");
+    assert!(veri.join("gunluk").is_dir());
+    assert!(veri.join("sube-pc").join("istemci-yollari.json").is_file());
+    assert!(veri.join("yazdir").join("ayar.json").is_file());
+    assert!(o.kok.join("sube-pc.json").is_file());
+
+    // İnsan okur çıktı ve durum.
+    let c = calistir(&[
+        "sube-pc",
+        "kur",
+        "--merkez",
+        "https://merkez.ornek.com",
+        "--sube-adres",
+        "http://192.168.1.20:8788",
+        "--baslatma",
+        "--gorevsiz",
+        "--duvarsiz",
+    ]);
+    assert_eq!(kod(&c), 0, "{}", hata(&c));
+    assert!(cikti(&c).contains(
+        "Yol sırası: merkez (https://merkez.ornek.com) → sube (http://192.168.1.20:8788) → yerel"
+    ));
+    let c = calistir(&["sube-pc", "durum", "--json"]);
+    assert_eq!(kod(&c), 0, "{}", hata(&c));
+    let v: serde_json::Value = serde_json::from_str(&cikti(&c)).unwrap();
+    assert_eq!(v["eksik"], serde_json::json!([]));
+    assert_eq!(v["gunluk_var"], true);
+}
+
+/// Gerçek süreç başlatma (yalnız Unix'te: ikili yerine küçük bir kabuk betiği konur). Çıktı günlüğe eklenir.
+#[cfg(unix)]
+#[test]
+fn sube_pc_baslat_gercek_surec() {
+    use std::os::unix::fs::PermissionsExt;
+    let o = Ortam::yeni();
+    let veri = o.taban.join("veri");
+    fs::create_dir_all(&o.kok).unwrap();
+    let betik = o.kok.join("taa-sube-dugum");
+    fs::write(&betik, "#!/bin/sh\necho \"dugum basladi: $*\"\n").unwrap();
+    fs::set_permissions(&betik, fs::Permissions::from_mode(0o755)).unwrap();
+    let calistir = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_taa-kur"))
+            .args(args)
+            .env("TAA_KOK", &o.kok)
+            .env("TAA_VERI_KOK", &veri)
+            .output()
+            .unwrap()
+    };
+    // Kapı 1: hiçbir şey dinlemez, "zaten çalışıyor" sayılmaz. Kullanılmayan yüksek bir kapı seçilir.
+    let c = calistir(&[
+        "sube-pc",
+        "kur",
+        "--sube-adres",
+        "http://192.168.1.20:18788",
+        "--port",
+        "18788",
+        "--gorevsiz",
+        "--duvarsiz",
+        "--json",
+    ]);
+    assert_eq!(kod(&c), 0, "{}", hata(&c));
+    let v: serde_json::Value = serde_json::from_str(&cikti(&c)).unwrap();
+    assert_eq!(v["hizmetler"][0]["durum"], "baslatildi", "{v}");
+    let gunluk = veri
+        .join("sube-pc")
+        .join("cikti")
+        .join("taa-sube-dugum.log");
+    let mut metin = String::new();
+    for _ in 0..50 {
+        metin = fs::read_to_string(&gunluk).unwrap_or_default();
+        if metin.contains("dugum basladi") {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert!(metin.contains("dugum basladi: calis --kok"), "{metin}");
+    // 192.168.1.20 bu makinede yok: --lan olarak verilmez (verilseydi düğüm hiç açılamazdı).
+    assert!(metin.contains("--port 18788"), "{metin}");
+    assert!(!metin.contains("--lan 192.168.1.20"), "{metin}");
+    // İkinci başlatma çıktıyı ezmez, ekler.
+    assert_eq!(kod(&calistir(&["sube-pc", "baslat"])), 0);
+    for _ in 0..50 {
+        metin = fs::read_to_string(&gunluk).unwrap_or_default();
+        if metin.matches("dugum basladi").count() == 2 {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert_eq!(metin.matches("dugum basladi").count(), 2, "{metin}");
+}

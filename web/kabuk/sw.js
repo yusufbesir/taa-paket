@@ -4,7 +4,7 @@
 // giden kutusundan gider, önbellekten yanıtlanmaz.
 // Kabuk dosyası eklenince/çıkınca KABUK listesini ve SURUM'u güncelleyin (web/test/kabuk.test.js denetler).
 
-const SURUM = 'taa-web-v1';
+const SURUM = 'taa-web-v2'; // v2 (2026-11-27): cekirdek/yol.js eklendi, yol ayarı
 const KABUK = [
   './',
   './index.html',
@@ -18,6 +18,7 @@ const KABUK = [
   './simge-192.png',
   './simge-512.png',
   '../cekirdek/taa-cekirdek.js',
+  '../cekirdek/yol.js',
 ];
 const WEB_KOKU = new URL('../', self.location.href); // .../web/
 

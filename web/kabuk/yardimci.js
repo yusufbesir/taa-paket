@@ -1,6 +1,8 @@
 // Sahip: Yusuf. yazan: [Claude Fable 5.2 #taa-web-W0-kabuk 2026-11-27]
 // Kabuğun DOM'a dokunmayan saf işlevleri (Node'da test edilir: web/test/kabuk.test.js).
 
+import { yollariCoz, adresDuzelt, yolAdi, SUBE_KAPISI } from '../cekirdek/yol.js';
+
 export const YETKI_CEVRIMDISI_GUN = 7; // S3 kuralı: yetki belgesi 7 gün çevrimdışı geçerli
 const GUN_MS = 24 * 60 * 60 * 1000;
 
@@ -140,4 +142,92 @@ export function modulDosyalari(liste) {
     }
   }
   return [...new Set(yollar)];
+}
+
+// ------------------------------------------------------------ bağlantı yolları ayarı
+// [Claude Fable 5.2 #taa-web-W2-yol 2026-11-27] Yol listesi (merkez → şube → yerel) bu cihazın localStorage'ında
+// `[{ad:'merkez',url},{ad:'sube',url[,sube]},{ad:'yerel'}]` biçiminde durur; kurallar ../cekirdek/yol.js içindedir.
+
+/**
+ * Saklanan ayar metnini yol listesine çevirir. Bozuk ya da boş ayar: yalnız merkez (kabuğun kökeni) + yerel.
+ * Merkez her zaman kabuğun kendi kökenidir (sayfanın güvenlik politikası başka merkeze izin vermez).
+ * @returns {{yollar: Array<{ad: string, url?: string, sube?: string}>, hatalar: string[]}}
+ */
+export function yolAyariOku(metin, koken) {
+  let ham = null;
+  const hatalar = [];
+  if (typeof metin === 'string' && metin.trim() !== '') {
+    try {
+      ham = JSON.parse(metin);
+    } catch {
+      hatalar.push('Saklanan yol ayarı okunamadı; yalnız merkez sunucu kullanılacak.');
+    }
+  }
+  const liste = Array.isArray(ham) ? ham.filter((y) => y?.ad !== 'merkez') : ham;
+  const sonuc = yollariCoz(liste, { merkez: koken });
+  return { yollar: sonuc.yollar, hatalar: [...hatalar, ...sonuc.hatalar] };
+}
+
+/**
+ * Ayar formundaki değerlerden saklanacak yol listesini kurar.
+ * Şube adresi: şema yazılmamışsa `http://`, kapı yazılmamışsa 8788 eklenir. Kapı 8788 olmak zorundadır
+ * (sayfanın güvenlik politikası yalnız bu kapıya bağlanmaya izin verir; taa-sube-dugum varsayılanı).
+ * @returns {{ayar: Array|null, hatalar: string[]}} hata varsa `ayar` null
+ */
+export function yolAyariKur({ subeAdresi = '', subeKodu = '' } = {}, koken) {
+  const merkez = adresDuzelt(koken);
+  if (!merkez) return { ayar: null, hatalar: ['Merkez sunucu adresi belirlenemedi.'] };
+  const ayar = [{ ad: 'merkez', url: merkez }];
+  let ham = String(subeAdresi ?? '').trim();
+  const kod = String(subeKodu ?? '').trim();
+  if (ham === '') {
+    if (kod !== '') return { ayar: null, hatalar: ['Şube kodu yazıldı ama şube bilgisayarı adresi boş.'] };
+    return { ayar: [...ayar, { ad: 'yerel' }], hatalar: [] };
+  }
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(ham)) ham = `http://${ham}`;
+  let url = adresDuzelt(ham);
+  if (!url) {
+    return { ayar: null, hatalar: ['Şube bilgisayarı adresi "http://192.168.1.20:8788" biçiminde olmalı (yol ya da boşluk olmadan).'] };
+  }
+  const kapili = /^https?:\/\/(?:\[[^\]]+\]|[^:/]+):\d+$/.test(url);
+  if (!kapili) url = `${url}:${SUBE_KAPISI}`;
+  if (!url.endsWith(`:${SUBE_KAPISI}`)) {
+    return { ayar: null, hatalar: [`Şube bilgisayarı ${SUBE_KAPISI} kapısında olmalı (ör. http://192.168.1.20:${SUBE_KAPISI}).`] };
+  }
+  if (url === merkez) return { ayar: null, hatalar: ['Şube bilgisayarı adresi merkez sunucuyla aynı olamaz.'] };
+  const sube = { ad: 'sube', url };
+  if (kod !== '') sube.sube = kod;
+  const denetim = yollariCoz([...ayar, sube, { ad: 'yerel' }]);
+  if (denetim.hatalar.length > 0) return { ayar: null, hatalar: denetim.hatalar };
+  return { ayar: denetim.yollar, hatalar: [] };
+}
+
+/** Yol sırasını kişiye gösterilecek satırlara çevirir (şube tanımlı değilse de satırı vardır). */
+export function yolSatirlari(yollar) {
+  const bul = (ad) => (yollar ?? []).find((y) => y.ad === ad);
+  const merkez = bul('merkez');
+  const sube = bul('sube');
+  const buyuk = (ad) => {
+    const m = yolAdi(ad);
+    return m.slice(0, 1).toLocaleUpperCase('tr-TR') + m.slice(1);
+  };
+  return [
+    { ad: 'merkez', metin: `${buyuk('merkez')}: ${merkez?.url ?? 'tanımlı değil'}`, var: Boolean(merkez) },
+    {
+      ad: 'sube',
+      metin: sube ? `${buyuk('sube')}: ${sube.url}${sube.sube ? ` (şube ${sube.sube})` : ''}` : `${buyuk('sube')}: tanımlı değil`,
+      var: Boolean(sube),
+    },
+    { ad: 'yerel', metin: `${buyuk('yerel')}: kayıt burada bekler`, var: true },
+  ];
+}
+
+/** Giden kutusundaki "son yol" notu; söylenecek bir şey yoksa boş metin. */
+export function yolNotu({ sonYol = null, subeyeTeslim = 0 } = {}) {
+  const parcalar = [];
+  if (sonYol === 'sube') parcalar.push('Son gönderim şube bilgisayarı üzerinden yapıldı');
+  else if (sonYol === 'yerel') parcalar.push('Son denemede hiçbir yola ulaşılamadı; kayıtlar bu cihazda bekliyor');
+  else if (sonYol === 'merkez') parcalar.push('Son gönderim doğrudan merkez sunucuya yapıldı');
+  if (subeyeTeslim > 0) parcalar.push(`Şube bilgisayarına teslim edilen ${subeyeTeslim} kayıt (merkeze o iletir)`);
+  return parcalar.join(' · ');
 }

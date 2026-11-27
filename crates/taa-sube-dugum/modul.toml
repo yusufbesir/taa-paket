@@ -1,0 +1,15 @@
+# Sahip: Yusuf. yazan: [Claude Fable 5.2 #taa-web-W2-sube-dugum 2026-11-27]
+# taa-sube-dugum modül tanımı (bkz. docs/SUBE-DUGUMU.md "Uygulama"). Veri: <veri kökü>/dugum/, <veri kökü>/gunluk/,
+# <veri kökü>/kuyruk/sube-dugum/ ve <veri kökü>/kuyruk/sube-dugum-gunluk/. `dugum` ve `gunluk` alanları
+# docs/veri-sahipleri.toml'a eklenince veri_sahibi doldurulur (o dosya bu crate'in klasörü dışında; eklenmedi).
+ad = "taa-sube-dugum"
+surum = "0.1.0"
+arayuz = "1"
+gerektirir = { "taa-dosya" = "1", "taa-kuyruk" = "1", "taa-yol" = "1" }
+ozellikler = ["sube-dugum"]
+program = "ortak"
+sunar = ["dugum.yaz@1", "dugum.esitle@1", "dugum.durum@1"]
+ister = ["kuyruk.gonder@1", "yol.sec@1"]
+veri_sahibi = []
+veri_okur = []
+ayar_alani = "moduller.taa-sube-dugum"

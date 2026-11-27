@@ -184,6 +184,11 @@ a { color: var(--tk-ac); }
 .tema-secimi { border: var(--tk-kenar) solid var(--tk-line); border-radius: var(--tk-r); padding: 8px 12px; margin: 0; display: grid; gap: 2px; }
 .tema-secimi label { display: flex; align-items: center; gap: 10px; min-height: var(--tk-hedef); cursor: pointer; }
 .tema-secimi input { width: 20px; height: 20px; accent-color: var(--tk-ac); }
+/* [Claude Fable 5.2 #taa-web-W2-yol 2026-11-27] bağlantı yolları ayarı */
+.yol-ayari { border: var(--tk-kenar) solid var(--tk-line); border-radius: var(--tk-r); padding: 8px 12px; margin: 0; display: grid; gap: 8px; min-width: 0; }
+.yol-ayari p { margin: 0; }
+.yol-sirasi { margin: 0; padding-left: 22px; display: grid; gap: 2px; overflow-wrap: anywhere; }
+.yol-sirasi .yol-yok { color: var(--tk-mut); }
 
 .kayit-listesi { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .kayit-listesi li { padding: 8px 10px; border: var(--tk-kenar) solid var(--tk-line); border-radius: var(--tk-r); display: grid; gap: 2px; overflow-wrap: anywhere; }

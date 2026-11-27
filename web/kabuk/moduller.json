@@ -28,6 +28,19 @@
       ]
     },
     {
+      "ad": "tutanak",
+      "baslik": "Tutaa",
+      "aciklama": "Tutanak düzenleme, fotoğraftan tutanak, imza",
+      "dosyalar": [
+        "moduller/tutanak/index.js",
+        "moduller/tutanak/mantik.js",
+        "moduller/tutanak/tutanak.css",
+        "moduller/ortak/dom.js",
+        "moduller/ortak/bicim.js",
+        "moduller/ortak/modul.css"
+      ]
+    },
+    {
       "ad": "rehber",
       "baslik": "Rehber",
       "aciklama": "Şube ve kişi rehberi",

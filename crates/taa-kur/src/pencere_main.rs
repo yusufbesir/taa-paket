@@ -5,6 +5,11 @@
 #[cfg(windows)]
 fn main() -> std::process::ExitCode {
     taa_hata::kur_varsayilan("taa-kur", env!("CARGO_PKG_VERSION"));
+    // Açılış görevi (şube bilgisayarı profili): pencere açmadan taa-yazdir ve taa-sube-dugum'u başlatır.
+    // [Claude Fable 5.2 #taa-web-W2-kurulum 2026-11-27]
+    if std::env::args().any(|a| a == taa_kur::sube_pc::BASLAT_BAYRAGI) {
+        return std::process::ExitCode::from(taa_kur::sube_pc::acilista_baslat() as u8);
+    }
     std::process::ExitCode::from(taa_kur::win::calistir() as u8)
 }
 

@@ -5,23 +5,27 @@
     <string name="karekod_baslik">Karekod oku</string>
 
     <!-- Açılış hatası -->
-    <string name="hata_baslik">Mağaza sunucusuna ulaşılamıyor</string>
-    <string name="hata_aciklama">Telefon mağazanın Wi-Fi ağına bağlı mı, mağaza bilgisayarı açık mı? Kontrol edip yeniden deneyin.</string>
+    <string name="hata_baslik">Sunucuya ulaşılamıyor</string>
+    <string name="hata_aciklama">Merkeze de şube bilgisayarına da ulaşılamadı ve bu telefonda sayfa henüz saklı değil. İnternet ya da mağazanın Wi-Fi ağı açık mı, şube bilgisayarı açık mı? Kontrol edip yeniden deneyin.</string>
     <string name="yeniden_dene">Yeniden dene</string>
     <string name="hata_sertifika">Sunucunun güvenlik sertifikası doğrulanamadı.</string>
     <string name="hata_http">Sunucu %1$d hatası döndürdü.</string>
 
     <!-- Kurulum / ayarlar -->
-    <string name="kurulum_baslik">Mağaza sunucusu</string>
-    <string name="kurulum_aciklama">Mağaza bilgisayarında Terzi Takip → Telefonlar ekranındaki karekodu okutun. Sunucu adresi ve eşleştirme kodu kendiliğinden dolar.</string>
+    <string name="kurulum_baslik">Sunucu adresleri</string>
+    <string name="kurulum_aciklama">Telefon önce merkeze, ulaşamazsa şube bilgisayarına gönderir; ikisine de ulaşamazsa kayıt telefonda bekler. Adresleri yazın ya da karekodu okutun (adres ve varsa eşleştirme kodu kendiliğinden dolar).</string>
     <string name="karekodu_oku">Karekodu oku</string>
-    <string name="sunucu_adresi">Sunucu adresi</string>
-    <string name="sunucu_ipucu">https://magaza-pc.ornek.ts.net ya da http://192.168.1.20:8787</string>
+    <string name="merkez_adresi">Merkez sunucu adresi</string>
+    <string name="merkez_ipucu">https://sunucu.ornek.com</string>
+    <string name="sunucu_adresi">Şube bilgisayarı adresi</string>
+    <string name="sunucu_ipucu">http://192.168.1.20:8788</string>
+    <string name="adres_gerekli">Merkez sunucu ya da şube bilgisayarı adresinden en az birini yazın.</string>
+    <string name="adresler_ayni">Merkez ve şube bilgisayarı adresi aynı olamaz.</string>
     <string name="eslestirme_kodu">Eşleştirme kodu (isteğe bağlı)</string>
     <string name="kaydet_baglan">Kaydet ve bağlan</string>
     <string name="vazgec">Vazgeç</string>
     <string name="surum">Sürüm %1$s</string>
-    <string name="ayar_not">Adres değişirse bu telefon yeni sunucuyla yeniden eşleştirilir. Eski sunucuya gönderilmemiş taslaklar eski adreste bekler.</string>
+    <string name="ayar_not">Sıra sabittir: merkez, sonra şube bilgisayarı, sonra telefonun kendi kutusu. Merkez adresi değişirse gönderilmemiş kayıtlar eski adresin kaydında bekler; adres geri yazılınca yine görünür. Günlükler telefonda tutulur, silinmez.</string>
 
     <!-- Karekod -->
     <string name="karekod_ipucu">Karekodu çerçevenin içine tutun.</string>

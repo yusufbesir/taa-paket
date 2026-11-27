@@ -8,7 +8,7 @@ use std::path::Path;
 use std::process::ExitCode;
 use taa_kur::{Kur, KurHata, Sorun};
 
-const KULLANIM: &str = "Kullanım: taa-kur <liste|kur|kaldir|sec|geri-don|dogrula|tani|harici|rapor|cihaz|yol> [bağımsız değişkenler] [--json]. Öneri: `taa-kur yardim` komutları açıklar.";
+const KULLANIM: &str = "Kullanım: taa-kur <liste|kur|kaldir|sec|geri-don|dogrula|tani|harici|rapor|cihaz|yol|sube-pc> [bağımsız değişkenler] [--json]. Öneri: `taa-kur yardim` komutları açıklar.";
 
 const YARDIM: &str = "\
 taa-kur — TAA kurulum yöneticisi. Kök: TAA_KOK ortamı ya da ikilinin yanı; `tani` gösterir.
@@ -34,6 +34,14 @@ Komutlar:
   cihaz [--ad A] [--sunucu URL] [--sube K] [--sertifika pem]
                                      Bu PC'nin cihaz anahtarını üretir (varsa korur); --sunucu verilirse merkeze
                                      kaydeder (yönetici TAA Çatı'dan onaylar). Veri kökü: TAA_VERI_KOK / %APPDATA%\\TAA\\veri.
+  sube-pc kur [--merkez https://…] [--sube-adres http://IP:8788] [--port N] [--lan-ac] [--gorevsiz] [--baslatma] [--duvarsiz]
+                                     Şube bilgisayarı profili: taa-yazdir ve taa-sube-dugum için günlük klasörünü,
+                                     istemci yol listesini (merkez → şube → yerel) ve yazdırma kökenlerini kurar,
+                                     Windows açılış görevini kaydeder, hizmetleri başlatır. Sunucu rolünde çalışmaz.
+                                     --lan-ac: düğümü telefonlara (yerel ağa) açar ve güvenlik duvarı kuralını kurar;
+                                     verilmezse düğüm yalnız bu bilgisayardan ulaşılır (cihaz doğrulaması henüz yok).
+  sube-pc durum | baslat | gorev-kaldir
+                                     Durumu gösterir / hizmetleri başlatır / yalnız açılış kaydını kaldırır (veri silinmez).
   yardim | --help | -h               Bu metin.
 Her komut --json alır (makine okunur). Çıkış: 0 tamam, 2 doğrulama/kullanım, 3 çözüm yok, 4 yok, 5 bozuk, 6 kilitli, 1 diğer.
 Ayrıntı: docs/T1-TASARIM.md §1.4, docs/paket-zip.md, docs/T3-TASARIM.md.";
@@ -137,6 +145,92 @@ fn harici_yaz(r: &taa_kur::HariciRapor) {
         for u in &h.uyarilar {
             println!("Uyarı: {u}");
         }
+    }
+}
+
+/// `sube-pc` çıktısı (insan okur biçim).
+fn sube_pc_yaz(alt: &str, o: &Value) {
+    let m = |v: &Value| v.as_str().unwrap_or("-").to_string();
+    let yollar = |v: &Value| {
+        v.as_array()
+            .map(|l| {
+                l.iter()
+                    .map(|y| match y["url"].as_str() {
+                        Some(u) => format!("{} ({u})", m(&y["ad"])),
+                        None => m(&y["ad"]),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" → ")
+            })
+            .unwrap_or_else(|| "-".into())
+    };
+    let hizmetler = |v: &Value| {
+        for h in v.as_array().into_iter().flatten() {
+            let durum = match (h["durum"].as_str(), h["calisiyor"].as_bool()) {
+                (Some(d), _) => d.to_string(),
+                (None, Some(true)) => "çalışıyor".into(),
+                _ => "çalışmıyor".into(),
+            };
+            println!(
+                "Hizmet: {} (kapı {}) {durum}{}",
+                m(&h["ad"]),
+                h["port"],
+                h["ayrinti"]
+                    .as_str()
+                    .map(|a| format!(": {}", tek_satir(a)))
+                    .unwrap_or_default()
+            );
+        }
+    };
+    match alt {
+        "kur" => {
+            println!("Şube bilgisayarı profili kuruldu.");
+            println!("Yol sırası: {}", yollar(&o["yollar"]));
+            println!("Yol listesi: {}", m(&o["yol_dosyasi"]));
+            println!("Günlük klasörü: {}", m(&o["gunluk"]));
+            println!("Yazdırma ayarı: {}", m(&o["yazdir_ayar"]));
+            println!(
+                "Açılış kaydı: {}{}",
+                m(&o["gorev"]["durum"]),
+                o["gorev"]["tur"]
+                    .as_str()
+                    .map(|t| format!(" ({t})"))
+                    .unwrap_or_default()
+            );
+            println!(
+                "Güvenlik duvarı: {}{}",
+                m(&o["guvenlik_duvari"]["durum"]),
+                o["guvenlik_duvari"]["oneri"]
+                    .as_str()
+                    .map(|t| format!(". {t}"))
+                    .unwrap_or_default()
+            );
+            hizmetler(&o["hizmetler"]);
+            for u in o["uyarilar"].as_array().into_iter().flatten() {
+                println!("UYARI: {}", m(u));
+            }
+        }
+        "durum" => {
+            println!("Yol sırası: {}", yollar(&o["yollar"]));
+            println!("Açılış kaydı: {}", m(&o["acilis_kaydi"]));
+            println!(
+                "Günlük klasörü: {}",
+                if o["gunluk_var"].as_bool().unwrap_or(false) {
+                    "var"
+                } else {
+                    "yok"
+                }
+            );
+            hizmetler(&o["hizmetler"]);
+            for e in o["eksik"].as_array().into_iter().flatten() {
+                println!("Eksik ikili: {}", m(e));
+            }
+        }
+        "baslat" => hizmetler(&o["hizmetler"]),
+        _ => println!(
+            "Açılış kaydı kaldırıldı (görev: {}, Run kaydı: {}). Dosyalar ve veriler yerinde.",
+            o["gorev_kaldirildi"], o["run_kaydi_kaldirildi"]
+        ),
     }
 }
 
@@ -467,6 +561,74 @@ fn calistir(args: &[String], json: bool) -> Result<(), KurHata> {
                         }
                     );
                 }
+            }
+            Ok(())
+        }
+        "sube-pc" => {
+            use taa_kur::sube_pc::{GercekSistem, Secenek};
+            const ORNEK: &str = "Örnek: taa-kur sube-pc kur [--merkez https://…] [--sube-adres http://IP:8788] [--port N] [--gorevsiz] [--baslatma] [--duvarsiz] [--lan-ac] | durum | baslat | gorev-kaldir";
+            let alt = kalan
+                .first()
+                .map(String::as_str)
+                .ok_or_else(|| kullanim(&format!("sube-pc için alt komut gerekli. {ORNEK}")))?;
+            let kalan = &kalan[1..];
+            let kur = Kur::ortamdan()?;
+            let o = match alt {
+                "kur" => {
+                    let mut s = Secenek::default();
+                    let mut i = 0;
+                    while i < kalan.len() {
+                        let deger = |i: &mut usize, a: &str| -> Result<String, KurHata> {
+                            *i += 1;
+                            kalan
+                                .get(*i)
+                                .cloned()
+                                .ok_or_else(|| kullanim(&format!("{a} için değer eksik.")))
+                        };
+                        match kalan[i].as_str() {
+                            "--merkez" => s.merkez = Some(deger(&mut i, "--merkez")?),
+                            "--sube-adres" => s.sube_adresi = Some(deger(&mut i, "--sube-adres")?),
+                            "--port" => {
+                                s.port = Some(deger(&mut i, "--port")?.parse().map_err(|_| {
+                                    kullanim("--port 1024-65535 arasında bir sayı olmalı.")
+                                })?)
+                            }
+                            "--gorevsiz" => s.gorevsiz = true,
+                            "--baslatma" => s.baslatma = true,
+                            "--duvarsiz" => s.duvarsiz = true,
+                            "--lan-ac" => s.lan_ac = true,
+                            x => {
+                                return Err(kullanim(&format!(
+                                    "Bilinmeyen bağımsız değişken: {x}. {ORNEK}"
+                                )))
+                            }
+                        }
+                        i += 1;
+                    }
+                    kur.sube_pc_kur(&s, &GercekSistem)?
+                }
+                "durum" | "baslat" | "gorev-kaldir" => {
+                    if let Some(x) = kalan.first() {
+                        return Err(kullanim(&format!(
+                            "Bilinmeyen bağımsız değişken: {x}. {ORNEK}"
+                        )));
+                    }
+                    match alt {
+                        "durum" => kur.sube_pc_durum(&GercekSistem)?,
+                        "baslat" => kur.sube_pc_baslat(&GercekSistem)?,
+                        _ => kur.sube_pc_gorev_kaldir(&GercekSistem)?,
+                    }
+                }
+                x => {
+                    return Err(kullanim(&format!(
+                        "Bilinmeyen sube-pc alt komutu: {x}. {ORNEK}"
+                    )))
+                }
+            };
+            if json {
+                yaz_json(&o);
+            } else {
+                sube_pc_yaz(alt, &o);
             }
             Ok(())
         }
