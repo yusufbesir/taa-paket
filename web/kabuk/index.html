@@ -1,0 +1,128 @@
+<!doctype html>
+<!-- Sahip: Yusuf. yazan: [Claude Fable 5.2 #taa-web-W0-kabuk 2026-11-27] -->
+<!-- TAA Web kabuğu: tek PWA; her program web/moduller/<ad>/ altında bir modüldür (liste: moduller.json). -->
+<html lang="tr" data-tema="acik">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="theme-color" content="#6A2C5A">
+<title>TAA Web</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="simge.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="simge-192.png">
+<link rel="stylesheet" href="kabuk.css">
+<script src="tema.js"></script>
+<script type="module" src="uygulama.js"></script>
+</head>
+<body>
+<a class="atla" href="#icerik">İçeriğe geç</a>
+
+<div id="kabuk" class="kabuk" hidden>
+  <header class="ust">
+    <button type="button" id="sol-dugme" class="simge-dugme" aria-controls="sol-cekmece" aria-expanded="false" aria-label="Programlar menüsü">
+      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+    <a class="marka" href="#/">TAA Web</a>
+    <span id="sayfa-basligi" class="sayfa-basligi"></span>
+    <button type="button" id="gosterge" class="gosterge" data-tur="tamam" aria-controls="sag-cekmece" aria-expanded="false" title="Giden kutusunu aç">
+      <span class="gosterge-nokta" aria-hidden="true"></span>
+      <span id="gosterge-metin">Kayıtlar denetleniyor</span>
+    </button>
+  </header>
+  <p id="gosterge-duyuru" class="gorunmez" role="status" aria-live="polite"></p>
+
+  <div id="bant" class="bant" hidden>
+    <span id="bant-metin"></span>
+    <button type="button" id="bant-dugme" class="dugme"></button>
+  </div>
+
+  <aside id="sol-cekmece" class="cekmece sol" aria-label="Programlar">
+    <nav aria-label="Programlar">
+      <ul id="modul-listesi" class="modul-listesi"></ul>
+    </nav>
+    <div class="cekmece-alt">
+      <button type="button" id="hesap-dugme" class="hesap-dugme" aria-controls="hesap-paneli" aria-expanded="false">
+        <span class="hesap-rozet" id="hesap-rozet" aria-hidden="true"></span>
+        <span class="hesap-yazi"><span id="hesap-ad"></span><span id="hesap-sube" class="soluk"></span></span>
+      </button>
+    </div>
+  </aside>
+
+  <main id="icerik" class="icerik" tabindex="-1"></main>
+
+  <aside id="sag-cekmece" class="cekmece sag" aria-label="Giden kutusu" inert>
+    <div class="cekmece-baslik">
+      <h2>Giden kutusu</h2>
+      <button type="button" class="simge-dugme" data-kapat aria-label="Giden kutusunu kapat">
+        <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <p id="giden-ozet" class="soluk"></p>
+    <p id="giden-durma" class="durum-notu" hidden></p>
+    <button type="button" id="simdi-gonder" class="dugme ana">Şimdi gönder</button>
+    <h3>Gönderilmeyenler</h3>
+    <ul id="giden-bekleyen" class="kayit-listesi"></ul>
+    <h3>Reddedilenler</h3>
+    <p class="soluk kucuk">Sunucunun kabul etmediği kayıtlar. Silinmez, yeniden gönderilmez; yöneticinize gösterin.</p>
+    <ul id="giden-reddedilen" class="kayit-listesi"></ul>
+  </aside>
+
+  <aside id="hesap-paneli" class="cekmece sol hesap-paneli" aria-label="Hesap" inert>
+    <div class="cekmece-baslik">
+      <h2>Hesap</h2>
+      <button type="button" class="simge-dugme" data-kapat aria-label="Hesap panelini kapat">
+        <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <dl class="hesap-bilgi">
+      <dt>Kullanıcı</dt><dd id="panel-kullanici"></dd>
+      <dt>Şube</dt><dd id="panel-sube"></dd>
+      <dt>Oturum</dt><dd id="panel-oturum"></dd>
+    </dl>
+    <fieldset class="tema-secimi">
+      <legend>Görünüm</legend>
+      <label><input type="radio" name="tema" value="acik"> Aydınlık</label>
+      <label><input type="radio" name="tema" value="koyu"> Karanlık</label>
+    </fieldset>
+    <button type="button" id="yeniden-giris" class="dugme" hidden>Yeniden giriş yap</button>
+    <button type="button" id="cikis" class="dugme">Çıkış yap</button>
+    <p class="soluk kucuk" id="surum-notu"></p>
+  </aside>
+
+  <div id="perde" class="perde" hidden></div>
+</div>
+
+<dialog id="giris" class="pencere" aria-labelledby="giris-baslik">
+  <form id="giris-formu" method="dialog" novalidate>
+    <img src="simge.svg" width="56" height="56" alt="">
+    <h1 id="giris-baslik">TAA Web'e giriş</h1>
+    <p id="giris-aciklama" class="soluk"></p>
+    <label class="alan"><span>Kullanıcı adı</span>
+      <input id="giris-kullanici" name="kullanici" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
+    <label class="alan"><span>Parola</span>
+      <input id="giris-parola" name="parola" type="password" autocomplete="current-password" required></label>
+    <label class="alan"><span>Doğrulama kodu (varsa)</span>
+      <input id="giris-kod" name="kod" inputmode="numeric" autocomplete="one-time-code"></label>
+    <p id="giris-hata" class="hata-metni" role="alert" hidden></p>
+    <div class="pencere-dugmeler">
+      <button type="button" id="giris-vazgec" class="dugme" hidden>Vazgeç</button>
+      <button type="submit" id="giris-gonder" class="dugme ana">Giriş yap</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="cikis-uyarisi" class="pencere" aria-labelledby="cikis-baslik">
+  <h2 id="cikis-baslik">Gönderilmemiş kayıt var</h2>
+  <p id="cikis-metin"></p>
+  <p id="cikis-sonuc" class="durum-notu" role="status" hidden></p>
+  <div class="pencere-dugmeler">
+    <button type="button" id="cikis-vazgec" class="dugme">Vazgeç</button>
+    <button type="button" id="cikis-yine" class="dugme tehlike">Göndermeden çık</button>
+    <button type="button" id="cikis-gonder" class="dugme ana">Şimdi gönder</button>
+  </div>
+</dialog>
+
+<noscript><p class="noscript">TAA Web'in çalışması için tarayıcıda JavaScript açık olmalı.</p></noscript>
+</body>
+</html>

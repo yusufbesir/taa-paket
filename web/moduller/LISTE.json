@@ -1,0 +1,53 @@
+{
+  "_sahip": "Sahip: Yusuf. yazan: [Claude Fable 5.2, TAA Web W1 modüller 2026-11-27]",
+  "_not": "Modül listesi. Kabuk bunu web/kabuk/moduller.json'a kendisi işler; bu dosya kabuğa dokunmaz. 'izinler': modülün baglam.yetki ile sorduğu adlar (sunucudaki adlarla eşlenecek). 'onbellek': okuduğu anahtarlar. 'uclar': giden kutusuna yazdığı uçlar.",
+  "surum": 1,
+  "moduller": [
+    {
+      "ad": "kasa",
+      "baslik": "TAA Kasa",
+      "yol": "moduller/kasa/index.js",
+      "dosyalar": ["moduller/kasa/index.js", "moduller/kasa/mantik.js", "moduller/ortak/dom.js", "moduller/ortak/modul.css", "moduller/ortak/bicim.js"],
+      "izinler": ["kasa.sayim", "kasa.masraf", "kasa.gunsonu", "kasa.imza"],
+      "onbellek": ["kasa/ayar", "kasa/gun/<tarih>/<cekmece>", "kasa/gunsonlari"],
+      "uclar": ["/v1/kasa/gunsonu", "/v1/kasa/masraf"],
+      "sozlesmeler": ["kasa.gunsonu@1", "kasa.masraf@1"],
+      "yazar": true
+    },
+    {
+      "ad": "terzitakip",
+      "baslik": "TerziTakip",
+      "yol": "moduller/terzitakip/index.js",
+      "dosyalar": ["moduller/terzitakip/index.js", "moduller/terzitakip/mantik.js", "moduller/ortak/dom.js", "moduller/ortak/modul.css", "moduller/ortak/bicim.js"],
+      "izinler": ["fis.oku", "fis.guncelle", "fis.iptal"],
+      "onbellek": ["terzitakip/fisler"],
+      "uclar": ["/v1/fis/durum"],
+      "sozlesmeler": ["fis.guncelle@1"],
+      "yazar": true
+    },
+    {
+      "ad": "rehber",
+      "baslik": "Rehber",
+      "yol": "moduller/rehber/index.js",
+      "dosyalar": ["moduller/rehber/index.js", "moduller/rehber/mantik.js", "moduller/ortak/dom.js", "moduller/ortak/modul.css", "moduller/ortak/bicim.js"],
+      "izinler": ["rehber.oku", "rehber.tum.oku", "rehber.amir.oku"],
+      "onbellek": ["rehber/veri"],
+      "uclar": [],
+      "sozlesmeler": [],
+      "yazar": false
+    },
+    {
+      "ad": "cati",
+      "baslik": "TAA Çatı",
+      "yol": "moduller/cati/index.js",
+      "dosyalar": ["moduller/cati/index.js", "moduller/cati/mantik.js", "moduller/ortak/dom.js", "moduller/ortak/modul.css"],
+      "izinler": ["cihaz.yonet", "kullanici.yonet", "program.yonet", "gunluk.gor", "yonetici"],
+      "onbellek": ["cati/cihazlar", "cati/kullanicilar", "cati/subeler", "cati/program-yetkileri", "cati/yonetici-pinleri", "cati/gunluk"],
+      "uclar": [],
+      "sozlesmeler": [],
+      "yazar": false,
+      "yalniz_yonetici": true,
+      "iskelet": true
+    }
+  ]
+}

@@ -1188,6 +1188,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "taa-yazdir"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "taa-cihaz",
+ "taa-dosya",
+ "taa-imza",
+]
+
+[[package]]
 name = "taa-yazici"
 version = "0.1.0"
 dependencies = [

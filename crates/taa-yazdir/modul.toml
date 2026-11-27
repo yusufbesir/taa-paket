@@ -1,0 +1,15 @@
+# Sahip: Yusuf. yazan: [Claude Fable 5.2 #taa-web-W2-yazdir 2026-11-27]
+# taa-yazdir modül tanımı. Tarayıcı -> 127.0.0.1 yazdırma köprüsü (PLAN-TAA-WEB §4). Veri alanı yazmaz; ayarını yalnız okur.
+ad = "taa-yazdir"
+surum = "0.1.0"
+arayuz = "1"
+gerektirir = { "taa-cihaz" = "1", "taa-imza" = "1" }
+ozellikler = ["yazdirma-koprusu"]
+program = "ortak"
+# IPC yeteneği sunmaz: tarayıcı köprüsü yalnız HTTP (127.0.0.1) konuşur. Ortak yazdırma yeteneği `yazdir.sun@1` (EB2) ayrı iştir;
+# o hizmet yazılınca bu köprü işi ona devreder (BENIOKU "Açık noktalar").
+sunar = []
+ister = []
+veri_sahibi = []
+veri_okur = ["cihaz"]
+ayar_alani = "moduller.taa-yazdir"
