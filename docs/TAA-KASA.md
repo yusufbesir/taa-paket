@@ -274,3 +274,9 @@ gösterimi (✓ ▲ ▼), "Sil" sözcüğünün hiç kullanılmaması.
 
 `taa-kasa [--kok <veri kökü>] [--pencere-acma]`. Veri kökü: `TAA_VERI_KOK`, yoksa `%APPDATA%\TAA\veri`.
 Kayıtlar `<kök>/kasa/` altında (`gunsonu.jsonl`, `masraf.jsonl`, `ayar.json`, `giden/`, `gonderilen/`).
+
+**Tarayıcı ve çevrimdışı (mevcut durum, 2026-11-27):** program zaten tarayıcı arayüzüdür (yerel sunucu yalnız 127.0.0.1, Edge `--app` ya da varsayılan tarayıcı); kurulum dosyası henüz yok.
+İnternet yokken çalışır: gün sonu paketleri, Çatı tek imza raporu ve şifreli yedek kuyrukta bekler, bağlantı gelince gönderilir (`/api/kuyruk/bosalt`, yedek ve Çatı uçları yer tutucu).
+Yerel ağdan (başka bilgisayardan) erişim kapalıdır; açılması ayrı iş (kimlik, TLS ve Host denetimi gerekir).
+
+**Hesap menüsü:** ortak bileşen `araclar/js/taa-giris-ekrani.js` (v3) derlemede gömülür (kopya yok); Tema ve Hareket alt menüleri menünün sağında yan panel açar, menü boyu sabit.
