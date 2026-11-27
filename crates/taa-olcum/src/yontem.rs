@@ -8,7 +8,7 @@ pub const YONTEM_METNI: &str = include_str!("../../../docs/olcum/YONTEM.md");
 
 /// Kilitlenen belge özeti. Opus yöntemi kesinleştirirse belge ile birlikte güncellenir.
 pub const YONTEM_SHA256_KILIT: &str =
-    "7ec6151bcd77c419975546d98f3b02412714690ca79ddee173ff3498573c9ccf";
+    "040a9942bec494d492e5056c4ac3fe3753b9407fa0a84072cb67703928ad0fa7";
 
 /// Ölçülen pay basamakları (yüzde); her biri ayrı ölçülür.
 pub const PAY_BASAMAKLARI: [u32; 5] = [5, 8, 10, 12, 15];
