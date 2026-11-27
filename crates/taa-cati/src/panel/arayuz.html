@@ -362,13 +362,14 @@ const hataBildir=e=>bildir(e.message||String(e),true);
 
 // ---- durum ----
 let oturum=null,saglik=null,veri={cihazlar:[],kullanicilar:[],subeler:[],yetkiler:[],roller:[],olaylar:[],pinler:[],hesaplar:[],basvurular:[],eslestirmeler:[],hatalar:[],uyari:{yeni:0,denemeler:[],sifre_degisiklikleri:[]}};
+let personelSube=null;veri.personel=null;veri.personelGecici=[];
 let suzgec='bekliyor',arama='',sor=null,gunlukIslem='',gunlukSon=null;
 let rapor={uyg:'hepsi',donem:'30',bas:'',bit:'',liste:null,veri:null,yukleniyor:false,hata:''};
 const raporQ=()=>'uygulama='+encodeURIComponent(rapor.uyg)+'&donem='+encodeURIComponent(rapor.donem)+(rapor.donem==='ozel'?'&bas='+encodeURIComponent(rapor.bas)+'&bit='+encodeURIComponent(rapor.bit):'');
 const izinli=i=>!!(oturum&&oturum.izinler&&oturum.izinler.includes(i));
 const EKRANLAR=[
   ['genel','Genel bakış','◐',null],['onaylar','Onay bekleyenler','✓','kullanici.yonet'],['cihazlar','Cihazlar','▣','cihaz.yonet'],['kullanicilar','Kullanıcılar','◍','kullanici.yonet'],
-  ['subeler','Şubeler','⌂','kullanici.yonet'],['yetkiler','Program yetkileri','▦','program.yonet'],['pinler','Yönetici PIN\'leri','✱','program.yonet'],['gunluk','Günlük','≡','gunluk.gor'],['hatalar','Hatalar','⚠','gunluk.gor'],['raporlar','Raporlar','▤','rol:yonetici'],['ayarlar','Ayarlar','⚙',null]
+  ['subeler','Şubeler','⌂','kullanici.yonet'],['personel','Personel','☰','personel.yonet'],['yetkiler','Program yetkileri','▦','program.yonet'],['pinler','Yönetici PIN\'leri','✱','program.yonet'],['gunluk','Günlük','≡','gunluk.gor'],['hatalar','Hatalar','⚠','gunluk.gor'],['raporlar','Raporlar','▤','rol:yonetici'],['ayarlar','Ayarlar','⚙',null]
 ];
 const BILINEN=['terzitakip','tutaa','taarkod','taadon','taa-etiket','taa-giydir','taa-video'];
 const PROGRAM_AD={terzitakip:'TerziTakip',tutaa:'Tutaa',taarkod:'TaaRkod',taadon:'TaaDön','taa-etiket':'TAA Etiket','taa-giydir':'TAA Giydir','taa-video':'TAA Video Yapıcı'};
@@ -391,8 +392,27 @@ async function yukle(ne){
   if(ne==='hepsi'||ne==='gunluk')isler.push(al('olaylar','/api/gunluk?limit=50'+(gunlukIslem?'&islem='+encodeURIComponent(gunlukIslem):''),'gunluk.gor'));
   if(ne==='hepsi'||ne==='uyari')isler.push(api('/api/uyarilar').then(v=>{if(v&&Array.isArray(v.denemeler))veri.uyari=v}).catch(()=>{}));
   if(ne==='hepsi'||ne==='hatalar')isler.push(al('hatalar','/api/hatalar','gunluk.gor'));
+  if(ne==='hepsi'||ne==='personel')isler.push(personelYukle());
   if(ne==='hepsi')isler.push(istek('/api/saglik').then(v=>saglik=v).catch(()=>saglik={ulasildi:false}));
   await Promise.all(isler);
+}
+
+// Personel rehberi (Yusuf 11-27): şubenin listesi, süreli eklemeler, kimin ne yapabileceği.
+async function personelYukle(){
+  if(!izinli('personel.yonet'))return;
+  if(!veri.subeler.length){try{veri.subeler=await api('/api/subeler')||[]}catch(e){}}
+  if(personelSube==null&&veri.subeler.length)personelSube=veri.subeler[0].id;
+  try{veri.personel=personelSube==null?null:await api('/api/personel?sube='+encodeURIComponent(personelSube))}catch(e){veri.personel=null;if(e.durum!==401)hataBildir(e)}
+  if(izinli('personel.gecici')){try{veri.personelGecici=await api('/api/personel/gecici')||[]}catch(e){veri.personelGecici=[]}}
+  if(izinli('kullanici.yonet')&&!veri.roller.length){try{veri.roller=await api('/api/roller')||[]}catch(e){}}
+}
+const PERSONEL_IZIN=[['personel.gor','Listeyi görür (ad seçer)'],['personel.gecici','Başka şubeden süreli ekler'],['personel.yonet','Listeyi düzenler']];
+// Rolün izni: doğrudan mı, miras mı (roller zinciri: yonetici → sube-muduru → kasa → personel).
+function rolIzni(rol,izin){
+  const r=veri.roller.find(x=>x.ad===rol);if(!r)return{acik:false,miras:false};
+  if((r.izinler||[]).includes(izin))return{acik:true,miras:false};
+  let m=r.miras_rol,g=0;while(m&&g++<10){const u=veri.roller.find(x=>x.ad===m);if(!u)break;if((u.izinler||[]).includes(izin))return{acik:true,miras:true,kaynak:m};m=u.miras_rol}
+  return{acik:false,miras:false};
 }
 
 // ---- parçalar ----
@@ -550,6 +570,22 @@ const SAYFA={
     return ust('Şubeler','Her şubenin verisi ayrı tutulur')+`
     <div class="arac"><span class="muted">${veri.subeler.length} şube</span><span style="flex:1"></span><button class="dugme birincil" data-sube-ekle>Şube ekle</button></div>
     <div class="izgara4">${veri.subeler.map(s=>`<div class="kart istat"><div class="etiket">KOD ${esc(s.kod)}</div><div class="deger">${esc(s.ad)}</div><div class="ayr">${veri.cihazlar.filter(c=>c.sube_id===s.id&&c.durum==='onayli').length} onaylı cihaz${s.aktif===false?' · kapalı':''}</div></div>`).join('')||bosDurum('Şube yok.')}</div>`;
+  },
+  personel(){
+    const p=veri.personel,kisiler=(p&&p.kisiler)||[],kalici=kisiler.filter(k=>!k.gecici),gecici=veri.personelGecici||[];
+    const secici=`<select class="girdi" id="personel-sube" aria-label="Şube" style="max-width:260px">${veri.subeler.map(x=>`<option value="${+x.id}" ${x.id===personelSube?'selected':''}>${esc(x.ad)}</option>`).join('')}</select>`;
+    const satir=k=>`<tr><td>${esc(k.ad_soyad)}</td><td>${esc(k.gorev||'-')}</td><td style="text-align:right;white-space:nowrap">${sor==='pasif:'+k.id?`<span class="muted" style="font-size:12px">Listeden çıkarılsın mı? Kayıt silinmez.</span> <button class="dugme tehlike" data-personel-pasif="${+k.id}">Çıkar</button> <button class="dugme" data-vazgec>Vazgeç</button>`:`<button class="dugme" data-personel-gorev="${+k.id}" data-ad="${esc(k.ad_soyad)}" data-gorev="${esc(k.gorev||'')}">Görev</button> <button class="dugme" data-sor="pasif:${+k.id}">Listeden çıkar</button>`}</td></tr>`;
+    const gSatir=g=>`<div class="satir"><div class="ana"><b>${esc(g.ad_soyad)}</b><span>${esc(subeAd(g.kendi_sube))} → ${esc(subeAd(g.sube_id))} · ${esc(zaman(g.bitis))} tarihine kadar${g.neden?' · '+esc(g.neden):''}${g.ekleyen?' · ekleyen '+esc(g.ekleyen):''}</span></div><button class="dugme" data-personel-gecici-iptal="${+g.id}">Bitir</button></div>`;
+    const roller=veri.roller.map(r=>r.ad);
+    const yetki=izinli('kullanici.yonet')&&roller.length?`<div class="kart tablo-kap"><h2>Kim ne yapabilir</h2><table><thead><tr><th>İş</th>${roller.map(r=>`<th>${esc(r)}</th>`).join('')}</tr></thead><tbody>
+      ${PERSONEL_IZIN.map(([iz,ad])=>`<tr><td>${esc(ad)}</td>${roller.map(r=>{const d=rolIzni(r,iz);return `<td><button class="anahtar${d.miras?' miras':''}" role="switch" aria-checked="${d.acik}" ${d.miras?'disabled':''} aria-label="${esc(ad)} · ${esc(r)}${d.miras?' ('+esc(d.kaynak)+' rolünden)':''}" data-rol-izin="${esc(iz)}" data-rol="${esc(r)}"></button></td>`}).join('')}</tr>`).join('')}
+      </tbody></table><div class="ipucu"><span class="nokta"></span>Soluk anahtar üst rolden gelir (ör. yönetici, şube müdürünün yaptığı her şeyi yapar). Şube müdürü yalnız kendi şubesinde işlem yapar.</div></div>`:'';
+    return ust('Personel','Programlardaki ad seçimleri bu listeden gelir · her şube yalnız kendi listesini görür')+`
+    <div class="arac">${secici}<span class="muted">${kalici.length} kişi</span><span style="flex:1"></span>
+      <button class="dugme" data-personel-ice>Listeyi yapıştır</button>${izinli('personel.gecici')?'<button class="dugme" data-personel-gecici-ekle>Başka şubeden süreli ekle</button>':''}<button class="dugme" data-yenile="personel">Yenile</button></div>
+    <div class="kart">${kalici.length?`<div class="tablo-kap"><table><thead><tr><th>Ad soyad</th><th>Görev</th><th></th></tr></thead><tbody>${kalici.map(satir).join('')}</tbody></table></div>`:bosDurum(p?'Bu şubenin listesi boş. "Listeyi yapıştır" ile ekleyin.':'Liste alınamadı.')}</div>
+    ${izinli('personel.gecici')?`<div class="kart"><h2>Süreli eklenenler</h2>${gecici.length?gecici.map(gSatir).join(''):'<div class="muted" style="font-size:13px">Şu an süreli eklenen kimse yok.</div>'}</div>`:''}
+    ${yetki}`;
   },
   yetkiler(){
     const kurallar=veri.yetkiler.filter(y=>!y.rol);
@@ -789,6 +825,31 @@ document.addEventListener('click',async e=>{
     if(ds.onayla){d.disabled=true;await api('/api/cihaz/onay',{kimlik:ds.onayla,sube_id:sayi(ds.sube)});await yukle('cihaz');ciz();bildir('Cihaz onaylandı');return}
     if(ds.iptalKesin){d.disabled=true;await api('/api/cihaz/iptal',{kimlik:ds.iptalKesin});sor=null;await yukle('cihaz');ciz();bildir('Cihaz iptal edildi');return}
     if(ds.kapatKesin){d.disabled=true;await api('/api/kullanici/kapat',{id:+ds.kapatKesin});sor=null;await yukle('kullanici');ciz();bildir('Hesap kapatıldı; oturumları kesildi');return}
+    if('personelIce' in ds){
+      formAc('Listeyi yapıştır · '+subeAd(personelSube),`<label class="alan">Her satıra bir kişi: Ad Soyad; Görev (görev isteğe bağlı)<textarea class="girdi" name="metin" rows="10" required spellcheck="false" placeholder="Ayşe Demir; Kasa&#10;Mehmet Kaya; Satış"></textarea></label><div class="muted" style="font-size:12px">Var olan adların görevi güncellenir. Listede olmayanlar çıkarılmaz; çıkarmak için satırdaki düğmeyi kullanın.</div>`,
+        async f=>{const r=await api('/api/personel/toplu',{sube_id:personelSube,metin:f.metin.value});await yukle('personel');ciz();bildir((r&&r.eklenen||0)+' kişi eklendi, '+(r&&r.guncellenen||0)+' kişinin görevi güncellendi')},'Kaydet');
+      return}
+    if(ds.personelGorev){
+      const id=+ds.personelGorev;
+      formAc('Görev · '+ds.ad,`<label class="alan">Görev<input class="girdi" name="gorev" maxlength="60" value="${esc(ds.gorev)}"></label><label class="alan">Şube<select class="girdi" name="sube_id">${veri.subeler.map(x=>`<option value="${+x.id}" ${x.id===personelSube?'selected':''}>${esc(x.ad)}</option>`).join('')}</select></label>`,
+        async f=>{const sb=+f.sube_id.value;await api('/api/personel/guncelle',{id,gorev:f.gorev.value,sube_id:sb===personelSube?null:sb});await yukle('personel');ciz();bildir('Kaydedildi')});
+      return}
+    if(ds.personelPasif){d.disabled=true;await api('/api/personel/guncelle',{id:+ds.personelPasif,aktif:false});sor=null;await yukle('personel');ciz();bildir('Listeden çıkarıldı');return}
+    if(ds.personelGeciciIptal){d.disabled=true;await api('/api/personel/gecici/iptal',{id:+ds.personelGeciciIptal});await yukle('personel');ciz();bildir('Süreli ekleme bitirildi');return}
+    if('personelGeciciEkle' in ds){
+      formAc('Başka şubeden süreli ekle',`<label class="alan">Ad soyad<input class="girdi" name="ad" required minlength="2" maxlength="60" autocomplete="off"></label>
+        <label class="alan">Hangi şubede görünsün<select class="girdi" name="sube_id">${veri.subeler.map(x=>`<option value="${+x.id}" ${x.id===personelSube?'selected':''}>${esc(x.ad)}</option>`).join('')}</select></label>
+        <label class="alan">Süre (gün, en çok 31)<input class="girdi" name="gun" type="number" min="1" max="31" value="7" required></label>
+        <label class="alan">Neden (isteğe bağlı)<input class="girdi" name="neden" maxlength="200"></label>`,
+        async f=>{const sb=+f.sube_id.value;const l=(await api('/api/personel/ara?q='+encodeURIComponent(f.ad.value.trim()))||[]).filter(k=>k.sube_id!==sb);
+          if(!l.length)throw new Error('Başka şubede bu adla kişi yok. Önce kişinin kendi şubesinin listesine ekleyin.');
+          const tam=l.filter(k=>tr(k.ad_soyad)===tr(f.ad.value.trim()));const k=tam.length===1?tam[0]:l.length===1?l[0]:null;
+          if(!k)throw new Error('Birden çok kişi bulundu: '+l.slice(0,5).map(x=>x.ad_soyad+' ('+x.sube_ad+')').join(', ')+'. Adı tam yazın.');
+          await api('/api/personel/gecici',{personel_id:k.id,sube_id:sb,gun:+f.gun.value,neden:f.neden.value});await yukle('personel');ciz();bildir(k.ad_soyad+' '+f.gun.value+' gün '+subeAd(sb)+' listesinde')},'Ekle');
+      return}
+    if(ds.rolIzin!==undefined&&d.getAttribute('role')==='switch'){
+      const yeni=d.getAttribute('aria-checked')!=='true';d.disabled=true;
+      await api('/api/rol-izin',{rol:ds.rol,izin:ds.rolIzin,acik:yeni});veri.roller=await api('/api/roller')||veri.roller;ciz();bildir(yeni?'Yetki verildi':'Yetki kaldırıldı');return}
     if(ds.yetki!==undefined&&d.getAttribute('role')==='switch'){
       const yeni=d.getAttribute('aria-checked')!=='true';d.disabled=true;
       await api('/api/yetki',{program:ds.yetki,acik:yeni,sube_id:sayi(ds.sube)});await yukle('yetki');ciz();bildir(yeni?'Program açıldı':'Program kapatıldı');return}
@@ -840,6 +901,7 @@ document.addEventListener('input',e=>{
   if(e.target.id==='vurgu'){kok.style.setProperty('--accent',e.target.value)}
 });
 // Renk seçici: sürüklerken önizleme, bırakınca kaydet (sunucu kontrastı düzeltir ya da reddeder).
+document.addEventListener('change',async e=>{if(e.target.id==='personel-sube'){personelSube=+e.target.value;await yukle('personel');ciz();return}});
 document.addEventListener('change',e=>{if(e.target.id==='vurgu')gorKaydet({vurgu:e.target.value});
   if(e.target.id==='rapor-bas'||e.target.id==='rapor-bit'){rapor[e.target.id==='rapor-bas'?'bas':'bit']=e.target.value;if(rapor.bas&&rapor.bit){rapor.veri=null;rapor.hata='';ciz()}}
   if(e.target.id==='rapor-uyg'){rapor.uyg=e.target.value;rapor.veri=null;rapor.hata='';ciz()}});

@@ -39,6 +39,11 @@ pub const OLAY_UCU: &str = "/v1/olay";
 /// Hata raporları (taa-hata; sunucu: GET /v1/hata-raporu, `gunluk.gor`).
 pub const HATA_RAPORU_UCU: &str = "/v1/hata-raporu";
 pub const SUBE_UCU: &str = "/v1/sube";
+/// Personel rehberi (Yusuf 11-27; sunucu: taa-sunucu#9).
+pub const PERSONEL_UCU: &str = "/v1/personel";
+pub const ROL_IZIN_UCU: &str = "/v1/rol-izin";
+pub const IZIN_PERSONEL_YONET: &str = "personel.yonet";
+pub const IZIN_PERSONEL_GECICI: &str = "personel.gecici";
 pub const YENIDEN_DOGRULA_UCU: &str = "/v1/yeniden-dogrula";
 /// Program bazlı yönetici PIN'i (sunucu: taa-sunucu `src/yonetici_pin.rs`). PIN yalnız buradan belirlenir.
 pub const YONETICI_PIN_UCU: &str = "/v1/yonetici-pin";
@@ -712,6 +717,175 @@ impl<'a> Cati<'a> {
         }
         self.yaz(IZIN_SUBE, SUBE_UCU, json!({ "kod": kod, "ad": ad.trim() }))
     }
+}
+
+impl Cati<'_> {
+    // ---- personel rehberi ---- yazan: [Claude#2gyp36 2026-11-27]
+
+    /// `GET /v1/personel/liste?sube=` → {sube_id, kisiler:[…]} (merkezde şube zorunlu).
+    pub fn personel_liste(&self, sube_id: i64) -> Result<Value, CatiHata> {
+        self.izin(IZIN_PERSONEL_YONET)?;
+        Ok(self.g.al(&format!("{PERSONEL_UCU}/liste?sube={sube_id}"))?)
+    }
+
+    /// `POST /v1/personel/toplu` — "Ad Soyad; Görev" satırlarından (en çok 500). Listede olmayan pasifleşmez.
+    pub fn personel_toplu(&self, sube_id: i64, metin: &str) -> Result<Value, CatiHata> {
+        let kisiler = personel_satirlari(metin)?;
+        self.yaz(
+            IZIN_PERSONEL_YONET,
+            &format!("{PERSONEL_UCU}/toplu"),
+            json!({ "sube_id": sube_id, "kisiler": kisiler }),
+        )
+    }
+
+    /// `POST /v1/personel/{id}/guncelle` — görev, şube ya da aktiflik (silme yok: `aktif:false`).
+    pub fn personel_guncelle(
+        &self,
+        id: i64,
+        gorev: Option<&str>,
+        sube_id: Option<i64>,
+        aktif: Option<bool>,
+    ) -> Result<Value, CatiHata> {
+        let mut m = Map::new();
+        if let Some(g) = gorev {
+            if g.chars().count() > 60 || g.chars().any(char::is_control) {
+                return Err(CatiHata::GecersizGirdi("görev en çok 60 karakter".into()));
+            }
+            m.insert("gorev".into(), json!(g.trim()));
+        }
+        if let Some(s) = sube_id {
+            m.insert("sube_id".into(), json!(s));
+        }
+        if let Some(a) = aktif {
+            m.insert("aktif".into(), json!(a));
+        }
+        self.yaz(
+            IZIN_PERSONEL_YONET,
+            &format!("{PERSONEL_UCU}/{id}/guncelle"),
+            Value::Object(m),
+        )
+    }
+
+    /// `GET /v1/personel/gecici/liste` — süresi dolmamış süreli eklemeler.
+    pub fn personel_gecicileri(&self) -> Result<Vec<Value>, CatiHata> {
+        self.liste(
+            IZIN_PERSONEL_GECICI,
+            &format!("{PERSONEL_UCU}/gecici/liste"),
+        )
+    }
+
+    /// `GET /v1/personel/ara?q=` — tüm şubelerde ad arama (süreli ekleme için).
+    pub fn personel_ara(&self, q: &str) -> Result<Vec<Value>, CatiHata> {
+        let q = q.trim();
+        if q.chars().count() < 2 || q.chars().count() > 60 {
+            return Err(CatiHata::GecersizGirdi("aramak için 2-60 harf".into()));
+        }
+        self.liste(
+            IZIN_PERSONEL_GECICI,
+            &format!("{PERSONEL_UCU}/ara?q={}", yuzde_kodla(q)),
+        )
+    }
+
+    /// `POST /v1/personel/gecici` {personel_id, sube_id, gun 1-31, neden}.
+    pub fn personel_gecici_ekle(
+        &self,
+        personel_id: i64,
+        sube_id: i64,
+        gun: i64,
+        neden: &str,
+    ) -> Result<Value, CatiHata> {
+        if !(1..=31).contains(&gun) {
+            return Err(CatiHata::GecersizGirdi("süre 1-31 gün".into()));
+        }
+        if neden.chars().count() > 200 || neden.chars().any(char::is_control) {
+            return Err(CatiHata::GecersizGirdi("neden en çok 200 karakter".into()));
+        }
+        self.yaz(
+            IZIN_PERSONEL_GECICI,
+            &format!("{PERSONEL_UCU}/gecici"),
+            json!({ "personel_id": personel_id, "sube_id": sube_id, "gun": gun, "neden": neden.trim() }),
+        )
+    }
+
+    /// `POST /v1/personel/gecici/{id}/iptal`
+    pub fn personel_gecici_iptal(&self, id: i64) -> Result<Value, CatiHata> {
+        self.yaz(
+            IZIN_PERSONEL_GECICI,
+            &format!("{PERSONEL_UCU}/gecici/{id}/iptal"),
+            json!({}),
+        )
+    }
+
+    /// `POST /v1/rol-izin` {rol, izin, acik} — yetkilendirme ayarı (yalnız sunucuda `ayarlanabilir` izinler).
+    pub fn rol_izin_ayarla(&self, rol: &str, izin: &str, acik: bool) -> Result<Value, CatiHata> {
+        let rol = tanitici("rol", rol)?;
+        if !izin.starts_with("personel.")
+            || !izin
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b == b'.' || b == b'-')
+        {
+            return Err(CatiHata::GecersizGirdi(
+                "bu izin buradan değiştirilemez".into(),
+            ));
+        }
+        self.yaz(
+            IZIN_KULLANICI,
+            ROL_IZIN_UCU,
+            json!({ "rol": rol, "izin": izin, "acik": acik }),
+        )
+    }
+}
+
+/// "Ad Soyad; Görev" satırları → [{ad_soyad, gorev}] (boşluklar sadeleşir, aynı ad bir kez, en çok 500).
+pub fn personel_satirlari(metin: &str) -> Result<Vec<Value>, CatiHata> {
+    let mut gorulen = std::collections::HashSet::new();
+    let mut l = Vec::new();
+    for satir in metin.lines() {
+        let mut p = satir.splitn(2, ';');
+        let ad = p
+            .next()
+            .unwrap_or("")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        let gorev = p
+            .next()
+            .unwrap_or("")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        if ad.is_empty() {
+            continue;
+        }
+        if ad.chars().count() < 2 || ad.chars().count() > 100 || gorev.chars().count() > 60 {
+            return Err(CatiHata::GecersizGirdi(format!(
+                "satır uygun değil: {}",
+                ad.chars().take(40).collect::<String>()
+            )));
+        }
+        if gorulen.insert(ad.to_lowercase()) {
+            l.push(json!({ "ad_soyad": ad, "gorev": gorev }));
+        }
+    }
+    if l.is_empty() || l.len() > 500 {
+        return Err(CatiHata::GecersizGirdi(
+            "1-500 kişi yazın (her satıra bir kişi)".into(),
+        ));
+    }
+    Ok(l)
+}
+
+/// Sorgu değeri için yüzde kodlama (UTF-8 baytları).
+fn yuzde_kodla(s: &str) -> String {
+    s.bytes()
+        .map(|b| {
+            if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.') {
+                (b as char).to_string()
+            } else {
+                format!("%{b:02X}")
+            }
+        })
+        .collect()
 }
 
 /// Sunucuyla aynı PIN kuralı (erken ve anlaşılır hata için): 4–8 rakam, 0000 ya da 1234/9876 gibi düz sıra değil.
