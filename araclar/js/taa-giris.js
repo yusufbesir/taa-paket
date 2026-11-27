@@ -283,7 +283,9 @@ function personelRed(r) {
     const g = sunucuGovdesi(String(h.hata || ''));
     if (g && typeof g.ileti === 'string') return { tamam: false, durum: 'girdi', ileti: g.ileti.slice(0, 200) };
   }
-  return red(durumBul(r));
+  const d = durumBul(r);
+  if (d === 'hatali') return { tamam: false, durum: 'hatali', ileti: 'Şifre hatalı. Yeniden yazın.' };
+  return red(d);
 }
 
 // istek: {tur: 'liste'} | {tur: 'ara', metin} | {tur: 'gecici', kisi, gun, neden, parola}
