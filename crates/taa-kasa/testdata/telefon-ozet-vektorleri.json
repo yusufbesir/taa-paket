@@ -1,0 +1,170 @@
+{
+  "_aciklama": "Telefonla imza özeti (onay_iste@1 ozet) çapraz test vektörleri. UYDURMA veri; gerçek tutar/ad yok. Biçim: docs/sozlesmeler/kasa.telefon-ozet.md. beklenen_sha256 = SHA-256(UTF-8 beklenen_metin), küçük harf hex; köprüdeki 32 bayt özet bu hex'in çözülmüş hâlidir.",
+  "vektorler": [
+    {
+      "ad": "v1-sade",
+      "gun_sonu": {
+        "id": "GS-20260115-c1-1",
+        "tarih": "2026-01-15",
+        "sube": "SB1",
+        "cekmece": "c1",
+        "kisi": "Deneme Kişi",
+        "nakit_adetler": {
+          "10000": 1
+        },
+        "nakit_sayilan_kurus": 30000,
+        "noktalar": [
+          {
+            "nokta": "k1",
+            "z_toplam_kurus": 30000,
+            "pos": {
+              "ziraat": 10000
+            }
+          }
+        ],
+        "nebim_toplam_kurus": 30000,
+        "ciro": {
+          "nakit": 20000,
+          "ziraat_pos": 10000
+        },
+        "doviz": [],
+        "devreden_kurus": 5000,
+        "kontrol": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "not": "özete girmez",
+        "aciklamalar": {},
+        "karsilastirma": {
+          "satirlar": [],
+          "ciro_toplam_kurus": 30000,
+          "fark_var": false,
+          "kasa_ciro_uyusmuyor": false
+        },
+        "zaman": 1768478400,
+        "duzeltir": null
+      },
+      "beklenen_metin": "cekmece=c1\nciro.nakit=20000\nciro.ziraat_pos=10000\nciro_toplam_kurus=30000\ndevreden_kurus=5000\nid=GS-20260115-c1-1\nkapsam=taa_kasa_gun_sonu\nnakit_sayilan_kurus=30000\nnebim_toplam_kurus=30000\nnokta.k1.pos.ziraat=10000\nnokta.k1.z_toplam_kurus=30000\nsube=SB1\nsurum=1\ntarih=2026-01-15\n",
+      "beklenen_sha256": "ab1b4529d01f2ba5430d6828e67ad3b7f1bd0b6c9b8029b0ca79f3ca16eae0e0"
+    },
+    {
+      "ad": "v2-eksi-kredi-ceki-doviz-iki-nokta",
+      "gun_sonu": {
+        "id": "GS-20260115-c2-3",
+        "tarih": "2026-01-15",
+        "sube": "SB2",
+        "cekmece": "c2",
+        "kisi": "Deneme Kişi",
+        "nakit_adetler": {
+          "10000": 1
+        },
+        "nakit_sayilan_kurus": 1234567,
+        "noktalar": [
+          {
+            "nokta": "k1",
+            "z_toplam_kurus": 1500000,
+            "pos": {
+              "ziraat": 700000
+            }
+          },
+          {
+            "nokta": "k2",
+            "z_toplam_kurus": 983000,
+            "pos": {
+              "iyzico": 500000
+            }
+          }
+        ],
+        "nebim_toplam_kurus": 2500000,
+        "ciro": {
+          "nakit": 1200000,
+          "ziraat_pos": 700000,
+          "iyzico_pos": 500000,
+          "havale": 100000,
+          "kredi_ceki": -32000,
+          "degisim": 15000,
+          "kasa_fazlasi": 7
+        },
+        "doviz": [
+          {
+            "kod": "USD",
+            "tutar": 10000,
+            "kur_onbinde": 400000
+          },
+          {
+            "kod": "EUR",
+            "tutar": 2550,
+            "kur_onbinde": 455555
+          }
+        ],
+        "devreden_kurus": 0,
+        "kontrol": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "not": "özete girmez",
+        "aciklamalar": {},
+        "karsilastirma": {
+          "satirlar": [],
+          "ciro_toplam_kurus": 2468000,
+          "fark_var": false,
+          "kasa_ciro_uyusmuyor": false
+        },
+        "zaman": 1768478400,
+        "duzeltir": null
+      },
+      "beklenen_metin": "cekmece=c2\nciro.degisim=15000\nciro.havale=100000\nciro.iyzico_pos=500000\nciro.kasa_fazlasi=7\nciro.kredi_ceki=-32000\nciro.nakit=1200000\nciro.ziraat_pos=700000\nciro_toplam_kurus=2468000\ndevreden_kurus=0\ndoviz.EUR.kur_onbinde=455555\ndoviz.EUR.tutar=2550\ndoviz.USD.kur_onbinde=400000\ndoviz.USD.tutar=10000\nid=GS-20260115-c2-3\nkapsam=taa_kasa_gun_sonu\nnakit_sayilan_kurus=1234567\nnebim_toplam_kurus=2500000\nnokta.k1.pos.ziraat=700000\nnokta.k1.z_toplam_kurus=1500000\nnokta.k2.pos.iyzico=500000\nnokta.k2.z_toplam_kurus=983000\nsube=SB2\nsurum=1\ntarih=2026-01-15\n",
+      "beklenen_sha256": "ca0cd2b1f9485ce8cef96ae611cae598c61aca0d4ef090e3c09e202fc561836c"
+    },
+    {
+      "ad": "v3-bos-ciro",
+      "gun_sonu": {
+        "id": "GS-20260115-c1-2",
+        "tarih": "2026-01-15",
+        "sube": "SB1",
+        "cekmece": "c1",
+        "kisi": "Deneme Kişi",
+        "nakit_adetler": {
+          "10000": 1
+        },
+        "nakit_sayilan_kurus": 0,
+        "noktalar": [],
+        "nebim_toplam_kurus": 0,
+        "ciro": {},
+        "doviz": [],
+        "devreden_kurus": 0,
+        "kontrol": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "not": "özete girmez",
+        "aciklamalar": {},
+        "karsilastirma": {
+          "satirlar": [],
+          "ciro_toplam_kurus": 0,
+          "fark_var": false,
+          "kasa_ciro_uyusmuyor": false
+        },
+        "zaman": 1768478400,
+        "duzeltir": null
+      },
+      "beklenen_metin": "cekmece=c1\nciro_toplam_kurus=0\ndevreden_kurus=0\nid=GS-20260115-c1-2\nkapsam=taa_kasa_gun_sonu\nnakit_sayilan_kurus=0\nnebim_toplam_kurus=0\nsube=SB1\nsurum=1\ntarih=2026-01-15\n",
+      "beklenen_sha256": "6a8dafdbc87927a91bc3f65b7c8da02142177da52cf64b8773c450e056dabbf5"
+    }
+  ]
+}

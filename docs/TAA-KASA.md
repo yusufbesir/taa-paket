@@ -159,6 +159,19 @@ Dolu şablon (V2 ve 25.11), aylık şablon (30 gün) ve ödeme listesi yeniden t
 
 ## Telefonla imza (tasarım ve istemci)
 
+**Özet biçimi sabitlendi** (2026-11-27): `docs/sozlesmeler/kasa.telefon-ozet.md`, çapraz test vektörleri
+`crates/taa-kasa/testdata/telefon-ozet-vektorleri.json`.
+
+**Kurulu exe yolu (Telefon Köprüsü için):** TAA Kur kökü `D:\Programlar\TAA` (D: yoksa `%LOCALAPPDATA%\Programs\TAA`; `TAA_KOK`
+ile değişir; `kurulum/src/main.rs` `varsayilan_hedef`). Paketler `<kök>\depo\<paket adı>\<sürüm>\` altına kurulur
+(`taa-kur` `depo()`), ikili `bin\` altındadır (`tools/paket_uret.py --bin`). TAA Kasa paketi `taa-kasa-ekran`
+(crates/taa-kasa-ekran/modul.toml, sürüm 0.1.0), ikili adı `taa-kasa.exe` → `D:\Programlar\TAA\depo\taa-kasa-ekran\0.1.0\bin\taa-kasa.exe`.
+Sürüm klasörü her güncellemede değişir (seçili sürüm `<kök>\kayit.json`, `secili`; taa-kur kendi araçlarını da böyle bulur, `pencere_model.rs`); köprü yolu `<kök>\depo\taa-kasa-ekran\*\bin\taa-kasa.exe` kalıbıyla eşlemeli.
+TAA Kasa henüz yayınlanmadı (kurulum kartında yer tutucu). **İmza:** exe Authenticode ile imzalı DEĞİL (depoda kod imzalama yok);
+paketler ed25519 ile imzalanır (`taa-imza`, `paket.json` `imza`), üretim anahtarı henüz yok. Kaldırma kaydındaki yayıncı adı
+`TAA` (`kurulum/src/main.rs`). Plan: Authenticode sertifikası alınınca yayıncı adı sertifikadaki kurum adı olur; o zamana kadar
+köprü exe'yi yol + PC eşleştirmesi (pc_pin) ile tanımalı, Authenticode yayıncı adına dayanmamalı.
+
 Durum: istemci `crates/taa-kasa/src/telefon_imza.rs` hazır ve testli (sahte kanal); gerçek kanal bağlı değil, API 501.
 
 - **Uç:** yeni HTTP ucu yok. Kasa ekranı `POST /api/imza {"id", "kanal":"telefon"}` aldığında `TelefonImzaOturumu::baslat`

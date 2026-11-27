@@ -447,3 +447,33 @@ fn sik_tek_imza_uyarisi_esikte_cikar() {
     assert!(!m[0].tek_imza_uyarisi, "eşik 0 kapalı");
     assert_eq!(KasaAyar::default().tek_imza_uyarisi.esik, 3);
 }
+
+/// Özet biçimi SABİT (`OZET_SURUMU` 1): Telefon Köprüsü ile çapraz test vektörleri
+/// (`testdata/telefon-ozet-vektorleri.json`, uydurma veri, Python başvuru uygulamasıyla üretildi). Bu test
+/// kırılırsa biçim değişmiştir: vektörler değil `OZET_SURUMU` ve sözleşme (docs/sozlesmeler/kasa.telefon-ozet.md)
+/// güncellenmelidir.
+#[test]
+fn ozet_bicimi_sabit_capraz_test_vektorleri() {
+    let yol = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("testdata/telefon-ozet-vektorleri.json");
+    let d: serde_json::Value = serde_json::from_slice(&std::fs::read(yol).unwrap()).unwrap();
+    let v = d["vektorler"].as_array().unwrap();
+    assert!(v.len() >= 3);
+    for x in v {
+        let ad = x["ad"].as_str().unwrap();
+        let gs: crate::gunsonu::GunSonuKaydi =
+            serde_json::from_value(x["gun_sonu"].clone()).unwrap();
+        assert_eq!(
+            ozet_metni(&gs),
+            x["beklenen_metin"].as_str().unwrap(),
+            "{ad}: metin"
+        );
+        assert_eq!(
+            ozet_sha256(&gs),
+            x["beklenen_sha256"].as_str().unwrap(),
+            "{ad}: sha256"
+        );
+    }
+    assert_eq!(OZET_SURUMU, 1);
+    assert_eq!(KAPSAM, "taa_kasa_gun_sonu");
+}
