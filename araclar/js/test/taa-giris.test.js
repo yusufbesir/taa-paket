@@ -234,3 +234,27 @@ test('personel: şube listesi, önbellek (yalnız ağ sorununda), arama, süreli
   assert.strictEqual((await g.personel({ tur: 'gecici', kisi: 9, gun: 32, parola: 'x' }, s)).durum, 'girdi');
   assert.strictEqual((await g.personel({ tur: 'gecici', kisi: 9, gun: 3, parola: '' }, s)).durum, 'girdi');
 });
+
+test('ekran kilitliyken IPC kapısı: durum/yetki/personel verilmez, giriş yalnız kilitleyen kullanıcıyla (Fable K2)', { skip: !posix }, async () => {
+  const o = ortam();
+  const kilitDosyasi = path.join(o.kok, 'veri', 'taa-giris-kilit.json');
+  const k = {};
+  g.ipcKur({ handle: (ad, f) => { k[ad] = f; } }, { env: o.env, program: 'tutaa', kilitDosyasi, denetle: () => {} });
+  assert.strictEqual(g.kilitliMi({ kilitDosyasi }), null);
+  assert.strictEqual((await k[g.KANAL.durum]({})).kullanici, 'ali', 'kilit yokken durum verilir');
+  assert.strictEqual((await k[g.KANAL.kilitle]({})).tamam, true);
+  assert.deepStrictEqual(g.kilitliMi({ kilitDosyasi }), { kullanici: 'ali' });
+  assert.strictEqual(await k[g.KANAL.durum]({}), null, 'kilitliyken durum null');
+  assert.deepStrictEqual(await k[g.KANAL.yetki]({}, { izin: 'tutaa.yaz' }), { izinli: false, neden: ['ekran_kilitli'] });
+  assert.strictEqual((await k[g.KANAL.personel]({}, {})).durum, 'ekran_kilitli');
+  assert.strictEqual((await k[g.KANAL.basvur]({}, { kullanici: 'ali', yeniParola: 'x' })).durum, 'ekran_kilitli');
+  assert.strictEqual((await k[g.KANAL.giris]({}, { kullanici: 'veli', parola: 'p' })).durum, 'ekran_kilitli', 'başka kullanıcı reddedilir');
+  assert.deepStrictEqual(g.kilitliMi({ kilitDosyasi }), { kullanici: 'ali' }, 'reddedilen giriş işareti kaldırmaz');
+  assert.strictEqual((await k[g.KANAL.giris]({}, { kullanici: 'ali', parola: 'p' })).tamam, true, 'kilitleyen açar');
+  assert.strictEqual(g.kilitliMi({ kilitDosyasi }), null);
+  // Başka kullanıcıyla gir: önce cikis, sonra herkes girebilir.
+  await k[g.KANAL.kilitle]({});
+  await k[g.KANAL.cikis]({});
+  assert.strictEqual(g.kilitliMi({ kilitDosyasi }), null);
+  assert.notStrictEqual((await k[g.KANAL.giris]({}, { kullanici: 'veli', parola: 'p' })).durum, 'ekran_kilitli');
+});
