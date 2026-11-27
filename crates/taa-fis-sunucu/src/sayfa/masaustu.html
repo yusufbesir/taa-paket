@@ -106,10 +106,15 @@ kbd{font:600 max(12px,.75em) var(--tk-fm);padding:1px 6px;border:1px solid curre
 .hesap-menu button{min-height:40px;display:flex;align-items:center;gap:var(--tk-g2);padding:0 var(--tk-g2);border:0;border-radius:calc(var(--tk-r) - 2px);background:none;color:inherit;font-weight:600;text-align:left;cursor:pointer}
 .hesap-menu button:hover{background:var(--tk-panel2)}
 .hm-kisi{display:grid;padding:var(--tk-g1) var(--tk-g2)}.hm-kisi small{color:var(--tk-mut)}
-.hm-tema{display:flex;flex-wrap:wrap;gap:6px;padding:var(--tk-g1) var(--tk-g2)}
-.hesap-menu .hm-tema button{min-height:32px;width:32px;padding:0;justify-content:center;border:var(--tk-kenar) solid var(--tk-line);border-radius:50%}
-.hesap-menu .hm-tema button[aria-pressed="true"]{outline:3px solid var(--tk-ac);outline-offset:1px}
-.hm-tema i{width:20px;height:20px;border-radius:50%;display:block;background:linear-gradient(135deg,var(--tk-bg) 50%,var(--tk-ac) 50%);border:1px solid var(--tk-line)}
+/* alt menüler (Tema, Mod) menünün sağında yan panel olarak açılır; menü uzamaz, düğmelerin yeri değişmez (Yusuf 11-27) */
+.hm-grup{position:relative}
+.hm-alt-ac{width:100%}.hm-alt-ac[aria-expanded="true"]{background:var(--tk-panel2)}
+.hm-secili{margin-left:auto;color:var(--tk-mut);font-weight:500;font-size:.9em}.hm-ok{flex:none;font-size:1.2em;line-height:1}
+.hm-alt-menu{position:fixed;z-index:40;min-width:200px;max-width:min(300px,calc(100vw - 16px));max-height:calc(100vh - 16px);overflow:auto;display:grid;gap:2px;padding:var(--tk-g2);
+  background:var(--tk-panel);color:var(--tk-tx);border:var(--tk-kenar) solid var(--tk-line);border-radius:var(--tk-r);box-shadow:0 10px 30px rgba(0,0,0,.25)}
+.hm-alt-menu[hidden]{display:none}
+.hesap-menu .hm-alt-menu button[aria-pressed="true"]{background:var(--tk-panel2);box-shadow:inset 3px 0 0 var(--tk-ac)}
+.hm-alt-menu i{flex:none;width:20px;height:20px;border-radius:50%;display:block;background:linear-gradient(135deg,var(--tk-bg) 50%,var(--tk-ac) 50%);border:1px solid var(--tk-line)}
 /* çekmece okları: menüler içe katlanır, kenardaki okla açılır (durum bu bilgisayarda hatırlanır) */
 .cekmece-ok{position:absolute;top:50%;transform:translateY(-50%);z-index:20;width:22px;height:56px;display:grid;place-items:center;padding:0;
   border:var(--tk-kenar) solid var(--tk-line);background:var(--tk-panel2);color:var(--tk-tx);cursor:pointer}
@@ -735,7 +740,7 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
           <button role="menuitem" class="yon-acik" data-hm-kilitle><svg class="sm"><use href="#i-acik"/></svg>Yönetici oturumunu kapat</button>
           <hr role="separator">
           <button role="menuitem" data-git="ayarlar"><svg class="sm"><use href="#i-ayar"/></svg>Ayarlar</button>
-          <div class="hm-tema" role="group" aria-label="Tema"><button role="menuitemradio" data-tema-sec="kocan" title="Tema: Koçan" aria-label="Tema: Koçan"><i data-onizleme="kocan"></i></button><button role="menuitemradio" data-tema-sec="tebesir" title="Tema: Tebeşir" aria-label="Tema: Tebeşir"><i data-onizleme="tebesir"></i></button><button role="menuitemradio" data-tema-sec="aski" title="Tema: Askı" aria-label="Tema: Askı"><i data-onizleme="aski"></i></button><button role="menuitemradio" data-tema-sec="cozgu" title="Tema: Çözgü" aria-label="Tema: Çözgü"><i data-onizleme="cozgu"></i></button><button role="menuitemradio" data-tema-sec="civit" title="Tema: Çivit" aria-label="Tema: Çivit"><i data-onizleme="civit"></i></button><button role="menuitemradio" data-tema-sec="keten" title="Tema: Keten" aria-label="Tema: Keten"><i data-onizleme="keten"></i></button></div>
+          <div class="hm-grup"><button role="menuitem" class="hm-alt-ac" data-hm-alt="tema" aria-haspopup="true" aria-expanded="false"><svg class="sm"><use href="#i-ayar"/></svg>Tema<span class="hm-secili" id="hm-tema-ad"></span><span class="hm-ok" aria-hidden="true">›</span></button><div class="hm-alt-menu" id="hm-alt-tema" role="group" aria-label="Tema" hidden><button role="menuitemradio" data-tema-sec="kocan"><i data-onizleme="kocan"></i>Koçan</button><button role="menuitemradio" data-tema-sec="tebesir"><i data-onizleme="tebesir"></i>Tebeşir</button><button role="menuitemradio" data-tema-sec="aski"><i data-onizleme="aski"></i>Askı</button><button role="menuitemradio" data-tema-sec="cozgu"><i data-onizleme="cozgu"></i>Çözgü</button><button role="menuitemradio" data-tema-sec="civit"><i data-onizleme="civit"></i>Çivit</button><button role="menuitemradio" data-tema-sec="keten"><i data-onizleme="keten"></i>Keten</button></div></div><div class="hm-grup"><button role="menuitem" class="hm-alt-ac" data-hm-alt="mod" aria-haspopup="true" aria-expanded="false"><svg class="sm"><use href="#i-ayar"/></svg>Mod<span class="hm-secili" id="hm-mod-ad"></span><span class="hm-ok" aria-hidden="true">›</span></button><div class="hm-alt-menu" id="hm-alt-mod" role="group" aria-label="Mod" hidden><button role="menuitemradio" data-ton-sec="acik">Açık</button><button role="menuitemradio" data-ton-sec="koyu">Koyu</button></div></div>
         </div>
       </div>
     </div>
@@ -1954,10 +1959,20 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
   /* ---------- tıklamalar ---------- */
   /* ---------- hesap menüsü ve çekmeceler ---------- */
   var HM=$('#hesap-menu'), HD=$('#hesap-dugme');
-  function hesapMenu(ac){HM.hidden=!ac;HD.setAttribute('aria-expanded',String(ac));if(ac){temaIsaretle();
+  function altKapat(){$$('.hm-alt-menu').forEach(function(m){m.hidden=true});$$('.hm-alt-ac').forEach(function(b){b.setAttribute('aria-expanded','false')})}
+  function altAc(ad,odak){var b=HM.querySelector('[data-hm-alt="'+ad+'"]'),m=$('#hm-alt-'+ad);if(!b||!m)return;var acik=!m.hidden;altKapat();if(acik&&!odak)return;
+    m.hidden=false;b.setAttribute('aria-expanded','true');var r=b.getBoundingClientRect(),g=m.offsetWidth,y=m.offsetHeight;
+    var x=r.right+6;if(x+g>innerWidth-8)x=Math.max(8,r.left-g-6);var t=Math.min(r.top,innerHeight-y-8);m.style.left=x+'px';m.style.top=Math.max(8,t)+'px';
+    if(odak){var s=m.querySelector('[aria-pressed="true"]')||m.querySelector('button');if(s)s.focus()}}
+  function hmSeciliYaz(){var t=HM.querySelector('[data-tema-sec][aria-pressed="true"]'),m=HM.querySelector('[data-ton-sec][aria-pressed="true"]');
+    $('#hm-tema-ad').textContent=t?t.textContent:'';$('#hm-mod-ad').textContent=m?m.textContent:''}
+  function hesapMenu(ac){HM.hidden=!ac;HD.setAttribute('aria-expanded',String(ac));altKapat();if(ac){temaIsaretle();hmSeciliYaz();
     var g=Array.prototype.filter.call(HM.querySelectorAll('button'),function(x){return x.offsetParent!==null});if(g[0])g[0].focus()}}
   document.addEventListener('click',function(e){if(!HM.hidden&&!e.target.closest('#hesap'))hesapMenu(false)},true);
-  HM.addEventListener('keydown',function(e){var g=Array.prototype.filter.call(HM.querySelectorAll('button'),function(x){return x.offsetParent!==null}),i=g.indexOf(document.activeElement);
+  HM.addEventListener('keydown',function(e){var alt=document.activeElement&&document.activeElement.closest('.hm-alt-menu');
+    var kap=alt||HM,g=Array.prototype.filter.call(kap.querySelectorAll(alt?'button':':scope > button, .hm-grup > .hm-alt-ac'),function(x){return x.offsetParent!==null}),i=g.indexOf(document.activeElement);
+    if(alt&&(e.key==='Escape'||e.key==='ArrowLeft')){var ab=alt.parentNode.querySelector('.hm-alt-ac');altKapat();if(ab)ab.focus();e.preventDefault();return}
+    if(!alt&&document.activeElement.dataset.hmAlt&&(e.key==='ArrowRight'||e.key==='Enter'||e.key===' ')){altAc(document.activeElement.dataset.hmAlt,true);e.preventDefault();return}
     if(e.key==='Escape'){hesapMenu(false);HD.focus();e.preventDefault()}
     else if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();var n=e.key==='ArrowDown'?(i+1)%g.length:(i-1+g.length)%g.length;g[n].focus()}});
   /* Hesap kartı: mağaza bilgisayarında oturumdaki kişi (yönetici oturumu ya da TAA ortak giriş kullanıcısı; sunucu
@@ -1979,10 +1994,11 @@ body{overflow:hidden;font-family:var(--tk-fb,system-ui,"Segoe UI",sans-serif)}
     var b=e.target.closest('button,[data-no]');if(!b)return;var d=b.dataset;
     if(b.id==='hesap-dugme'){hesapMenu(HM.hidden);return}
     if(d.cekmece){cekmece(d.cekmece,$('#pencere').getAttribute('data-'+d.cekmece)==='kapali',true);return}
+    if(d.hmAlt){altAc(d.hmAlt,false);return}
     if(d.hmKilitle!==undefined){hesapMenu(false);kilitle();return}
     if(d.git&&b.closest('#hesap-menu'))hesapMenu(false);
-    if(d.temaSec){temaSec(d.temaSec,kok.dataset.ton);return}
-    if(d.tonSec){temaSec(kok.dataset.tema,d.tonSec==='koyu'?'koyu':null);return}
+    if(d.temaSec){temaSec(d.temaSec,kok.dataset.ton);hmSeciliYaz();return}
+    if(d.tonSec){temaSec(kok.dataset.tema,d.tonSec==='koyu'?'koyu':null);hmSeciliYaz();return}
     if(d.yaziSec!==undefined){TK.yaziUygula(d.yaziSec,true);temaIsaretle();return}
     if(d.renk){vurguSec(d.renk);return}
     if(b.id==='varsayilan'){TK.varsayilan();temaIsaretle();renkMesaj('Varsayılan tema, ton, yazı ve renk geri yüklendi.','tamam');return}
