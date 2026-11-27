@@ -371,9 +371,80 @@ pub fn api(
             (Some(k), Some(a)) => deger(c.sube_ekle(k, a)),
             _ => girdi("kod ve ad gerekli"),
         },
+        ("GET", "/api/personel") => {
+            match sorgu_degeri(sorgu, "sube").and_then(|v| v.parse::<i64>().ok()) {
+                Some(sb) => deger(c.personel_liste(sb)),
+                None => girdi("şube gerekli"),
+            }
+        }
+        ("GET", "/api/personel/gecici") => dizi(c.personel_gecicileri()),
+        ("GET", "/api/personel/ara") => match sorgu_degeri(sorgu, "q") {
+            Some(q) => dizi(c.personel_ara(&yuzde_coz(q))),
+            None => girdi("arama metni gerekli"),
+        },
+        ("POST", "/api/personel/toplu") => match (i(govde, "sube_id"), s(govde, "metin")) {
+            (Some(sb), Some(m)) => deger(c.personel_toplu(sb, m)),
+            _ => girdi("şube ve liste gerekli"),
+        },
+        ("POST", "/api/personel/guncelle") => match i(govde, "id") {
+            Some(id) => deger(c.personel_guncelle(
+                id,
+                s(govde, "gorev"),
+                i(govde, "sube_id"),
+                govde.get("aktif").and_then(Value::as_bool),
+            )),
+            None => girdi("id gerekli"),
+        },
+        ("POST", "/api/personel/gecici") => match (
+            i(govde, "personel_id"),
+            i(govde, "sube_id"),
+            i(govde, "gun"),
+        ) {
+            (Some(p), Some(sb), Some(n)) => {
+                deger(c.personel_gecici_ekle(p, sb, n, s(govde, "neden").unwrap_or("")))
+            }
+            _ => girdi("kişi, şube ve süre gerekli"),
+        },
+        ("POST", "/api/personel/gecici/iptal") => match i(govde, "id") {
+            Some(id) => deger(c.personel_gecici_iptal(id)),
+            None => girdi("id gerekli"),
+        },
+        ("POST", "/api/rol-izin") => match (
+            s(govde, "rol"),
+            s(govde, "izin"),
+            govde.get("acik").and_then(Value::as_bool),
+        ) {
+            (Some(r), Some(z), Some(a)) => deger(c.rol_izin_ayarla(r, z, a)),
+            _ => girdi("rol, izin ve açık/kapalı gerekli"),
+        },
         (_, y) if y.starts_with("/api/") => (404, json!({ "hata": "bilinmeyen uç", "kod": 2 })),
         _ => (404, json!({ "hata": "bulunamadı", "kod": 2 })),
     }
+}
+
+/// Sorgu değerindeki yüzde kodlamasını ve `+` işaretini çözer (geçersiz kodlama olduğu gibi kalır).
+fn yuzde_coz(v: &str) -> String {
+    let b = v.as_bytes();
+    let hex = |x: Option<&u8>| x.and_then(|c| (*c as char).to_digit(16));
+    let mut o = Vec::with_capacity(b.len());
+    let mut k = 0;
+    while k < b.len() {
+        match (b[k], hex(b.get(k + 1)), hex(b.get(k + 2))) {
+            (b'%', Some(h), Some(l)) => {
+                o.push((h * 16 + l) as u8);
+                k += 3;
+            }
+            (b'+', _, _) => {
+                o.push(b' ');
+                k += 1;
+            }
+            (c, _, _) => {
+                o.push(c);
+                k += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&o).into_owned()
 }
 
 /// Oturum bilgisi (gizli oturum anahtarı hariç): ekran menüsü ve izin düğmeleri için.

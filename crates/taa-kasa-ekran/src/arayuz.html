@@ -93,13 +93,10 @@ nav.menu .gez:hover{background:var(--panel2)}
 nav.menu .gez[aria-current="page"]{background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--fg);font-weight:600;box-shadow:inset 3px 0 0 var(--accent)}
 nav.menu .baslik{font-size:13px;color:var(--muted);padding:12px 14px 4px;text-transform:uppercase;letter-spacing:.06em}
 .hesap{margin-top:auto;position:relative}
-.hesap>button{width:100%;min-height:56px;display:flex;align-items:center;gap:10px;padding:0 12px;border-radius:var(--rb);border:1px solid var(--line);background:var(--panel2);text-align:left}
-.avatar{width:34px;height:34px;border-radius:50%;background:var(--accent);color:var(--on-accent);display:grid;place-items:center;font-weight:700;flex:none}
-.hesap-menu{position:absolute;bottom:64px;left:0;right:0;background:var(--panel);border:1px solid var(--line-strong);border-radius:var(--r);padding:8px;box-shadow:0 10px 30px rgba(0,0,0,.25);display:grid;gap:4px;z-index:20}
-.hesap-menu hr{border:0;border-top:1px solid var(--line);margin:4px 0;width:100%}
-.hesap-menu button{min-height:48px;text-align:left;border:0;background:transparent;border-radius:var(--rb);padding:0 12px}
-.hesap-menu button:hover{background:var(--panel2)}
-.hesap-menu .kim{padding:8px 12px}
+/* Hesap menüsü: ortak bileşen (taa-giris-ekrani.js v3; alt menüler sağda yan panel). Renkler programın temasından. */
+:root{--taa-arka:var(--bg);--taa-panel:var(--panel);--taa-yazi:var(--fg);--taa-soluk:var(--muted);--taa-vurgu:var(--accent);
+  --taa-vurgu-yazi:var(--on-accent);--taa-cizgi:var(--line);--taa-hata:var(--eksik);--taa-r:var(--r)}
+.hesap .tg-hesap{min-height:56px;border:1px solid var(--line);background:var(--panel2);font-size:14px}
 .seg{display:inline-flex;border:1px solid var(--line-strong);border-radius:var(--rb);overflow:hidden}
 .seg button{min-height:44px;padding:0 12px;border:0;background:transparent}
 .seg button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
@@ -210,21 +207,7 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
     <div class="baslik yon">Yönetim</div>
     <button class="gez yon" data-git="ayarlar">Mağaza ayarları</button>
     <button class="gez yon" data-git="matris">Merkez matrisi</button>
-    <div class="hesap">
-      <div class="hesap-menu" id="hesap-menu" hidden role="menu">
-        <div class="kim"><b id="hm-ad"></b><div class="mut kucuk" id="hm-rol"></div></div>
-        <button role="menuitem" id="hm-degistir">Kişi değiştir</button>
-        <button role="menuitem" id="hm-cikis">Çıkış</button>
-        <hr>
-        <button role="menuitem" id="hm-yonetici">Yönetici girişi</button>
-        <hr>
-        <div class="kim"><div class="mut kucuk" style="margin-bottom:6px">Ayarlar · tema</div>
-          <div class="seg" id="hm-tema"><button data-tema="sistem">Sistem</button><button data-tema="acik">Açık</button><button data-tema="koyu">Koyu</button></div>
-          <div class="seg" id="hm-hareket" style="margin-top:8px"><button data-h="null">Hareket: sistem</button><button data-h="true">Azalt</button></div>
-        </div>
-      </div>
-      <button id="hesap-dugme" aria-haspopup="menu" aria-expanded="false"><span class="avatar" id="hesap-bas"></span><span><b id="hesap-ad"></b><br><small class="mut" id="hesap-rol"></small></span></button>
-    </div>
+    <div class="hesap" id="hesap-yer"></div>
   </nav>
   <main id="ana" tabindex="-1">
     <section class="ekran" data-ekran="bugun"></section>
@@ -276,6 +259,7 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 </dialog>
 <div id="bildirim" role="status" hidden></div>
 
+<script>/*@GIRIS-EKRANI@*/</script>
 <script>
 'use strict';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
@@ -297,9 +281,7 @@ const sorgu=()=>`tarih=${encodeURIComponent($('#c-tarih').value||'')}&cekmece=${
 
 // ---------------- görünüm
 function gorunumUygula(){const r=document.documentElement;if(GOR.tema==='sistem')r.removeAttribute('data-tema');else r.dataset.tema=GOR.tema;
-  if(GOR.hareket_azalt===true)r.dataset.hareket='azalt';else r.removeAttribute('data-hareket');
-  $$('#hm-tema button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tema===GOR.tema)));
-  $$('#hm-hareket button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.h===String(GOR.hareket_azalt))))}
+  if(GOR.hareket_azalt===true)r.dataset.hareket='azalt';else r.removeAttribute('data-hareket')}
 async function gorunumYaz(d){try{GOR=await api('POST','/api/gorunum',d);gorunumUygula()}catch(e){bildir(e.message)}}
 
 // ---------------- açılış
@@ -335,9 +317,7 @@ $('#c-tarih').onchange=yenile;$('#c-cekmece').onchange=yenile;
 function cubuk(){
   $('#c-sube').textContent=D.sube?('Şube '+D.sube):'Şube tanımsız';
   const k=D.kisi||{ad:'?',rol:'personel'},y=D.yonetici;
-  $('#hesap-bas').textContent=(k.ad||'?').slice(0,1).toLocaleUpperCase('tr');$('#hesap-ad').textContent=k.ad;$('#hesap-rol').textContent=rolAd(k.rol)+(k.dogrulandi?'':' · doğrulamasız');
-  $('#hm-ad').textContent=k.ad;$('#hm-rol').textContent=rolAd(k.rol)+' · ortak giriş bağlı değil (yer tutucu)';
-  $('#hm-yonetici').textContent=y?'Yönetici çıkışı ('+y.ad+')':'Yönetici girişi';
+  hesapMenusuKur(k,y);
   $('#c-yonetici').hidden=!y;if(y&&!yonBitis)yonBitis=Date.now()+600000;if(!y)yonBitis=0;
   $$('.yon').forEach(e=>e.hidden=!y);
   const b=D.kuyruk.bekleyen,r=$('#c-baglanti');r.classList.toggle('uyar',b>0||!D.kuyruk.merkez_klasoru);
@@ -345,14 +325,24 @@ function cubuk(){
 setInterval(()=>{if(!yonBitis)return;const k=Math.max(0,yonBitis-Date.now());$('#c-yon-sure').textContent=String(Math.floor(k/60000)).padStart(2,'0')+':'+String(Math.floor(k%60000/1000)).padStart(2,'0');if(!k){yonBitis=0;yenile()}},1000);
 $('#c-baglanti').onclick=async()=>{try{const v=await api('POST','/api/kuyruk/bosalt',{});bildir(v.hata?('Gönderilemedi: '+v.hata):(v.teslim+' paket merkeze teslim edildi'));yenile()}catch(e){bildir(e.message)}};
 
-// ---------------- hesap menüsü
-$('#hesap-dugme').onclick=e=>{e.stopPropagation();const m=$('#hesap-menu');m.hidden=!m.hidden;$('#hesap-dugme').setAttribute('aria-expanded',String(!m.hidden))};
-document.addEventListener('click',e=>{if(!e.target.closest('.hesap'))$('#hesap-menu').hidden=true});
-$('#hm-tema').onclick=e=>{const b=e.target.closest('button');if(b)gorunumYaz({tema:b.dataset.tema})};
-$('#hm-hareket').onclick=e=>{const b=e.target.closest('button');if(b)gorunumYaz({hareket_azalt:b.dataset.h==='true'?true:null})};
-$('#hm-cikis').onclick=async()=>{await api('POST','/api/cikis',{});await yukle();girisGoster()};
-$('#hm-degistir').onclick=()=>kisiSec('Kişi değiştir','Vardiya değiştiyse kişiyi değiştirin; her kayıt seçilen kişiye yazılır.',null).then(async ad=>{if(!ad)return;await api('POST','/api/giris',{ad});yenile()});
-$('#hm-yonetici').onclick=async()=>{$('#hesap-menu').hidden=true;if(D.yonetici){await api('POST','/api/yonetici/kapat',{});yonBitis=0;yenile();return}
+// ---------------- hesap menüsü (ortak bileşen TaaGirisEkrani.hesapMenusu, v3)
+// Program öğeleri: yönetici girişi/çıkışı, Tema ve Hareket alt menüleri (menünün sağında yan panel; menü boyu sabit).
+// Ortak öğeler (Kullanıcı değiştir, Ekranı kilitle, Çıkış yap) bileşenden gelir. Ortak giriş (KM2) bağlanana kadar kasa
+// oturumu yerel ad seçimidir: üçü de oturumu kapatıp ad seçme ekranına döner (kilitte şifre yok; yer tutucu).
+const KASA_GIRIS={cikis:async()=>{try{await api('POST','/api/cikis',{});return {tamam:true}}catch(_){return {tamam:false}}}};
+let hesapAnahtar='';
+function hesapMenusuKur(k,y){const a=[k.ad,k.rol,k.dogrulandi,y&&y.ad].join('|');
+  if(a===hesapAnahtar&&document.getElementById('taa-giris-hesap'))return;hesapAnahtar=a;
+  TaaGirisEkrani.hesapMenusu({api:KASA_GIRIS,hedef:$('#hesap-yer'),programAdi:'TAA Kasa',
+    oturum:{kullanici:k.ad,roller:[rolAd(k.rol)+(k.dogrulandi?'':' · doğrulamasız')]},
+    cikinca:async(o)=>{hesapAnahtar='';yonBitis=0;if(o&&o.neden==='kilit')await KASA_GIRIS.cikis();await yukle();girisGoster()},
+    ogeler:()=>[
+      {ad:D.yonetici?'Yönetici çıkışı ('+D.yonetici.ad+')':'Yönetici girişi',tikla:yoneticiGirisCikis},
+      {ayrac:true},
+      {ad:'Tema',alt:[['sistem','Sistem'],['acik','Açık'],['koyu','Koyu']].map(([t,ad])=>({ad,secili:GOR.tema===t,tikla:()=>gorunumYaz({tema:t})}))},
+      {ad:'Hareket',alt:[[null,'Sistem'],[true,'Azalt']].map(([h,ad])=>({ad,secili:(GOR.hareket_azalt===true)===(h===true),tikla:()=>gorunumYaz({hareket_azalt:h})}))},
+    ]})}
+async function yoneticiGirisCikis(){if(D.yonetici){await api('POST','/api/yonetici/kapat',{});yonBitis=0;yenile();return}
   const kur=!D.yonetici_pin_kurulu;$('#dy-ad-alan').hidden=!kur;$('#dy-pin-etiket').textContent=kur?'Yeni PIN (6–12 rakam; ilk kurulum)':'PIN';$('#dy-pin').value='';$('#dy-hata').textContent='';$('#d-yonetici').showModal();(kur?$('#dy-ad'):$('#dy-pin')).focus()};
 $('#dy-vazgec').onclick=()=>$('#d-yonetici').close();
 $('#dy-tamam').onclick=async()=>{const kur=!D.yonetici_pin_kurulu,p=$('#dy-pin').value;

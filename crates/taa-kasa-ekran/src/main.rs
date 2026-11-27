@@ -245,7 +245,7 @@ fn isle(
     match (yontem, yol.as_str()) {
         ("GET", "/") => yanitla(
             istek,
-            Response::from_string(ek::ARAYUZ_HTML),
+            Response::from_string(ek::arayuz_html()),
             "text/html; charset=utf-8",
             &[],
         ),
