@@ -103,6 +103,7 @@ const ILETI = {
   girdi: 'Kullanıcı adını ve şifreyi doğru yazın.',
   oturum_yok: 'Oturum yok. Giriş yapın.',
   yetki_yok: 'Bu işlem için yetkiniz yok. Yöneticinize ya da şube müdürünüze başvurun.',
+  ekran_kilitli: 'Ekran kilitli. Yalnız kilitleyen kullanıcı şifresiyle açabilir; başka biri için "Başka kullanıcıyla gir"i seçin.',
   personel_yok: 'Personel listesi alınamadı ve bu bilgisayarda kayıtlı liste yok. Sunucu bağlantısını denetleyin.',
   bilinmiyor: 'Giriş yapılamadı. Yeniden deneyin; sürerse yöneticinize haber verin.',
 };
@@ -246,6 +247,11 @@ function kilitSil(s) {
   const y = kilitDosyasi(s);
   if (y && fs.existsSync(y)) { try { fs.writeFileSync(y, '{}', { mode: 0o600 }); } catch (_) { /* yazılamazsa sorun değil */ } }
 }
+// İşaret varsa kilitleyen kullanıcıyı döndürür, yoksa null. Oturumla eşleşme baslangic'te denetlenir.
+function kilitliMi(secenek) {
+  const k = kilitOku(secenek || {});
+  return k ? { kullanici: k.kullanici } : null;
+}
 async function kilitle(secenek) {
   const s = secenek || {};
   const oturum = await durum(s);
@@ -357,14 +363,22 @@ function ipcKur(ipcMain, secenek) {
   if (s.program && !PROGRAM_RE.test(s.program)) throw new Error('taa-giris: program adı geçersiz');
   const denetle = typeof s.denetle === 'function' ? s.denetle : gonderenVarsayilan;
   const kur = (kanal, is) => ipcMain.handle(kanal, (olay, i) => { denetle(olay); return is(i && typeof i === 'object' ? i : {}); });
+  // Ekran kilitliyken (Fable K2) renderer'a canlı oturum, izin ya da personel bilgisi verilmez; giriş yalnız kilitleyen
+  // kullanıcıyla kabul edilir. "Başka kullanıcıyla gir" önce cikis çağırır, işaret boşalır ve giriş serbest kalır.
+  // Ana süreçteki doğrudan çağrılar (ör. yayın) bu kapıdan geçmez; kilit oturumu kapatmaz.
+  const kilitliRed = () => red('ekran_kilitli');
   kur(KANAL.baslangic, () => baslangic(s));
-  kur(KANAL.giris, (i) => giris(i, s));
-  kur(KANAL.basvur, (i) => basvur(i, s));
-  kur(KANAL.durum, () => durum(s));
-  kur(KANAL.yetki, (i) => yetki(i, s));
+  kur(KANAL.giris, (i) => {
+    const k = kilitliMi(s);
+    if (k && String((i && i.kullanici) || '').trim() !== k.kullanici) return kilitliRed();
+    return giris(i, s);
+  });
+  kur(KANAL.basvur, (i) => (kilitliMi(s) ? kilitliRed() : basvur(i, s)));
+  kur(KANAL.durum, () => (kilitliMi(s) ? null : durum(s)));
+  kur(KANAL.yetki, (i) => (kilitliMi(s) ? { izinli: false, neden: ['ekran_kilitli'] } : yetki(i, s)));
   kur(KANAL.cikis, () => cikis(s));
   kur(KANAL.kilitle, () => kilitle(s));
-  kur(KANAL.personel, (i) => personel(i, s));
+  kur(KANAL.personel, (i) => (kilitliMi(s) ? kilitliRed() : personel(i, s)));
 }
 
 function preloadKur(contextBridge, ipcRenderer) {
@@ -380,4 +394,4 @@ function preloadKur(contextBridge, ipcRenderer) {
   });
 }
 
-module.exports = { kimlikYolu, calistir, baslangic, giris, basvur, durum, yetki, cikis, kilitle, personel, ipcKur, preloadKur, KANAL, ILETI, _durumBul: durumBul };
+module.exports = { kimlikYolu, calistir, baslangic, giris, basvur, durum, yetki, cikis, kilitle, kilitliMi, personel, ipcKur, preloadKur, KANAL, ILETI, _durumBul: durumBul };
