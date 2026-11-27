@@ -5,7 +5,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' http://*:8788 https://*:8788; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="theme-color" content="#6A2C5A">
 <title>TAA Web</title>
 <link rel="manifest" href="manifest.webmanifest">
@@ -60,6 +60,7 @@
     </div>
     <p id="giden-ozet" class="soluk"></p>
     <p id="giden-durma" class="durum-notu" hidden></p>
+    <p id="giden-yol" class="soluk kucuk"></p>
     <button type="button" id="simdi-gonder" class="dugme ana">Şimdi gönder</button>
     <h3>Gönderilmeyenler</h3>
     <ul id="giden-bekleyen" class="kayit-listesi"></ul>
@@ -84,6 +85,18 @@
       <legend>Görünüm</legend>
       <label><input type="radio" name="tema" value="acik"> Aydınlık</label>
       <label><input type="radio" name="tema" value="koyu"> Karanlık</label>
+    </fieldset>
+    <fieldset class="yol-ayari">
+      <legend>Bağlantı yolları</legend>
+      <p class="soluk kucuk">Kayıtlar önce merkez sunucuya gider. Merkeze ulaşılamazsa şube bilgisayarına, o da yoksa bu cihazda bekler.</p>
+      <ol id="yol-sirasi" class="yol-sirasi"></ol>
+      <label class="alan"><span>Şube bilgisayarı adresi (boşsa kullanılmaz)</span>
+        <input id="yol-sube" inputmode="url" autocapitalize="none" spellcheck="false" autocomplete="off" placeholder="http://192.168.1.20:8788"></label>
+      <label class="alan"><span>Şube kodu (boşsa oturumdaki şube)</span>
+        <input id="yol-sube-kodu" autocapitalize="characters" spellcheck="false" autocomplete="off" placeholder="MRK01"></label>
+      <p id="yol-hata" class="hata-metni" role="alert" hidden></p>
+      <p id="yol-durum" class="soluk kucuk" role="status"></p>
+      <button type="button" id="yol-kaydet" class="dugme">Yolları kaydet</button>
     </fieldset>
     <button type="button" id="yeniden-giris" class="dugme" hidden>Yeniden giriş yap</button>
     <button type="button" id="cikis" class="dugme">Çıkış yap</button>

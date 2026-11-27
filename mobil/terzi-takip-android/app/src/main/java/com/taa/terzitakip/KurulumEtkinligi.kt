@@ -1,4 +1,5 @@
 // Sahip: Yusuf. yazan: [Claude#terzi-takip-android 2026-11-17]
+// değiştiren: [Claude Fable 5.2 #taa-web-W2-kurulum 2026-11-27] (yol listesi: merkez + şube bilgisayarı)
 package com.taa.terzitakip
 
 import android.content.Intent
@@ -15,12 +16,14 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 
 /**
- * İlk kurulum ve gizli "Sunucu ayarı" ekranı. Sunucu adresi elle yazılır ya da mağaza bilgisayarındaki eşleştirme
- * karekodu okutulur (karekod `<kök>/telefon?kod=123456`: adres ve kod oradan dolar ve hemen kaydedilir).
- * Sonuç: RESULT_OK ve isteğe bağlı [EK_KOD]; kök [Ayarlar]'a yazılmıştır.
+ * İlk kurulum ve gizli "Sunucu ayarı" ekranı. Yol listesinin iki adresi yazılır: merkez sunucu ve şube bilgisayarı
+ * (sıra sabit: merkez → şube → yerel; en az biri gerekir). Adres elle yazılır ya da karekod okutulur: karekoddaki
+ * adres yerel ağ IP'siyse şube bilgisayarı alanına, değilse merkez alanına yazılır; kod varsa hemen kaydedilir.
+ * Sonuç: RESULT_OK ve isteğe bağlı [EK_KOD]; adresler [Ayarlar]'a yazılmıştır.
  */
 class KurulumEtkinligi : ComponentActivity() {
 
+    private lateinit var merkez: EditText
     private lateinit var adres: EditText
     private lateinit var kod: EditText
     private lateinit var mesaj: TextView
@@ -44,13 +47,17 @@ class KurulumEtkinligi : ComponentActivity() {
         setContentView(R.layout.etkinlik_kurulum)
         findViewById<View>(R.id.kok).sistemCubuklariIcinBosluk()
 
+        merkez = findViewById(R.id.merkez)
         adres = findViewById(R.id.adres)
         kod = findViewById(R.id.kod)
         mesaj = findViewById(R.id.mesaj)
         val ilk = intent.getBooleanExtra(EK_ILK, true)
 
         if (savedInstanceState == null) {
-            adres.setText(Ayarlar(this).sunucuKoku.orEmpty())
+            val a = Ayarlar(this)
+            merkez.setText(a.merkezKoku.orEmpty())
+            // Eski tek adresli ayar (mağaza bilgisayarı) varsa şube bilgisayarı alanına öneri olarak gelir.
+            adres.setText(a.subeKoku ?: a.sunucuKoku.orEmpty())
         }
         findViewById<TextView>(R.id.surum).text = getString(R.string.surum, BuildConfig.VERSION_NAME)
         if (!ilk) {
@@ -83,18 +90,41 @@ class KurulumEtkinligi : ComponentActivity() {
             mesajGoster("Bu karekod bir sunucu adresi değil. " + (e.message ?: ""))
             return
         }
-        adres.setText(sonuc.kok)
+        if (YolListesi.alan(sonuc.kok) == YolListesi.SUBE) adres.setText(sonuc.kok) else merkez.setText(sonuc.kok)
         kod.setText(sonuc.kod.orEmpty())
         // Eşleştirme karekodu adresi ve kodu birlikte taşır: beklemeden kaydet ve bağlan.
         if (sonuc.kod != null) kaydet()
     }
 
+    /** Alanı çözer: boşsa null, uygun değilse mesaj gösterip [SunucuAdresi.Hata] fırlatır. */
+    private fun alanCoz(alan: EditText, ad: String): SunucuAdresi.Sonuc? {
+        if (alan.text.toString().isBlank()) return null
+        return try {
+            SunucuAdresi.coz(alan.text.toString())
+        } catch (e: SunucuAdresi.Hata) {
+            mesajGoster("$ad: " + (e.message ?: "adres geçersiz."))
+            alan.requestFocus()
+            throw e
+        }
+    }
+
     private fun kaydet() {
         mesaj.visibility = View.GONE
-        val sonuc = try {
-            SunucuAdresi.coz(adres.text.toString())
+        val merkezSonuc: SunucuAdresi.Sonuc?
+        val subeSonuc: SunucuAdresi.Sonuc?
+        try {
+            merkezSonuc = alanCoz(merkez, getString(R.string.merkez_adresi))
+            subeSonuc = alanCoz(adres, getString(R.string.sunucu_adresi))
         } catch (e: SunucuAdresi.Hata) {
-            mesajGoster(e.message ?: "Adres geçersiz.")
+            return
+        }
+        if (merkezSonuc == null && subeSonuc == null) {
+            mesajGoster(getString(R.string.adres_gerekli))
+            merkez.requestFocus()
+            return
+        }
+        if (merkezSonuc != null && merkezSonuc.kok == subeSonuc?.kok) {
+            mesajGoster(getString(R.string.adresler_ayni))
             adres.requestFocus()
             return
         }
@@ -104,8 +134,11 @@ class KurulumEtkinligi : ComponentActivity() {
             kod.requestFocus()
             return
         }
-        Ayarlar(this).sunucuKoku = sonuc.kok
-        val gidecekKod = yazilanKod.ifEmpty { sonuc.kod }
+        Ayarlar(this).apply {
+            merkezKoku = merkezSonuc?.kok
+            subeKoku = subeSonuc?.kok
+        }
+        val gidecekKod = yazilanKod.ifEmpty { merkezSonuc?.kod ?: subeSonuc?.kod }
         setResult(RESULT_OK, Intent().putExtra(EK_KOD, gidecekKod))
         finish()
     }

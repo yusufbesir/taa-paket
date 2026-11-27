@@ -57,3 +57,41 @@ sağda kurulumdan sonra yapılacak ayarların numaralı adımları (yapılabilen
 iken pencere yok (konsol; sessizde soru yok, `--rol`, `--sube`, `--programlar` ile). Ayrıntı: `KURULUM-EKRANI.md`.
 `taa-guncelle` yalnız `TAA_ILERLEME=1` ortamında stderr'e `TAA-ILERLEME` satırları yazar (başka davranış değişmez).
 Gerçek Windows'ta çalıştırılmadı; Linux'ta wine 9 + Xvfb altında sahte `taa-guncelle` ile uçtan uca denendi.
+
+## Şube bilgisayarı profili (2026-11-27)
+Yusuf: "Şube bilgisayarı kendi şubesinin sunucusu gibi çalışır; merkezin yerini almaz. Kurulum, taa-yazdir ile şube düğümünü şube
+bilgisayarının kendisine kurar ve başlatır. Çatı şubelere kurulmaz." Plan: `PLAN-TAA-WEB-2026-11-27.md` §9; düğüm: `SUBE-DUGUMU.md`.
+
+**Ne yapar** (`taa-kur sube-pc kur`, kurulum exe'sinde "Şube bilgisayarı" adımı; yalnız `rol=sube`, sunucu rolünde reddeder):
+- `taa-yazdir` ve `taa-sube-dugum` ikililerinin kökte olduğunu denetler (yoksa adım "kurulamadı" der; hiçbir şeyi silmez).
+- Klasörler: `<veri>\gunluk\` (düğümün `YYYY-AA-GG.jsonl` günlüğü; silinmez), `<veri>\sube-pc\` (profilin kendi dosyaları).
+- Yol listesi: `<veri>\sube-pc\istemci-yollari.json` = `[{ad:'merkez',url},{ad:'sube',url},{ad:'yerel'}]` (sıra sabit: merkez →
+  şube bilgisayarı → cihazın kendi kutusu). Merkez adresi `--merkez` ya da `eslestirme.json`'dan; yoksa merkez satırı url'siz yazılır.
+- `<veri>\yazdir\ayar.json` içindeki `izinli_kokenler`'e merkez ve şube kökenleri eklenir (eski sürüm `eski\` altına taşınır).
+- Açılış kaydı: `schtasks` görevi **"TAA Sube PC"** (ONLOGON, `/RL LIMITED`); olmazsa `HKCU\...\Run` anahtarı. Komut:
+  `"<kök>\taa-kur-pencere.exe" --sube-pc-baslat` (penceresiz). `--gorevsiz` ile atlanır.
+- Başlatma: `taa-yazdir --kok <veri> calis` (8797) ve `taa-sube-dugum calis --kok <veri> --sube <kod> --port 8788 ...`; kapı zaten
+  açıksa ikinci kez başlatmaz. Çıktılar `<veri>\sube-pc\cikti\<ad>.log`; her kurulum/başlatma `<veri>\sube-pc\kurulum.jsonl`'a eklenir.
+- Profil özeti: `<kök>\sube-pc.json`.
+
+**Komutlar:** `taa-kur sube-pc kur [--merkez URL] [--sube-adres ADRES] [--port N] [--lan-ac] [--gorevsiz] [--baslatma] [--duvarsiz]`,
+`taa-kur sube-pc durum`, `taa-kur sube-pc baslat`, `taa-kur sube-pc gorev-kaldir` (yalnız açılış kaydını kaldırır; veri ve günlük kalır).
+Kurulum exe'si: `--sube-pc evet|hayir` (ya da paket yanında `sube-pc.txt`; sessizde varsayılan evet), `--merkez`, `--sube-adres`,
+`--dugum-port`, `--sube-lan evet`. Kaldırma önce açılış kaydını siler.
+
+**Çatı:** şube rolünde program listesinden ve `--programlar` seçiminden düşürülür (kurulmaz; kurulu olan silinmez).
+
+**Yerel ağ varsayılan olarak KAPALI.** Düğümde henüz kimlik doğrulama yok (`SUBE-DUGUMU.md` §13.6.1), bu yüzden profil düğümü yalnız
+`127.0.0.1`'de açar ve şube adresini `http://127.0.0.1:8788` yazar. Telefonların şube bilgisayarına yazabilmesi için `--lan-ac`
+(kurulumda `--sube-lan evet`) gerekir: o zaman özel ağ IPv4'ü `--lan` ile verilir, yol listesine o adres yazılır ve Windows güvenlik
+duvarına "TAA Sube Dugumu" kuralı (özel profil, yerel alt ağ) eklenir. Düğüme kimlik doğrulama gelince varsayılan değiştirilecek.
+
+**Dürüst durum / açık noktalar**
+- Gerçek Windows'ta **denenmedi** (schtasks, Run anahtarı, netsh, penceresiz başlatma). Linux'ta sahte `Sistem` ile birim sınamaları,
+  gerçek ikililerle uçtan uca kurulum ve `x86_64-pc-windows-gnu` tür denetimi yapıldı.
+- `tools/kur_paketle.sh` bu işin kapsamı dışında: `taa-yazdir` ve `taa-sube-dugum` pakete ya da güncelleme kanalına eklenmeden adım
+  "kurulamadı" der.
+- Düğümün merkeze kopyalaması için merkez oturumu (`TAA_OTURUM` / `--oturum-dosyasi`) gerekir; kurulum bunu sağlamaz.
+- `istemci-yollari.json`'u kabuk ve düğüm henüz okumuyor (yer önerisi); `sube-pc` ve `gunluk` alanları `veri-sahipleri.toml`'da yok.
+- Güvenlik duvarı kuralı ve bazı makinelerde `schtasks` yönetici ister; kural eklenemezse uyarı yazılır, kurulum durmaz.
+- Çalışan servis exe'leri kaldırmada silinemez (Windows kilidi); önce süreçler kapatılmalı.

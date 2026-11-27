@@ -4,6 +4,10 @@
 // Kurallar: yalnız ekleme, silme yok (yalnız durum değişir); aynı `no` ikinci kez eklenmez;
 // gönderim sırayla yapılır, sunucuya ulaşılamazsa o kayıtta durur ve sıra bozulmaz.
 // Bağımlılık yok. IndexedDB yoksa (Node testi) bellek içi yedek sürücü kullanılır.
+// [Claude Fable 5.2 #taa-web-W2-yol 2026-11-27] Eklendi: gönderim yolları (./yol.js; merkez → şube → yerel) ve
+// cihaz günlüğü (`Gunluk`: yalnız ekleme, silme yok). `gonder({sunucu, oturum})` eskisi gibi tek yola gönderir.
+
+import { yolluGonder } from './yol.js';
 
 export const OLAY_GIDEN_DEGISTI = 'taa-giden-degisti';
 export const DURUMLAR = Object.freeze(['bekliyor', 'gonderildi', 'reddedildi']);
@@ -14,8 +18,10 @@ export const ZAMAN_ASIMI_MS = 60_000; // taa-kuyruk: curl --max-time 60
 /** Olaylar burada da yayınlanır (Node'da pencere yoktur). Tarayıcıda ayrıca `window` üstünde yayınlanır. */
 export const olaylar = new EventTarget();
 
-const DEPOLAR = ['giden', 'onbellek', 'meta'];
-const ANAHTAR_ALANI = { giden: 'no', onbellek: 'anahtar', meta: 'anahtar' };
+const DEPOLAR = ['giden', 'onbellek', 'meta', 'gunluk'];
+const ANAHTAR_ALANI = { giden: 'no', onbellek: 'anahtar', meta: 'anahtar', gunluk: 'sira' };
+const VT_SURUMU = 2; // 1: giden, onbellek, meta; 2: + gunluk (eksik depo yükseltmede eklenir, hiçbir depo silinmez)
+export const GUNLUK_AYRINTI_EN_COK = 4096; // bir günlük satırının ayrıntısı (bayt)
 
 export class TaaHata extends Error {
   constructor(kod, mesaj) {
@@ -78,7 +84,7 @@ function baytSay(metin) {
 //                                  Tek işlem içinde okur-yazar (yarış yok). Yazılan kaydı ya da undefined döner.
 // Silme işlemi bilerek yoktur.
 
-const bellekVeritabanlari = new Map(); // ad -> { giden: Map, onbellek: Map, meta: Map }
+const bellekVeritabanlari = new Map(); // ad -> { giden: Map, onbellek: Map, meta: Map, gunluk: Map }
 
 /** Bellek içi yedek sürücü. Aynı ad aynı veriyi görür (IndexedDB gibi); süreç kapanınca veri gider. */
 export class BellekSurucu {
@@ -127,7 +133,7 @@ export class IdbSurucu {
   _ac() {
     if (!this._acik) {
       this._acik = new Promise((coz, reddet) => {
-        const istek = this._idb.open(this.ad, 1);
+        const istek = this._idb.open(this.ad, VT_SURUMU);
         istek.onupgradeneeded = () => {
           const vt = istek.result;
           for (const depo of DEPOLAR) {
@@ -236,7 +242,7 @@ export class IdbSurucu {
  * @param {string} sube       `[A-Za-z0-9._]`, 1..48 (tire yok)
  * @param {string} kullanici  `[A-Za-z0-9._]`, 1..48 (tire yok)
  * @param {{surucu?: 'bellek'|'idb', cihaz?: string, saat?: () => number}} [secenek]
- * @returns {{ad: string, kalici: boolean, surucu: object, giden: Giden, onbellek: Onbellek}}
+ * @returns {{ad: string, kalici: boolean, surucu: object, giden: Giden, onbellek: Onbellek, gunluk: Gunluk}}
  */
 export function acDB(sube, kullanici, secenek = {}) {
   if (!parcaGecerli(sube)) {
@@ -255,6 +261,7 @@ export function acDB(sube, kullanici, secenek = {}) {
   const db = { ad, kalici: surucu.kalici, surucu };
   db.giden = new Giden(db, { cihaz: secenek.cihaz, saat: secenek.saat });
   db.onbellek = new Onbellek(db, { saat: secenek.saat });
+  db.gunluk = new Gunluk(db, { saat: secenek.saat });
   return db;
 }
 
@@ -300,7 +307,8 @@ function rastgeleKimlik(uzunluk) {
 
 /**
  * Giden kutusu. Kayıt biçimi:
- * `{no, sira, program, uc, govde, zaman, durum, gonderim?: {zaman, yanit}, ret?: {zaman, kod, mesaj}}`
+ * `{no, sira, program, uc, govde, zaman, durum, gonderim?: {zaman, yanit, yol?}, ret?: {zaman, kod, mesaj, yol?}}`
+ * `yol`: kaydı kabul eden / reddeden yolun adı (`merkez` | `sube`); yalnız yol adıyla gönderimde yazılır.
  */
 export class Giden {
   constructor(db, { cihaz, saat } = {}) {
@@ -419,16 +427,40 @@ export class Giden {
    *   bilerek ret sayılmaz; yeniden girişten sonra gönderim kaldığı yerden sürer.
    * İstek: gövde JSON (gövdede `no` yoksa eklenir), başlıklar `Authorization: Bearer <oturum>` ve `X-TAA-No: <no>`.
    * Aynı anda ikinci çağrı yeni gönderim başlatmaz; süren gönderimin sonucunu bekler.
-   * @param {{sunucu: string, oturum: string, fetch?: typeof fetch, enCok?: number, zamanAsimiMs?: number}} secenek
-   * @returns {Promise<{gonderilen: number, reddedilen: number, kalan: number, durmaNedeni: string|null, durmaKodu?: number}>}
+   *
+   * İki kullanım:
+   * - `gonder({sunucu, oturum})`: tek yol (eski davranış, aynen).
+   * - `gonder({yollar, oturum, sube, cevrimici})`: yol listesiyle sıralı deneme, merkez → şube → yerel
+   *   (./yol.js `yolluGonder`). Yol başarısızlığı bu veritabanının cihaz günlüğüne yazılır. Sonuca `yol` ve
+   *   `denemeler` eklenir.
+   * Durunca sonuçta `durmaTuru` da bulunur: `ag` | `zaman-asimi` | `sunucu` | `oturum` | `kilit` | `atlandi`
+   * (yolluda ayrıca `cevrimdisi`, `ayar`).
+   * @param {{sunucu?: string, yollar?: Array, oturum: string, fetch?: typeof fetch, enCok?: number, zamanAsimiMs?: number,
+   *          sube?: string, cevrimici?: boolean}} secenek
+   * @returns {Promise<{gonderilen: number, reddedilen: number, kalan: number, durmaNedeni: string|null, durmaKodu?: number, durmaTuru?: string}>}
    */
   gonder(secenek = {}) {
     if (!this._gonderim) {
-      this._gonderim = this._kilitliGonder(secenek).finally(() => {
+      const is = Array.isArray(secenek?.yollar)
+        ? yolluGonder(this, { gunluk: this._db.gunluk, saat: this._saat, ...secenek })
+        : this._kilitliGonder(secenek);
+      this._gonderim = is.finally(() => {
         this._gonderim = null;
       });
     }
     return this._gonderim;
+  }
+
+  /**
+   * Tek bir sunucuya gönderim (yol.js bunu çağırır; `gonder`in süren-iş kilidine girmez). Ek seçenekler:
+   * - `yol`: yol adı; kaydın `gonderim.yol` / `ret.yol` alanına yazılır.
+   * - `oturumsuz: true`: `Authorization` başlığı gönderilmez (şube düğümü; oturum anahtarı şube ağına çıkmaz).
+   * - `basliklar`: ek başlıklar (ör. `X-TAA-Sube`).
+   * - `kaliciRet(kod, metin) -> bool`: hangi 4xx kalıcı rettir (verilmezse yukarıdaki kural).
+   * - `uygun(kayit) -> bool`: false dönen kayıt bu yola gönderilmez, `bekliyor` kalır (sonuçta `atlanan`).
+   */
+  tekYolGonder(secenek = {}) {
+    return this._kilitliGonder(secenek);
   }
 
   async _kilitliGonder(secenek) {
@@ -438,57 +470,98 @@ export class Giden {
     return kilitler.request(`taa-giden-${this._db.ad}`, { ifAvailable: true }, async (kilit) => {
       if (!kilit) {
         const s = await this.say();
-        return { gonderilen: 0, reddedilen: 0, kalan: s.bekliyor, durmaNedeni: 'Başka bir sekme gönderiyor.' };
+        return { gonderilen: 0, reddedilen: 0, kalan: s.bekliyor, durmaNedeni: 'Başka bir sekme gönderiyor.', durmaTuru: 'kilit' };
       }
       return this._gonder(secenek);
     });
   }
 
-  async _gonder({ sunucu, oturum, fetch: getir = globalThis.fetch, enCok = 0, zamanAsimiMs = ZAMAN_ASIMI_MS } = {}) {
+  async _gonder({
+    sunucu,
+    oturum,
+    fetch: getir = globalThis.fetch,
+    enCok = 0,
+    zamanAsimiMs = ZAMAN_ASIMI_MS,
+    yol,
+    oturumsuz = false,
+    basliklar,
+    kaliciRet,
+    uygun,
+  } = {}) {
     if (typeof sunucu !== 'string' || !/^https?:\/\/[^\s/?#]+/.test(sunucu)) {
       throw new TaaHata('gecersiz-sunucu', 'Sunucu adresi "https://..." biçiminde olmalı.');
     }
     if (typeof getir !== 'function') {
       throw new TaaHata('fetch-yok', 'Bu ortamda fetch yok; `fetch` seçeneğini verin.');
     }
+    if (yol !== undefined && (typeof yol !== 'string' || !/^[a-z0-9-]{1,24}$/.test(yol))) {
+      throw new TaaHata('gecersiz-yol', 'Yol adı yalnız küçük harf, rakam ve tire içerebilir (1-24).');
+    }
+    const ekBasliklar = {};
+    for (const [ad, deger] of Object.entries(basliklar ?? {})) {
+      if (!/^[A-Za-z0-9-]{1,64}$/.test(ad) || typeof deger !== 'string' || deger === '' || /[\r\n]/.test(deger) || deger.length > 256) {
+        throw new TaaHata('gecersiz-baslik', `Ek başlık geçersiz: ${String(ad).slice(0, 64)}`);
+      }
+      if (/^(authorization|content-type|x-taa-no)$/i.test(ad)) {
+        throw new TaaHata('gecersiz-baslik', `Bu başlığı çekirdek kendisi yazar: ${ad}`);
+      }
+      ekBasliklar[ad] = deger;
+    }
     const taban = sunucu.replace(/\/+$/, '');
     const bekleyen = await this.liste('bekliyor');
     const ozet = { gonderilen: 0, reddedilen: 0, kalan: bekleyen.length, durmaNedeni: null };
     if (bekleyen.length === 0) return ozet;
-    if (typeof oturum !== 'string' || oturum === '' || /[\r\n]/.test(oturum)) {
+    if (!oturumsuz && (typeof oturum !== 'string' || oturum === '' || /[\r\n]/.test(oturum))) {
       ozet.durmaNedeni = 'Oturum yok; göndermek için giriş yapın.';
       ozet.durmaKodu = 401;
+      ozet.durmaTuru = 'oturum';
       return ozet;
     }
+    const istek = { taban, oturum: oturumsuz ? null : oturum, basliklar: ekBasliklar, kaliciRet, zamanAsimiMs };
 
     let degisti = false;
-    for (let i = 0; i < bekleyen.length; i += 1) {
-      if (enCok > 0 && i >= enCok) break;
-      const k = bekleyen[i];
-      const sonuc = await this._birGonder(getir, taban, oturum, k, zamanAsimiMs);
+    let atlanan = 0;
+    let denenen = 0;
+    for (const k of bekleyen) {
+      if (typeof uygun === 'function' && !uygun(k)) {
+        atlanan += 1;
+        continue;
+      }
+      if (enCok > 0 && denenen >= enCok) break;
+      denenen += 1;
+      const sonuc = await this._birGonder(getir, istek, k);
       if (sonuc.tur === 'dur') {
         ozet.durmaNedeni = sonuc.neden;
+        ozet.durmaTuru = sonuc.durmaTuru;
         if (sonuc.kod !== undefined) ozet.durmaKodu = sonuc.kod;
         break;
       }
       const simdi = new Date(this._saat()).toISOString();
+      const yolAlani = yol === undefined ? {} : { yol };
       // Yalnız `bekliyor` kaydı ilerlet: başka sekme çoktan işlediyse üstüne yazma.
       await this._s.guncelle('giden', k.no, (eski) => {
         if (!eski || eski.durum !== 'bekliyor') return undefined;
         return sonuc.tur === 'gonderildi'
-          ? { ...eski, durum: 'gonderildi', gonderim: { zaman: simdi, yanit: sonuc.yanit } }
-          : { ...eski, durum: 'reddedildi', ret: { zaman: simdi, kod: sonuc.kod, mesaj: sonuc.mesaj } };
+          ? { ...eski, durum: 'gonderildi', gonderim: { zaman: simdi, yanit: sonuc.yanit, ...yolAlani } }
+          : { ...eski, durum: 'reddedildi', ret: { zaman: simdi, kod: sonuc.kod, mesaj: sonuc.mesaj, ...yolAlani } };
       });
       if (sonuc.tur === 'gonderildi') ozet.gonderilen += 1;
       else ozet.reddedilen += 1;
       ozet.kalan -= 1;
       degisti = true;
     }
+    if (atlanan > 0) {
+      ozet.atlanan = atlanan;
+      if (ozet.durmaNedeni === null) {
+        ozet.durmaNedeni = `Bu yola uygun olmayan ${atlanan} kayıt bekliyor.`;
+        ozet.durmaTuru = 'atlandi';
+      }
+    }
     if (degisti) yayinla({ db: this._db.ad, neden: 'gonderildi' });
     return ozet;
   }
 
-  async _birGonder(getir, taban, oturum, k, zamanAsimiMs) {
+  async _birGonder(getir, { taban, oturum, basliklar, kaliciRet, zamanAsimiMs }, k) {
     const govde = Object.prototype.hasOwnProperty.call(k.govde, 'no') ? k.govde : { ...k.govde, no: k.no };
     const denetci = new AbortController();
     const sayac = setTimeout(() => denetci.abort(), zamanAsimiMs);
@@ -498,8 +571,9 @@ export class Giden {
       yanit = await getir(`${taban}${k.uc}`, {
         method: 'POST',
         headers: {
+          ...basliklar,
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${oturum}`,
+          ...(oturum === null ? {} : { Authorization: `Bearer ${oturum}` }),
           'X-TAA-No': k.no,
         },
         body: JSON.stringify(govde),
@@ -513,6 +587,7 @@ export class Giden {
     } catch (e) {
       return {
         tur: 'dur',
+        durmaTuru: denetci.signal.aborted ? 'zaman-asimi' : 'ag',
         neden: denetci.signal.aborted
           ? 'Sunucu zamanında yanıt vermedi.'
           : `Sunucuya ulaşılamadı: ${e?.message ?? 'ağ hatası'}`,
@@ -534,12 +609,14 @@ export class Giden {
       return { tur: 'gonderildi', yanit: deger };
     }
     if (kod === 401) {
-      return { tur: 'dur', kod, neden: 'Oturum geçersiz ya da süresi dolmuş; yeniden giriş yapın.' };
+      return { tur: 'dur', durmaTuru: 'oturum', kod, neden: 'Oturum geçersiz ya da süresi dolmuş; yeniden giriş yapın.' };
     }
-    if (kod >= 400 && kod <= 499 && kod !== 408 && kod !== 429) {
+    const kalici =
+      typeof kaliciRet === 'function' ? kaliciRet(kod, metin) === true : kod >= 400 && kod <= 499 && kod !== 408 && kod !== 429;
+    if (kalici && kod >= 400 && kod <= 499) {
       return { tur: 'reddedildi', kod, mesaj: kisa };
     }
-    return { tur: 'dur', kod, neden: `Sunucu şu an kabul etmiyor (HTTP ${kod}): ${kisa}` };
+    return { tur: 'dur', durmaTuru: 'sunucu', kod, neden: `Sunucu şu an kabul etmiyor (HTTP ${kod}): ${kisa}` };
   }
 }
 
@@ -589,5 +666,93 @@ export class Onbellek {
       return { anahtar, deger: temiz, surum: surum ?? eski?.surum ?? 0, zaman };
     });
     return yazilan !== undefined;
+  }
+}
+
+// ---------------------------------------------------------------- cihaz günlüğü
+
+/**
+ * Cihaz günlüğü (Yusuf 11-27: günlükler cihazda tutulur, silinmez; merkeze ulaşınca kopyalanır).
+ * Yalnız ekleme: satır değişmez, silinmez. Satır: `{sira, zaman, olay, yol?, ayrinti?}`.
+ * Kayıt içeriği ve oturum anahtarı günlüğe YAZILMAZ; yazan yalnız olay adı, yol ve kısa ayrıntı verir.
+ * "Buraya kadar merkeze kopyalandı" işareti ayrı tutulur (meta `gunluk-kopya`); satırlar yerinde kalır.
+ */
+export class Gunluk {
+  constructor(db, { saat } = {}) {
+    this._s = db.surucu;
+    this._saat = saat ?? (() => Date.now());
+  }
+
+  /**
+   * Günlüğe bir satır ekler.
+   * @param {{olay: string, yol?: string, ayrinti?: object}} satir  `olay`: `[a-z0-9._-]`, 1-64 (ör. `yol.basarisiz`)
+   * @returns {Promise<{sira: number, zaman: string, olay: string, yol?: string, ayrinti?: object}>}
+   */
+  async yaz({ olay, yol, ayrinti } = {}) {
+    if (typeof olay !== 'string' || !/^[a-z0-9._-]{1,64}$/.test(olay)) {
+      throw new TaaHata('gecersiz-olay', 'Günlük olayı yalnız küçük harf, rakam, nokta, alt çizgi ve tire içerebilir (1-64).');
+    }
+    if (yol !== undefined && (typeof yol !== 'string' || !/^[a-z0-9-]{1,24}$/.test(yol))) {
+      throw new TaaHata('gecersiz-yol', 'Yol adı yalnız küçük harf, rakam ve tire içerebilir (1-24).');
+    }
+    const kayit = { sira: 0, zaman: new Date(this._saat()).toISOString(), olay };
+    if (yol !== undefined) kayit.yol = yol;
+    if (ayrinti !== undefined) {
+      if (ayrinti === null || typeof ayrinti !== 'object' || Array.isArray(ayrinti)) {
+        throw new TaaHata('gecersiz-ayrinti', 'Günlük ayrıntısı bir nesne ({...}) olmalı.');
+      }
+      let metin;
+      try {
+        metin = JSON.stringify(ayrinti);
+      } catch {
+        throw new TaaHata('gecersiz-ayrinti', 'Günlük ayrıntısı JSON olarak yazılamıyor.');
+      }
+      if (baytSay(metin) > GUNLUK_AYRINTI_EN_COK) {
+        throw new TaaHata('gecersiz-ayrinti', `Günlük ayrıntısı çok büyük (sınır ${GUNLUK_AYRINTI_EN_COK} bayt).`);
+      }
+      kayit.ayrinti = JSON.parse(metin);
+    }
+    // Sıra tek işlemde artar (iki sekme aynı sırayı alamaz); yine de çakışırsa bir sonraki denenir.
+    for (let deneme = 0; deneme < 5; deneme += 1) {
+      const sayac = await this._s.guncelle('meta', 'gunluk-sayac', (eski) => ({
+        anahtar: 'gunluk-sayac',
+        deger: (eski?.deger ?? 0) + 1,
+      }));
+      kayit.sira = sayac.deger;
+      if (await this._s.ekleYoksa('gunluk', kayit)) return kopya(kayit);
+    }
+    throw new TaaHata('depo', 'Günlük satırı yazılamadı.');
+  }
+
+  /**
+   * Satırları sırayla döndürür.
+   * @param {{sonra?: number, enCok?: number}} [secenek] `sonra`: bu sıradan büyükler; `enCok`: en çok kaç satır (0 = hepsi)
+   */
+  async liste({ sonra = 0, enCok = 0 } = {}) {
+    const hepsi = (await this._s.hepsi('gunluk')).filter((k) => k.sira > sonra).sort((a, b) => a.sira - b.sira);
+    return enCok > 0 ? hepsi.slice(0, enCok) : hepsi;
+  }
+
+  /** @returns {Promise<{toplam: number, kopyalanmamis: number}>} */
+  async say() {
+    const isaret = await this.kopyaIsareti();
+    const hepsi = await this._s.hepsi('gunluk');
+    return { toplam: hepsi.length, kopyalanmamis: hepsi.filter((k) => k.sira > isaret).length };
+  }
+
+  /** Merkeze kopyalanan son satırın sırası (hiç kopyalanmadıysa 0). */
+  async kopyaIsareti() {
+    return (await this._s.al('meta', 'gunluk-kopya'))?.deger ?? 0;
+  }
+
+  /** Kopya işaretini ilerletir (geri gitmez). Satırlara dokunmaz. */
+  async kopyalandi(sira) {
+    if (!Number.isSafeInteger(sira) || sira < 0) {
+      throw new TaaHata('gecersiz-sira', 'Sıra sıfır ya da pozitif tam sayı olmalı.');
+    }
+    const k = await this._s.guncelle('meta', 'gunluk-kopya', (eski) =>
+      (eski?.deger ?? 0) >= sira ? undefined : { anahtar: 'gunluk-kopya', deger: sira },
+    );
+    return k?.deger ?? (await this.kopyaIsareti());
   }
 }

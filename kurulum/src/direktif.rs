@@ -66,9 +66,11 @@ pub struct Girdi {
     pub hatali: Vec<String>,
     /// Programlar hâlâ kuruluyor (paket adımı henüz işaretlenmez).
     pub kuruluyor: bool,
+    /// Şube bilgisayarı profili (taa-yazdir + taa-sube-dugum); `Sorulmadi` iken adım gösterilmez.
+    pub sube_pc: crate::sube_pc::SubePc,
 }
 
-/// Rol ve bilinenlere göre adımlar (en çok 6, sıra sabit).
+/// Rol ve bilinenlere göre adımlar (en çok 6; şube bilgisayarı kararı verildiyse şube rolünde 7; sıra sabit).
 pub fn uret(g: &Girdi) -> Vec<Direktif> {
     let mut v = vec![];
     let sunucu = g.rol.as_deref() == Some("sunucu");
@@ -165,6 +167,31 @@ pub fn uret(g: &Girdi) -> Vec<Direktif> {
             Durum::Yapilacak,
         ),
     });
+    // Şube bilgisayarı (PLAN-TAA-WEB §9): karar verildiyse 7. adım. [Claude Fable 5.2 #taa-web-W2-kurulum 2026-11-27]
+    use crate::sube_pc::SubePc;
+    match &g.sube_pc {
+        SubePc::Sorulmadi => {}
+        SubePc::Istenmedi => v.push(d(
+            "Şube bilgisayarı",
+            "Bu PC şube bilgisayarı yapılmadı. Gerekirse: taa-kur sube-pc kur".into(),
+            Durum::Bilgi,
+        )),
+        SubePc::Kuruldu { yol_sirasi, uyarilar } if uyarilar.is_empty() => v.push(d(
+            "Şube bilgisayarı",
+            format!("Yazdırma köprüsü ve şube düğümü kuruldu, açılışta başlar. Yol sırası: {yol_sirasi}."),
+            Durum::Yapildi,
+        )),
+        SubePc::Kuruldu { yol_sirasi, uyarilar } => v.push(d(
+            "Şube bilgisayarı: eksikleri tamamlayın",
+            format!("Kuruldu (yol sırası: {yol_sirasi}), ama: {}", uyarilar.join(" · ")),
+            Durum::Yapilacak,
+        )),
+        SubePc::Olmadi(neden) => v.push(d(
+            "Şube bilgisayarını kurun",
+            format!("Kurulamadı: {neden} Sonra: taa-kur sube-pc kur"),
+            Durum::Yapilacak,
+        )),
+    }
     v
 }
 
@@ -273,6 +300,31 @@ mod testler {
             vec![Durum::Yapildi, Durum::Yapildi, Durum::Yapildi, Durum::Yapildi, Durum::Yapilacak, Durum::Yapildi],
             "cihaz onayı her zaman elle"
         );
+    }
+
+    #[test]
+    fn sube_bilgisayari_adimi() {
+        use crate::sube_pc::SubePc;
+        let mut g = Girdi { rol: Some("sube".into()), ..Girdi::default() };
+        assert_eq!(uret(&g).len(), 6, "karar verilmeden adım yok");
+        g.sube_pc = SubePc::Istenmedi;
+        let v = uret(&g);
+        assert_eq!((v.len(), v[6].durum), (7, Durum::Bilgi));
+        g.sube_pc = SubePc::Kuruldu { yol_sirasi: "merkez (https://m) → sube (http://192.168.1.20:8788) → yerel".into(), uyarilar: vec![] };
+        let v = uret(&g);
+        assert_eq!(v[6].durum, Durum::Yapildi);
+        assert!(v[6].ayrinti.contains("merkez (https://m) → sube"));
+        g.sube_pc = SubePc::Kuruldu { yol_sirasi: "merkez → yerel".into(), uyarilar: vec!["yerel ağ adresi bulunamadı".into()] };
+        let v = uret(&g);
+        assert_eq!(v[6].durum, Durum::Yapilacak);
+        assert!(v[6].ayrinti.contains("yerel ağ adresi bulunamadı"));
+        g.sube_pc = SubePc::Olmadi("taa-sube-dugum bulunamadı.".into());
+        let v = uret(&g);
+        assert_eq!(v[6].durum, Durum::Yapilacak);
+        assert!(v[6].ayrinti.contains("taa-kur sube-pc kur"));
+        // Sunucu rolünde şube bilgisayarı adımı hiç yok.
+        g.rol = Some("sunucu".into());
+        assert!(!uret(&g).iter().any(|x| x.baslik.contains("Şube bilgisayarı")));
     }
 
     #[test]

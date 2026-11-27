@@ -81,7 +81,8 @@ test('gidenDegisinceYenile: kök DOM\'dan ayrılınca dinleyici kalkar', async (
 test('LISTE.json: her modül dosyası var ve {ad, baslik, ac} dışa aktarıyor', async () => {
   const kok = new URL('../../', import.meta.url);
   const liste = JSON.parse(await readFile(new URL('LISTE.json', kok), 'utf8'));
-  assert.deepEqual(liste.moduller.map((m) => m.ad), ['kasa', 'terzitakip', 'rehber', 'cati']);
+  // [Claude Fable 5.2 #taa-web-W3-tutanak 2026-11-27] 'tutanak' (Tutaa) eklendi.
+  assert.deepEqual(liste.moduller.map((m) => m.ad), ['kasa', 'terzitakip', 'tutanak', 'rehber', 'cati']);
   for (const m of liste.moduller) {
     for (const d of m.dosyalar) await access(new URL(`../${d}`, kok));
     const modul = await import(new URL(`../${m.yol}`, kok));

@@ -26,6 +26,18 @@
       "yazar": true
     },
     {
+      "ad": "tutanak",
+      "baslik": "Tutaa",
+      "yol": "moduller/tutanak/index.js",
+      "dosyalar": ["moduller/tutanak/index.js", "moduller/tutanak/mantik.js", "moduller/tutanak/tutanak.css", "moduller/ortak/dom.js", "moduller/ortak/modul.css", "moduller/ortak/bicim.js"],
+      "izinler": ["tutanak.oku", "tutanak.olustur", "tutanak.imza", "tutanak.foto"],
+      "onbellek": ["tutanak/sablonlar", "tutanak/liste"],
+      "uclar": ["/v1/tutanak", "/v1/tutanak/imza", "/v1/tutanak/foto"],
+      "sozlesmeler": ["tutanak.olustur@1", "tutanak.imza@1", "tutanak.foto@1"],
+      "yazar": true,
+      "_not": "[Claude Fable 5.2 #taa-web-W3-tutanak 2026-11-27] OCR yok: fotoğraf giden kutusuna 'ocr_bekliyor' yazılır, sonuç sunucuda üretilir. Kasa Çift Doğrulama Tutanağı burada yok (TAA Kasa'da). İzin adları ve imza/foto uçları varsayımdır."
+    },
+    {
       "ad": "rehber",
       "baslik": "Rehber",
       "yol": "moduller/rehber/index.js",

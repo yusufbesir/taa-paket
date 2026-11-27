@@ -1,0 +1,26 @@
+# taa-sube-dugum: şube bilgisayarında çalışan yerel düğüm (şubenin sunucusu; merkezin yerini tutmaz). Sahip: Yusuf.
+# yazan: [Claude Fable 5.2 #taa-web-W2-sube-dugum 2026-11-27]. Değişiklik: Yusuf'un kuralları çerçevesinde.
+# Yeni dış bağımlılık yok: tiny_http ve sha2 çalışma alanında zaten var (taa-fis-sunucu, taa-cati, taa-donustur).
+[package]
+name = "taa-sube-dugum"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "TAA şube düğümü: telefonlar/tarayıcılar yerel ağdan yazar, kayıt taa-kuyruk ile aynı no üstünden merkeze gider; günlük yalnız eklenir"
+
+[lib]
+name = "taa_sube_dugum"
+path = "src/lib.rs"
+
+[[bin]]
+name = "taa-sube-dugum"
+path = "src/main.rs"
+
+[dependencies]
+serde_json = "1"
+sha2 = "0.10"
+tiny_http = "0.12"
+taa-dosya = { path = "../taa-dosya" }
+taa-kuyruk = { path = "../taa-kuyruk" }
+taa-yol = { path = "../taa-yol" }
