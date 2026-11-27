@@ -1,0 +1,9 @@
+{
+  "name": "taa-web-moduller",
+  "private": true,
+  "type": "module",
+  "description": "Sahip: Yusuf. yazan: [Claude Fable 5.2, TAA Web W1 modüller 2026-11-27]. Yalnız ES modülü işareti ve test komutu; bağımlılık yok.",
+  "scripts": {
+    "test": "node --test"
+  }
+}

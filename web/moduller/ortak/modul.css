@@ -1,0 +1,27 @@
+/* Sahip: Yusuf. yazan: [Claude Fable 5.2, TAA Web W1 modüller 2026-11-27] */
+/* Modüllerin ortak biçemi. Renk ve ölçüler kabuğun tema değişkenlerinden (--tk-*) gelir; yoksa yedek değer kullanılır. */
+.taa-modul{font:var(--tk-yazi,16px)/1.45 var(--tk-fb,system-ui,sans-serif);color:var(--tk-tx,#111);display:grid;gap:12px}
+.taa-modul h2,.taa-modul h3{font-family:var(--tk-fh,inherit);margin:0}
+.taa-sekmeler,.taa-satir{display:flex;flex-wrap:wrap;gap:8px;align-items:end}
+.taa-modul button{min-height:var(--tk-hedef,44px);padding:0 14px;border:var(--tk-kenar,1px) solid var(--tk-line,#777);border-radius:var(--tk-r,8px);background:var(--tk-panel,#fff);color:inherit;font:inherit;cursor:pointer}
+.taa-modul button[aria-pressed="true"],.taa-modul button.taa-ana{background:var(--tk-ac,#0b3bd6);color:var(--tk-ac-fg,#fff)}
+.taa-modul button:disabled{opacity:.5;cursor:not-allowed}
+.taa-alan{display:grid;gap:2px;min-width:140px;flex:1}
+.taa-alan-ad{font-size:.85em;color:var(--tk-mut,#555)}
+.taa-alan input,.taa-alan select,.taa-alan textarea{min-height:var(--tk-hedef,44px);padding:6px 8px;border:var(--tk-kenar,1px) solid var(--tk-line,#777);border-radius:var(--tk-r,8px);background:var(--tk-bg,#fff);color:inherit;font:inherit}
+.taa-kutu{border:var(--tk-kenar,1px) solid var(--tk-line,#777);border-radius:var(--tk-r,8px);background:var(--tk-panel,#fff);padding:12px;display:grid;gap:8px}
+.taa-durum:empty{display:none}
+.taa-durum{padding:8px 12px;border-radius:var(--tk-r,8px);border:var(--tk-kenar,1px) solid var(--tk-line,#777)}
+.taa-durum[data-durum="hata"]{border-color:var(--tk-hata,#b00020);color:var(--tk-hata,#b00020)}
+.taa-durum[data-durum="tamam"]{border-color:var(--tk-ok,#0b6b2e);color:var(--tk-ok,#0b6b2e)}
+.taa-durum[data-durum="uyari"]{border-color:var(--tk-uyari,#8a4b00);color:var(--tk-uyari,#8a4b00)}
+.taa-durum ul{margin:0;padding-left:18px}
+.taa-tablo{width:100%;border-collapse:collapse}
+.taa-tablo th,.taa-tablo td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--tk-line,#ccc);vertical-align:top}
+.taa-tablo td.taa-sayi,.taa-tablo th.taa-sayi{text-align:right;font-variant-numeric:tabular-nums}
+.taa-rozet{display:inline-block;padding:0 8px;border-radius:999px;border:1px solid currentColor;font-size:.85em}
+.taa-rozet[data-tur="uyari"]{color:var(--tk-uyari,#8a4b00)}
+.taa-rozet[data-tur="hata"]{color:var(--tk-hata,#b00020)}
+.taa-rozet[data-tur="tamam"]{color:var(--tk-ok,#0b6b2e)}
+.taa-soluk{color:var(--tk-mut,#555)}
+.taa-liste{list-style:none;margin:0;padding:0;display:grid;gap:8px}

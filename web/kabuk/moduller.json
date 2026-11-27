@@ -1,0 +1,55 @@
+{
+  "_sahip": "Sahip: Yusuf. yazan: [Claude Fable 5.2 #taa-web-W0-kabuk 2026-11-27]",
+  "_not": "Kabuğun okuduğu modül listesi. Kaynak: web/moduller/LISTE.json (modül ekibi yazar; buraya kabuk sahibi işler). 'izin' verilirse menüde yalnız o izne/role sahip kişiye görünür; verilmezse herkese görünür ve yetki ekranını modül kendisi gösterir. 'dosyalar' web/ köküne göredir ve çevrimdışı açılış için önbelleğe alınır.",
+  "surum": 1,
+  "moduller": [
+    {
+      "ad": "kasa",
+      "baslik": "TAA Kasa",
+      "aciklama": "Kasa sayımı, masraf, gün sonu",
+      "dosyalar": [
+        "moduller/kasa/index.js",
+        "moduller/kasa/mantik.js",
+        "moduller/ortak/dom.js",
+        "moduller/ortak/bicim.js",
+        "moduller/ortak/modul.css"
+      ]
+    },
+    {
+      "ad": "terzitakip",
+      "baslik": "TerziTakip",
+      "aciklama": "Terzi fişleri ve durumları",
+      "dosyalar": [
+        "moduller/terzitakip/index.js",
+        "moduller/terzitakip/mantik.js",
+        "moduller/ortak/dom.js",
+        "moduller/ortak/bicim.js",
+        "moduller/ortak/modul.css"
+      ]
+    },
+    {
+      "ad": "rehber",
+      "baslik": "Rehber",
+      "aciklama": "Şube ve kişi rehberi",
+      "dosyalar": [
+        "moduller/rehber/index.js",
+        "moduller/rehber/mantik.js",
+        "moduller/ortak/dom.js",
+        "moduller/ortak/bicim.js",
+        "moduller/ortak/modul.css"
+      ]
+    },
+    {
+      "ad": "cati",
+      "baslik": "TAA Çatı",
+      "aciklama": "Yönetici paneli",
+      "izin": "yonetici",
+      "dosyalar": [
+        "moduller/cati/index.js",
+        "moduller/cati/mantik.js",
+        "moduller/ortak/dom.js",
+        "moduller/ortak/modul.css"
+      ]
+    }
+  ]
+}

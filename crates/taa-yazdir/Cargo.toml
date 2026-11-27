@@ -1,0 +1,29 @@
+# taa-yazdir: tarayıcıdan (TAA Web) şube yazıcısına ham yazdırma köprüsü; yalnız 127.0.0.1. Sahip: Yusuf.
+# yazan: [Claude Fable 5.2 #taa-web-W2-yazdir 2026-11-27]. Plan: PLAN-TAA-WEB-2026-11-27.md §4.
+# Yeni harici bağımlılık YOK: HTTP sunucusu yalnız std ile yazıldı. serde_json çalışma alanında zaten var (kilit dosyası değişmez).
+[package]
+name = "taa-yazdir"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "TAA yazdırma köprüsü: yalnız 127.0.0.1'i dinler, izinli kökenlerden gelen ham yazıcı verisini şube yazıcısına iletir"
+
+[lib]
+name = "taa_yazdir"
+path = "src/lib.rs"
+
+[[bin]]
+name = "taa-yazdir"
+path = "src/main.rs"
+
+[dependencies]
+serde_json = "1"
+# Cihaz imzası kancası: mevcut doğrulama (taa_cihaz::dogrula) ve cihaz.pub biçimi.
+taa-cihaz = { path = "../taa-cihaz" }
+taa-imza = { path = "../taa-imza" }
+# Not: yazıcıya ham gönderme yolu taa-fis-sunucu'daki yaziciya_yaz ile aynıdır; o crate'e bağımlılık YOK
+# (ortak crate program crate'ine bağlanamaz: tools/sozlesme_denetle.py). Ayrıntı: src/lib.rs `yaziciya_yaz`.
+
+[dev-dependencies]
+taa-dosya = { path = "../taa-dosya" }
